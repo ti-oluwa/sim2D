@@ -333,14 +333,12 @@ def compute_material_balance_errors(
     reference_gas = max(abs(previous_gas_mass), 1.0)
     relative_gas_mbe = absolute_gas_mbe / reference_gas
 
-    # TOTAL
     total_absolute_mbe = absolute_oil_mbe + absolute_water_mbe + absolute_gas_mbe
     total_reference = max(
         abs(previous_oil_mass) + abs(previous_water_mass) + abs(previous_gas_mass),
         1.0,
     )
     total_relative_mbe = total_absolute_mbe / total_reference
-
     return MaterialBalanceErrors(
         absolute_oil_mbe=absolute_oil_mbe,
         absolute_water_mbe=absolute_water_mbe,

@@ -44,7 +44,7 @@ BORES represents *almost* all reservoir data using immutable (frozen) classes bu
 
 Immutability matters deeply in simulation software. When you pass a `ReservoirModel` to `bores.run()`, the simulator works on internal copies of the data. Your original model object remains untouched, so you can safely reuse it for parameter sweeps, what-if scenarios, or debugging. There is no hidden state mutation that could silently corrupt your baseline.
 
-When you need a modified version of an immutable object, you use `attrs.evolve()` to create a new instance with specific fields replaced. BORES surfaces this pattern through convenience methods like `config.copy()` and `config.update()`. The original object is never modified; you always get a fresh copy with the changes applied.
+When you need a modified version of an immutable object, you use `attrs.evolve()` to create a new instance with specific fields replaced. BORES surfaces this pattern through convenience methods like `config.copy()` and `config.new()`. The original object is never modified; you always get a fresh copy with the changes applied.
 
 ```python
 import bores
@@ -64,7 +64,7 @@ config = bores.Config(
 )
 
 # Create a modified copy with a different scheme
-explicit_config = config.update(scheme="explicit")
+explicit_config = config.new(scheme="explicit")
 
 # The original is unchanged
 assert config.scheme == "impes"
@@ -73,7 +73,7 @@ assert explicit_config.scheme == "explicit"
 
 !!! tip "Parameter Sweeps"
 
-    Immutability makes parameter sweeps straightforward. Create a base config, then use `config.update()` in a loop to generate variations. Each variation is independent, so you can run them in parallel without synchronization concerns.
+    Immutability makes parameter sweeps straightforward. Create a base config, then use `config.new()` in a loop to generate variations. Each variation is independent, so you can run them in parallel without synchronization concerns.
 
 ---
 
@@ -329,7 +329,7 @@ config = bores.Config(
     === "Fast Screening Run"
 
         ```python
-        screening_config = config.update(
+        screening_config = config.new(
             output_frequency=10,             # Output every 10th step
             maximum_pressure_change=200.0,       # Relax stability constraints
             pressure_preconditioner="diagonal",  # Cheap preconditioner
@@ -339,7 +339,7 @@ config = bores.Config(
     === "High-Accuracy Study"
 
         ```python
-        accurate_config = config.update(
+        accurate_config = config.new(
             pressure_convergence_tolerance=1e-8,
             maximum_pressure_change=50.0,        # Tighter stability constraints
             maximum_water_saturation_change=0.2,
@@ -350,7 +350,7 @@ config = bores.Config(
     === "Explicit Scheme"
 
         ```python
-        explicit_config = config.update(
+        explicit_config = config.new(
             scheme="explicit",
             cfl_threshold=0.6,    # CFL stability limit
             pressure_cfl_threshold=0.9,

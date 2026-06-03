@@ -151,7 +151,7 @@ config = bores.Config(
     timer=timer,
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
-    scheme="impes",
+    scheme="si",
     pressure_solver="direct",
     transport_solver="direct",
     pressure_preconditioner=None,
@@ -163,6 +163,7 @@ config = bores.Config(
     # disable_capillary_effects=True,
     cfl_threshold=0.3,
     # use_nonlinear_pressure_solve=True
+    
 )
 
 run = bores.Run(model, config)

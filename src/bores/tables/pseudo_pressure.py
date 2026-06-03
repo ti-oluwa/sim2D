@@ -143,7 +143,7 @@ def compute_gas_pseudo_pressure(
             logger.warning("Integration failed: %s. Using trapezoidal fallback.", exc)
             # Fallback to simple trapezoidal rule
             p_points = np.linspace(p_min, p_max, 100)
-            y_points = np.array([integrand(p) for p in p_points])  # type: ignore
+            y_points = np.array([integrand(p) for p in p_points])
             result = float(np.trapezoid(y=y_points, x=p_points))
 
     # Apply sign based on integration direction
@@ -636,7 +636,7 @@ class PseudoPressureTable(
         Values outside the tabulated range are clamped to the boundary
         pseudo-pressure (constant extrapolation).
 
-        :param pressure: Pressure (psi) — scalar or array.
+        :param pressure: Pressure (psi) - scalar or array.
         :return: Pseudo-pressure m(P) (psi²/cP).
         """
         is_scalar = np.isscalar(pressure)
@@ -657,7 +657,7 @@ class PseudoPressureTable(
         Uses numerical inversion of the PCHIP interpolant (via Brent's method)
         to guarantee consistency with `interpolate`.
 
-        :param pseudo_pressure: Pseudo-pressure m(P) (psi²/cP) — scalar or array.
+        :param pseudo_pressure: Pseudo-pressure m(P) (psi²/cP) - scalar or array.
         :return: Pressure (psi).
         """
         mp_min = float(self.pseudo_pressures[0])
@@ -680,7 +680,7 @@ class PseudoPressureTable(
             )
 
         is_scalar = np.isscalar(pseudo_pressure)
-        mp = np.atleast_1d(np.asarray(pseudo_pressure, dtype=np.float64))
+        mp = np.atleast_1d(pseudo_pressure)
         result = np.vectorize(_invert_scalar)(mp)
 
         if is_scalar:
@@ -691,7 +691,7 @@ class PseudoPressureTable(
         """
         Fast lookup of pseudo-pressure via PCHIP interpolation.
 
-        :param pressure: Pressure (psi) — scalar or array.
+        :param pressure: Pressure (psi) - scalar or array.
         :return: Pseudo-pressure m(P) (psi²/cP).
         """
         return self.interpolate(pressure)
@@ -707,7 +707,7 @@ class PseudoPressureTable(
         The derivative is zero outside the tabulated pressure range (constant
         extrapolation = zero slope).
 
-        :param pressure: Pressure (psi) — scalar or array.
+        :param pressure: Pressure (psi) - scalar or array.
         :return: dm/dP (psi/cP).
         """
         is_scalar = np.isscalar(pressure)

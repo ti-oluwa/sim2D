@@ -98,12 +98,13 @@ def compute_well_index(
 
     The formula for the well index is:
 
-    W = (k * h * net_to_gross) / (ln(re/rw) + C + s)
+    W = (k * h * N/G) / (ln(re/rw) + C + s)
 
     where:
         - W is the well index (md*ft)
         - k is the absolute permeability of the reservoir rock (mD)
         - h is the thickness of the reservoir interval (ft)
+        - N/G is the net-to-gross ration of the reservoir rock (dimensionless)
         - re is the effective drainage radius (ft)
         - rw is the wellbore radius (ft)
         - s is the skin factor (dimensionless, default is 0)

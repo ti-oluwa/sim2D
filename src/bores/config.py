@@ -226,7 +226,7 @@ class Config(
     """
 
     maximum_newton_saturation_change: float = attrs.field(
-        default=0.05,
+        default=0.2,
         validator=attrs.validators.and_(
             attrs.validators.gt(0.0),
             attrs.validators.le(1.0),
@@ -286,26 +286,6 @@ class Config(
 
     This parameter is critical for preventing wasted iterations in cases
     where Newton updates oscillate or make negligible progress.
-    """
-
-    newton_weak_problem_saturation_threshold: float = attrs.field(
-        default=1e-5,
-        validator=attrs.validators.gt(0),
-    )
-    """
-    Saturation change threshold for detecting quasi-equilibrium (weak) problems.
-
-    When saturations barely move (max |∆S| < threshold) for multiple iterations
-    and the residual is not increasing significantly, the Newton solver converges
-    even if the relative residual norm is moderately above 1e-3. This handles
-    problems with no wells or strong capillary equilibrium where the system
-    reaches a quasi-equilibrium state with non-zero but acceptable residuals.
-
-    Typical use case:
-    - Natural field depletion with no wells: saturations remain nearly constant
-      due to capillary balance, but residuals may be 1-5% of initial
-    - Reduce this value (e.g., 1e-8) for stricter saturation requirements
-    - Increase this value (e.g., 1e-6) for more lenient weak problem detection
     """
 
     maximum_pressure_change: float = attrs.field(
@@ -520,9 +500,9 @@ class Config(
         with self._lock:
             return attrs.evolve(self, **kwargs)
 
-    def update(self, **kwargs: typing.Any) -> Self:
+    def new(self, **kwargs: typing.Any) -> Self:
         """
-        Return a new `Config` with updated parameters (immutable pattern).
+        Return a new `Config` with updated parameters.
 
         :param kwargs: Keyword arguments for fields to update
         :return: New `Config` instance with updated values

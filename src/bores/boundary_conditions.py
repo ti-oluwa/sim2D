@@ -830,7 +830,7 @@ class RobinBoundary(BoundaryCondition[NDimension]):
       *T_face* is the geometric face transmissibility and *lambda_total* is
       the sum of three-phase relative mobilities.
 
-    :param pressure: Reference boundary pressure (psi).  Typically the
+    :param pressure: Reference boundary pressure (psi). Typically the
         aquifer pressure, injection manifold pressure, or any target pressure
         at the face.
     :param alpha: Callable `(metadata, boundary_slice, direction) -> np.ndarray`
@@ -838,13 +838,15 @@ class RobinBoundary(BoundaryCondition[NDimension]):
         boundary function or a `ParameterizedBoundaryFunction` so that the
         condition can be serialized.
 
-    Example::
+    Example:
 
-        alpha = ParameterizedBoundaryFunction(
-            func_name="constant_productivity_index",
-            params={"value": 10.0},
-        )
-        robin = RobinBoundary(pressure=2500.0, alpha=alpha)
+    ```python
+    alpha = ParameterizedBoundaryFunction(
+        func_name="constant_productivity_index",
+        params={"value": 10.0},
+    )
+    robin = RobinBoundary(pressure=2500.0, alpha=alpha)
+    ```
     """
 
     __type__ = "robin_boundary"
@@ -1351,7 +1353,7 @@ _FACE_SLICES_3D: typing.Dict[
 }
 
 
-def _face_slices(
+def _get_face_slices(
     ndim: int,
 ) -> typing.Dict[
     Boundary, typing.Tuple[typing.Tuple[slice, ...], typing.Tuple[slice, ...]]
@@ -1528,7 +1530,7 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
         """Return *True* if all boundary conditions are `DirichletBoundary`."""
         return self._all_dirichlet
 
-    def _face_conditions(
+    def _get_face_conditions(
         self, ndim: int
     ) -> typing.List[typing.Tuple[Boundary, BoundaryCondition[NDimension]]]:
         """
@@ -1590,8 +1592,8 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
         """
         ndim = len(grid_shape)
         padded_shape = tuple(s + 2 * pad_width for s in grid_shape)
-        faces = _face_slices(ndim)
-        face_conditions = self._face_conditions(ndim)
+        faces = _get_face_slices(ndim)
+        face_conditions = self._get_face_conditions(ndim)
 
         first_call = not self._cache_initialised
 
@@ -1688,8 +1690,8 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
             return flux_cache, pressure_cache
 
         ndim = flux_cache.ndim
-        faces = _face_slices(ndim)
-        face_conditions = self._face_conditions(ndim)
+        faces = _get_face_slices(ndim)
+        face_conditions = self._get_face_conditions(ndim)
 
         for direction, condition in face_conditions:
             # Skip static faces. Their cache entries are already correct
@@ -1732,18 +1734,19 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        def _load_face(key: str) -> BoundaryCondition[NDimension]:
-            face_data = data.get(key)
-            if face_data is None:
-                return BoundaryCondition()
-            return BoundaryCondition.load(face_data)  # type: ignore[return-value]
-
         return cls(
-            default=_load_face("default"),
-            left=_load_face("left"),
-            right=_load_face("right"),
-            front=_load_face("front"),
-            back=_load_face("back"),
-            bottom=_load_face("bottom"),
-            top=_load_face("top"),
+            default=_load_face(data, "default"),
+            left=_load_face(data, "left"),
+            right=_load_face(data, "right"),
+            front=_load_face(data, "front"),
+            back=_load_face(data, "back"),
+            bottom=_load_face(data, "bottom"),
+            top=_load_face(data, "top"),
         )
+
+
+def _load_face(data: typing.Mapping[str, typing.Any], key: str) -> BoundaryCondition:
+    face_data = data.get(key)
+    if face_data is None:
+        return BoundaryCondition()
+    return BoundaryCondition.load(face_data)  # type: ignore[return-value]

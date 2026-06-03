@@ -86,7 +86,7 @@ def setup_run():
         aggressive_backoff_factor=0.25,
         maximum_rejections=20,
     )
-    run.config = run.config.update(
+    run.config = run.config.new(
         wells=wells,
         timer=timer,
         maximum_gas_saturation_change=0.05,

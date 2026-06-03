@@ -119,8 +119,10 @@ def compute_well_rates(
         denoting injection and negative values denoting production.
     """
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
+    # Because of the radial flow formulation used in well calculations we multiply by 2π.
+    # This would give around 1.127e-3 * 2π = 7.08e-3 approximately
     md_per_cp_to_ft2_per_psi_per_day = (
-        c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
+        c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY * 2 * np.pi
     )
     pressure_grid = fluid_properties.pressure_grid
     grid_shape = pressure_grid.shape
@@ -252,7 +254,7 @@ def compute_well_rates(
                         pressure=cell_pressure,
                         temperature=cell_temperature,
                         viscosity=phase_viscosity,
-                        eta=0.1,
+                        eta=0.001,
                     ),
                 )
             else:
@@ -276,7 +278,7 @@ def compute_well_rates(
                         pressure=cell_pressure,
                         temperature=cell_temperature,
                         viscosity=phase_viscosity,
-                        eta=0.1,
+                        eta=0.001,
                     ),
                 )
 

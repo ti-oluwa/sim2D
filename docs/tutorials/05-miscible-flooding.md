@@ -353,7 +353,7 @@ for omega in omega_values:
 
     # Update wells and config
     wells = bores.wells_(injectors=[inj], producers=[producer])
-    config = config.update(wells=wells)
+    config = config.new(wells=wells)
 
     # Run simulation
     states = list(bores.run(model, config))

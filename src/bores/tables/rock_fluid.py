@@ -645,7 +645,7 @@ def as_three_phase_relperm_table(
     backed by piecewise-linear `TwoPhaseRelPermTable` instances.
 
     Analytical derivatives are sampled at every knot and stored in the
-    two-phase sub-tables oil_saturation that `get_*_derivative` returns smooth,
+    two-phase sub-tables so that `get_*_derivative` returns smooth,
     consistent values instead of piecewise-linear slopes.
 
     For tabular source models (`ThreePhaseRelPermTable`) the existing knots

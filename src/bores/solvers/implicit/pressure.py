@@ -15,6 +15,7 @@ from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids, RelP
 from bores.grids.pvt import build_total_fluid_compressibility_grid
 from bores.grids.rock_fluid import build_three_phase_relative_mobilities_grids
 from bores.models import FluidProperties, RockProperties
+from bores.rock_fluid.relperm import RelPermEndpoints
 from bores.solvers.base import (
     Solution,
     scale_linear_system,
@@ -254,6 +255,7 @@ def solve_nonlinear_pressure(
     fluid_properties: FluidProperties[ThreeDimensions],
     relperm_grids: RelPermGrids[ThreeDimensions],
     relative_mobility_grids: RelativeMobilityGrids[ThreeDimensions],
+    relperm_endpoints: RelPermEndpoints,
     capillary_pressure_grids: CapillaryPressureGrids[ThreeDimensions],
     face_transmissibilities: FaceTransmissibilities,
     pressure_boundaries: ThreeDimensionalGrid,
@@ -529,9 +531,9 @@ def solve_nonlinear_pressure(
         if has_open_wells:
             iter_rates = compute_well_rates(
                 fluid_properties=iter_fluid_properties,
-                water_relative_mobility_grid=water_relative_mobility,
-                oil_relative_mobility_grid=oil_relative_mobility,
-                gas_relative_mobility_grid=gas_relative_mobility,
+                relperm_grids=relperm_grids,
+                relperm_endpoints=relperm_endpoints,
+                relative_mobility_grids=iter_relative_mobility_grids,
                 wells=wells,
                 time=time_step_size,
                 config=config,
@@ -890,7 +892,7 @@ def assemble_flux_contributions(
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
                     )
-                    east_1d = to_1D_index(
+                    east_idx = to_1D_index(
                         i=ei,
                         j=ej,
                         k=ek,
@@ -900,7 +902,7 @@ def assemble_flux_contributions(
                     )
                     # Entry 0: A[this, east]
                     thread_sparse_row_indices[ii, local_slot] = this_cell_idx
-                    thread_sparse_col_indices[ii, local_slot] = east_1d
+                    thread_sparse_col_indices[ii, local_slot] = east_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
                     thread_rhs_term[ii, local_slot] = capillary_flux + gravity_flux
@@ -908,7 +910,7 @@ def assemble_flux_contributions(
                     thread_is_neumann[ii, local_slot] = False
                     local_slot += 1
                     # Entry 1: A[east, this]
-                    thread_sparse_row_indices[ii, local_slot] = east_1d
+                    thread_sparse_row_indices[ii, local_slot] = east_idx
                     thread_sparse_col_indices[ii, local_slot] = this_cell_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
@@ -1013,7 +1015,7 @@ def assemble_flux_contributions(
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
                     )
-                    south_1d = to_1D_index(
+                    south_idx = to_1D_index(
                         i=si,
                         j=sj,
                         k=sk,
@@ -1022,14 +1024,14 @@ def assemble_flux_contributions(
                         cell_count_z=cell_count_z,
                     )
                     thread_sparse_row_indices[ii, local_slot] = this_cell_idx
-                    thread_sparse_col_indices[ii, local_slot] = south_1d
+                    thread_sparse_col_indices[ii, local_slot] = south_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
                     thread_rhs_term[ii, local_slot] = capillary_flux + gravity_flux
                     thread_is_dirichlet[ii, local_slot] = False
                     thread_is_neumann[ii, local_slot] = False
                     local_slot += 1
-                    thread_sparse_row_indices[ii, local_slot] = south_1d
+                    thread_sparse_row_indices[ii, local_slot] = south_idx
                     thread_sparse_col_indices[ii, local_slot] = this_cell_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
@@ -1126,7 +1128,7 @@ def assemble_flux_contributions(
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
                     )
-                    bottom_1d = to_1D_index(
+                    bottom_idx = to_1D_index(
                         i=bi,
                         j=bj,
                         k=bk,
@@ -1135,14 +1137,14 @@ def assemble_flux_contributions(
                         cell_count_z=cell_count_z,
                     )
                     thread_sparse_row_indices[ii, local_slot] = this_cell_idx
-                    thread_sparse_col_indices[ii, local_slot] = bottom_1d
+                    thread_sparse_col_indices[ii, local_slot] = bottom_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
                     thread_rhs_term[ii, local_slot] = capillary_flux + gravity_flux
                     thread_is_dirichlet[ii, local_slot] = False
                     thread_is_neumann[ii, local_slot] = False
                     local_slot += 1
-                    thread_sparse_row_indices[ii, local_slot] = bottom_1d
+                    thread_sparse_row_indices[ii, local_slot] = bottom_idx
                     thread_sparse_col_indices[ii, local_slot] = this_cell_idx
                     thread_sparse_off_diag_vals[ii, local_slot] = -T
                     thread_transmissibility[ii, local_slot] = T
@@ -1357,9 +1359,20 @@ def compute_face_fluxes(
     average_oil_density = (
         oil_density_grid[neighbour_indices] + oil_density_grid[cell_indices]
     ) * 0.5
-    average_gas_density = (
-        gas_density_grid[neighbour_indices] + gas_density_grid[cell_indices]
-    ) * 0.5
+
+    gas_density_difference = abs(
+        gas_density_grid[neighbour_indices] - gas_density_grid[cell_indices]
+    )
+    if gas_density_difference < 1e-12:
+        average_gas_density = (
+            gas_density_grid[neighbour_indices] + gas_density_grid[cell_indices]
+        ) * 0.5
+    else:
+        # Use logarithmic average for gas as arithmetic averaging can badly misrepresent
+        # hydrostatic balance for compressible gas.
+        average_gas_density = (
+            gas_density_grid[neighbour_indices] - gas_density_grid[cell_indices]
+        ) / np.log(gas_density_grid[neighbour_indices] / gas_density_grid[cell_indices])
 
     # Calculate harmonic relative mobilities for each phase across the face
     water_harmonic_relative_mobility = compute_harmonic_mean(

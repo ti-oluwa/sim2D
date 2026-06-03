@@ -2,12 +2,12 @@
 PyVista-based 3D Visualization Suite for Reservoir Simulation Data and Results.
 
 Good drop-in replacement for plotly3d with VTK-powered rendering:
+
 - Single-mesh cell-block rendering (vs. N Plotly traces)
 - GPU-accelerated volume rendering (if available)
-- Correct structural-dip geometry via ExplicitStructuredGrid
-- Interactive slice planes and threshold widgets
+- Interactive slice planes and widgets
 
-Run the command below to add support for `pyvista`
+Run the command below to add support for `pyvista`:
 ```
 pip install "bores-framework[pyvista]"
 ```
@@ -55,9 +55,9 @@ try:
     import pyvista as pv  # type: ignore[import]
 except ImportError:
     raise ImportError(
-        "PyVista is required for pyvista3d visualization.\n"
-        "Install with: pip install 'bores-framework[pyvista]'\n"
-        "Or: pip install pyvista trame imageio"
+        "PyVista is required for `pyvista3d` visualization.\n"
+        "Install with: `pip install 'bores-framework[pyvista]'`\n"
+        "Or: `pip install pyvista trame imageio`"
     )
 
 

@@ -12,7 +12,7 @@
 [![PyPI](https://img.shields.io/pypi/v/bores-framework)](https://pypi.org/project/bores-framework/)
 [![License](https://img.shields.io/github/license/ti-oluwa/bores)](LICENSE)
 
-BORES is a Python framework for 3D black-oil reservoir simulation of three-phase (oil, water, gas) flow in porous media. It provides a clean, modular API for building reservoir models, defining wells and fractures, running simulations, and analyzing results.
+BORES is a Python framework for 3D block grid black-oil reservoir simulation of three-phase (oil, water, gas) flow in porous media. It provides a clean, modular API for building reservoir models, defining wells and fractures, running simulations, and analyzing results.
 
 > **Disclaimer**: BORES is designed for **educational, research, and prototyping purposes**. It is not production-grade software and should not be used for critical business decisions or regulatory compliance. Results should be validated against established commercial simulators before any real-world application.
 
@@ -41,7 +41,7 @@ import typing
 
 import bores
 
-# Set precision (32-bit is the default)
+# Set precision
 bores.use_32bit_precision()
 
 # Grid dimensions: 10x10x3 cells, each 1000 ft x 1000 ft, 100 ft thick
@@ -66,7 +66,11 @@ connate_water_saturation = bores.build_uniform_grid(grid_shape, value=0.06)
 
 # Build depth grid and compute initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)  # Top at 5000 ft
-Sw, So, Sg = bores.build_saturation_grids(
+(
+    water_saturation_grid, 
+    oil_saturation_grid, 
+    gas_saturation_grid
+) = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=5050.0,  # Above reservoir (no gas cap)
     oil_water_contact=5280.0,  # Below reservoir (all oil zone)
@@ -91,9 +95,9 @@ model = bores.reservoir_model(
     absolute_permeability=permeability,
     porosity_grid=porosity,
     temperature_grid=temperature,
-    water_saturation_grid=Sw,
-    gas_saturation_grid=Sg,
-    oil_saturation_grid=So,
+    water_saturation_grid=water_saturation_grid,
+    gas_saturation_grid=gas_saturation_grid,
+    oil_saturation_grid=oil_saturation_grid,
     oil_viscosity_grid=oil_viscosity,
     oil_bubble_point_pressure_grid=bubble_point,
     residual_oil_saturation_water_grid=residual_oil_saturation_water,
@@ -127,14 +131,14 @@ producer = bores.production_well(
     perforating_intervals=[((9, 9, 1), (9, 9, 1))],
     radius=0.25,
     control=bores.ProducerRateControl(
-        primary_phase=bores.FluidPhase.OIL,  # Can be set to "oil" too
-        primary_control=bores.AdaptiveRateControl(
+        controlling_phase=bores.FluidPhase.OIL,  # Can be set to "oil" too
+        control=bores.AdaptiveRateControl(
             target_rate=-10000.0,
             target_phase="oil",
             bhp_limit=1000.0,
             clamp=bores.ProductionClamp(),
         ),
-        secondary_clamp=bores.ProductionClamp(),
+        clamp=bores.ProductionClamp(),
     ),
     produced_fluids=[
         bores.ProducedFluid(

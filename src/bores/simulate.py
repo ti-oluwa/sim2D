@@ -445,6 +445,7 @@ def _run_impes_step(
             freeze_saturation_pressure=config.freeze_saturation_pressure,
             rates=well_rates if has_open_wells else None,
             wells_indices=wells_indices,
+            relperm_endpoints=relperm_endpoints,
         )
         if config.use_nonlinear_pressure_solve
         else dict(rates=well_rates if has_open_wells else None)
@@ -904,6 +905,7 @@ def _run_sequential_implicit_step(
             freeze_saturation_pressure=config.freeze_saturation_pressure,
             rates=well_rates if has_open_wells else None,
             wells_indices=wells_indices,
+            relperm_endpoints=relperm_endpoints,
         )
         if config.use_nonlinear_pressure_solve
         else dict(rates=well_rates if has_open_wells else None)
@@ -1415,6 +1417,7 @@ def _run_full_sequential_implicit_step(
                 freeze_saturation_pressure=config.freeze_saturation_pressure,
                 rates=well_rates if has_open_wells else None,
                 wells_indices=wells_indices,
+                relperm_endpoints=relperm_endpoints,
             )
             if config.use_nonlinear_pressure_solve
             else dict(rates=well_rates if has_open_wells else None)
@@ -1987,14 +1990,14 @@ class Run(StoreSerializable):
             pvt_tables = PVTTables.from_file(pvt_tables_path)
             if pvt_tables is None:
                 raise ValidationError("Failed to load `PVTTables` data from file.")
-            config = config.update(pvt_tables=pvt_tables)
+            config = config.new(pvt_tables=pvt_tables)
 
         if pvt_data_path is not None:
             pvt_dataset = PVTDataSet.from_file(pvt_data_path)
             if pvt_dataset is None:
                 raise ValidationError("Failed to load `PVTDataSet` from file.")
             pvt_tables = PVTTables.from_dataset(pvt_dataset)
-            config = config.update(pvt_tables=pvt_tables)
+            config = config.new(pvt_tables=pvt_tables)
 
         return cls(model=model, config=config)
 
@@ -2089,7 +2092,7 @@ def run(
     apply_dip = not config.disable_structural_dip
     needs_injector_seeding = (
         config.minimum_injector_water_saturation
-        and config.minimum_injector_gas_saturation
+        or config.minimum_injector_gas_saturation
     )
     relperm_endpoints = (
         config.rock_fluid_tables.relative_permeability_table.get_relperm_endpoints()

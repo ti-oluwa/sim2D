@@ -1,6 +1,5 @@
 import logging
 import typing
-from pathlib import Path
 
 import numpy as np
 
@@ -524,6 +523,41 @@ rock_fluid_tables = bores.RockFluidTables(
     )
 )
 
+# Gas pseudo-pressure table — Table 2 (Odeh 1981)
+gas_pressures = bores.array(
+    [
+        14.7,
+        264.7,
+        514.7,
+        1014.7,
+        2014.7,
+        2514.7,
+        3014.7,
+        4014.7,
+        5014.7,
+        9014.7,
+    ]
+)
+gas_pseudo_pressures = bores.array(
+    [
+        0.000e0,  # 14.7
+        7.77916e6,  # 264.7
+        2.67580e7,  # 514.7
+        8.75262e7,  # 1014.7
+        2.70709e8,  # 2014.7
+        3.86910e8,  # 2514.7
+        5.16118e8,  # 3014.7
+        8.03963e8,  # 4014.7
+        1.12256e9,  # 5014.7
+        2.51845e9,  # 9014.7
+    ]
+)
+pseudo_pressure_table = bores.PseudoPressureTable(
+    pressures=gas_pressures,
+    pseudo_pressures=gas_pseudo_pressures,
+    reference_pressure=14.7,
+)
+
 # Wells
 gas_molecular_weight = compute_gas_molecular_weight(gas_gravity=0.792)
 
@@ -545,6 +579,7 @@ injector = bores.injection_well(
         molecular_weight=gas_molecular_weight,
         is_miscible=False,
         pvt_table=pvt_tables.gas,
+        pseudo_pressure_table=pseudo_pressure_table
     ),
     is_active=True,
     skin_factor=0.0,
@@ -574,6 +609,7 @@ producer = bores.production_well(
             phase=bores.FluidPhase.GAS,
             specific_gravity=0.792,
             molecular_weight=gas_molecular_weight,
+            pseudo_pressure_table=pseudo_pressure_table
         ),
     ],
     skin_factor=0.0,
@@ -608,7 +644,8 @@ config = bores.Config(
     # maximum_newton_saturation_change=0.05,
     maximum_pressure_change=300.0,
     cfl_threshold=0.5,
-    # use_nonlinear_pressure_solve=True,
+    use_nonlinear_pressure_solve=True,
+    saturation_jacobian_assembly_method="numerical",
 )
 
 run = bores.Run(

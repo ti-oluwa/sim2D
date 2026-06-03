@@ -60,7 +60,7 @@ def build_wells_indices(
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     net_to_gross_grid: NDimensionalGrid[ThreeDimensions],
     wells: Wells[ThreeDimensions],
-    absolute_permeability: RockPermeability,
+    absolute_permeability: RockPermeability[ThreeDimensions],
     regime_constant: float = -3 / 4,
 ) -> WellsIndices:
     """

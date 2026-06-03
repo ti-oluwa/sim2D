@@ -136,7 +136,7 @@ def setup_run():
         backoff_factor=0.5,
         aggressive_backoff_factor=0.25,
     )
-    run.config = run.config.update(
+    run.config = run.config.new(
         wells=wells,
         well_schedules=well_schedules,
         timer=timer,

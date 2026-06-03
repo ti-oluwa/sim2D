@@ -470,7 +470,7 @@ for state in bores.run(model, config):
 last_state = states[-1]
 new_model = last_state.model
 new_timer = bores.Timer.from_state(last_state.timer_state)
-resumed_config = config.update(timer=new_timer)
+resumed_config = config.new(timer=new_timer)
 
 for state in bores.run(new_model, resumed_config):
     process(state)

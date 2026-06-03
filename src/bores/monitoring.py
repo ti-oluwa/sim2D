@@ -1190,7 +1190,7 @@ def monitor(
         config = typing.cast(Config, config)
 
     # Suppress logging from `run(...)`; monitor handles all output and stats
-    config = config.update(log_interval=0)
+    config = config.new(log_interval=0)
     total_simulation_time = config.timer.simulation_time
     stats = RunStats()
     _step_result: typing.Optional[StepResult] = None

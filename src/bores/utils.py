@@ -8,8 +8,6 @@ import numpy.typing as npt
 import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
 
-from bores.types import FloatOrArray
-
 logger = logging.getLogger(__name__)
 
 __all__ = [

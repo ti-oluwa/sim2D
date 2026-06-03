@@ -661,7 +661,7 @@ def setup_config(Path, bores, oil_specific_gravity, pvt_tables):
     config = bores.Config(
         timer=timer,
         rock_fluid_tables=rock_fluid_tables,
-        scheme="full-si",
+        scheme="impes",
         output_frequency=1,
         pressure_solver="direct",
         transport_solver="direct",
@@ -792,7 +792,7 @@ def setup_analysis(bores, states):
 def _(avg_pressure_history, bores, np):
     # Pressure
     pressure_fig = bores.make_series_plot(
-        data={"Avg. Reservoir Pressure": np.array(avg_pressure_history[1:])},
+        data={"Avg. Reservoir Pressure": np.array(avg_pressure_history[1::5])},
         title="Pressure Analysis",
         x_label="Time Step",
         y_label="Avg. Pressure (psia)",
@@ -1104,7 +1104,7 @@ def _(bores):
     viz = bores.pyvista3d.DataVisualizer(
         config=bores.pyvista3d.PlotConfig(
             off_screen=False,
-            background_color="#1a1a2e",
+            background_color="#999",
             text_color="white",
         )
     )
@@ -1139,12 +1139,13 @@ def _(bores, states, viz, wells):
 
     property = "gas-sat"
     figures = []
-    timesteps = [550]
+    timesteps = [83]
     for timestep in timesteps:
+        state = states[timestep]
         figure = viz.make_plot(
-            states[timestep],
+            state,
             property=property,
-            title=f"{property.strip('-').title()} Profile at Timestep {timestep}",
+            title=f"{property.strip('-').title()} Profile at Timestep {timestep} - {state.time_in_days:.1f} days (IMPES)",
             **shared_kwargs,
         )
         figures.append(figure)

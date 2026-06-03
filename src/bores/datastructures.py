@@ -686,7 +686,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         t: SparseTensor[np.float64, Tuple[int, int, int]] = SparseTensor(
             shape=(2, 2, 2), dtype=np.float64
         )
-        t[(0, 1, 1)] = 9.0
+        t[0, 1, 1] = 9.0
         t.dense()
         # [[[0.0, 0.0], [0.0, 9.0]], [[0.0, 0.0], [0.0, 0.0]]]
         ```
@@ -1082,62 +1082,6 @@ class BottomHolePressures(Serializable, typing.Generic[DType, ShapeT]):
 
 
 @attrs.frozen(slots=True)
-class PressureDrawdowns(Serializable, typing.Generic[DType, ShapeT]):
-    """
-    Wrapper for N-dimensional sparse tensors representing phase injection/production
-    bottom hole pressure drawdowns (oil, water, gas).
-    """
-
-    oil: SparseTensor[DType, ShapeT]
-    """Sparse tensor representing oil bottom hole pressure drawdown."""
-
-    water: SparseTensor[DType, ShapeT]
-    """Sparse tensor representing oil bottom hole pressure drawdown."""
-
-    gas: SparseTensor[DType, ShapeT]
-    """Sparse tensor representing oil bottom hole pressure drawdown."""
-
-    def __iter__(self) -> typing.Iterator[SparseTensor[DType, ShapeT]]:
-        yield self.water
-        yield self.oil
-        yield self.gas
-
-    def __getitem__(self, key: ShapeT) -> typing.Tuple[DType, DType, DType]:
-        """
-        Return the water, oil and gas bottom hole pressure drawdown at the specified cell.
-
-        If a phase tensor is not defined, its drawdown is returned as the
-        default fill value of the other defined tensors, falling back to
-        `0.0` if none are defined.
-
-        :param key: The N-dimensional cell index typed as `ShapeT`.
-        :returns: A tuple `(water_drawdown, oil_drawdown, gas_drawdown)` each of type
-            `DType`.
-        """
-        return self.water[key], self.oil[key], self.gas[key]
-
-    def __setitem__(
-        self,
-        key: ShapeT,
-        value: typing.Tuple[
-            typing.Union[DType, float],
-            typing.Union[DType, float],
-            typing.Union[DType, float],
-        ],
-    ) -> None:
-        """
-        Set the water, oil and gas bottom hole pressure drawdowns at the specified cell.
-
-        :param key: The N-dimensional cell index typed as `ShapeT`.
-        :param value: A three-tuple `(water_drawdown, oil_drawdown, gas_drawdown)`.
-        """
-        water, oil, gas = value
-        self.oil[key] = oil
-        self.water[key] = water
-        self.gas[key] = gas
-
-
-@attrs.frozen(slots=True)
 class FormationVolumeFactors(Serializable, typing.Generic[DType, ShapeT]):
     """
     Wrapper for N-dimensional sparse tensors representing phase formation volume factors
@@ -1280,7 +1224,7 @@ class ContextFlag(typing.Generic[T]):
     ```
     """
 
-    __slots__ = ("_var", "_initial")
+    __slots__ = ("_var", "_token")
 
     def __init__(self, initial: T) -> None:
         """
@@ -1288,7 +1232,7 @@ class ContextFlag(typing.Generic[T]):
 
         :param initial: Initial value for new contexts
         """
-        self._initial = initial
+        self._token = None
         self._var: ContextVar[T] = ContextVar("ContextFlag", default=initial)
 
     def get(self) -> T:
@@ -1305,11 +1249,12 @@ class ContextFlag(typing.Generic[T]):
 
         :param value: New value
         """
-        self._var.set(value)
+        self._token = self._var.set(value)
 
     def reset(self) -> None:
         """Reset the flag to its initial value in the current context."""
-        self._var.set(self._initial)
+        if self._token:
+            self._var.reset(self._token)
 
     def __enter__(self) -> T:
         """

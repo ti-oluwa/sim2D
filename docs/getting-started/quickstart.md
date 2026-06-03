@@ -293,7 +293,7 @@ The `bores.Config` class gathers every simulation parameter into a single, immut
 
 The `scheme="impes"` setting selects the IMPES (Implicit Pressure, Explicit Saturation) evolution scheme, which solves pressure implicitly and then updates saturations explicitly. This is the default and most commonly used approach in black-oil simulation. It provides a good balance between stability (from implicit pressure) and efficiency (from explicit saturation transport).
 
-The `Config` object is frozen after creation. If you need to modify a parameter, use `config.copy(timer=new_timer)` or `config.update(scheme="explicit")` to create a new configuration with the desired changes.
+The `Config` object is frozen after creation. If you need to modify a parameter, use `config.copy(timer=new_timer)` or `config.new(scheme="explicit")` to create a new configuration with the desired changes.
 
 ### Running the Simulation
 

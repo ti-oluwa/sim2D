@@ -344,10 +344,10 @@ tuned_config = config.copy(
 
 ```python
 # This works
-updated = config.update(scheme="full-sequential-implicit")
+updated = config.new(scheme="full-sequential-implicit")
 
 # This raises AttributeError because "schemee" is not a valid field
-updated = config.update(schemee="full-sequential-implicit")  # AttributeError
+updated = config.new(schemee="full-sequential-implicit")  # AttributeError
 ```
 
 Use `update()` when you want protection against typos in parameter names. Use `copy()` when you prefer the shorter name and are confident in the parameter names.

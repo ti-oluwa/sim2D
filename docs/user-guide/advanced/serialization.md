@@ -399,7 +399,7 @@ for state in bores.run(run):
     process(state)
 
 # Override config at execution time
-new_config = config.update(output_frequency=5)
+new_config = config.new(output_frequency=5)
 for state in bores.run(run, config=new_config):
     process(state)
 ```
