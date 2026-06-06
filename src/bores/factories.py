@@ -301,16 +301,12 @@ def reservoir_model(
 
     if water_salinity_grid is None:
         water_salinity_grid = build_uniform_grid(
-            grid_shape=grid_shape,
-            value=c.DEFAULT_WATER_SALINITY_PPM,
+            grid_shape=grid_shape, value=c.DEFAULT_WATER_SALINITY_PPM
         )
 
     if net_to_gross_grid is None:
         # Assume uniform net-to-gross ratio of 1.0 (fully net)
-        net_to_gross_grid = build_uniform_grid(
-            grid_shape=grid_shape,
-            value=1.0,
-        )
+        net_to_gross_grid = build_uniform_grid(grid_shape=grid_shape, value=1.0)
 
     # Validate and normalize saturation grids
     water_saturation_grid, oil_saturation_grid, gas_saturation_grid = (
@@ -471,7 +467,7 @@ def reservoir_model(
 
     # Computing Solution GOR and bubble point pressure, we have four cases:
     #  (a) Both provided            -> use as-is
-    #  (b) Pb provided, Rs missing  -> derive Rs from Pb using correlations
+    #  (b) Pb provided, Rs missing  -> derive Rs from Pb using correlations (oil_pvt_table first)
     #  (c) Rs provided, Pb missing  -> derive Pb from Rs (oil_pvt_table first)
     #  (d) Neither provided         -> estimate using iterative coupled solver
     #      (estimate_solution_gor handles T variation; Standing alone does not)
@@ -479,17 +475,29 @@ def reservoir_model(
         solution_gas_to_oil_ratio_grid is None
         and oil_bubble_point_pressure_grid is not None
     ):
-        # Case (b): Pb given, derive Rs from it
-        # User provided Pb but not Rs, use correlations to compute Rs from Pb
-        # Note: We use correlations here even if `oil_pvt_table` is provided because
-        # the user explicitly provided Pb and we need to honor that value
-        solution_gas_to_oil_ratio_grid = build_solution_gas_to_oil_ratio_grid(
-            pressure_grid=pressure_grid,
-            temperature_grid=temperature_grid,
-            bubble_point_pressure_grid=oil_bubble_point_pressure_grid,
-            gas_gravity_grid=gas_gravity_grid,
-            oil_api_gravity_grid=oil_api_gravity_grid,
-        )
+        # Try to use `oil_pvt_table` first to compute Rs, fall back to correlations
+        if oil_pvt_table is not None:
+            solution_gas_to_oil_ratio_grid = typing.cast(
+                typing.Optional[NDimensionalGrid[NDimension]],
+                oil_pvt_table.solution_gas_to_oil_ratio(
+                    pressure=pressure_grid,
+                    temperature=temperature_grid,
+                    solution_gor=None,
+                    bubble_point_pressure=oil_bubble_point_pressure_grid,
+                ),
+            )
+        if solution_gas_to_oil_ratio_grid is None:
+            # Case (b): Pb given, derive Rs from it
+            # User provided Pb but not Rs, use correlations to compute Rs from Pb
+            # Note: We use correlations here even if `oil_pvt_table` is provided because
+            # the user explicitly provided Pb and we need to honor that value
+            solution_gas_to_oil_ratio_grid = build_solution_gas_to_oil_ratio_grid(
+                pressure_grid=pressure_grid,
+                temperature_grid=temperature_grid,
+                bubble_point_pressure_grid=oil_bubble_point_pressure_grid,
+                gas_gravity_grid=gas_gravity_grid,
+                oil_api_gravity_grid=oil_api_gravity_grid,
+            )
     elif (
         solution_gas_to_oil_ratio_grid is not None
         and oil_bubble_point_pressure_grid is None
@@ -855,21 +863,16 @@ def reservoir_model(
 
     # Compute component masses
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
-    safe_oil_fvf_grid = np.maximum(oil_formation_volume_factor_grid, 1e-30)  # type: ignore
-    safe_water_fvf_grid = np.maximum(water_formation_volume_factor_grid, 1e-30)
-    safe_gas_fvf_grid = np.maximum(gas_formation_volume_factor_grid, 1e-30)
+    oil_fvf_grid = np.maximum(oil_formation_volume_factor_grid, 1e-30)  # type: ignore
+    water_fvf_grid = np.maximum(water_formation_volume_factor_grid, 1e-30)
+    gas_fvf_grid = np.maximum(gas_formation_volume_factor_grid, 1e-30)
 
     alpha_solution_gor_grid = (
-        solution_gas_to_oil_ratio_grid
-        * safe_gas_fvf_grid
-        / (safe_oil_fvf_grid * bbl_to_ft3)
+        solution_gas_to_oil_ratio_grid * gas_fvf_grid / (oil_fvf_grid * bbl_to_ft3)
     )
     alpha_gas_solubility_in_water_grid = (
-        gas_solubility_in_water_grid
-        * safe_gas_fvf_grid
-        / (safe_water_fvf_grid * bbl_to_ft3)
+        gas_solubility_in_water_grid * gas_fvf_grid / (water_fvf_grid * bbl_to_ft3)
     )
-
     pore_volume_grid = (
         porosity_grid
         * net_to_gross_grid

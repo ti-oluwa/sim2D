@@ -1192,36 +1192,6 @@ class ContextFlag(typing.Generic[T]):
 
     Uses `contextvars.ContextVar` for isolation across concurrent tasks,
     threads, and async contexts. Each context maintains its own flag value.
-
-    The context manager protocol returns the current value on entry and
-    resets to the initial state on successful exit (no exception).
-
-    Example:
-    ```python
-    flag = ContextFlag(initial=False)
-    flag.set(True)
-
-    with flag as value:
-        assert value is True
-        # ... do work ...
-    # flag is reset to False after context exit (if no exception)
-    ```
-
-    Thread/async safety:
-    ```python
-    # Each thread/task has isolated state
-    import threading
-
-    flag = ContextFlag(initial=0)
-
-    def worker():
-        flag.set(100)
-        # Other threads don't see this value
-
-    t = threading.Thread(target=worker)
-    t.start()
-    assert flag.get() == 0  # Original context unchanged
-    ```
     """
 
     __slots__ = ("_var", "_token")

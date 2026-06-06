@@ -132,7 +132,7 @@ def update_fluid_properties(
         - Oil viscosity (μo) - indirectly through Rs
         - Oil density (ρo) - indirectly through Rs and Bo
 
-    :return: Updated FluidProperties object with recalculated gas, water, and oil properties.
+    :return: Updated `FluidProperties` object with recalculated gas, water, and oil properties.
     """
     pressure_grid = fluid_properties.pressure_grid
     temperature_grid = fluid_properties.temperature_grid

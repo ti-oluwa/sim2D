@@ -542,6 +542,48 @@ class PropertyRegistry:
             color_scheme=ColorScheme.TURBO,
             aliases=["go_cap", "gas_oil_capillary", "pcgo"],
         ),
+        oil_mass=PropertyMeta(
+            name="model.fluid_properties.oil_mass_grid",
+            display_name="Oil Phase Mass",
+            unit="lbm",
+            color_scheme=ColorScheme.MAGMA,
+            aliases=["oil_phase_mass"],
+        ),
+        water_mass=PropertyMeta(
+            name="model.fluid_properties.water_mass_grid",
+            display_name="Water Phase Mass",
+            unit="lbm",
+            color_scheme=ColorScheme.RdBu,
+            aliases=["water_phase_mass"],
+        ),
+        total_gas_mass=PropertyMeta(
+            name="model.fluid_properties.total_gas_mass_grid",
+            display_name="Total Gas Mass",
+            unit="lbm",
+            color_scheme=ColorScheme.TURBO,
+            aliases=["gas_phase_mass"],
+        ),
+        free_gas_mass=PropertyMeta(
+            name="model.fluid_properties.free_gas_mass_grid",
+            display_name="Free Gas Component Mass",
+            unit="lbm",
+            color_scheme=ColorScheme.TURBO,
+            aliases=["free_gas_component_mass"],
+        ),
+        dissolved_gas_mass_in_oil=PropertyMeta(
+            name="model.fluid_properties.dissolved_gas_mass_in_oil_grid",
+            display_name="Dissolved Gas Component Mass in Oil",
+            unit="lbm",
+            color_scheme=ColorScheme.VIRIDIS,
+            aliases=["dissolved_gas_component_mass"],
+        ),
+        dissolved_gas_mass_in_water=PropertyMeta(
+            name="model.fluid_properties.dissolved_gas_mass_in_water_grid",
+            display_name="Dissolved Gas Component Mass in Water",
+            unit="lbm",
+            color_scheme=ColorScheme.CIVIDIS,
+            aliases=["dissolved_gas_component_mass_in_water"],
+        ),
     )
 
     def __init__(self) -> None:

@@ -2854,7 +2854,9 @@ class ThreePhaseRelPermTable(
         )
 
         if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
-            raise ValidationError("Saturations must be between 0 and 1.")
+            raise ValidationError(
+                f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+            )
 
         # Normalize if saturations do not sum to 1
         total_saturation = sw + so + sg
@@ -3323,7 +3325,9 @@ def compute_corey_three_phase_relative_permeabilities(
 
     # Validate saturations
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
-        raise ValidationError("Saturations must be between 0 and 1.")
+        raise ValidationError(
+            f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+        )
 
     # Normalize saturations if they do not sum to 1
     total_saturation = sw + so + sg
@@ -4609,7 +4613,9 @@ def compute_let_three_phase_relative_permeabilities(
 
     sw, so, sg = np.broadcast_arrays(sw, so, sg)
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
-        raise ValidationError("Saturations must be between 0 and 1.")
+        raise ValidationError(
+            f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+        )
 
     # Normalize saturations if they do not sum to 1
     total_saturation = sw + so + sg

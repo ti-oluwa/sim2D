@@ -578,7 +578,7 @@ injector = bores.injection_well(
         molecular_weight=gas_molecular_weight,
         is_miscible=False,
         pvt_table=pvt_tables.gas,
-        pseudo_pressure_table=pseudo_pressure_table
+        pseudo_pressure_table=pseudo_pressure_table,
     ),
     is_active=True,
     skin_factor=0.0,
@@ -608,7 +608,7 @@ producer = bores.production_well(
             phase=bores.FluidPhase.GAS,
             specific_gravity=0.792,
             molecular_weight=gas_molecular_weight,
-            pseudo_pressure_table=pseudo_pressure_table
+            pseudo_pressure_table=pseudo_pressure_table,
         ),
     ],
     skin_factor=0.0,

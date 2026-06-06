@@ -1137,7 +1137,7 @@ def _(bores, states, viz, wells):
         # cmax=1.0,
     )
 
-    property = "gas-sat"
+    property = "dissolved-gas-mass-in-oil"
     figures = []
     timesteps = [760]
     for timestep in timesteps:
