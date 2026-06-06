@@ -1,5 +1,5 @@
 import typing
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 import attrs
 import numpy as np
@@ -1226,14 +1226,17 @@ class ContextFlag(typing.Generic[T]):
 
     __slots__ = ("_var", "_token")
 
-    def __init__(self, initial: T) -> None:
+    def __init__(self, id: str, /, initial: T) -> None:
         """
         Initialize the context flag with an initial value.
 
+        :param id: Unique identifier for the context variable
         :param initial: Initial value for new contexts
         """
-        self._token = None
-        self._var: ContextVar[T] = ContextVar("ContextFlag", default=initial)
+        self._var: ContextVar[T] = ContextVar(id, default=initial)
+        self._token: ContextVar[typing.Optional[Token]] = ContextVar(
+            f"{id}:token", default=None
+        )
 
     def get(self) -> T:
         """
@@ -1249,29 +1252,9 @@ class ContextFlag(typing.Generic[T]):
 
         :param value: New value
         """
-        self._token = self._var.set(value)
+        self._token.set(self._var.set(value))
 
     def reset(self) -> None:
         """Reset the flag to its initial value in the current context."""
-        if self._token:
-            self._var.reset(self._token)
-
-    def __enter__(self) -> T:
-        """
-        Enter context manager, returning current flag value.
-
-        :return: Current value
-        """
-        return self.get()
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """
-        Exit context manager. Reset flag on successful exit (no exception).
-
-        :param exc_type: Exception type (None if no exception)
-        :param exc_val: Exception value
-        :param exc_tb: Exception traceback
-        """
-        # Only reset if no exception occurred
-        if exc_type is None:
-            self.reset()
+        if (token := self._token.get()) is not None:
+            self._var.reset(token)

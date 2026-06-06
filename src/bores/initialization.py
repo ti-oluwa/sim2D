@@ -404,9 +404,8 @@ def check_zero_flow_initialization(
     rock_properties: RockProperties[ThreeDimensions],
     face_transmissibilities: FaceTransmissibilities,
     elevation_grid: ThreeDimensionalGrid,
+    pore_volume_grid: ThreeDimensionalGrid,
     config: Config,
-    cell_dimension: typing.Tuple[float, float],
-    thickness_grid: ThreeDimensionalGrid,
     relative_tolerance: float = 1e-6,
     max_reported_violations: int = 20,
     dtype: npt.DTypeLike = np.float64,
@@ -448,8 +447,7 @@ def check_zero_flow_initialization(
     :param face_transmissibilities: Precomputed geometric face transmissibilities.
     :param elevation_grid: Cell elevation grid (ft).
     :param config: Simulation configuration.
-    :param cell_dimension: `(cell_size_x, cell_size_y)` in feet.
-    :param thickness_grid: Cell thickness grid (ft).
+    :param pore_volume_grid: Cell pore volume grid (ft³).
     :param relative_tolerance: Maximum acceptable `|net_flux| / pore_volume` (day⁻¹) for a
         cell to be considered "at rest". Default `1e-6` day⁻¹. A value of `1e-6` means that
         the spurious flux would change the saturation by at most 1e-6 per day, which is
@@ -494,7 +492,6 @@ def check_zero_flow_initialization(
     """
     pressure_grid = fluid_properties.pressure_grid
     cell_count_x, cell_count_y, cell_count_z = pressure_grid.shape
-    cell_size_x, cell_size_y = cell_dimension
 
     _, relative_mobility_grids, capillary_pressure_grids = (
         build_rock_fluid_properties_grids(
@@ -554,50 +551,45 @@ def check_zero_flow_initialization(
     )
 
     # Compute per-phase net fluxes
-    net_water_mass_flux_grid, net_oil_mass_flux_grid, net_gas_mass_flux_grid = (
-        assemble_flux_contributions(
-            pressure_grid=pressure_grid,
-            cell_count_x=cell_count_x,
-            cell_count_y=cell_count_y,
-            cell_count_z=cell_count_z,
-            pressure_boundaries=pressure_boundaries,
-            flux_boundaries=flux_boundaries,
-            water_relative_mobility_grid=water_relative_mobility_grid,
-            oil_relative_mobility_grid=oil_relative_mobility_grid,
-            gas_relative_mobility_grid=gas_relative_mobility_grid,
-            face_transmissibilities_x=face_transmissibilities.x,
-            face_transmissibilities_y=face_transmissibilities.y,
-            face_transmissibilities_z=face_transmissibilities.z,
-            oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-            gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-            oil_density_grid=oil_density_grid,
-            water_density_grid=water_density_grid,
-            gas_density_grid=gas_density_grid,
-            solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
-            gas_solubility_in_water_grid=gas_solubility_in_water_grid,
-            gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
-            oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
-            water_formation_volume_factor_grid=water_formation_volume_factor_grid,
-            elevation_grid=elevation_grid,
-            gravitational_constant=gravitational_constant,
-            md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
-            bbl_to_ft3=bbl_to_ft3,
-            dtype=dtype,
-        )
+    (
+        net_water_mass_flux_grid,
+        net_oil_mass_flux_grid,
+        net_gas_mass_flux_grid,
+        _,
+    ) = assemble_flux_contributions(
+        pressure_grid=pressure_grid,
+        cell_count_x=cell_count_x,
+        cell_count_y=cell_count_y,
+        cell_count_z=cell_count_z,
+        pressure_boundaries=pressure_boundaries,
+        flux_boundaries=flux_boundaries,
+        water_relative_mobility_grid=water_relative_mobility_grid,
+        oil_relative_mobility_grid=oil_relative_mobility_grid,
+        gas_relative_mobility_grid=gas_relative_mobility_grid,
+        face_transmissibilities_x=face_transmissibilities.x,
+        face_transmissibilities_y=face_transmissibilities.y,
+        face_transmissibilities_z=face_transmissibilities.z,
+        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+        oil_density_grid=oil_density_grid,
+        water_density_grid=water_density_grid,
+        gas_density_grid=gas_density_grid,
+        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
+        elevation_grid=elevation_grid,
+        gravitational_constant=gravitational_constant,
+        md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+        bbl_to_ft3=bbl_to_ft3,
+        dtype=dtype,
     )
 
     water_saturation_grid = fluid_properties.water_saturation_grid
     oil_saturation_grid = fluid_properties.oil_saturation_grid
     gas_saturation_grid = fluid_properties.gas_saturation_grid
 
-    # Compute per-cell pore volumes for relative-flux normalisation
-    pore_volume_grid = (
-        cell_size_x
-        * cell_size_y
-        * thickness_grid
-        * rock_properties.net_to_gross_grid
-        * rock_properties.porosity_grid
-    )
     total_density_grid = (
         oil_density_grid * oil_saturation_grid
         + water_density_grid * water_saturation_grid

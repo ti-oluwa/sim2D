@@ -1,5 +1,7 @@
 """BORES-specific error classes."""
 
+import typing
+
 __all__ = [
     "BORESError",
     "ComputationError",

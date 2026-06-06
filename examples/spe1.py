@@ -670,9 +670,9 @@ def setup_config(Path, bores, oil_specific_gravity, pvt_tables):
         wells=wells,
         disable_capillary_effects=True,
         # freeze_saturation_pressure=True,
-        # maximum_gas_saturation_change=0.05,
-        # maximum_oil_saturation_change=0.05,
-        # maximum_water_saturation_change=0.05,
+        maximum_gas_saturation_change=1,
+        maximum_oil_saturation_change=1,
+        maximum_water_saturation_change=1,
         # maximum_newton_saturation_change=0.05,
         maximum_pressure_change=500.0,
         cfl_threshold=0.3,
@@ -1139,7 +1139,7 @@ def _(bores, states, viz, wells):
 
     property = "gas-sat"
     figures = []
-    timesteps = [83]
+    timesteps = [760]
     for timestep in timesteps:
         state = states[timestep]
         figure = viz.make_plot(

@@ -853,14 +853,55 @@ def reservoir_model(
     )
     oil_effective_density_grid = oil_effective_density_grid or oil_density_grid.copy()
 
-    # Assemble FluidProperties
+    # Compute component masses
+    bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
+    safe_oil_fvf_grid = np.maximum(oil_formation_volume_factor_grid, 1e-30)  # type: ignore
+    safe_water_fvf_grid = np.maximum(water_formation_volume_factor_grid, 1e-30)
+    safe_gas_fvf_grid = np.maximum(gas_formation_volume_factor_grid, 1e-30)
+
+    alpha_solution_gor_grid = (
+        solution_gas_to_oil_ratio_grid
+        * safe_gas_fvf_grid
+        / (safe_oil_fvf_grid * bbl_to_ft3)
+    )
+    alpha_gas_solubility_in_water_grid = (
+        gas_solubility_in_water_grid
+        * safe_gas_fvf_grid
+        / (safe_water_fvf_grid * bbl_to_ft3)
+    )
+
+    pore_volume_grid = (
+        porosity_grid
+        * net_to_gross_grid
+        * thickness_grid
+        * cell_dimension[0]
+        * cell_dimension[1]
+    )
+
+    water_mass_grid = water_density_grid * water_saturation_grid * pore_volume_grid
+    oil_mass_grid = oil_density_grid * oil_saturation_grid * pore_volume_grid
+    free_gas_mass_grid = gas_density_grid * gas_saturation_grid * pore_volume_grid
+    dissolved_gas_mass_in_oil_grid = (
+        gas_density_grid
+        * alpha_solution_gor_grid
+        * oil_saturation_grid
+        * pore_volume_grid
+    )
+    dissolved_gas_mass_in_water_grid = (
+        gas_density_grid
+        * alpha_gas_solubility_in_water_grid
+        * water_saturation_grid
+        * pore_volume_grid
+    )
+
+    # Assemble fluid properties
     fluid_properties = FluidProperties(
         pressure_grid=pressure_grid,
         temperature_grid=temperature_grid,
         oil_bubble_point_pressure_grid=oil_bubble_point_pressure_grid,
         oil_saturation_grid=oil_saturation_grid,
         oil_viscosity_grid=oil_viscosity_grid,
-        oil_compressibility_grid=oil_compressibility_grid,  # type: ignore[arg-type]
+        oil_compressibility_grid=oil_compressibility_grid,  # type: ignore
         oil_specific_gravity_grid=oil_specific_gravity_grid,
         oil_api_gravity_grid=oil_api_gravity_grid,
         oil_density_grid=oil_density_grid,
@@ -878,13 +919,18 @@ def reservoir_model(
         water_bubble_point_pressure_grid=water_bubble_point_pressure_grid,
         solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
         gas_solubility_in_water_grid=gas_solubility_in_water_grid,
-        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,  # type: ignore[arg-type]
+        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,  # type: ignore
         gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
         water_formation_volume_factor_grid=water_formation_volume_factor_grid,
         water_salinity_grid=water_salinity_grid,
         solvent_concentration_grid=solvent_concentration_grid,
         oil_effective_viscosity_grid=oil_effective_viscosity_grid,
         oil_effective_density_grid=oil_effective_density_grid,
+        oil_mass_grid=oil_mass_grid,
+        water_mass_grid=water_mass_grid,
+        free_gas_mass_grid=free_gas_mass_grid,
+        dissolved_gas_mass_in_oil_grid=dissolved_gas_mass_in_oil_grid,
+        dissolved_gas_mass_in_water_grid=dissolved_gas_mass_in_water_grid,
         reservoir_gas=reservoir_gas,
     )
     rock_properties = RockProperties(
@@ -910,18 +956,20 @@ def reservoir_model(
         grid_shape=grid_shape,
         cell_dimension=cell_dimension,
         thickness_grid=thickness_grid,
-        fluid_properties=fluid_properties,
-        rock_properties=rock_properties,
-        hysteresis_state=hysteresis_state,
+        fluid_properties=fluid_properties,  # type: ignore
+        rock_properties=rock_properties,  # type: ignore
+        hysteresis_state=hysteresis_state,  # type: ignore
         dip_angle=dip_angle,
         dip_azimuth=dip_azimuth,
         datum_depth=datum_depth,
+        pore_volume_grid=pore_volume_grid,
     )
     if fractures is not None and len(model.grid_shape) == 3:
         return typing.cast(
-            ReservoirModel[NDimension], apply_fractures(model, *fractures)
+            ReservoirModel[NDimension],
+            apply_fractures(model, *fractures),  # type: ignore
         )
-    return model
+    return typing.cast(ReservoirModel[NDimension], model)
 
 
 def injection_well(
@@ -994,6 +1042,7 @@ def production_well(
 def wells_(
     injectors: typing.Optional[typing.Sequence[InjectionWell[Coordinates]]] = None,
     producers: typing.Optional[typing.Sequence[ProductionWell[Coordinates]]] = None,
+    allow_interval_overlap: bool = True,
     **kwargs: typing.Any,
 ) -> Wells[Coordinates]:
     """
@@ -1001,11 +1050,15 @@ def wells_(
 
     :param injectors: Sequence of injection wells
     :param producers: Sequence of production wells
+    :param allow_interval_overlap: Whether to allow overlapping perforating intervals between injection wells and/or production wells.
+        You can disable this if you are certain there are no overlapping wells or
+        you want to allow overlapping wells (e.g in multi-layered reservoirs or multi-lateral wells).
     :param kwargs: Additional keyword arguments to be passed to the `Wells` constructor
     :return: `Wells` instance
     """
     return Wells(
         injection_wells=injectors or [],
         production_wells=producers or [],
+        allow_interval_overlap=allow_interval_overlap,
         **kwargs,
     )

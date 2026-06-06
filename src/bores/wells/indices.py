@@ -134,5 +134,5 @@ def build_wells_indices(
     )
 
 
-update_wells_indices = ContextFlag(False)
+update_wells_indices = ContextFlag("update_wells_indices", initial=False)
 """Flag to indicate if a well indices update is needed during a simulation run."""

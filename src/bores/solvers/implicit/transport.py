@@ -193,9 +193,7 @@ def _assemble_saturation_residuals(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
+    pore_volume_grid: ThreeDimensionalGrid,
     water_relative_mobility_grid: ThreeDimensionalGrid,
     oil_relative_mobility_grid: ThreeDimensionalGrid,
     gas_relative_mobility_grid: ThreeDimensionalGrid,
@@ -226,8 +224,6 @@ def _assemble_saturation_residuals(
     old_gas_formation_volume_factor_grid: ThreeDimensionalGrid,
     old_oil_formation_volume_factor_grid: ThreeDimensionalGrid,
     old_water_formation_volume_factor_grid: ThreeDimensionalGrid,
-    porosity_grid: ThreeDimensionalGrid,
-    net_to_gross_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     net_water_well_rate_grid: ThreeDimensionalGrid,
     net_oil_well_rate_grid: ThreeDimensionalGrid,
@@ -328,16 +324,7 @@ def _assemble_saturation_residuals(
                     cell_count_y=cell_count_y,
                     cell_count_z=cell_count_z,
                 )
-
-                cell_total_volume = (
-                    cell_size_x
-                    * cell_size_y
-                    * thickness_grid[i, j, k]
-                    * net_to_gross_grid[i, j, k]
-                )
-                cell_porosity = porosity_grid[i, j, k]
-                cell_pore_volume = cell_total_volume * cell_porosity
-                accumulation_coefficient = cell_pore_volume / time_step_in_days
+                accumulation_coefficient = pore_volume_grid[i, j, k] / time_step_in_days
 
                 # Current-pressure densities
                 current_water_density = water_density_grid[i, j, k]
@@ -1222,12 +1209,8 @@ def _assemble_residuals(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
+    pore_volume_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
-    porosity_grid: ThreeDimensionalGrid,
-    net_to_gross_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     gravitational_constant: float,
     net_water_well_rate_grid: ThreeDimensionalGrid,
@@ -1283,9 +1266,7 @@ def _assemble_residuals(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
+        pore_volume_grid=pore_volume_grid,
         water_relative_mobility_grid=water_relative_mobility_grid,
         oil_relative_mobility_grid=oil_relative_mobility_grid,
         gas_relative_mobility_grid=gas_relative_mobility_grid,
@@ -1316,8 +1297,6 @@ def _assemble_residuals(
         old_gas_formation_volume_factor_grid=old_gas_formation_volume_factor_grid,
         old_oil_formation_volume_factor_grid=old_oil_formation_volume_factor_grid,
         old_water_formation_volume_factor_grid=old_water_formation_volume_factor_grid,
-        porosity_grid=porosity_grid,
-        net_to_gross_grid=net_to_gross_grid,
         time_step_in_days=time_step_in_days,
         net_water_well_rate_grid=net_water_well_rate_grid,
         net_oil_well_rate_grid=net_oil_well_rate_grid,
@@ -1352,9 +1331,7 @@ def assemble_residuals(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
+    pore_volume_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     gravitational_constant: float,
@@ -1434,12 +1411,8 @@ def assemble_residuals(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
+        pore_volume_grid=pore_volume_grid,
         elevation_grid=elevation_grid,
-        porosity_grid=rock_properties.porosity_grid,
-        net_to_gross_grid=rock_properties.net_to_gross_grid,
         time_step_in_days=time_step_in_days,
         gravitational_constant=gravitational_constant,
         pressure_boundaries=pressure_boundaries,
@@ -1455,10 +1428,10 @@ def assemble_residuals(
 def assemble_numerical_jacobian(
     saturation_vector: npt.NDArray,
     base_residual: npt.NDArray,
-    total_cell_count: int,
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
+    pore_volume_grid: ThreeDimensionalGrid,
     water_saturation_grid: ThreeDimensionalGrid,
     oil_saturation_grid: ThreeDimensionalGrid,
     gas_saturation_grid: ThreeDimensionalGrid,
@@ -1478,9 +1451,6 @@ def assemble_numerical_jacobian(
     fluid_properties: FluidProperties[ThreeDimensions],
     hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
     config: Config,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
     elevation_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     gravitational_constant: float,
@@ -1566,9 +1536,7 @@ def assemble_numerical_jacobian(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
+        pore_volume_grid=pore_volume_grid,
         elevation_grid=elevation_grid,
         time_step_in_days=time_step_in_days,
         gravitational_constant=gravitational_constant,
@@ -1581,6 +1549,7 @@ def assemble_numerical_jacobian(
         bbl_to_ft3=bbl_to_ft3,
     )
 
+    total_cell_count = cell_count_x * cell_count_y * cell_count_z
     for cell_idx in range(total_cell_count):
         i, j, k = from_1D_index(
             idx=cell_idx,
@@ -1862,9 +1831,7 @@ def assemble_flux_contributions(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
+    pore_volume_grid: ThreeDimensionalGrid,
     pressure_grid: ThreeDimensionalGrid,
     water_density_grid: ThreeDimensionalGrid,
     oil_density_grid: ThreeDimensionalGrid,
@@ -1899,8 +1866,6 @@ def assemble_flux_contributions(
     water_viscosity_grid: ThreeDimensionalGrid,
     oil_viscosity_grid: ThreeDimensionalGrid,
     gas_viscosity_grid: ThreeDimensionalGrid,
-    porosity_grid: ThreeDimensionalGrid,
-    net_to_gross_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     md_per_cp_to_ft2_per_psi_per_day: float,
     bbl_to_ft3: float,
@@ -2013,15 +1978,7 @@ def assemble_flux_contributions(
                 cell_water_column = 2 * cell_idx
                 cell_gas_column = 2 * cell_idx + 1
 
-                pore_volume = (
-                    cell_size_x
-                    * cell_size_y
-                    * thickness_grid[i, j, k]
-                    * net_to_gross_grid[i, j, k]
-                    * porosity_grid[i, j, k]
-                )
-                accumulation_coefficient = pore_volume / time_step_in_days
-
+                accumulation_coefficient = pore_volume_grid[i, j, k] / time_step_in_days
                 cell_water_density = water_density_grid[i, j, k]
                 cell_gas_density = gas_density_grid[i, j, k]
 
@@ -2788,10 +2745,7 @@ def assemble_analytical_jacobian(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    total_cell_count: int,
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
+    pore_volume_grid: ThreeDimensionalGrid,
     water_saturation_grid: ThreeDimensionalGrid,
     oil_saturation_grid: ThreeDimensionalGrid,
     gas_saturation_grid: ThreeDimensionalGrid,
@@ -2895,9 +2849,7 @@ def assemble_analytical_jacobian(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
+        pore_volume_grid=pore_volume_grid,
         pressure_grid=pressure_grid,
         water_density_grid=water_density_grid,
         oil_density_grid=oil_density_grid,
@@ -2932,12 +2884,11 @@ def assemble_analytical_jacobian(
         water_viscosity_grid=water_viscosity_grid,
         oil_viscosity_grid=oil_viscosity_grid,
         gas_viscosity_grid=gas_viscosity_grid,
-        porosity_grid=rock_properties.porosity_grid,
-        net_to_gross_grid=rock_properties.net_to_gross_grid,
         time_step_in_days=time_step_in_days,
         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
         bbl_to_ft3=bbl_to_ft3,
     )
+    total_cell_count = cell_count_x * cell_count_y * cell_count_z
     system_size = 2 * total_cell_count
 
     if injection_bhps is None or production_bhps is None:
@@ -2988,10 +2939,10 @@ def assemble_jacobian(
     config: Config,
     saturation_vector: npt.NDArray,
     base_residual: npt.NDArray,
-    total_cell_count: int,
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
+    pore_volume_grid: ThreeDimensionalGrid,
     water_saturation_grid: ThreeDimensionalGrid,
     oil_saturation_grid: ThreeDimensionalGrid,
     gas_saturation_grid: ThreeDimensionalGrid,
@@ -3010,9 +2961,6 @@ def assemble_jacobian(
     rock_properties: RockProperties[ThreeDimensions],
     fluid_properties: FluidProperties[ThreeDimensions],
     hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
-    thickness_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
     elevation_grid: ThreeDimensionalGrid,
     time_step_in_days: float,
     gravitational_constant: float,
@@ -3075,13 +3023,10 @@ def assemble_jacobian(
     """
     if config.saturation_jacobian_assembly_method == "analytical":
         return assemble_analytical_jacobian(
-            total_cell_count=total_cell_count,
             cell_count_x=cell_count_x,
             cell_count_y=cell_count_y,
             cell_count_z=cell_count_z,
-            thickness_grid=thickness_grid,
-            cell_size_x=cell_size_x,
-            cell_size_y=cell_size_y,
+            pore_volume_grid=pore_volume_grid,
             pressure_grid=pressure_grid,
             water_saturation_grid=water_saturation_grid,
             oil_saturation_grid=oil_saturation_grid,
@@ -3116,10 +3061,10 @@ def assemble_jacobian(
     return assemble_numerical_jacobian(
         saturation_vector=saturation_vector,
         base_residual=base_residual,
-        total_cell_count=total_cell_count,
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
+        pore_volume_grid=pore_volume_grid,
         water_saturation_grid=water_saturation_grid,
         oil_saturation_grid=oil_saturation_grid,
         gas_saturation_grid=gas_saturation_grid,
@@ -3139,9 +3084,6 @@ def assemble_jacobian(
         fluid_properties=fluid_properties,
         hysteresis_state=hysteresis_state,
         config=config,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
         elevation_grid=elevation_grid,
         time_step_in_days=time_step_in_days,
         gravitational_constant=gravitational_constant,
@@ -3156,9 +3098,8 @@ def assemble_jacobian(
 
 
 def solve_transport(
-    cell_dimension: typing.Tuple[float, float],
-    thickness_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
+    pore_volume_grid: ThreeDimensionalGrid,
     time_step_size: float,
     rock_properties: RockProperties[ThreeDimensions],
     fluid_properties: FluidProperties[ThreeDimensions],
@@ -3218,10 +3159,7 @@ def solve_transport(
         `NewtonConvergenceInfo` records.
     """
     pressure_grid = fluid_properties.pressure_grid
-    porosity_grid = rock_properties.porosity_grid
-    net_to_gross_grid = rock_properties.net_to_gross_grid
     cell_count_x, cell_count_y, cell_count_z = pressure_grid.shape
-    cell_size_x, cell_size_y = cell_dimension
 
     if rates is not None:
         net_water_well_rate_grid = rates.net_water_well_rate_grid
@@ -3242,7 +3180,6 @@ def solve_transport(
     old_gas_saturation_grid = fluid_properties.gas_saturation_grid
 
     time_step_in_days = time_step_size * c.DAYS_PER_SECOND
-    total_cell_count = cell_count_x * cell_count_y * cell_count_z
 
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
@@ -3284,9 +3221,7 @@ def solve_transport(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
+        pore_volume_grid=pore_volume_grid,
         elevation_grid=elevation_grid,
         time_step_in_days=time_step_in_days,
         gravitational_constant=gravitational_constant,
@@ -3350,12 +3285,8 @@ def solve_transport(
             cell_count_x=cell_count_x,
             cell_count_y=cell_count_y,
             cell_count_z=cell_count_z,
-            thickness_grid=thickness_grid,
-            cell_size_x=cell_size_x,
-            cell_size_y=cell_size_y,
+            pore_volume_grid=pore_volume_grid,
             elevation_grid=elevation_grid,
-            porosity_grid=porosity_grid,
-            net_to_gross_grid=net_to_gross_grid,
             time_step_in_days=time_step_in_days,
             gravitational_constant=gravitational_constant,
             net_water_well_rate_grid=net_water_well_rate_grid,
@@ -3453,10 +3384,10 @@ def solve_transport(
             config=config,
             saturation_vector=saturation_vector,
             base_residual=residual_vector,
-            total_cell_count=total_cell_count,
             cell_count_x=cell_count_x,
             cell_count_y=cell_count_y,
             cell_count_z=cell_count_z,
+            pore_volume_grid=pore_volume_grid,
             water_saturation_grid=water_saturation_grid,
             oil_saturation_grid=oil_saturation_grid,
             gas_saturation_grid=gas_saturation_grid,
@@ -3475,9 +3406,6 @@ def solve_transport(
             rock_properties=rock_properties,
             fluid_properties=fluid_properties,
             hysteresis_state=hysteresis_state,
-            thickness_grid=thickness_grid,
-            cell_size_x=cell_size_x,
-            cell_size_y=cell_size_y,
             elevation_grid=elevation_grid,
             time_step_in_days=time_step_in_days,
             gravitational_constant=gravitational_constant,

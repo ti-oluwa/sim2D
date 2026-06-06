@@ -159,7 +159,7 @@ oil_viscosity_grid = bores.uniform_grid(grid_shape=grid_shape, value=0.51)
 
 # Oil specific gravity from dead-oil density at 14.7 psia: 46.244 lb/ft³
 oil_specific_gravity = compute_oil_specific_gravity(
-    oil_density=49.244,
+    oil_density=46.244,
     pressure=14.7,
     temperature=200.0,
     oil_compressibility=0.0,
@@ -514,7 +514,6 @@ oil_water_table = bores.TwoPhaseRelPermTable(
     wetting_phase_relative_permeability=krw_values,
     non_wetting_phase_relative_permeability=krow_values,
 )
-
 rock_fluid_tables = bores.RockFluidTables(
     relative_permeability_table=bores.ThreePhaseRelPermTable(
         oil_water_table=oil_water_table,
@@ -619,7 +618,7 @@ wells = bores.wells_(injectors=[injector], producers=[producer])
 
 timer = bores.Timer(
     initial_step_size=bores.Time(days=1.0),
-    maximum_step_size=bores.Time(days=30.0),
+    maximum_step_size=bores.Time(days=10.0),
     minimum_step_size=bores.Time(minutes=10.0),
     simulation_time=bores.Time(years=10.0),
     ramp_up_factor=1.3,
@@ -638,19 +637,20 @@ config = bores.Config(
     wells=wells,
     disable_capillary_effects=True,
     # freeze_saturation_pressure=True,
-    # maximum_gas_saturation_change=0.05,
-    # maximum_oil_saturation_change=0.05,
-    # maximum_water_saturation_change=0.05,
+    maximum_gas_saturation_change=1.0,
+    maximum_oil_saturation_change=1.0,
+    maximum_water_saturation_change=1.0,
     # maximum_newton_saturation_change=0.05,
     maximum_pressure_change=300.0,
-    cfl_threshold=0.5,
-    use_nonlinear_pressure_solve=True,
-    saturation_jacobian_assembly_method="numerical",
+    cfl_threshold=0.7,
+    # minimum_injector_gas_saturation=0.01,
+    # use_nonlinear_pressure_solve=True,
+    # saturation_jacobian_assembly_method="numerical",
 )
 
 run = bores.Run(
     model,
-    config,
+    config=config,
     name="SPE1",
     description="SPE 1ST Comparative Solution Project Test",
     tags=["gas-injection", "benchmark"],
@@ -678,7 +678,7 @@ def diagnostic(result: bores.StepResult) -> None:
         eff_rho = rhog - rhog * alpha
 
         inj_rate = result.rates.injection_rates.gas[i, j, k] if result.rates else 0
-        prod_rate = result.rates.production_rates.gas[i, j, k] if result.rates else 0
+        prod_rate = result.rates.production_rates.oil[i, j, k] if result.rates else 0
         print(
             f"  {label}({i},{j},{k}): P={p:.0f} Pb={pb:.0f} Rs={rs:.1f} "
             f"So={so:.3f} Sg={sg:.4f} alpha={alpha:.4f} "

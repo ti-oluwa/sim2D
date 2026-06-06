@@ -827,8 +827,7 @@ def _validate_zero_flow(
             face_transmissibilities=face_transmissibilities,
             elevation_grid=elevation_grid,
             config=config,
-            cell_dimension=cell_dimension,
-            thickness_grid=model.thickness_grid,
+            pore_volume_grid=model.pore_volume_grid,
             relative_tolerance=tolerance,
             max_reported_violations=5,
         )
@@ -1254,14 +1253,8 @@ def _validate_pore_volume_distribution(
     :param report: Report to append issues to.
     """
     check = "pore_volume_distribution"
-    cell_size_x, cell_size_y = model.cell_dimension
-    thickness_grid = model.thickness_grid
     porosity_grid = model.rock_properties.porosity_grid
-    net_to_gross_grid = model.rock_properties.net_to_gross_grid
-
-    pore_volume_grid = (
-        cell_size_x * cell_size_y * thickness_grid * net_to_gross_grid * porosity_grid
-    )
+    pore_volume_grid = model.pore_volume_grid
     active_pore_volumes = pore_volume_grid[porosity_grid > 0.0]
 
     if active_pore_volumes.size == 0:

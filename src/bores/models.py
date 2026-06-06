@@ -144,8 +144,28 @@ class FluidProperties(StoreSerializable, typing.Generic[NDimension]):
 
     This will be same as `oil_density_grid` for immiscible flow.
     """
+    oil_mass_grid: NDimensionalGrid[NDimension]
+    """N-dimensional numpy array representing the oil mass distribution in the reservoir (lbm)."""
+    water_mass_grid: NDimensionalGrid[NDimension]
+    """N-dimensional numpy array representing the water mass distribution in the reservoir (lbm)."""
+    free_gas_mass_grid: NDimensionalGrid[NDimension]
+    """N-dimensional numpy array representing the free gas mass distribution in the reservoir (lbm)."""
+    dissolved_gas_mass_in_oil_grid: NDimensionalGrid[NDimension]
+    """N-dimensional numpy array representing the gas mass distribution in the oil phase (lbm)."""
+    dissolved_gas_mass_in_water_grid: NDimensionalGrid[NDimension]
+    """N-dimensional numpy array representing the gas mass distribution in the water phase (lbm)."""
     reservoir_gas: str = "methane"
     """Name of the reservoir gas (e.g., Methane, Ethane, CO2, N2). Can also be the name of the gas injected into the reservoir."""
+
+    @property
+    def total_gas_mass_grid(self) -> NDimensionalGrid[NDimension]:
+        """N-dimensional numpy array representing the total gas mass distribution in the reservoir (lbm)."""
+        return typing.cast(
+            NDimensionalGrid[NDimension],
+            self.free_gas_mass_grid
+            + self.dissolved_gas_mass_in_oil_grid
+            + self.dissolved_gas_mass_in_water_grid,
+        )
 
 
 @typing.final
@@ -222,12 +242,12 @@ class RockProperties(StoreSerializable, typing.Generic[NDimension]):
 class HysteresisState(StoreSerializable, typing.Generic[NDimension]):
     """
     Tracks hysteresis state for drainage-imbibition effects in multi-phase flow.
-    
+
     This class maintains the information required for Killough scanning curve hysteresis modeling:
     - Historical maximum saturations (water and gas) to determine current displacement regime
     - Imbibition flags indicating whether each fluid is currently displacing or being displaced
     - Reversal saturation points for accurate scanning curve behavior
-    
+
     The data is used to compute effective residual saturations that vary based on whether the system
     is in drainage or imbibition, which is critical for accurate relative permeability and capillary pressure calculations.
     """
@@ -304,6 +324,7 @@ class ReservoirModel(
         dip_angle: float = 0.0,
         dip_azimuth: float = 0.0,
         datum_depth: typing.Optional[float] = 0.0,
+        pore_volume_grid: typing.Optional[NDimensionalGrid[NDimension]] = None,
     ) -> None:
         """
         Initialize the reservoir model.
@@ -342,6 +363,16 @@ class ReservoirModel(
         self.dip_angle = dip_angle
         self.dip_azimuth = dip_azimuth
         self.datum_depth = datum_depth
+        if pore_volume_grid is not None:
+            self.pore_volume_grid = pore_volume_grid
+        else:
+            self.pore_volume_grid = (
+                self.rock_properties.porosity_grid
+                * self.rock_properties.net_to_gross_grid
+                * self.thickness_grid
+                * self.cell_dimension[0]
+                * self.cell_dimension[1]
+            )
 
     @property
     def dimensions(self) -> int:

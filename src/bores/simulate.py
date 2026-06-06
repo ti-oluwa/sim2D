@@ -3,6 +3,7 @@
 import copy
 import logging
 import typing
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from os import PathLike
 
@@ -17,6 +18,7 @@ from bores.constants import c
 from bores.datastructures import (
     BottomHolePressure,
     BottomHolePressures,
+    ContextFlag,
     FormationVolumeFactors,
     Rates,
     SparseTensor,
@@ -56,7 +58,7 @@ from bores.validation import ValidationReport, validate
 from bores.wells.base import Wells
 from bores.wells.indices import WellsIndices, build_wells_indices, update_wells_indices
 
-__all__ = ["StepResult", "Run", "run"]
+__all__ = ["StepResult", "Run", "run", "running", "stop"]
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +348,7 @@ def _run_impes_step(
     cell_dimension: typing.Tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
+    pore_volume_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -451,9 +454,8 @@ def _run_impes_step(
         else dict(rates=well_rates if has_open_wells else None)
     )
     pressure_result = solve_pressure(
-        cell_dimension=cell_dimension,
-        thickness_grid=thickness_grid,
         elevation_grid=elevation_grid,
+        pore_volume_grid=pore_volume_grid,
         time_step=time_step,
         time_step_size=time_step_size,
         rock_properties=rock_properties,
@@ -533,15 +535,15 @@ def _run_impes_step(
     logger.debug("Pressure evolution completed.")
 
     # Copy before PVT updates
-    old_solution_gor_grid = fluid_properties.solution_gas_to_oil_ratio_grid.copy()
-    old_gas_solubility_in_water_grid = (
-        fluid_properties.gas_solubility_in_water_grid.copy()
-    )
-    old_oil_fvf_grid = fluid_properties.oil_formation_volume_factor_grid.copy()
-    old_water_fvf_grid = fluid_properties.water_formation_volume_factor_grid.copy()
-    old_gas_fvf_grid = fluid_properties.gas_formation_volume_factor_grid.copy()
-    old_water_density_grid = fluid_properties.water_density_grid.copy()
-    old_gas_density_grid = fluid_properties.gas_density_grid.copy()
+    # old_solution_gor_grid = fluid_properties.solution_gas_to_oil_ratio_grid.copy()
+    # old_gas_solubility_in_water_grid = (
+    #     fluid_properties.gas_solubility_in_water_grid.copy()
+    # )
+    # old_oil_fvf_grid = fluid_properties.oil_formation_volume_factor_grid.copy()
+    # old_water_fvf_grid = fluid_properties.water_formation_volume_factor_grid.copy()
+    # old_gas_fvf_grid = fluid_properties.gas_formation_volume_factor_grid.copy()
+    # old_water_density_grid = fluid_properties.water_density_grid.copy()
+    # old_gas_density_grid = fluid_properties.gas_density_grid.copy()
 
     logger.debug("Updating PVT fluid properties to reflect pressure change...")
     fluid_properties = update_fluid_properties(
@@ -603,20 +605,11 @@ def _run_impes_step(
 
     logger.debug("Solving transport explicitly...")
     transport_result = explicit.solve_transport(
-        cell_dimension=cell_dimension,
-        thickness_grid=thickness_grid,
         elevation_grid=elevation_grid,
+        pore_volume_grid=pore_volume_grid,
         time_step=time_step,
         time_step_size=time_step_size,
-        rock_properties=rock_properties,
         fluid_properties=fluid_properties,
-        old_water_density_grid=old_water_density_grid,
-        old_gas_density_grid=old_gas_density_grid,
-        old_solution_gas_to_oil_ratio_grid=old_solution_gor_grid,
-        old_gas_solubility_in_water_grid=old_gas_solubility_in_water_grid,
-        old_gas_formation_volume_factor_grid=old_gas_fvf_grid,
-        old_oil_formation_volume_factor_grid=old_oil_fvf_grid,
-        old_water_formation_volume_factor_grid=old_water_fvf_grid,
         relative_mobility_grids=relative_mobility_grids,
         capillary_pressure_grids=capillary_pressure_grids,
         face_transmissibilities=face_transmissibilities,
@@ -700,14 +693,15 @@ def _run_impes_step(
         )
 
     logger.debug("Updating fluid properties with new saturation grids...")
-    water_saturation_grid = transport_solution.water_saturation_grid.astype(
-        dtype, copy=False
-    )
-    oil_saturation_grid = transport_solution.oil_saturation_grid.astype(
-        dtype, copy=False
-    )
-    gas_saturation_grid = transport_solution.gas_saturation_grid.astype(
-        dtype, copy=False
+    water_saturation_grid = transport_solution.water_saturation_grid
+    oil_saturation_grid = transport_solution.oil_saturation_grid
+    gas_saturation_grid = transport_solution.gas_saturation_grid
+    water_mass_grid = transport_solution.water_mass_grid
+    oil_mass_grid = transport_solution.oil_mass_grid
+    free_gas_mass_grid = transport_solution.free_gas_mass_grid
+    dissolved_gas_mass_in_oil_grid = transport_solution.dissolved_gas_mass_in_oil_grid
+    dissolved_gas_mass_in_water_grid = (
+        transport_solution.dissolved_gas_mass_in_water_grid
     )
     solvent_concentration_grid = transport_solution.solvent_concentration_grid
 
@@ -717,6 +711,11 @@ def _run_impes_step(
             water_saturation_grid=water_saturation_grid,
             oil_saturation_grid=oil_saturation_grid,
             gas_saturation_grid=gas_saturation_grid,
+            water_mass_grid=water_mass_grid,
+            oil_mass_grid=oil_mass_grid,
+            free_gas_mass_grid=free_gas_mass_grid,
+            dissolved_gas_mass_in_oil_grid=dissolved_gas_mass_in_oil_grid,
+            dissolved_gas_mass_in_water_grid=dissolved_gas_mass_in_water_grid,
         )
     else:
         fluid_properties = attrs.evolve(
@@ -724,9 +723,12 @@ def _run_impes_step(
             water_saturation_grid=water_saturation_grid,
             oil_saturation_grid=oil_saturation_grid,
             gas_saturation_grid=gas_saturation_grid,
-            solvent_concentration_grid=solvent_concentration_grid.astype(
-                dtype, copy=False
-            ),
+            water_mass_grid=water_mass_grid,
+            oil_mass_grid=oil_mass_grid,
+            free_gas_mass_grid=free_gas_mass_grid,
+            dissolved_gas_mass_in_oil_grid=dissolved_gas_mass_in_oil_grid,
+            dissolved_gas_mass_in_water_grid=dissolved_gas_mass_in_water_grid,
+            solvent_concentration_grid=solvent_concentration_grid,
         )
 
     if config.normalize_saturations:
@@ -753,16 +755,6 @@ def _run_impes_step(
     material_balance_errors = compute_material_balance_errors(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
-        rock=rock_properties,
-        thickness_grid=thickness_grid,
-        cell_dimension=cell_dimension,
-        injection_mass_rates=well_rates.injection_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        production_mass_rates=well_rates.production_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        time_step_size=time_step_size,
     )
     timer_context.update(
         {
@@ -802,6 +794,7 @@ def _run_sequential_implicit_step(
     cell_dimension: typing.Tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
+    pore_volume_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -911,9 +904,8 @@ def _run_sequential_implicit_step(
         else dict(rates=well_rates if has_open_wells else None)
     )
     pressure_result = solve_pressure(
-        cell_dimension=cell_dimension,
-        thickness_grid=thickness_grid,
         elevation_grid=elevation_grid,
+        pore_volume_grid=pore_volume_grid,
         time_step=time_step,
         time_step_size=time_step_size,
         rock_properties=rock_properties,
@@ -1059,9 +1051,8 @@ def _run_sequential_implicit_step(
 
     logger.debug("Solving transport implicitly (Newton-Raphson)...")
     transport_result = implicit.solve_transport(
-        cell_dimension=cell_dimension,
-        thickness_grid=thickness_grid,
         elevation_grid=elevation_grid,
+        pore_volume_grid=pore_volume_grid,
         time_step_size=time_step_size,
         rock_properties=rock_properties,
         fluid_properties=fluid_properties,
@@ -1171,15 +1162,9 @@ def _run_sequential_implicit_step(
         # Pass the violation info through timer_context
 
     logger.debug("Updating fluid properties with new saturation grids...")
-    water_saturation_grid = transport_solution.water_saturation_grid.astype(
-        dtype, copy=False
-    )
-    oil_saturation_grid = transport_solution.oil_saturation_grid.astype(
-        dtype, copy=False
-    )
-    gas_saturation_grid = transport_solution.gas_saturation_grid.astype(
-        dtype, copy=False
-    )
+    water_saturation_grid = transport_solution.water_saturation_grid
+    oil_saturation_grid = transport_solution.oil_saturation_grid
+    gas_saturation_grid = transport_solution.gas_saturation_grid
     fluid_properties = attrs.evolve(
         fluid_properties,
         water_saturation_grid=water_saturation_grid,
@@ -1211,16 +1196,6 @@ def _run_sequential_implicit_step(
     material_balance_errors = compute_material_balance_errors(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
-        rock=rock_properties,
-        thickness_grid=thickness_grid,
-        cell_dimension=cell_dimension,
-        injection_mass_rates=well_rates.injection_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        production_mass_rates=well_rates.production_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        time_step_size=time_step_size,
     )
     timer_context.update(
         {
@@ -1260,6 +1235,7 @@ def _run_full_sequential_implicit_step(
     cell_dimension: typing.Tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
+    pore_volume_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -1423,8 +1399,7 @@ def _run_full_sequential_implicit_step(
             else dict(rates=well_rates if has_open_wells else None)
         )
         pressure_result = solve_pressure(
-            cell_dimension=cell_dimension,
-            thickness_grid=thickness_grid,
+            pore_volume_grid=pore_volume_grid,
             elevation_grid=elevation_grid,
             time_step=time_step,
             time_step_size=time_step_size,
@@ -1532,9 +1507,8 @@ def _run_full_sequential_implicit_step(
             maximum_picard_iterations,
         )
         transport_result = implicit.solve_transport(
-            cell_dimension=cell_dimension,
-            thickness_grid=thickness_grid,
             elevation_grid=elevation_grid,
+            pore_volume_grid=pore_volume_grid,
             time_step_size=time_step_size,
             rock_properties=rock_properties,
             fluid_properties=iter_fluid_properties,
@@ -1636,15 +1610,9 @@ def _run_full_sequential_implicit_step(
                     },
                 )
 
-        water_saturation_grid = transport_solution.water_saturation_grid.astype(
-            dtype, copy=False
-        )
-        oil_saturation_grid = transport_solution.oil_saturation_grid.astype(
-            dtype, copy=False
-        )
-        gas_saturation_grid = transport_solution.gas_saturation_grid.astype(
-            dtype, copy=False
-        )
+        water_saturation_grid = transport_solution.water_saturation_grid
+        oil_saturation_grid = transport_solution.oil_saturation_grid
+        gas_saturation_grid = transport_solution.gas_saturation_grid
         iter_fluid_properties = attrs.evolve(
             iter_fluid_properties,
             water_saturation_grid=water_saturation_grid,
@@ -1785,16 +1753,6 @@ def _run_full_sequential_implicit_step(
     material_balance_errors = compute_material_balance_errors(
         current_fluid_properties=iter_fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
-        rock=rock_properties,
-        thickness_grid=thickness_grid,
-        cell_dimension=cell_dimension,
-        injection_mass_rates=well_rates.injection_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        production_mass_rates=well_rates.production_mass_rates  # type: ignore
-        if has_open_wells
-        else None,
-        time_step_size=time_step_size,
     )
     timer_context.update(
         {
@@ -2009,6 +1967,31 @@ _SCHEME_ALIASES = {
 }
 
 
+__simulation_running = ContextFlag("simulation_running", initial=False)
+
+
+def running() -> bool:
+    """
+    Check if a simulation is currently running in this context.
+    i.e Are we in a running simulation?
+    """
+    return __simulation_running.get()
+
+
+def stop(reason: typing.Optional[str] = None):
+    """
+    Stop the currently running simulation (in this context) for the given `reason`
+
+    :param reason: Optional explanation for why the simulation is being stopped.
+    """
+    if not running():
+        return
+
+    if reason is None:
+        reason = "Stopped by user."
+    raise StopSimulation(reason)
+
+
 def run(
     input: typing.Union[ReservoirModel[ThreeDimensions], Run],
     config: typing.Optional[Config] = None,
@@ -2049,78 +2032,86 @@ def run(
         process(state)
     ```
     """
-    if isinstance(input, Run):
-        model = input.model
-        if config is not None:
-            logger.info(
-                "Overriding `config` from `Run` instance with the provided `config` parameter."
+    __simulation_running.set(True)
+    with ExitStack() as stack:
+        # Should always reset the flag when exiting, even on error
+        stack.callback(lambda: __simulation_running.reset())
+        if isinstance(input, Run):
+            model = input.model
+            if config is not None:
+                logger.info(
+                    "Overriding `config` from `Run` instance with the provided `config` parameter."
+                )
+            config = config or input.config
+        else:
+            if config is None:
+                raise ValidationError(
+                    "Must provide `config` when `input` is a `ReservoirModel`."
+                )
+            model = input
+
+        boundary_conditions = config.boundary_conditions
+        timer = config.timer
+        wells = config.wells
+        well_schedules = config.well_schedules
+
+        if wells is None:
+            logger.debug("No wells provided, proceeding with no-well simulation.")
+            wells = Wells()
+
+        if boundary_conditions is None:
+            logger.debug(
+                "No boundary conditions provided, applying no-flow boundaries."
             )
-        config = config or input.config
-    else:
-        if config is None:
-            raise ValidationError(
-                "Must provide `config` when `input` is a `ReservoirModel`."
-            )
-        model = input
+            boundary_conditions = BoundaryConditions[ThreeDimensions]()
 
-    boundary_conditions = config.boundary_conditions
-    timer = config.timer
-    wells = config.wells
-    well_schedules = config.well_schedules
+        cell_dimension = model.cell_dimension
+        grid_shape = model.grid_shape
+        has_wells = wells.exists()
+        has_well_schedules = well_schedules is not None
+        output_frequency = config.output_frequency
+        scheme = config.scheme.replace("_", "-").lower()
+        miscibility_model = config.miscibility_model
+        dtype = get_dtype()
+        pvt_tables = config.pvt_tables
+        freeze_saturation_pressure = config.freeze_saturation_pressure
+        log_interval = config.log_interval
+        capture_timer_state = config.capture_timer_state
+        enable_hysteresis = config.enable_hysteresis
+        apply_dip = not config.disable_structural_dip
+        needs_injector_seeding = (
+            config.minimum_injector_water_saturation
+            or config.minimum_injector_gas_saturation
+        )
+        relperm_endpoints = (
+            config.rock_fluid_tables.relative_permeability_table.get_relperm_endpoints()
+        )
+        pore_volume_grid = model.pore_volume_grid
 
-    if wells is None:
-        logger.debug("No wells provided, proceeding with no-well simulation.")
-        wells = Wells()
+        logger.info("Starting simulation workflow...")
+        logger.info(
+            f"Grid dimensions: (nx={grid_shape[0]}, ny={grid_shape[1]}, nz={grid_shape[2]})"
+        )
+        logger.info(
+            f"Cell dimensions: (dx={cell_dimension[0]}ft, dy={cell_dimension[1]}ft)"
+        )
+        logger.info(
+            f"Evolution scheme: {_SCHEME_ALIASES.get(scheme, scheme.replace('-', ' ').title())}"
+        )
+        logger.info(f"Array numerical precision: {np.dtype(dtype).name!r}")
+        logger.info("Total simulation time: %.1f seconds", timer.simulation_time)
+        logger.info(
+            f"Output frequency: Every {output_frequency} steps"
+            if output_frequency > 1
+            else "Output frequency: Every step",
+        )
+        logger.info("Has wells: %s", has_wells)
+        if has_wells:
+            logger.debug("Checking well locations against grid shape")
+            wells.check_location(grid_shape=grid_shape)
 
-    if boundary_conditions is None:
-        logger.debug("No boundary conditions provided, applying no-flow boundaries.")
-        boundary_conditions = BoundaryConditions[ThreeDimensions]()
-
-    cell_dimension = model.cell_dimension
-    grid_shape = model.grid_shape
-    has_wells = wells.exists()
-    has_well_schedules = well_schedules is not None
-    output_frequency = config.output_frequency
-    scheme = config.scheme.replace("_", "-").lower()
-    miscibility_model = config.miscibility_model
-    dtype = get_dtype()
-    pvt_tables = config.pvt_tables
-    freeze_saturation_pressure = config.freeze_saturation_pressure
-    log_interval = config.log_interval
-    capture_timer_state = config.capture_timer_state
-    enable_hysteresis = config.enable_hysteresis
-    apply_dip = not config.disable_structural_dip
-    needs_injector_seeding = (
-        config.minimum_injector_water_saturation
-        or config.minimum_injector_gas_saturation
-    )
-    relperm_endpoints = (
-        config.rock_fluid_tables.relative_permeability_table.get_relperm_endpoints()
-    )
-
-    logger.info("Starting simulation workflow...")
-    logger.info(
-        f"Grid dimensions: (nx={grid_shape[0]}, ny={grid_shape[1]}, nz={grid_shape[2]})"
-    )
-    logger.info(
-        f"Cell dimensions: (dx={cell_dimension[0]}ft, dy={cell_dimension[1]}ft)"
-    )
-    logger.info(
-        f"Evolution scheme: {_SCHEME_ALIASES.get(scheme, scheme.replace('-', ' ').title())}"
-    )
-    logger.info(f"Array numerical precision: {np.dtype(dtype).name!r}")
-    logger.info("Total simulation time: %.1f seconds", timer.simulation_time)
-    logger.info(
-        f"Output frequency: Every {output_frequency} steps"
-        if output_frequency > 1
-        else "Output frequency: Every step",
-    )
-    logger.info("Has wells: %s", has_wells)
-    if has_wells:
-        logger.debug("Checking well locations against grid shape")
-        wells.check_location(grid_shape=grid_shape)
-
-    with config.constants():
+        # Enter constants context
+        stack.enter_context(config.constants())
         min_valid_pressure = c.MINIMUM_VALID_PRESSURE
         max_valid_pressure = c.MAXIMUM_VALID_PRESSURE
         saturation_epsilon = c.SATURATION_EPSILON
@@ -2253,19 +2244,19 @@ def run(
                             config=config,
                         )
 
-                    with update_wells_indices as should_update:
-                        if should_update:
-                            logger.debug("Updating well indices cache")
-                            wells_indices = build_wells_indices(
-                                grid_shape=grid_shape,
-                                cell_size_x=cell_dimension[0],
-                                cell_size_y=cell_dimension[1],
-                                thickness_grid=thickness_grid,
-                                wells=wells,
-                                absolute_permeability=absolute_permeability,
-                                net_to_gross_grid=net_to_gross_grid,
-                                regime_constant=-0.75,
-                            )
+                    if update_wells_indices.get():
+                        logger.debug("Updating well indices cache")
+                        wells_indices = build_wells_indices(
+                            grid_shape=grid_shape,
+                            cell_size_x=cell_dimension[0],
+                            cell_size_y=cell_dimension[1],
+                            thickness_grid=thickness_grid,
+                            wells=wells,
+                            absolute_permeability=absolute_permeability,
+                            net_to_gross_grid=net_to_gross_grid,
+                            regime_constant=-0.75,
+                        )
+                        update_wells_indices.reset()
 
                 kwds = dict(  # noqa
                     time_step=new_step,
@@ -2273,6 +2264,7 @@ def run(
                     cell_dimension=cell_dimension,
                     thickness_grid=thickness_grid,
                     elevation_grid=elevation_grid,
+                    pore_volume_grid=pore_volume_grid,
                     time_step_size=step_size,
                     time=time,
                     face_transmissibilities=face_transmissibilities,

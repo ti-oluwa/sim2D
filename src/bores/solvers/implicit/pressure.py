@@ -40,9 +40,8 @@ class ImplicitPressureSolution:
 
 
 def solve_pressure(
-    cell_dimension: typing.Tuple[float, float],
-    thickness_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
+    pore_volume_grid: ThreeDimensionalGrid,
     time_step: int,
     time_step_size: float,
     rock_properties: RockProperties[ThreeDimensions],
@@ -53,7 +52,7 @@ def solve_pressure(
     pressure_boundaries: ThreeDimensionalGrid,
     flux_boundaries: ThreeDimensionalGrid,
     config: Config,
-    rates: typing.Optional[WellRates] = None,
+    rates: typing.Optional[WellRates[ThreeDimensions]] = None,
     dtype: npt.DTypeLike = np.float64,
 ) -> Solution[ImplicitPressureSolution, None]:
     """
@@ -76,8 +75,6 @@ def solve_pressure(
     :param config: `Config` object containing simulation config
     :return: `Solution` containing the new pressure grid and scheme used
     """
-    porosity_grid = rock_properties.porosity_grid
-    net_to_gross_grid = rock_properties.net_to_gross_grid
     rock_compressibility = rock_properties.compressibility
     oil_density_grid = fluid_properties.oil_effective_density_grid
     water_density_grid = fluid_properties.water_density_grid
@@ -94,7 +91,6 @@ def solve_pressure(
 
     # Determine grid dimensions and cell sizes
     cell_count_x, cell_count_y, cell_count_z = current_pressure_grid.shape
-    cell_size_x, cell_size_y = cell_dimension
 
     # Compute total fluid system compressibility for each cell
     total_fluid_compressibility_grid = build_total_fluid_compressibility_grid(
@@ -137,13 +133,9 @@ def solve_pressure(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        thickness_grid=thickness_grid,
-        porosity_grid=porosity_grid,
-        net_to_gross_grid=net_to_gross_grid,
+        pore_volume_grid=pore_volume_grid,
         total_compressibility_grid=total_compressibility_grid,
         current_pressure_grid=current_pressure_grid,
-        cell_size_x=cell_size_x,
-        cell_size_y=cell_size_y,
         time_step_size_in_days=time_step_size_in_days,
         dtype=dtype,
     )
@@ -246,9 +238,8 @@ def solve_pressure(
 
 
 def solve_nonlinear_pressure(
-    cell_dimension: typing.Tuple[float, float],
-    thickness_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
+    pore_volume_grid: ThreeDimensionalGrid,
     time_step: int,
     time_step_size: float,
     rock_properties: RockProperties[ThreeDimensions],
@@ -266,7 +257,7 @@ def solve_nonlinear_pressure(
     miscibility_model: MiscibilityModel = "immiscible",
     pvt_tables: typing.Optional[PVTTables] = None,
     freeze_saturation_pressure: bool = False,
-    rates: typing.Optional[WellRates] = None,
+    rates: typing.Optional[WellRates[ThreeDimensions]] = None,
     dtype: npt.DTypeLike = np.float64,
 ) -> Solution[ImplicitPressureSolution, None]:
     """
@@ -312,7 +303,6 @@ def solve_nonlinear_pressure(
         best-available) pressure grid and the maximum pressure change relative
         to the *start-of-step* pressure (not the last iterate delta).
     """
-    cell_size_x, cell_size_y = cell_dimension
     md_per_cp = c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
@@ -321,8 +311,6 @@ def solve_nonlinear_pressure(
     time_step_size_in_days = time_step_size * c.DAYS_PER_SECOND
 
     current_pressure_grid = fluid_properties.pressure_grid
-    porosity_grid = rock_properties.porosity_grid
-    net_to_gross_grid = rock_properties.net_to_gross_grid
     rock_compressibility = rock_properties.compressibility
     cell_count_x, cell_count_y, cell_count_z = current_pressure_grid.shape
     cell_count = cell_count_x * cell_count_y * cell_count_z
@@ -377,13 +365,9 @@ def solve_nonlinear_pressure(
             cell_count_x=cell_count_x,
             cell_count_y=cell_count_y,
             cell_count_z=cell_count_z,
-            thickness_grid=thickness_grid,
-            porosity_grid=porosity_grid,
-            net_to_gross_grid=net_to_gross_grid,
+            pore_volume_grid=pore_volume_grid,
             total_compressibility_grid=total_compressibility_grid,
             current_pressure_grid=current_pressure_grid,  # always old-time level
-            cell_size_x=cell_size_x,
-            cell_size_y=cell_size_y,
             time_step_size_in_days=time_step_size_in_days,
             dtype=dtype,
         )
@@ -572,13 +556,9 @@ def compute_accumulation_contributions(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    thickness_grid: ThreeDimensionalGrid,
-    porosity_grid: ThreeDimensionalGrid,
-    net_to_gross_grid: ThreeDimensionalGrid,
+    pore_volume_grid: ThreeDimensionalGrid,
     total_compressibility_grid: ThreeDimensionalGrid,
     current_pressure_grid: ThreeDimensionalGrid,
-    cell_size_x: float,
-    cell_size_y: float,
     time_step_size_in_days: float,
     dtype: npt.DTypeLike,
 ) -> typing.Tuple[npt.NDArray, npt.NDArray]:
@@ -621,12 +601,7 @@ def compute_accumulation_contributions(
 
                 # Accumulation term coefficient
                 accumulation_coefficient = (
-                    cell_size_x
-                    * cell_size_y
-                    * thickness_grid[i, j, k]
-                    * net_to_gross_grid[i, j, k]
-                    * porosity_grid[i, j, k]
-                    * total_compressibility_grid[i, j, k]
+                    pore_volume_grid[i, j, k] * total_compressibility_grid[i, j, k]
                 ) / time_step_size_in_days
 
                 diagonal_values[cell_1D_index] = accumulation_coefficient
