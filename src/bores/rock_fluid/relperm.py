@@ -30,6 +30,7 @@ from bores.types import (
     T,
     Wettability,
 )
+from bores.utils import is_scalar_like
 
 __all__ = [
     "BrooksCoreyRelPermModel",
@@ -57,6 +58,23 @@ __all__ = [
     "stone_II_rule",
     "stone_I_rule",
 ]
+
+
+def _show_invalid_saturation(val: FloatOrArray, *, max_display: int = 20) -> str:
+    if is_scalar_like(val) and (val < 0 or val > 1):
+        return str(val)
+    
+    invalid = val[(val < 0) | (val > 1)]  # type: ignore
+    length = len(invalid)
+    if length == 0:
+        return "OK"
+    if length == 1:
+        return str(invalid[0])
+    return (
+        f"{invalid}"
+        if length <= max_display
+        else f"{invalid[:max_display]} ... (count={length})"
+    )
 
 
 #: Sentinel type for the `minimum_*_relperm` attributes on relperm tables and
@@ -2855,7 +2873,7 @@ class ThreePhaseRelPermTable(
 
         if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
             raise ValidationError(
-                f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+                f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
             )
 
         # Normalize if saturations do not sum to 1
@@ -3326,7 +3344,7 @@ def compute_corey_three_phase_relative_permeabilities(
     # Validate saturations
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
         raise ValidationError(
-            f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+            f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
         )
 
     # Normalize saturations if they do not sum to 1
@@ -4614,7 +4632,7 @@ def compute_let_three_phase_relative_permeabilities(
     sw, so, sg = np.broadcast_arrays(sw, so, sg)
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
         raise ValidationError(
-            f"Saturations must be between 0 and 1. Sw: {sw}, So: {so}, Sg: {sg}"
+            f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
         )
 
     # Normalize saturations if they do not sum to 1

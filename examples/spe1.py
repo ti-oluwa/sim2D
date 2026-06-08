@@ -178,7 +178,7 @@ def setup_grid():
 
     # Oil specific gravity from dead-oil density at 14.7 psia: 46.244 lb/ft³
     oil_specific_gravity = compute_oil_specific_gravity(
-        oil_density=49.244,
+        oil_density=46.244,
         pressure=14.7,
         temperature=200.0,
         oil_compressibility=0.0,
@@ -670,9 +670,9 @@ def setup_config(Path, bores, oil_specific_gravity, pvt_tables):
         wells=wells,
         disable_capillary_effects=True,
         # freeze_saturation_pressure=True,
-        maximum_gas_saturation_change=1,
-        maximum_oil_saturation_change=1,
-        maximum_water_saturation_change=1,
+        # maximum_gas_saturation_change=1,
+        # maximum_oil_saturation_change=1,
+        # maximum_water_saturation_change=1,
         # maximum_newton_saturation_change=0.05,
         maximum_pressure_change=500.0,
         cfl_threshold=0.3,

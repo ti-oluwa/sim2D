@@ -1605,7 +1605,7 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
             object.__setattr__(self, "_pressure_cache", pressure_cache)
             # Determine and cache whether all boundaries are static
             all_static = all(
-                condition.is_static() for direction, condition in face_conditions
+                condition.is_static() for _, condition in face_conditions
             )
             object.__setattr__(self, "_all_static", all_static)
         else:
@@ -1627,13 +1627,13 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
 
             # `ghost_slice` addresses the padded cache but the BC returns values
             # shaped for the real grid face (no corners/edges).
-            # So we build an inset slice: on the face-normal axis keep ghost_slice as-is,
-            # on all other axes shift inward by pad_width to skip corner ghost cells.
+            # So we build an inset slice: on the face-normal axis keep `ghost_slice` as-is,
+            # on all other axes shift inward by `pad_width` to skip corner ghost cells.
             inset = []
             for _, s in enumerate(ghost_slice):
                 if isinstance(s, slice) and s.start is None and s.stop is None:
                     # This is a slice(None) axis. It spans the full padded dimension.
-                    # Inset by pad_width on each end to reach only real-cell-facing ghosts.
+                    # Inset by `pad_width` on each end to reach only real-cell-facing ghosts.
                     inset.append(slice(pad_width, -pad_width))
                 else:
                     # This is the face-normal axis so we keep as-is (the single ghost layer).

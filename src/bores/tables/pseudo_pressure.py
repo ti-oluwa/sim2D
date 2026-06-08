@@ -342,7 +342,7 @@ def build_pseudo_pressures(
     )
 
 
-def build_pchip_interpolant_from_points(
+def build_pchip_interpolants_from_points(
     x: npt.NDArray,
     values: npt.NDArray,
     number_of_base_points: int,
@@ -619,7 +619,7 @@ class PseudoPressureTable(
             )
 
         # Build interpolants
-        self._pchip, self._dpchip = build_pchip_interpolant_from_points(
+        self._pchip, self._dpchip = build_pchip_interpolants_from_points(
             x=self.pressures,
             values=self.pseudo_pressures,
             number_of_base_points=self.number_of_base_points,
@@ -660,19 +660,19 @@ class PseudoPressureTable(
         :param pseudo_pressure: Pseudo-pressure m(P) (psi²/cP) - scalar or array.
         :return: Pressure (psi).
         """
-        mp_min = float(self.pseudo_pressures[0])
-        mp_max = float(self.pseudo_pressures[-1])
+        min_mp = float(self.pseudo_pressures[0])
+        max_mp = float(self.pseudo_pressures[-1])
         p_min = float(self._pchip.x[0])
         p_max = float(self._pchip.x[-1])
 
         def _invert_scalar(mp: float) -> float:
-            mp_clamped = np.clip(mp, mp_min, mp_max)
-            if abs(mp_clamped - mp_min) < 1e-10:
+            clamped_mp = np.clip(mp, min_mp, max_mp)
+            if abs(clamped_mp - min_mp) < 1e-10:
                 return p_min
-            if abs(mp_clamped - mp_max) < 1e-10:
+            if abs(clamped_mp - max_mp) < 1e-10:
                 return p_max
             return brentq(
-                lambda p: self._pchip(p) - mp_clamped,
+                lambda p: self._pchip(p) - clamped_mp,
                 p_min,
                 p_max,
                 xtol=1e-6,
@@ -684,7 +684,7 @@ class PseudoPressureTable(
         result = np.vectorize(_invert_scalar)(mp)
 
         if is_scalar:
-            return float(result.ravel()[0])
+            return float(result.item())
         return result.reshape(mp.shape)
 
     def __call__(self, pressure: FloatOrArray) -> FloatOrArray:
@@ -717,7 +717,7 @@ class PseudoPressureTable(
         result = self._dpchip(np.clip(p, p_min, p_max))
         result = np.where((p < p_min) | (p > p_max), 0.0, result)
         if is_scalar:
-            return float(result.ravel()[0])
+            return float(result.item())
         return result.reshape(p.shape)
 
 

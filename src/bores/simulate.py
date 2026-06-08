@@ -339,9 +339,6 @@ def _rebuild_rock_fluid_grids(
     )
 
 
-# STEP FUNCTIONS
-
-
 def _run_impes_step(
     time_step: int,
     grid_shape: ThreeDimensions,
@@ -693,13 +690,6 @@ def _run_impes_step(
         transport_solution.dissolved_gas_mass_in_water_grid
     )
     solvent_concentration_grid = transport_solution.solvent_concentration_grid
-
-    # print(
-    #     "Total gas mass after transport: ", np.sum(fluid_properties.total_gas_mass_grid),
-    #     "Free gas mass after transport: ", np.sum(free_gas_mass_grid),
-    #     "Dissolved gas mass in oil after transport: ", np.sum(dissolved_gas_mass_in_oil_grid),
-    #     "Dissolved gas mass in water after transport: ", np.sum(dissolved_gas_mass_in_water_grid),
-    # )
 
     if solvent_concentration_grid is None:
         fluid_properties = attrs.evolve(
@@ -2135,7 +2125,9 @@ def run(
         logger.debug("Building face transmissibilities...")
         face_transmissibilities = model.build_face_transmissibilities(dtype=dtype)
 
-        # logger.debug("Initializing PVT fluid properties...")
+        # logger.debug(
+        #     "Initializing PVT fluid properties..."
+        # )  # TODO: Seems unnecessary. Might remove it
         # fluid_properties = update_fluid_properties(
         #     fluid_properties=fluid_properties,
         #     wells=wells,

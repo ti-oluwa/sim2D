@@ -349,3 +349,7 @@ def _close_iter(iter: typing.Any) -> None:
             close_method()
         except Exception as exc:
             logger.warning(f"Error closing iterator: {exc}", exc_info=True)
+
+
+def is_scalar_like(value):
+    return np.isscalar(value) or (isinstance(value, np.ndarray) and value.ndim == 0)

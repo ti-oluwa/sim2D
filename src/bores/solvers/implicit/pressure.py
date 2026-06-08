@@ -212,7 +212,9 @@ def solve_pressure(
             pressure_vector *= column_scaling_vector
 
     except (SolverError, PreconditionerError) as exc:
-        logger.error("Pressure solve failed at time step %d: %s", time_step, exc)
+        logger.error(
+            "Pressure solve failed at time step %d: %s", time_step, exc, exc_info=True
+        )
         return Solution(
             value=ImplicitPressureSolution(
                 pressure_grid=current_pressure_grid.astype(dtype, copy=False),
@@ -442,6 +444,7 @@ def solve_nonlinear_pressure(
                 iteration + 1,
                 time_step,
                 exc,
+                exc_info=True,
             )
             return Solution(
                 value=ImplicitPressureSolution(
