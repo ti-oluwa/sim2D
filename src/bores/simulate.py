@@ -975,17 +975,6 @@ def _run_sequential_implicit_step(
     fluid_properties = attrs.evolve(fluid_properties, pressure_grid=new_pressure_grid)
     logger.debug("Pressure evolution completed.")
 
-    # Copy before PVT updates
-    old_solution_gor_grid = fluid_properties.solution_gas_to_oil_ratio_grid.copy()
-    old_gas_solubility_in_water_grid = (
-        fluid_properties.gas_solubility_in_water_grid.copy()
-    )
-    old_oil_fvf_grid = fluid_properties.oil_formation_volume_factor_grid.copy()
-    old_gas_fvf_grid = fluid_properties.gas_formation_volume_factor_grid.copy()
-    old_water_fvf_grid = fluid_properties.water_formation_volume_factor_grid.copy()
-    old_water_density_grid = fluid_properties.water_density_grid.copy()
-    old_gas_density_grid = fluid_properties.gas_density_grid.copy()
-
     logger.debug("Updating PVT fluid properties to reflect pressure changes...")
     fluid_properties = update_fluid_properties(
         fluid_properties=fluid_properties,
@@ -1051,13 +1040,6 @@ def _run_sequential_implicit_step(
         time_step_size=time_step_size,
         rock_properties=rock_properties,
         fluid_properties=fluid_properties,
-        old_water_density_grid=old_water_density_grid,
-        old_gas_density_grid=old_gas_density_grid,
-        old_solution_gas_to_oil_ratio_grid=old_solution_gor_grid,
-        old_gas_solubility_in_water_grid=old_gas_solubility_in_water_grid,
-        old_gas_formation_volume_factor_grid=old_gas_fvf_grid,
-        old_oil_formation_volume_factor_grid=old_oil_fvf_grid,
-        old_water_formation_volume_factor_grid=old_water_fvf_grid,
         face_transmissibilities=face_transmissibilities,
         config=config,
         flux_boundaries=flux_boundaries,
@@ -1165,6 +1147,11 @@ def _run_sequential_implicit_step(
         water_saturation_grid=water_saturation_grid,
         oil_saturation_grid=oil_saturation_grid,
         gas_saturation_grid=gas_saturation_grid,
+        water_mass_grid=transport_solution.water_mass_grid,
+        oil_mass_grid=transport_solution.oil_mass_grid,
+        free_gas_mass_grid=transport_solution.free_gas_mass_grid,
+        dissolved_gas_mass_in_oil_grid=transport_solution.dissolved_gas_mass_in_oil_grid,
+        dissolved_gas_mass_in_water_grid=transport_solution.dissolved_gas_mass_in_water_grid,
     )
 
     if config.normalize_saturations:
@@ -1306,17 +1293,6 @@ def _run_full_sequential_implicit_step(
     else:
         old_water_saturation_grid = None
         old_gas_saturation_grid = None
-
-    # Copy at old time before any PVT update
-    old_solution_gor_grid = fluid_properties.solution_gas_to_oil_ratio_grid.copy()
-    old_gas_solubility_in_water_grid = (
-        fluid_properties.gas_solubility_in_water_grid.copy()
-    )
-    old_oil_fvf_grid = fluid_properties.oil_formation_volume_factor_grid.copy()
-    old_gas_fvf_grid = fluid_properties.gas_formation_volume_factor_grid.copy()
-    old_water_fvf_grid = fluid_properties.water_formation_volume_factor_grid.copy()
-    old_water_density_grid = fluid_properties.water_density_grid.copy()
-    old_gas_density_grid = fluid_properties.gas_density_grid.copy()
 
     iter_fluid_properties = fluid_properties
     iter_relative_mobility_grids = relative_mobility_grids
@@ -1512,13 +1488,6 @@ def _run_full_sequential_implicit_step(
             time_step_size=time_step_size,
             rock_properties=rock_properties,
             fluid_properties=iter_fluid_properties,
-            old_water_density_grid=old_water_density_grid,
-            old_gas_density_grid=old_gas_density_grid,
-            old_solution_gas_to_oil_ratio_grid=old_solution_gor_grid,
-            old_gas_solubility_in_water_grid=old_gas_solubility_in_water_grid,
-            old_gas_formation_volume_factor_grid=old_gas_fvf_grid,
-            old_oil_formation_volume_factor_grid=old_oil_fvf_grid,
-            old_water_formation_volume_factor_grid=old_water_fvf_grid,
             face_transmissibilities=face_transmissibilities,
             config=config,
             flux_boundaries=flux_boundaries,
@@ -1610,14 +1579,16 @@ def _run_full_sequential_implicit_step(
                     },
                 )
 
-        water_saturation_grid = transport_solution.water_saturation_grid
-        oil_saturation_grid = transport_solution.oil_saturation_grid
-        gas_saturation_grid = transport_solution.gas_saturation_grid
         iter_fluid_properties = attrs.evolve(
             iter_fluid_properties,
-            water_saturation_grid=water_saturation_grid,
-            oil_saturation_grid=oil_saturation_grid,
-            gas_saturation_grid=gas_saturation_grid,
+            water_saturation_grid=transport_solution.water_saturation_grid,
+            oil_saturation_grid=transport_solution.oil_saturation_grid,
+            gas_saturation_grid=transport_solution.gas_saturation_grid,
+            water_mass_grid=transport_solution.water_mass_grid,
+            oil_mass_grid=transport_solution.oil_mass_grid,
+            free_gas_mass_grid=transport_solution.free_gas_mass_grid,
+            dissolved_gas_mass_in_oil_grid=transport_solution.dissolved_gas_mass_in_oil_grid,
+            dissolved_gas_mass_in_water_grid=transport_solution.dissolved_gas_mass_in_water_grid,
         )
 
         if config.normalize_saturations:
