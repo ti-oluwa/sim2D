@@ -601,7 +601,6 @@ def compute_accumulation_contributions(
                     cell_count_y=cell_count_y,
                     cell_count_z=cell_count_z,
                 )
-
                 # Accumulation term coefficient
                 accumulation_coefficient = (
                     pore_volume_grid[i, j, k] * total_compressibility_grid[i, j, k]

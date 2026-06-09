@@ -47,8 +47,8 @@ def cubic_min(
 def line_search(
     saturation_vector: npt.NDArray,
     saturation_change: npt.NDArray,
-    residual_norm_0: float,
-    compute_residual_norm_fn: typing.Callable[[npt.NDArray], float],
+    current_residual_norm: float,
+    residual_norm_fn: typing.Callable[[npt.NDArray], float],
     project_fn: typing.Callable[[npt.NDArray], npt.NDArray],
     maximum_cuts: int = 8,
     sufficient_decrease: float = 1e-4,
@@ -63,9 +63,9 @@ def line_search(
 
     :param saturation_vector: Current packed [Sw, Sg, ...] iterate.
     :param saturation_change: Full Newton step δS (already damped by maximum_saturation_change).
-    :param residual_norm_0: ||R(S_k)|| at the current iterate.
+    :param current_residual_norm: ||R(S_k)|| at the current iterate.
         Used as the reference for the Armijo condition.
-    :param compute_residual_norm_fn: Callable that accepts a trial saturation
+    :param residual_norm_fn: Callable that accepts a trial saturation
         vector and returns ||R||. Must handle projection internally or caller
         must project before passing.
     :param project_fn: Projects a trial vector onto the feasible simplex (Sw>=0, Sg>=0, Sw+Sg<=1).
@@ -77,10 +77,10 @@ def line_search(
     :return: Tuple of (projected trial saturation vector, accepted step size α, ||R|| at the accepted step).
     """
     alpha_prev = 0.0
-    norm_prev = residual_norm_0
+    norm_prev = current_residual_norm
     # Approximate directional derivative: d/dα ||R||² at α=0 ≈ -2·||R_0||²
     # (Newton direction is a descent direction for 0.5·||R||²)
-    dfa = -residual_norm_0 * residual_norm_0
+    dfa = -current_residual_norm * current_residual_norm
 
     alpha = 1.0
     best_alpha = 1.0
@@ -89,7 +89,7 @@ def line_search(
 
     for _ in range(maximum_cuts):
         trial = project_fn(saturation_vector + alpha * saturation_change)
-        norm = compute_residual_norm_fn(trial)
+        norm = residual_norm_fn(trial)
 
         if norm < best_norm:
             best_norm = norm
@@ -97,7 +97,7 @@ def line_search(
             best_vector = trial
 
         # Armijo sufficient-decrease check
-        if norm < residual_norm_0 * (1.0 - sufficient_decrease * alpha):
+        if norm < current_residual_norm * (1.0 - sufficient_decrease * alpha):
             return trial, alpha, norm
 
         if alpha < min_step:

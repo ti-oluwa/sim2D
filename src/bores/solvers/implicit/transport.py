@@ -3462,7 +3462,7 @@ def solve_transport(
                     maximum_saturation_change,
                 )
 
-        def _trial_norm(trial_vec: npt.NDArray) -> float:
+        def _residual_norm(trial_vec: npt.NDArray) -> float:
             """Unpack trial vector, compute residual, return norm."""
             water_sat_grid = water_saturation_grid.copy()
             oil_sat_grid = oil_saturation_grid.copy()
@@ -3489,8 +3489,8 @@ def solve_transport(
         trial_saturation_vector, line_search_factor, _ = line_search(
             saturation_vector=saturation_vector,
             saturation_change=saturation_change,
-            residual_norm_0=residual_norm,
-            compute_residual_norm_fn=_trial_norm,
+            current_residual_norm=residual_norm,
+            residual_norm_fn=_residual_norm,
             project_fn=lambda v: project_to_feasible(v.copy()),
             maximum_cuts=maximum_line_search_cuts,
             sufficient_decrease=1e-4,

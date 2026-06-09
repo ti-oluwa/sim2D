@@ -346,6 +346,7 @@ def _run_impes_step(
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
+    initial_pressure_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -590,9 +591,13 @@ def _run_impes_step(
         old_gas_saturation_grid = None
 
     logger.debug("Solving transport explicitly...")
+    # Correct pore volume for pressure change using `PVn = PVi * exp(Cr * (Pn - Pi))`
+    new_pore_volume_grid = pore_volume_grid * np.exp(
+        rock_properties.compressibility * (new_pressure_grid - initial_pressure_grid)
+    )
     transport_result = explicit.solve_transport(
         elevation_grid=elevation_grid,
-        pore_volume_grid=pore_volume_grid,
+        pore_volume_grid=new_pore_volume_grid,
         time_step=time_step,
         time_step_size=time_step_size,
         fluid_properties=fluid_properties,
@@ -781,6 +786,7 @@ def _run_sequential_implicit_step(
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
+    initial_pressure_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -1036,9 +1042,12 @@ def _run_sequential_implicit_step(
         old_gas_saturation_grid = None
 
     logger.debug("Solving transport implicitly (Newton-Raphson)...")
+    new_pore_volume_grid = pore_volume_grid * np.exp(
+        rock_properties.compressibility * (new_pressure_grid - initial_pressure_grid)
+    )
     transport_result = implicit.solve_transport(
         elevation_grid=elevation_grid,
-        pore_volume_grid=pore_volume_grid,
+        pore_volume_grid=new_pore_volume_grid,
         time_step_size=time_step_size,
         rock_properties=rock_properties,
         fluid_properties=fluid_properties,
@@ -1222,6 +1231,7 @@ def _run_full_sequential_implicit_step(
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
+    initial_pressure_grid: NDimensionalGrid[ThreeDimensions],
     time_step_size: float,
     time: float,
     face_transmissibilities: FaceTransmissibilities,
@@ -1492,9 +1502,13 @@ def _run_full_sequential_implicit_step(
             iteration + 1,
             maximum_picard_iterations,
         )
+        new_pore_volume_grid = pore_volume_grid * np.exp(
+            rock_properties.compressibility
+            * (new_pressure_grid - initial_pressure_grid)
+        )
         transport_result = implicit.solve_transport(
             elevation_grid=elevation_grid,
-            pore_volume_grid=pore_volume_grid,
+            pore_volume_grid=new_pore_volume_grid,
             time_step_size=time_step_size,
             rock_properties=rock_properties,
             fluid_properties=iter_fluid_properties,
@@ -2059,8 +2073,6 @@ def run(
         scheme = config.scheme.replace("_", "-").lower()
         miscibility_model = config.miscibility_model
         dtype = get_dtype()
-        pvt_tables = config.pvt_tables
-        freeze_saturation_pressure = config.freeze_saturation_pressure
         log_interval = config.log_interval
         capture_timer_state = config.capture_timer_state
         enable_hysteresis = config.enable_hysteresis
@@ -2109,6 +2121,7 @@ def run(
         absolute_permeability = rock_properties.absolute_permeability
         net_to_gross_grid = rock_properties.net_to_gross_grid
         elevation_grid = model.build_elevation_grid(apply_dip=apply_dip)
+        initial_pressure_grid = fluid_properties.pressure_grid.copy()
 
         logger.debug("Building well indices cache")
         wells_indices = build_wells_indices(
@@ -2124,18 +2137,6 @@ def run(
 
         logger.debug("Building face transmissibilities...")
         face_transmissibilities = model.build_face_transmissibilities(dtype=dtype)
-
-        # logger.debug(
-        #     "Initializing PVT fluid properties..."
-        # )  # TODO: Seems unnecessary. Might remove it
-        # fluid_properties = update_fluid_properties(
-        #     fluid_properties=fluid_properties,
-        #     wells=wells,
-        #     miscibility_model=miscibility_model,
-        #     pvt_tables=pvt_tables,
-        #     freeze_saturation_pressure=freeze_saturation_pressure,
-        # )
-        # model = model.evolve(fluid_properties=fluid_properties)
 
         # Seed injector saturations to avoid phase deadlock at t=0
         if has_wells and needs_injector_seeding:
@@ -2253,6 +2254,7 @@ def run(
                     thickness_grid=thickness_grid,
                     elevation_grid=elevation_grid,
                     pore_volume_grid=pore_volume_grid,
+                    initial_pressure_grid=initial_pressure_grid,
                     time_step_size=step_size,
                     time=time,
                     face_transmissibilities=face_transmissibilities,
