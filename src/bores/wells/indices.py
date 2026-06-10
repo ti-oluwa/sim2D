@@ -3,7 +3,6 @@ import typing
 
 import attrs
 
-from bores.boundary_conditions import BoundaryConditions
 from bores.datastructures import ContextFlag
 from bores.models import RockPermeability
 from bores.solvers.base import to_1D_index

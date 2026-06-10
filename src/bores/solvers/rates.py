@@ -211,6 +211,7 @@ def compute_well_rates(
     )
     water_bubble_point_pressure_grid = fluid_properties.water_bubble_point_pressure_grid
     gas_solubility_in_water_grid = fluid_properties.gas_solubility_in_water_grid
+    solution_gas_to_oil_ratio_grid = fluid_properties.solution_gas_to_oil_ratio_grid
 
     # Injection wells
     for well in wells.injection_wells:
@@ -321,18 +322,26 @@ def compute_well_rates(
             if not is_gas:
                 flow_rate *= bbl_to_ft3
 
+            phase_density = typing.cast(
+                float,
+                injected_fluid.get_density(
+                    pressure=cell_pressure, temperature=cell_temperature
+                ),
+            )
             if can_flow:
+                # Compute mass-based mobility for injected phase
+                mass_mobility = phase_density * phase_mobility
                 if not use_pseudo_pressure:
-                    well_transmissibility = (
-                        well_index * phase_mobility * md_per_cp_to_ft2_per_psi_per_day
+                    mass_transmissibility = (
+                        well_index * mass_mobility * md_per_cp_to_ft2_per_psi_per_day
                     )
-                    diagonal_contributions[cell_idx] += well_transmissibility
-                    rhs_contributions[cell_idx] += well_transmissibility * effective_bhp
+                    diagonal_contributions[cell_idx] += mass_transmissibility
+                    rhs_contributions[cell_idx] += mass_transmissibility * effective_bhp
                 else:
                     # Pseudo pressure linearization
-                    well_transmissibility = (
+                    mass_transmissibility = (
                         well_index
-                        * phase_mobility
+                        * mass_mobility
                         * phase_viscosity
                         * md_per_cp_to_ft2_per_psi_per_day
                     )
@@ -344,17 +353,11 @@ def compute_well_rates(
                     )
                     assert pseudo_pressure_table is not None
                     dm_dp = pseudo_pressure_table.gradient(cell_pressure)
-                    diagonal_contributions[cell_idx] += well_transmissibility * dm_dp
+                    diagonal_contributions[cell_idx] += mass_transmissibility * dm_dp
                     rhs_contributions[cell_idx] += (
-                        well_transmissibility * dm_dp * effective_bhp
+                        mass_transmissibility * dm_dp * effective_bhp
                     )
 
-            phase_density = typing.cast(
-                float,
-                injected_fluid.get_density(
-                    pressure=cell_pressure, temperature=cell_temperature
-                ),
-            )
             if is_gas:
                 net_gas_well_rate_grid[i, j, k] += flow_rate
                 net_gas_well_mass_rate_grid[i, j, k] += flow_rate * phase_density
@@ -414,6 +417,23 @@ def compute_well_rates(
                         **context,
                     )
 
+            # Pre-compute alpha factors for dissolved gas contributions
+            alpha_solution_gor = (
+                typing.cast(float, solution_gas_to_oil_ratio_grid[i, j, k])
+                * typing.cast(float, gas_formation_volume_factor_grid[i, j, k])
+                / (
+                    bbl_to_ft3
+                    * typing.cast(float, oil_formation_volume_factor_grid[i, j, k])
+                )
+            )
+            alpha_gas_solubility_in_water = (
+                typing.cast(float, gas_solubility_in_water_grid[i, j, k])
+                * typing.cast(float, gas_formation_volume_factor_grid[i, j, k])
+                / (
+                    bbl_to_ft3
+                    * typing.cast(float, water_formation_volume_factor_grid[i, j, k])
+                )
+            )
             water_flow_rate = 0.0
             oil_flow_rate = 0.0
             gas_flow_rate = 0.0
@@ -525,22 +545,36 @@ def compute_well_rates(
                     flow_rate *= bbl_to_ft3
 
                 if can_flow:
+                    # Compute mass-based mobility for this phase including dissolved gas
+                    if is_gas:
+                        phase_density = typing.cast(float, gas_density_grid[i, j, k])
+                        phase_mass_mobility = phase_density * phase_mobility
+                    elif is_water:
+                        phase_density = typing.cast(float, water_density_grid[i, j, k])
+                        phase_mass_mobility = (
+                            phase_density
+                            + gas_density_grid[i, j, k] * alpha_gas_solubility_in_water
+                        ) * phase_mobility
+                    else:  # oil
+                        phase_density = typing.cast(float, oil_density_grid[i, j, k])
+                        phase_mass_mobility = (
+                            phase_density
+                            + gas_density_grid[i, j, k] * alpha_solution_gor
+                        ) * phase_mobility
+
+                    phase_mass_transmissibility = (
+                        well_index
+                        * phase_mass_mobility
+                        * md_per_cp_to_ft2_per_psi_per_day
+                    )
                     if not use_pseudo_pressure:
-                        phase_transmissibility = (
-                            well_index
-                            * phase_mobility
-                            * md_per_cp_to_ft2_per_psi_per_day
-                        )
-                        diagonal_contributions[cell_idx] += phase_transmissibility
+                        diagonal_contributions[cell_idx] += phase_mass_transmissibility
                         rhs_contributions[cell_idx] += (
-                            phase_transmissibility * effective_bhp
+                            phase_mass_transmissibility * effective_bhp
                         )
                     else:
-                        phase_transmissibility = (
-                            well_index
-                            * phase_mobility
-                            * phase_viscosity
-                            * md_per_cp_to_ft2_per_psi_per_day
+                        mass_pseudo_transmissibility = (
+                            phase_mass_transmissibility * phase_viscosity
                         )
                         _, pseudo_pressure_table = get_pseudo_pressure_table(
                             fluid=produced_fluid,
@@ -551,10 +585,10 @@ def compute_well_rates(
                         assert pseudo_pressure_table is not None
                         dm_dp = pseudo_pressure_table.gradient(cell_pressure)
                         diagonal_contributions[cell_idx] += (
-                            phase_transmissibility * dm_dp
+                            mass_pseudo_transmissibility * dm_dp
                         )
                         rhs_contributions[cell_idx] += (
-                            phase_transmissibility * dm_dp * effective_bhp
+                            mass_pseudo_transmissibility * dm_dp * effective_bhp
                         )
 
                 if is_gas:

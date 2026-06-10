@@ -9,10 +9,13 @@ from scipy.sparse import coo_matrix
 
 from bores.config import Config
 from bores.constants import c
+from bores.correlations.arrays import (
+    compute_gas_solubility_in_water,
+    compute_gas_to_oil_ratio,
+)
 from bores.correlations.core import compute_harmonic_mean
 from bores.errors import PreconditionerError, SolverError
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids, RelPermGrids
-from bores.grids.pvt import build_total_fluid_compressibility_grid
 from bores.grids.rock_fluid import build_three_phase_relative_mobilities_grids
 from bores.models import FluidProperties, RockProperties
 from bores.rock_fluid.relperm import RelPermEndpoints
@@ -23,9 +26,14 @@ from bores.solvers.base import (
     to_1D_index,
 )
 from bores.solvers.rates import WellRates, compute_well_rates
-from bores.tables.pvt import PVTTables
+from bores.tables.pvt import PVTTable, PVTTables
 from bores.transmissibility import FaceTransmissibilities
-from bores.types import MiscibilityModel, ThreeDimensionalGrid, ThreeDimensions
+from bores.types import (
+    FloatOrArray,
+    MiscibilityModel,
+    ThreeDimensionalGrid,
+    ThreeDimensions,
+)
 from bores.updates import update_fluid_properties
 from bores.wells.base import Wells
 from bores.wells.indices import WellsIndices
@@ -56,11 +64,9 @@ def solve_pressure(
     dtype: npt.DTypeLike = np.float64,
 ) -> Solution[ImplicitPressureSolution, None]:
     """
-    Solves the fully implicit finite-difference pressure equation for a slightly compressible,
+    Solves the implicit finite-difference pressure equation for a compressible,
     three-phase flow system in a 3D reservoir.
 
-    :param cell_dimension: Tuple of (cell_size_x, cell_size_y) in feet
-    :param thickness_grid: 3D grid of cell thicknesses in feet
     :param elevation_grid: 3D grid of cell elevations in feet
     :param time_step: Current time step number (for logging/debugging)
     :param time_step_size: Time step size in seconds.
@@ -83,28 +89,17 @@ def solve_pressure(
     current_pressure_grid = fluid_properties.pressure_grid
     water_saturation_grid = fluid_properties.water_saturation_grid
     oil_saturation_grid = fluid_properties.oil_saturation_grid
-    gas_saturation_grid = fluid_properties.gas_saturation_grid
 
     water_compressibility_grid = fluid_properties.water_compressibility_grid
     oil_compressibility_grid = fluid_properties.oil_compressibility_grid
     gas_compressibility_grid = fluid_properties.gas_compressibility_grid
-
-    # Determine grid dimensions and cell sizes
-    cell_count_x, cell_count_y, cell_count_z = current_pressure_grid.shape
-
-    # Compute total fluid system compressibility for each cell
-    total_fluid_compressibility_grid = build_total_fluid_compressibility_grid(
-        oil_saturation_grid=oil_saturation_grid,
-        oil_compressibility_grid=oil_compressibility_grid,
-        water_saturation_grid=water_saturation_grid,
-        water_compressibility_grid=water_compressibility_grid,
-        gas_saturation_grid=gas_saturation_grid,
-        gas_compressibility_grid=gas_compressibility_grid,
+    solution_gas_to_oil_ratio_grid = fluid_properties.solution_gas_to_oil_ratio_grid
+    gas_solubility_in_water_grid = fluid_properties.gas_solubility_in_water_grid
+    gas_formation_volume_factor_grid = fluid_properties.gas_formation_volume_factor_grid
+    oil_formation_volume_factor_grid = fluid_properties.oil_formation_volume_factor_grid
+    water_formation_volume_factor_grid = (
+        fluid_properties.water_formation_volume_factor_grid
     )
-    total_compressibility_grid = np.add(
-        total_fluid_compressibility_grid, rock_compressibility, dtype=dtype
-    )
-
     (
         water_relative_mobility_grid,
         oil_relative_mobility_grid,
@@ -114,9 +109,11 @@ def solve_pressure(
         capillary_pressure_grids
     )
 
+    cell_count_x, cell_count_y, cell_count_z = current_pressure_grid.shape
     md_per_cp_to_ft2_per_psi_per_day = (
         c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
     )
+    bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
     time_step_size_in_days = time_step_size * c.DAYS_PER_SECOND
 
     # Compute face transmissibilities (off-diagonal entries and additional diagonal/RHS contributions)
@@ -129,12 +126,56 @@ def solve_pressure(
         / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
     )
 
+    pressure_perturbation = np.maximum(1.0, np.abs(current_pressure_grid) * 1e-5)
+    solution_gor_pressure_derivative_grid = (
+        compute_solution_gas_to_oil_ratio_pressure_derivative(
+            pressure_grid=current_pressure_grid,
+            temperature_grid=fluid_properties.temperature_grid,
+            gas_gravity_grid=fluid_properties.gas_gravity_grid,
+            oil_api_gravity_grid=fluid_properties.oil_api_gravity_grid,
+            bubble_point_pressure_grid=fluid_properties.oil_bubble_point_pressure_grid,
+            pvt_table=config.pvt_tables.oil if config.pvt_tables else None,
+            perturbation=pressure_perturbation,
+        )
+    )
+    gas_solubility_in_water_pressure_derivative_grid = (
+        compute_gas_solubility_in_water_pressure_derivative(
+            pressure_grid=current_pressure_grid,
+            temperature_grid=fluid_properties.temperature_grid,
+            salinity=0.0,
+            gas="methane",
+            pvt_table=config.pvt_tables.gas if config.pvt_tables else None,
+            perturbation=pressure_perturbation,
+        )
+    )
+    mass_accumulation_derivative_grid = compute_mass_accumulation_derivative(
+        pore_volume_grid=pore_volume_grid,
+        rock_compressibility=rock_compressibility,
+        water_mass_grid=fluid_properties.water_mass_grid,
+        oil_mass_grid=fluid_properties.oil_mass_grid,
+        free_gas_mass_grid=fluid_properties.free_gas_mass_grid,
+        dissolved_gas_mass_in_oil_grid=fluid_properties.dissolved_gas_mass_in_oil_grid,
+        dissolved_gas_mass_in_water_grid=fluid_properties.dissolved_gas_mass_in_water_grid,
+        water_compressibility_grid=water_compressibility_grid,
+        oil_compressibility_grid=oil_compressibility_grid,
+        gas_compressibility_grid=gas_compressibility_grid,
+        gas_density_grid=gas_density_grid,
+        water_saturation_grid=water_saturation_grid,
+        oil_saturation_grid=oil_saturation_grid,
+        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
+        solution_gor_pressure_derivative_grid=solution_gor_pressure_derivative_grid,
+        gas_solubility_in_water_pressure_derivative_grid=gas_solubility_in_water_pressure_derivative_grid,
+    )
+
     diagonal_values, rhs_values = compute_accumulation_contributions(
         cell_count_x=cell_count_x,
         cell_count_y=cell_count_y,
         cell_count_z=cell_count_z,
-        pore_volume_grid=pore_volume_grid,
-        total_compressibility_grid=total_compressibility_grid,
+        mass_accumulation_derivative_grid=mass_accumulation_derivative_grid,
         current_pressure_grid=current_pressure_grid,
         time_step_size_in_days=time_step_size_in_days,
         dtype=dtype,
@@ -162,11 +203,18 @@ def solve_pressure(
         oil_density_grid=oil_density_grid,
         water_density_grid=water_density_grid,
         gas_density_grid=gas_density_grid,
+        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
         elevation_grid=elevation_grid,
         gravitational_constant=gravitational_constant,
         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+        bbl_to_ft3=bbl_to_ft3,
         dtype=dtype,
     )
+
     if rates is not None:
         well_rhs_additions = rates.rhs_contributions
         well_diagonal_additions = rates.diagonal_contributions
@@ -180,7 +228,7 @@ def solve_pressure(
 
     cell_count = cell_count_x * cell_count_y * cell_count_z
     diagional_indices = np.arange(cell_count, dtype=np.int32)
-    jacobian = coo_matrix(  # type: ignore
+    jacobian = coo_matrix(  # type: ignore[arg-type]
         (
             np.concatenate([diagonal, sparse_off_diagonal]),
             (
@@ -189,7 +237,7 @@ def solve_pressure(
             ),
         ),
         shape=(cell_count, cell_count),
-        dtype=dtype,  # type: ignore
+        dtype=dtype,  # type: ignore[arg-type]
     )
 
     # Solve the linear system A·pⁿ⁺¹ = b
@@ -275,8 +323,6 @@ def solve_nonlinear_pressure(
     `solve_pressure`, so all existing scaling, solver, and preconditioner
     settings apply.
 
-    :param cell_dimension: Tuple of (cell_size_x, cell_size_y) in feet.
-    :param thickness_grid: Cell thickness grid (ft).
     :param elevation_grid: Cell elevation grid (ft).
     :param time_step: Current time step number (for logging/debugging).
     :param time_step_size: Time step size in seconds.
@@ -305,11 +351,14 @@ def solve_nonlinear_pressure(
         best-available) pressure grid and the maximum pressure change relative
         to the *start-of-step* pressure (not the last iterate delta).
     """
-    md_per_cp = c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
+    md_per_cp_to_ft2_per_psi_per_day = (
+        c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
+    )
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
         / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
     )
+    bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
     time_step_size_in_days = time_step_size * c.DAYS_PER_SECOND
 
     current_pressure_grid = fluid_properties.pressure_grid
@@ -328,20 +377,34 @@ def solve_nonlinear_pressure(
     linear_tolerance = config.pressure_convergence_tolerance
     converged = False
     previous_pressure_grid = current_pressure_grid.copy()
+    # Saturations dont change
+    water_saturation_grid = fluid_properties.water_saturation_grid
+    oil_saturation_grid = fluid_properties.oil_saturation_grid
 
     for iteration in range(maximum_iterations):
         water_compressibility_grid = iter_fluid_properties.water_compressibility_grid
         oil_compressibility_grid = iter_fluid_properties.oil_compressibility_grid
         gas_compressibility_grid = iter_fluid_properties.gas_compressibility_grid
-
-        water_saturation_grid = iter_fluid_properties.water_saturation_grid
-        oil_saturation_grid = iter_fluid_properties.oil_saturation_grid
-        gas_saturation_grid = iter_fluid_properties.gas_saturation_grid
         current_pressure_grid = iter_fluid_properties.pressure_grid
 
         oil_density_grid = iter_fluid_properties.oil_effective_density_grid
         water_density_grid = iter_fluid_properties.water_density_grid
         gas_density_grid = iter_fluid_properties.gas_density_grid
+        solution_gas_to_oil_ratio_grid = (
+            iter_fluid_properties.solution_gas_to_oil_ratio_grid
+        )
+        gas_solubility_in_water_grid = (
+            iter_fluid_properties.gas_solubility_in_water_grid
+        )
+        gas_formation_volume_factor_grid = (
+            iter_fluid_properties.gas_formation_volume_factor_grid
+        )
+        oil_formation_volume_factor_grid = (
+            iter_fluid_properties.oil_formation_volume_factor_grid
+        )
+        water_formation_volume_factor_grid = (
+            iter_fluid_properties.water_formation_volume_factor_grid
+        )
         oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid = (
             capillary_pressure_grids
         )
@@ -351,24 +414,56 @@ def solve_nonlinear_pressure(
             gas_relative_mobility_grid,
         ) = iter_relative_mobility_grids
 
-        total_fluid_compressibility_grid = build_total_fluid_compressibility_grid(
-            oil_saturation_grid=oil_saturation_grid,
-            oil_compressibility_grid=oil_compressibility_grid,
-            water_saturation_grid=water_saturation_grid,
-            water_compressibility_grid=water_compressibility_grid,
-            gas_saturation_grid=gas_saturation_grid,
-            gas_compressibility_grid=gas_compressibility_grid,
+        pressure_perturbation = np.maximum(
+            1.0, np.abs(iter_fluid_properties.pressure_grid) * 1e-5
         )
-        total_compressibility_grid = np.add(
-            total_fluid_compressibility_grid, rock_compressibility, dtype=dtype
+        solution_gor_pressure_derivative_grid = compute_solution_gas_to_oil_ratio_pressure_derivative(
+            pressure_grid=iter_fluid_properties.pressure_grid,
+            temperature_grid=iter_fluid_properties.temperature_grid,
+            gas_gravity_grid=iter_fluid_properties.gas_gravity_grid,
+            oil_api_gravity_grid=iter_fluid_properties.oil_api_gravity_grid,
+            bubble_point_pressure_grid=iter_fluid_properties.oil_bubble_point_pressure_grid,
+            pvt_table=config.pvt_tables.oil if config.pvt_tables else None,
+            perturbation=pressure_perturbation,
+        )
+        gas_solubility_in_water_pressure_derivative_grid = (
+            compute_gas_solubility_in_water_pressure_derivative(
+                pressure_grid=iter_fluid_properties.pressure_grid,
+                temperature_grid=iter_fluid_properties.temperature_grid,
+                salinity=0.0,
+                gas="methane",
+                pvt_table=config.pvt_tables.gas if config.pvt_tables else None,
+                perturbation=pressure_perturbation,
+            )
+        )
+        mass_accumulation_derivative_grid = compute_mass_accumulation_derivative(
+            pore_volume_grid=pore_volume_grid,
+            rock_compressibility=rock_compressibility,
+            water_mass_grid=iter_fluid_properties.water_mass_grid,
+            oil_mass_grid=iter_fluid_properties.oil_mass_grid,
+            free_gas_mass_grid=iter_fluid_properties.free_gas_mass_grid,
+            dissolved_gas_mass_in_oil_grid=iter_fluid_properties.dissolved_gas_mass_in_oil_grid,
+            dissolved_gas_mass_in_water_grid=iter_fluid_properties.dissolved_gas_mass_in_water_grid,
+            water_compressibility_grid=water_compressibility_grid,
+            oil_compressibility_grid=oil_compressibility_grid,
+            gas_compressibility_grid=gas_compressibility_grid,
+            gas_density_grid=gas_density_grid,
+            water_saturation_grid=water_saturation_grid,
+            oil_saturation_grid=oil_saturation_grid,
+            solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+            gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+            gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+            oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+            water_formation_volume_factor_grid=water_formation_volume_factor_grid,
+            solution_gor_pressure_derivative_grid=solution_gor_pressure_derivative_grid,
+            gas_solubility_in_water_pressure_derivative_grid=gas_solubility_in_water_pressure_derivative_grid,
         )
 
         diagonal_values, rhs_values = compute_accumulation_contributions(
             cell_count_x=cell_count_x,
             cell_count_y=cell_count_y,
             cell_count_z=cell_count_z,
-            pore_volume_grid=pore_volume_grid,
-            total_compressibility_grid=total_compressibility_grid,
+            mass_accumulation_derivative_grid=mass_accumulation_derivative_grid,
             current_pressure_grid=current_pressure_grid,  # always old-time level
             time_step_size_in_days=time_step_size_in_days,
             dtype=dtype,
@@ -396,9 +491,15 @@ def solve_nonlinear_pressure(
             oil_density_grid=oil_density_grid,
             water_density_grid=water_density_grid,
             gas_density_grid=gas_density_grid,
+            solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+            gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+            gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+            oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+            water_formation_volume_factor_grid=water_formation_volume_factor_grid,
             elevation_grid=elevation_grid,
             gravitational_constant=gravitational_constant,
-            md_per_cp_to_ft2_per_psi_per_day=md_per_cp,
+            md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+            bbl_to_ft3=bbl_to_ft3,
             dtype=dtype,
         )
 
@@ -554,13 +655,222 @@ def solve_nonlinear_pressure(
     )
 
 
+def compute_solution_gas_to_oil_ratio_pressure_derivative(
+    pressure_grid: ThreeDimensionalGrid,
+    temperature_grid: ThreeDimensionalGrid,
+    gas_gravity_grid: ThreeDimensionalGrid,
+    oil_api_gravity_grid: ThreeDimensionalGrid,
+    bubble_point_pressure_grid: ThreeDimensionalGrid,
+    pvt_table: typing.Optional[PVTTable] = None,
+    perturbation: FloatOrArray = 1.0,
+) -> ThreeDimensionalGrid:
+    """
+    Computes the pressure derivative of the solution gas-to-oil ratio using a
+    second-order central finite difference approximation.
+
+    ∂Rs/∂P ≈ (Rs(P + ε) - Rs(P - ε)) / (2 * ε)
+
+    :param pressure: Pressure at which the derivative is evaluated (psi)
+    :param perturbation: Pressure perturbation used for the finite difference (psi)
+    :return: Pressure derivative of the solution gas-to-oil ratio (scf/STB.psi)
+    """
+    pressure_plus = pressure_grid + perturbation
+    pressure_minus = pressure_grid - perturbation
+    if pvt_table is not None:
+        gor_plus = pvt_table.solution_gas_to_oil_ratio(
+            pressure=pressure_plus,
+            temperature=temperature_grid,
+            bubble_point_pressure=bubble_point_pressure_grid,
+        )
+        gor_minus = pvt_table.solution_gas_to_oil_ratio(
+            pressure=pressure_minus,
+            temperature=temperature_grid,
+            bubble_point_pressure=bubble_point_pressure_grid,
+        )
+    else:
+        gor_plus = compute_gas_to_oil_ratio(
+            pressure=pressure_plus,
+            temperature=temperature_grid,
+            bubble_point_pressure=bubble_point_pressure_grid,
+            gas_gravity=gas_gravity_grid,
+            oil_api_gravity=oil_api_gravity_grid,
+        )
+        gor_minus = compute_gas_to_oil_ratio(
+            pressure=pressure_minus,
+            temperature=temperature_grid,
+            bubble_point_pressure=bubble_point_pressure_grid,
+            gas_gravity=gas_gravity_grid,
+            oil_api_gravity=oil_api_gravity_grid,
+        )
+    return (gor_plus - gor_minus) / (2.0 * perturbation)  # type: ignore
+
+
+def compute_gas_solubility_in_water_pressure_derivative(
+    pressure_grid: ThreeDimensionalGrid,
+    temperature_grid: ThreeDimensionalGrid,
+    salinity: FloatOrArray = 0.0,
+    gas: str = "methane",
+    pvt_table: typing.Optional[PVTTable] = None,
+    perturbation: FloatOrArray = 1.0,
+) -> ThreeDimensionalGrid:
+    """
+    Computes the pressure derivative of gas solubility in water using a
+    second-order central finite difference approximation.
+
+    ∂Rsw/∂P ≈ (Rsw(P + ε) - Rsw(P - ε)) / (2 * ε)
+
+    :param pressure_grid: Pressure grid at which the derivative is evaluated (psi)
+    :param temperature_grid: Temperature grid (°F)
+    :param salinity: Water salinity (ppm of NaCl)
+    :param gas: Gas name ("co2", "methane", "n2")
+    :param pvt_table: Optional PVT table for solubility lookup
+    :param perturbation: Pressure perturbation used for the finite difference (psi)
+    :return: Pressure derivative of gas solubility in water (scf/STB.psi)
+    """
+    pressure_plus = pressure_grid + perturbation
+    pressure_minus = pressure_grid - perturbation
+    if pvt_table is not None:
+        rsw_plus = pvt_table.solubility_in_water(
+            pressure=pressure_plus,
+            temperature=temperature_grid,
+            salinity=salinity,
+        )
+        rsw_minus = pvt_table.solubility_in_water(
+            pressure=pressure_minus,
+            temperature=temperature_grid,
+            salinity=salinity,
+        )
+    else:
+        rsw_plus = compute_gas_solubility_in_water(
+            pressure=pressure_plus,
+            temperature=temperature_grid,
+            salinity=salinity,
+            gas=gas,
+        )
+        rsw_minus = compute_gas_solubility_in_water(
+            pressure=pressure_minus,
+            temperature=temperature_grid,
+            salinity=salinity,
+            gas=gas,
+        )
+    return (rsw_plus - rsw_minus) / (2.0 * perturbation)  # type: ignore
+
+
+@numba.njit(cache=True)
+def compute_mass_accumulation_derivative(
+    pore_volume_grid: ThreeDimensionalGrid,
+    rock_compressibility: FloatOrArray,
+    water_mass_grid: ThreeDimensionalGrid,
+    oil_mass_grid: ThreeDimensionalGrid,
+    free_gas_mass_grid: ThreeDimensionalGrid,
+    dissolved_gas_mass_in_oil_grid: ThreeDimensionalGrid,
+    dissolved_gas_mass_in_water_grid: ThreeDimensionalGrid,
+    water_compressibility_grid: ThreeDimensionalGrid,
+    oil_compressibility_grid: ThreeDimensionalGrid,
+    gas_compressibility_grid: ThreeDimensionalGrid,
+    gas_density_grid: ThreeDimensionalGrid,
+    water_saturation_grid: ThreeDimensionalGrid,
+    oil_saturation_grid: ThreeDimensionalGrid,
+    solution_gas_to_oil_ratio_grid: ThreeDimensionalGrid,
+    gas_solubility_in_water_grid: ThreeDimensionalGrid,
+    gas_formation_volume_factor_grid: ThreeDimensionalGrid,
+    oil_formation_volume_factor_grid: ThreeDimensionalGrid,
+    water_formation_volume_factor_grid: ThreeDimensionalGrid,
+    solution_gor_pressure_derivative_grid: ThreeDimensionalGrid,
+    gas_solubility_in_water_pressure_derivative_grid: ThreeDimensionalGrid,
+) -> ThreeDimensionalGrid:
+    """
+    Computes the pressure derivative of the total mass accumulation in the pore space.
+
+    This accounts for how the mass of each phase (water, oil, free gas, dissolved gas in oil,
+    and dissolved gas in water) changes with pressure. The derivative includes contributions from:
+
+    1. **Direct compressibility effects**: mass change due to fluid and rock compressibility.
+    2. **Phase behavior effects**: solution gas-to-oil ratio and gas solubility in water changes with pressure.
+
+    The formula integrates:
+
+    ∂M/∂P = Σ_phase [ρ_phase * (c_phase + c_r) * V_cell]
+             + ρ_gas * S_o * V * (∂α_Rs/∂P)
+             + ρ_gas * S_w * V * (∂α_Rsw/∂P)
+
+    where:
+        - M is total mass in the cell
+        - ρ_phase is phase density
+        - c_phase is phase compressibility
+        - c_r is rock compressibility
+        - V_cell is pore volume
+        - α_Rs = (B_g / B_o) * Rs is the dissolved gas-to-oil contribution factor
+        - α_Rsw = (B_g / B_w) * Rsw is the dissolved gas-in-water contribution factor
+        - S_o, S_w are saturation fractions
+
+    :param pore_volume_grid: Pore volume grid (ft³)
+    :param rock_compressibility: Rock compressibility (psi⁻¹), scalar or grid
+    :param water_mass_grid: Water mass grid (lbm)
+    :param oil_mass_grid: Oil mass grid (lbm)
+    :param free_gas_mass_grid: Free gas mass grid (lbm)
+    :param dissolved_gas_mass_in_oil_grid: Dissolved gas in oil mass grid (lbm)
+    :param dissolved_gas_mass_in_water_grid: Dissolved gas in water mass grid (lbm)
+    :param water_compressibility_grid: Water compressibility grid (psi⁻¹)
+    :param oil_compressibility_grid: Oil compressibility grid (psi⁻¹)
+    :param gas_compressibility_grid: Gas compressibility grid (psi⁻¹)
+    :param gas_density_grid: Gas density grid (lbm/ft³)
+    :param water_saturation_grid: Water saturation grid (fraction)
+    :param oil_saturation_grid: Oil saturation grid (fraction)
+    :param solution_gas_to_oil_ratio_grid: Solution gas-to-oil ratio grid (scf/STB)
+    :param gas_solubility_in_water_grid: Gas solubility in water grid (scf/STB)
+    :param gas_formation_volume_factor_grid: Gas formation volume factor grid (ft³/scf)
+    :param oil_formation_volume_factor_grid: Oil formation volume factor grid (bbl/STB)
+    :param water_formation_volume_factor_grid: Water formation volume factor grid (bbl/STB)
+    :param solution_gor_pressure_derivative_grid: Pressure derivative of solution GOR (scf/STB.psi)
+    :param gas_solubility_in_water_pressure_derivative_grid: Pressure derivative of gas solubility in water (scf/STB.psi)
+    :return: Mass accumulation derivative grid (lbm/psi)
+    """
+    oil_alpha_solution_gor_pressure_derivative_grid = (
+        gas_formation_volume_factor_grid / oil_formation_volume_factor_grid
+    ) * solution_gor_pressure_derivative_grid - (
+        solution_gas_to_oil_ratio_grid
+        * gas_formation_volume_factor_grid
+        / oil_formation_volume_factor_grid
+    ) * (gas_compressibility_grid - oil_compressibility_grid)
+    water_alpha_gas_solubility_in_water_pressure_derivative_grid = (
+        gas_formation_volume_factor_grid / water_formation_volume_factor_grid
+    ) * gas_solubility_in_water_pressure_derivative_grid - (
+        gas_solubility_in_water_grid
+        * gas_formation_volume_factor_grid
+        / water_formation_volume_factor_grid
+    ) * (gas_compressibility_grid - water_compressibility_grid)
+
+    mass_accumulation_derivative_grid = (
+        oil_mass_grid * (oil_compressibility_grid + rock_compressibility)
+        + water_mass_grid * (water_compressibility_grid + rock_compressibility)
+        + free_gas_mass_grid * (gas_compressibility_grid + rock_compressibility)
+        + dissolved_gas_mass_in_oil_grid
+        * (gas_compressibility_grid + rock_compressibility)
+        + dissolved_gas_mass_in_water_grid
+        * (gas_compressibility_grid + rock_compressibility)
+        + (
+            gas_density_grid
+            * oil_saturation_grid
+            * pore_volume_grid
+            * oil_alpha_solution_gor_pressure_derivative_grid
+        )
+        + (
+            gas_density_grid
+            * water_saturation_grid
+            * pore_volume_grid
+            * water_alpha_gas_solubility_in_water_pressure_derivative_grid
+        )
+    )
+    return mass_accumulation_derivative_grid
+
+
 @numba.njit(parallel=True, cache=True)
 def compute_accumulation_contributions(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-    pore_volume_grid: ThreeDimensionalGrid,
-    total_compressibility_grid: ThreeDimensionalGrid,
+    mass_accumulation_derivative_grid: ThreeDimensionalGrid,
     current_pressure_grid: ThreeDimensionalGrid,
     time_step_size_in_days: float,
     dtype: npt.DTypeLike,
@@ -575,13 +885,7 @@ def compute_accumulation_contributions(
     :param cell_count_x: Number of cells in x-direction
     :param cell_count_y: Number of cells in y-direction
     :param cell_count_z: Number of cells in z-direction
-    :param thickness_grid: Cell thickness grid (ft)
-    :param porosity_grid: Cell porosity grid (fraction)
-    :param net_to_gross_grid: Cell net-to-gross ratio grid (fraction)
-    :param total_compressibility_grid: Total compressibility grid (1/psi)
     :param current_pressure_grid: Current oil pressure grid (psi)
-    :param cell_size_x: Cell size in x-direction (ft)
-    :param cell_size_y: Cell size in y-direction (ft)
     :param time_step_size_in_days: Time step size (days)
     :param dtype: Data type for arrays (np.float32 or np.float64)
     :return: Tuple of (diagonal_values, rhs_values) both 1D arrays of length `interior_cell_count`
@@ -603,9 +907,8 @@ def compute_accumulation_contributions(
                 )
                 # Accumulation term coefficient
                 accumulation_coefficient = (
-                    pore_volume_grid[i, j, k] * total_compressibility_grid[i, j, k]
-                ) / time_step_size_in_days
-
+                    mass_accumulation_derivative_grid[i, j, k] / time_step_size_in_days
+                )
                 diagonal_values[cell_1D_index] = accumulation_coefficient
                 rhs_values[cell_1D_index] = (
                     accumulation_coefficient * current_pressure_grid[i, j, k]
@@ -632,9 +935,15 @@ def assemble_flux_contributions(
     oil_density_grid: ThreeDimensionalGrid,
     water_density_grid: ThreeDimensionalGrid,
     gas_density_grid: ThreeDimensionalGrid,
+    solution_gas_to_oil_ratio_grid: ThreeDimensionalGrid,
+    gas_solubility_in_water_grid: ThreeDimensionalGrid,
+    oil_formation_volume_factor_grid: ThreeDimensionalGrid,
+    water_formation_volume_factor_grid: ThreeDimensionalGrid,
+    gas_formation_volume_factor_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
     gravitational_constant: float,
     md_per_cp_to_ft2_per_psi_per_day: float,
+    bbl_to_ft3: float,
     dtype: npt.DTypeLike,
 ) -> typing.Tuple[
     npt.NDArray,  # sparse_row_indices
@@ -865,9 +1174,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     east_idx = to_1D_index(
                         i=ei,
@@ -916,9 +1231,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -953,9 +1274,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -988,9 +1315,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     south_idx = to_1D_index(
                         i=si,
@@ -1032,9 +1365,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -1066,9 +1405,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -1101,9 +1446,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     bottom_idx = to_1D_index(
                         i=bi,
@@ -1145,9 +1496,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -1179,9 +1536,15 @@ def assemble_flux_contributions(
                         oil_density_grid=oil_density_grid,
                         water_density_grid=water_density_grid,
                         gas_density_grid=gas_density_grid,
+                        solution_gas_to_oil_ratio_grid=solution_gas_to_oil_ratio_grid,
+                        gas_solubility_in_water_grid=gas_solubility_in_water_grid,
+                        gas_formation_volume_factor_grid=gas_formation_volume_factor_grid,
+                        oil_formation_volume_factor_grid=oil_formation_volume_factor_grid,
+                        water_formation_volume_factor_grid=water_formation_volume_factor_grid,
                         elevation_grid=elevation_grid,
                         gravitational_constant=gravitational_constant,
                         md_per_cp_to_ft2_per_psi_per_day=md_per_cp_to_ft2_per_psi_per_day,
+                        bbl_to_ft3=bbl_to_ft3,
                     )
                     thread_owner_cell[ii, local_slot] = this_cell_idx
                     thread_transmissibility[ii, local_slot] = T
@@ -1291,30 +1654,45 @@ def compute_face_fluxes(
     oil_density_grid: ThreeDimensionalGrid,
     water_density_grid: ThreeDimensionalGrid,
     gas_density_grid: ThreeDimensionalGrid,
+    solution_gas_to_oil_ratio_grid: ThreeDimensionalGrid,
+    gas_solubility_in_water_grid: ThreeDimensionalGrid,
+    oil_formation_volume_factor_grid: ThreeDimensionalGrid,
+    water_formation_volume_factor_grid: ThreeDimensionalGrid,
+    gas_formation_volume_factor_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
     gravitational_constant: float,
     md_per_cp_to_ft2_per_psi_per_day: float,
+    bbl_to_ft3: float,
 ) -> typing.Tuple[float, float, float]:
     """
-    Computes and returns a tuple of the total transmissibility of the phases, the capillary flux,
-    and the gravity flux from the neighbour to the current cell.
+    Computes and returns a tuple containing the total mass transmissibility,
+    capillary mass flux, and gravity mass flux from the neighbour to the
+    current cell for the mass-conservative pressure equation.
 
     :param cell_indices: Indices of the current cell (i, j, k)
-    :param neighbour_indices: Indices of the neighbouring cell (i±1, j, k) or (i, j±1, k) or (i, j, k±1)
-    :param face_transmissibility: Transmissibility of the face between the current cell and the neighbour (ft³/psi.day)
-    :param water_relative_mobility_grid: 3D grid of water mobilities (ft²/psi.day)
-    :param oil_relative_mobility_grid: 3D grid of oil mobilities (ft²/psi.day)
-    :param gas_relative_mobility_grid: 3D grid of gas mobilities (ft²/psi.day)
-    :param oil_water_capillary_pressure_grid: 3D grid of oil-water capillary pressures (psi)
-    :param gas_oil_capillary_pressure_grid: 3D grid of gas-oil capillary pressures (psi)
-    :param oil_density_grid: 3D grid of oil densities (lb/ft³)
-    :param water_density_grid: 3D grid of water densities (lb/ft³)
-    :param gas_density_grid: 3D grid of gas densities (lb/ft³)
-    :param elevation_grid: 3D grid of elevations (ft)
-    :return: A tuple containing:
-        - Total transmissibility (ft³/psi.day)
-        - Total capillary flux (ft³/day)
-        - Total gravity flux (ft³/day)
+    :param neighbour_indices: Indices of the neighbouring cell
+    :param face_transmissibility: Face transmissibility (ft³/psi.day)
+    :param water_relative_mobility_grid: Water relative mobility grid
+    :param oil_relative_mobility_grid: Oil relative mobility grid
+    :param gas_relative_mobility_grid: Gas relative mobility grid
+    :param oil_water_capillary_pressure_grid: Oil-water capillary pressure grid (psi)
+    :param gas_oil_capillary_pressure_grid: Gas-oil capillary pressure grid (psi)
+    :param oil_density_grid: Oil density grid (lbm/ft³)
+    :param water_density_grid: Water density grid (lbm/ft³)
+    :param gas_density_grid: Gas density grid (lbm/ft³)
+    :param solution_gas_to_oil_ratio_grid: Solution gas-oil ratio grid (scf/STB)
+    :param gas_solubility_in_water_grid: Gas solubility in water grid (scf/STB)
+    :param oil_formation_volume_factor_grid: Oil formation volume factor grid (rb/STB)
+    :param water_formation_volume_factor_grid: Water formation volume factor grid (rb/STB)
+    :param gas_formation_volume_factor_grid: Gas formation volume factor grid (rb/MSCF)
+    :param elevation_grid: Elevation grid (ft)
+    :param gravitational_constant: Gravitational acceleration (ft/s²)
+    :param md_per_cp_to_ft2_per_psi_per_day: Unit conversion factor
+
+    :return: Tuple containing:
+        - Total mass transmissibility (lbm/psi.day)
+        - Total capillary mass flux (lbm/day)
+        - Total gravity mass flux (lbm/day)
     """
     oil_water_capillary_pressure_difference = (
         oil_water_capillary_pressure_grid[neighbour_indices]
@@ -1325,14 +1703,14 @@ def compute_face_fluxes(
         - gas_oil_capillary_pressure_grid[cell_indices]
     )
 
-    # Calculate the elevation difference between the neighbour and current cell
     elevation_difference = (
         elevation_grid[neighbour_indices] - elevation_grid[cell_indices]
     )
-    # Determine the average densities for each phase across the face
+
     average_water_density = (
         water_density_grid[neighbour_indices] + water_density_grid[cell_indices]
     ) * 0.5
+
     average_oil_density = (
         oil_density_grid[neighbour_indices] + oil_density_grid[cell_indices]
     ) * 0.5
@@ -1345,13 +1723,42 @@ def compute_face_fluxes(
             gas_density_grid[neighbour_indices] + gas_density_grid[cell_indices]
         ) * 0.5
     else:
-        # Use logarithmic average for gas as arithmetic averaging can badly misrepresent
-        # hydrostatic balance for compressible gas.
         average_gas_density = (
             gas_density_grid[neighbour_indices] - gas_density_grid[cell_indices]
         ) / np.log(gas_density_grid[neighbour_indices] / gas_density_grid[cell_indices])
 
-    # Calculate harmonic relative mobilities for each phase across the face
+    average_solution_gas_to_oil_ratio = (
+        solution_gas_to_oil_ratio_grid[neighbour_indices]
+        + solution_gas_to_oil_ratio_grid[cell_indices]
+    ) * 0.5
+    average_gas_solubility_in_water = (
+        gas_solubility_in_water_grid[neighbour_indices]
+        + gas_solubility_in_water_grid[cell_indices]
+    ) * 0.5
+    average_oil_formation_volume_factor = (
+        oil_formation_volume_factor_grid[neighbour_indices]
+        + oil_formation_volume_factor_grid[cell_indices]
+    ) * 0.5
+    average_water_formation_volume_factor = (
+        water_formation_volume_factor_grid[neighbour_indices]
+        + water_formation_volume_factor_grid[cell_indices]
+    ) * 0.5
+    average_gas_formation_volume_factor = (
+        gas_formation_volume_factor_grid[neighbour_indices]
+        + gas_formation_volume_factor_grid[cell_indices]
+    ) * 0.5
+
+    alpha_solution_gor = (
+        average_solution_gas_to_oil_ratio
+        * average_gas_formation_volume_factor
+        / (bbl_to_ft3 * average_oil_formation_volume_factor)
+    )
+    alpha_gas_solubility_in_water = (
+        average_gas_solubility_in_water
+        * average_gas_formation_volume_factor
+        / (bbl_to_ft3 * average_water_formation_volume_factor)
+    )
+
     water_harmonic_relative_mobility = compute_harmonic_mean(
         water_relative_mobility_grid[neighbour_indices],
         water_relative_mobility_grid[cell_indices],
@@ -1364,33 +1771,33 @@ def compute_face_fluxes(
         gas_relative_mobility_grid[neighbour_indices],
         gas_relative_mobility_grid[cell_indices],
     )
-    total_harmonic_relative_mobility = (
-        water_harmonic_relative_mobility
-        + oil_harmonic_relative_mobility
-        + gas_harmonic_relative_mobility
-    )
-    if total_harmonic_relative_mobility <= 0.0:
-        # No flow can occur if there is no mobility
+
+    water_mass_mobility = (
+        average_water_density + average_gas_density * alpha_gas_solubility_in_water
+    ) * water_harmonic_relative_mobility
+    oil_mass_mobility = (
+        average_oil_density + average_gas_density * alpha_solution_gor
+    ) * oil_harmonic_relative_mobility
+    gas_mass_mobility = average_gas_density * gas_harmonic_relative_mobility
+    total_mass_mobility = water_mass_mobility + oil_mass_mobility + gas_mass_mobility
+
+    if total_mass_mobility <= 0.0:
         return 0.0, 0.0, 0.0
 
-    # λ_w * T_face * (P_cow_{n+1} - P_cow_{n}) (ft³/psi.day * psi = ft³/day)
     water_capillary_flux = (
-        water_harmonic_relative_mobility
+        water_mass_mobility
         * face_transmissibility
         * oil_water_capillary_pressure_difference
         * md_per_cp_to_ft2_per_psi_per_day
     )
-    # λ_g * T_face * (P_cgo_{n+1} - P_cgo_{n}) (ft³/psi.day * psi = ft³/day)
     gas_capillary_flux = (
-        gas_harmonic_relative_mobility
+        gas_mass_mobility
         * face_transmissibility
         * gas_oil_capillary_pressure_difference
         * md_per_cp_to_ft2_per_psi_per_day
     )
-    # Total capillary flux from the neighbour (ft³/day)
     total_capillary_flux = water_capillary_flux + gas_capillary_flux
 
-    # Calculate the phase gravity potentials (hydrostatic/gravity head)
     water_gravity_potential = (
         average_water_density * gravitational_constant * elevation_difference
     ) / 144.0
@@ -1400,29 +1807,28 @@ def compute_face_fluxes(
     gas_gravity_potential = (
         average_gas_density * gravitational_constant * elevation_difference
     ) / 144.0
-    # Total gravity flux (ft³/day)
+
     water_gravity_flux = (
-        water_harmonic_relative_mobility
+        water_mass_mobility
         * face_transmissibility
         * water_gravity_potential
         * md_per_cp_to_ft2_per_psi_per_day
     )
     oil_gravity_flux = (
-        oil_harmonic_relative_mobility
+        oil_mass_mobility
         * face_transmissibility
         * oil_gravity_potential
         * md_per_cp_to_ft2_per_psi_per_day
     )
     gas_gravity_flux = (
-        gas_harmonic_relative_mobility
+        gas_mass_mobility
         * face_transmissibility
         * gas_gravity_potential
         * md_per_cp_to_ft2_per_psi_per_day
     )
     total_gravity_flux = water_gravity_flux + oil_gravity_flux + gas_gravity_flux
-    total_transmissibility = (
-        total_harmonic_relative_mobility
-        * face_transmissibility
-        * md_per_cp_to_ft2_per_psi_per_day
+
+    total_mass_transmissibility = (
+        total_mass_mobility * face_transmissibility * md_per_cp_to_ft2_per_psi_per_day
     )
-    return (total_transmissibility, total_capillary_flux, total_gravity_flux)
+    return (total_mass_transmissibility, total_capillary_flux, total_gravity_flux)

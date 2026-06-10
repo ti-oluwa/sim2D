@@ -2045,21 +2045,21 @@ def apply_updates(
                     new_gas_saturation = 0.0
                     new_free_gas_mass = 0.0
 
-                # TODO: Might remove as proper CFL handling should not let this happen
-                # Apply total constraint: So = 1 - Sw - Sg (absorb residual into oil)
-                total_saturation = (
-                    new_water_saturation + new_oil_saturation + new_gas_saturation
-                )
-                if total_saturation > 1.0:
-                    # Gas is least constrained physically so we cap it first
-                    excess = total_saturation - 1.0
-                    new_gas_saturation -= excess
-                    if new_gas_saturation < 0.0:
-                        new_oil_saturation += new_gas_saturation
-                        new_gas_saturation = 0.0
-                    new_free_gas_mass = (
-                        new_gas_saturation * current_gas_density * cell_pore_volume
-                    )
+                # # TODO: Might remove as proper CFL handling should not let this happen
+                # # Apply total constraint: So = 1 - Sw - Sg (absorb residual into oil)
+                # total_saturation = (
+                #     new_water_saturation + new_oil_saturation + new_gas_saturation
+                # )
+                # if total_saturation > 1.0:
+                #     # Gas is least constrained physically so we cap it first
+                #     excess = total_saturation - 1.0
+                #     new_gas_saturation -= excess
+                #     if new_gas_saturation < 0.0:
+                #         new_oil_saturation += new_gas_saturation
+                #         new_gas_saturation = 0.0
+                #     new_free_gas_mass = (
+                #         new_gas_saturation * current_gas_density * cell_pore_volume
+                #     )
 
                 new_water_saturation_grid[i, j, k] = new_water_saturation
                 new_oil_saturation_grid[i, j, k] = new_oil_saturation

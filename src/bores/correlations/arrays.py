@@ -1449,8 +1449,8 @@ def compute_gas_to_oil_ratio(
     Solution GOR is the amount of gas dissolved in oil at a given pressure and temperature.
 
     Two regimes:
-        - **Saturated region (P < Pb)**: GOR is pressure-dependent.
-        - **Undersaturated region (P >= Pb)**: GOR = GORb (constant). If not given, it is computed.
+    - **Saturated region (P < Pb)**: GOR is pressure-dependent.
+    - **Undersaturated region (P >= Pb)**: GOR = GORb (constant). If not given, it is computed.
 
     The Vazquez-Beggs formula is:
 
