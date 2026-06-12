@@ -555,7 +555,7 @@ def check_zero_flow_initialization(
         net_water_mass_flux_grid,
         net_oil_mass_flux_grid,
         net_gas_mass_flux_grid,
-        _,
+        _, _,
     ) = assemble_flux_contributions(
         pressure_grid=pressure_grid,
         cell_count_x=cell_count_x,

@@ -255,7 +255,7 @@ def compute_well_rates(
                         pressure=cell_pressure,
                         temperature=cell_temperature,
                         viscosity=phase_viscosity,
-                        eta=0.001,
+                        eta=1e-3,
                     ),
                 )
             else:
@@ -279,7 +279,7 @@ def compute_well_rates(
                         pressure=cell_pressure,
                         temperature=cell_temperature,
                         viscosity=phase_viscosity,
-                        eta=0.001,
+                        eta=1e-3,
                     ),
                 )
 

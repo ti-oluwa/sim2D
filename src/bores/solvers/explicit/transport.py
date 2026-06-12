@@ -160,6 +160,7 @@ def solve_transport(
         net_oil_mass_flux_grid,
         net_total_gas_mass_flux_grid,
         net_mass_outflow_grid,
+        net_mass_inflow_grid,
     ) = assemble_flux_contributions(
         pressure_grid=pressure_grid,
         cell_count_x=cell_count_x,
@@ -225,6 +226,9 @@ def solve_transport(
         new_free_gas_mass_grid=current_free_gas_mass_grid.copy(),
         new_dissolved_gas_mass_in_oil_grid=current_dissolved_gas_mass_in_oil_grid.copy(),
         new_dissolved_gas_mass_in_water_grid=current_dissolved_gas_mass_in_water_grid.copy(),
+        current_water_saturation_grid=current_water_saturation_grid,
+        current_oil_saturation_grid=current_oil_saturation_grid,
+        current_gas_saturation_grid=current_gas_saturation_grid,
         current_water_mass_grid=current_water_mass_grid,
         current_oil_mass_grid=current_oil_mass_grid,
         current_free_gas_mass_grid=current_free_gas_mass_grid,
@@ -234,6 +238,7 @@ def solve_transport(
         net_oil_mass_flux_grid=net_oil_mass_flux_grid,
         net_total_gas_mass_flux_grid=net_total_gas_mass_flux_grid,
         net_mass_outflow_grid=net_mass_outflow_grid,
+        net_mass_inflow_grid=net_mass_inflow_grid,
         net_water_well_rate_grid=net_water_well_rate_grid,
         net_oil_well_rate_grid=net_oil_well_rate_grid,
         net_water_well_mass_rate_grid=net_water_well_mass_rate_grid,
@@ -611,6 +616,7 @@ def assemble_flux_contributions(
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
+    ThreeDimensionalGrid,
 ]:
     """
     Compute net mass fluxes into each cell from all six face neighbours, plus
@@ -643,8 +649,15 @@ def assemble_flux_contributions(
     :param gravitational_constant: g/gc conversion factor (lbf/lbm).
     :param md_per_cp_to_ft2_per_psi_per_day: Unit conversion factor.
     :param dtype: Numpy dtype for output arrays.
-    :return: Tuple of (`net_water_mass_flux_grid`, `net_total_gas_mass_flux_grid`,
-        `net_mass_outflow_grid`). Mass flux units are lbm/day.
+    :return: Tuple of
+        (
+        `net_water_mass_flux_grid`,
+        `net_oil_mass_flux_grid`,
+        `net_total_gas_mass_flux_grid`,
+        `net_mass_outflow_grid`
+        `net_mass_inflow_grid`
+        ).
+        Mass flux units are lbm/day.
     """
     net_water_mass_flux_grid = np.zeros(
         (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
@@ -655,8 +668,11 @@ def assemble_flux_contributions(
     net_total_gas_mass_flux_grid = np.zeros(
         (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
     )
-    # Total mass outflow per cell used for CFL checks
+    # Total mass inflow/outflow per cell used for CFL checks
     net_mass_outflow_grid = np.zeros(
+        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
+    )
+    net_mass_inflow_grid = np.zeros(
         (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
     )
 
@@ -702,6 +718,7 @@ def assemble_flux_contributions(
                 net_oil_mass_flux = 0.0
                 net_total_gas_mass_flux = 0.0
                 mass_outflow = 0.0
+                mass_inflow = 0.0
 
                 # EAST (i+1, j, k)
                 east_i = i + 1
@@ -779,9 +796,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -790,10 +814,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     pei, pej, pek = east_i + 1, j + 1, k + 1
                     pressure_boundary = pressure_boundaries[pei, pej, pek]
@@ -820,9 +851,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -833,9 +875,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[pei, pej, pek]
@@ -864,9 +915,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -877,9 +939,18 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 # WEST (i-1, j, k)
@@ -956,9 +1027,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -967,10 +1045,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     pressure_boundary = pressure_boundaries[pwi, pwj, pwk]
                     if not np.isnan(pressure_boundary):
@@ -996,9 +1081,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -1009,9 +1105,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[pwi, pwj, pwk]
@@ -1040,9 +1145,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -1053,9 +1169,18 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 # SOUTH (i, j+1, k)
@@ -1133,9 +1258,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -1144,10 +1276,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     psi, psj, psk = i + 1, south_j + 1, k + 1
                     pressure_boundary = pressure_boundaries[psi, psj, psk]
@@ -1174,9 +1313,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -1187,9 +1337,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[psi, psj, psk]
@@ -1218,9 +1377,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -1231,9 +1401,18 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 # NORTH (i, j-1, k)
@@ -1310,9 +1489,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -1321,10 +1507,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     pressure_boundary = pressure_boundaries[pni, pnj, pnk]
                     if not np.isnan(pressure_boundary):
@@ -1350,9 +1543,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -1363,9 +1567,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[pni, pnj, pnk]
@@ -1394,9 +1607,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -1407,9 +1631,18 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 # BOTTOM (i, j, k+1)
@@ -1487,9 +1720,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -1498,10 +1738,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     pbi, pbj, pbk = i + 1, j + 1, bottom_k + 1
                     pressure_boundary = pressure_boundaries[pbi, pbj, pbk]
@@ -1528,9 +1775,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -1541,9 +1799,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[pbi, pbj, pbk]
@@ -1572,9 +1839,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -1585,9 +1863,18 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 # TOP (i, j, k-1)
@@ -1663,9 +1950,16 @@ def assemble_flux_contributions(
                     )
                     oil_mass_outflow = abs(min(0.0, oil_flux)) * upwind_oil_density
                     gas_mass_outflow = abs(min(0.0, gas_flux)) * upwind_gas_density
+                    water_mass_inflow = abs(max(0.0, water_flux)) * upwind_water_density
+                    oil_mass_inflow = abs(max(0.0, oil_flux)) * upwind_oil_density
+                    gas_mass_inflow = abs(max(0.0, gas_flux)) * upwind_gas_density
                     # Dissolved gas leaving with outflowing oil/water
                     if oil_flux < 0.0:
                         gas_mass_outflow += (
+                            upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
+                        )
+                    else:
+                        gas_mass_inflow += (
                             upwind_gas_density * face_alpha_solution_gor * abs(oil_flux)
                         )
                     if water_flux < 0.0:
@@ -1674,10 +1968,17 @@ def assemble_flux_contributions(
                             * face_alpha_gas_solubility_in_water
                             * abs(water_flux)
                         )
+                    else:
+                        gas_mass_inflow += (
+                            upwind_gas_density
+                            * face_alpha_gas_solubility_in_water
+                            * abs(water_flux)
+                        )
 
                     mass_outflow += (
                         water_mass_outflow + oil_mass_outflow + gas_mass_outflow
                     )
+                    mass_inflow += water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                 else:
                     pressure_boundary = pressure_boundaries[pti, ptj, ptk]
                     if not np.isnan(pressure_boundary):
@@ -1703,9 +2004,20 @@ def assemble_flux_contributions(
                         )
                         oil_mass_outflow = abs(min(0.0, oil_flux)) * cell_oil_density
                         gas_mass_outflow = abs(min(0.0, gas_flux)) * cell_gas_density
+                        water_mass_inflow = (
+                            abs(max(0.0, water_flux)) * cell_water_density
+                        )
+                        oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                        gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                         # Dissolved gas leaving with outflowing oil/water
                         if oil_flux < 0.0:
                             gas_mass_outflow += (
+                                cell_gas_density
+                                * cell_alpha_solution_gor
+                                * abs(oil_flux)
+                            )
+                        else:
+                            gas_mass_inflow += (
                                 cell_gas_density
                                 * cell_alpha_solution_gor
                                 * abs(oil_flux)
@@ -1716,9 +2028,18 @@ def assemble_flux_contributions(
                                 * cell_alpha_gas_solubility_in_water
                                 * abs(water_flux)
                             )
+                        else:
+                            gas_mass_inflow += (
+                                cell_gas_density
+                                * cell_alpha_gas_solubility_in_water
+                                * abs(water_flux)
+                            )
 
                         mass_outflow += (
                             water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                        )
+                        mass_inflow += (
+                            water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                         )
                     else:
                         flux_boundary = flux_boundaries[pti, ptj, ptk]
@@ -1747,9 +2068,20 @@ def assemble_flux_contributions(
                             gas_mass_outflow = (
                                 abs(min(0.0, gas_flux)) * cell_gas_density
                             )
+                            water_mass_inflow = (
+                                abs(max(0.0, water_flux)) * cell_water_density
+                            )
+                            oil_mass_inflow = abs(max(0.0, oil_flux)) * cell_oil_density
+                            gas_mass_inflow = abs(max(0.0, gas_flux)) * cell_gas_density
                             # Dissolved gas leaving with outflowing oil/water
                             if oil_flux < 0.0:
                                 gas_mass_outflow += (
+                                    cell_gas_density
+                                    * cell_alpha_solution_gor
+                                    * abs(oil_flux)
+                                )
+                            else:
+                                gas_mass_inflow += (
                                     cell_gas_density
                                     * cell_alpha_solution_gor
                                     * abs(oil_flux)
@@ -1760,21 +2092,32 @@ def assemble_flux_contributions(
                                     * cell_alpha_gas_solubility_in_water
                                     * abs(water_flux)
                                 )
+                            else:
+                                gas_mass_inflow += (
+                                    cell_gas_density
+                                    * cell_alpha_gas_solubility_in_water
+                                    * abs(water_flux)
+                                )
 
                             mass_outflow += (
                                 water_mass_outflow + oil_mass_outflow + gas_mass_outflow
+                            )
+                            mass_inflow += (
+                                water_mass_inflow + oil_mass_inflow + gas_mass_inflow
                             )
 
                 net_water_mass_flux_grid[i, j, k] = net_water_mass_flux
                 net_oil_mass_flux_grid[i, j, k] = net_oil_mass_flux
                 net_total_gas_mass_flux_grid[i, j, k] = net_total_gas_mass_flux
                 net_mass_outflow_grid[i, j, k] = mass_outflow
+                net_mass_inflow_grid[i, j, k] = mass_inflow
 
     return (
         net_water_mass_flux_grid,
         net_oil_mass_flux_grid,
         net_total_gas_mass_flux_grid,
         net_mass_outflow_grid,
+        net_mass_inflow_grid,
     )
 
 
@@ -1788,6 +2131,9 @@ def apply_updates(
     new_free_gas_mass_grid: ThreeDimensionalGrid,
     new_dissolved_gas_mass_in_oil_grid: ThreeDimensionalGrid,
     new_dissolved_gas_mass_in_water_grid: ThreeDimensionalGrid,
+    current_water_saturation_grid: ThreeDimensionalGrid,
+    current_oil_saturation_grid: ThreeDimensionalGrid,
+    current_gas_saturation_grid: ThreeDimensionalGrid,
     current_water_mass_grid: ThreeDimensionalGrid,
     current_oil_mass_grid: ThreeDimensionalGrid,
     current_free_gas_mass_grid: ThreeDimensionalGrid,
@@ -1797,6 +2143,7 @@ def apply_updates(
     net_oil_mass_flux_grid: ThreeDimensionalGrid,
     net_total_gas_mass_flux_grid: ThreeDimensionalGrid,
     net_mass_outflow_grid: ThreeDimensionalGrid,
+    net_mass_inflow_grid: ThreeDimensionalGrid,
     net_water_well_rate_grid: ThreeDimensionalGrid,
     net_oil_well_rate_grid: ThreeDimensionalGrid,
     net_water_well_mass_rate_grid: ThreeDimensionalGrid,
@@ -1833,7 +2180,7 @@ def apply_updates(
     Apply mass-based saturation updates using explicit forward Euler.
 
     The CFL check is performed on total mass outflow (from `net_mass_outflow_grid`)
-    plus well outflows, relative to total fluid mass in the cell.
+    plus well mass outflows, relative to total fluid mass in the cell.
 
     :param new_water_saturation_grid: Output water saturation (modified in-place).
     :param new_oil_saturation_grid: Output oil saturation (modified in-place).
@@ -1913,6 +2260,9 @@ def apply_updates(
                 current_water_density = current_water_density_grid[i, j, k]
                 current_gas_density = current_gas_density_grid[i, j, k]
                 current_oil_density = current_oil_density_grid[i, j, k]
+                current_water_saturation = current_water_saturation_grid[i, j, k]
+                current_gas_saturation = current_gas_saturation_grid[i, j, k]
+                current_oil_saturation = current_oil_saturation_grid[i, j, k]
 
                 # CFL
                 water_well_mass_outflow = abs(
@@ -1920,6 +2270,12 @@ def apply_updates(
                 )
                 oil_well_mass_outflow = abs(
                     min(0.0, net_oil_well_mass_rate_grid[i, j, k])
+                )
+                water_well_mass_inflow = abs(
+                    max(0.0, net_water_well_mass_rate_grid[i, j, k])
+                )
+                oil_well_mass_inflow = abs(
+                    max(0.0, net_oil_well_mass_rate_grid[i, j, k])
                 )
                 dissolved_gas_well_mass_outflow = (
                     current_gas_density
@@ -1933,12 +2289,23 @@ def apply_updates(
                     min(0.0, net_gas_well_mass_rate_grid[i, j, k])
                     + dissolved_gas_well_mass_outflow
                 )
+                gas_well_mass_inflow = abs(
+                    max(0.0, net_gas_well_mass_rate_grid[i, j, k])
+                )
+
                 total_mass_outflow = (
                     net_mass_outflow_grid[i, j, k]
                     + water_well_mass_outflow
                     + oil_well_mass_outflow
                     + gas_well_mass_outflow
                 )
+                total_mass_inflow = (
+                    net_mass_inflow_grid[i, j, k]
+                    + water_well_mass_inflow
+                    + oil_well_mass_inflow
+                    + gas_well_mass_inflow
+                )
+
                 current_total_gas_mass = (
                     current_free_gas_mass_grid[i, j, k]
                     + current_dissolved_gas_mass_in_oil_grid[i, j, k]
@@ -1949,9 +2316,45 @@ def apply_updates(
                     + current_water_mass_grid[i, j, k]
                     + current_total_gas_mass
                 )
-                cfl_grid[i, j, k] = (
-                    total_mass_outflow * time_step_in_days
-                ) / current_total_mass
+
+                maximum_mass_capacity = cell_pore_volume * (
+                    current_water_density * current_water_saturation
+                    + current_oil_density * current_oil_saturation
+                    + current_gas_density * current_gas_saturation
+                )
+                available_pore_fraction = max(
+                    1
+                    - (
+                        current_water_saturation
+                        + current_oil_saturation
+                        + current_gas_saturation
+                    ),
+                    0.0,
+                )
+                # We estimate the mass mass capacity of the cell as:
+                # Current mass already occupying the pore volume
+                # +
+                # Remaining empty pore volume filled by densest phase
+                maximum_mass_capacity += (
+                    cell_pore_volume
+                    * available_pore_fraction
+                    * max(
+                        current_water_density, current_oil_density, current_gas_density
+                    )
+                )
+                useable_mass_capacity = max(
+                    maximum_mass_capacity - current_total_mass, 0.0
+                )
+                total_mass_removed = total_mass_outflow * time_step_in_days
+                total_mass_added = total_mass_inflow * time_step_in_days
+
+                # Ensures we dont put more mass than the cell can take (mostly from injectors)
+                net_mass_added = max(0.0, total_mass_added - total_mass_removed)
+                inflow_cfl = net_mass_added / max(useable_mass_capacity, 1e-30)
+
+                # Ensures we dont have negative mass left in the cell (mostly from producers)
+                outflow_cfl = total_mass_removed / max(current_total_mass, 1e-30)
+                cfl_grid[i, j, k] = max(outflow_cfl, inflow_cfl)
 
                 # Water mass update
                 new_water_mass = (
@@ -1999,6 +2402,7 @@ def apply_updates(
                     new_total_gas_mass < 0.0
                 ):  # Should not happen due to CFL check but we guard against it
                     new_total_gas_mass = 0.0
+
                 dissolved_gas_mass_in_oil = (
                     current_gas_density
                     * alpha_solution_gor
@@ -2044,22 +2448,6 @@ def apply_updates(
                 if new_gas_saturation < 0.0:
                     new_gas_saturation = 0.0
                     new_free_gas_mass = 0.0
-
-                # # TODO: Might remove as proper CFL handling should not let this happen
-                # # Apply total constraint: So = 1 - Sw - Sg (absorb residual into oil)
-                # total_saturation = (
-                #     new_water_saturation + new_oil_saturation + new_gas_saturation
-                # )
-                # if total_saturation > 1.0:
-                #     # Gas is least constrained physically so we cap it first
-                #     excess = total_saturation - 1.0
-                #     new_gas_saturation -= excess
-                #     if new_gas_saturation < 0.0:
-                #         new_oil_saturation += new_gas_saturation
-                #         new_gas_saturation = 0.0
-                #     new_free_gas_mass = (
-                #         new_gas_saturation * current_gas_density * cell_pore_volume
-                #     )
 
                 new_water_saturation_grid[i, j, k] = new_water_saturation
                 new_oil_saturation_grid[i, j, k] = new_oil_saturation

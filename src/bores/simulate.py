@@ -696,6 +696,18 @@ def _run_impes_step(
     )
     solvent_concentration_grid = transport_solution.solvent_concentration_grid
 
+    if np.any((gas_saturation_grid > 1) | (oil_saturation_grid > 1)):
+        print(
+            f"Gas saturation: {gas_saturation_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}, ",
+            f"Oil saturation: {oil_saturation_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}, ",
+            f"Water saturation: {water_saturation_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}, ",
+            f"Pressure: {new_pressure_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}, ",
+            f"Free gas mass: {free_gas_mass_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}, "
+            f"Dissolved gas mass: {dissolved_gas_mass_in_oil_grid[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]},",
+            f"Affected cells: {np.argwhere((gas_saturation_grid > 1) | (oil_saturation_grid > 1))}, ",
+            f"Available Capacity: {((1.0 - water_saturation_grid - oil_saturation_grid) * fluid_properties.gas_density_grid * new_pore_volume_grid)[(gas_saturation_grid > 1) | (oil_saturation_grid > 1)]}",
+        )
+
     if solvent_concentration_grid is None:
         fluid_properties = attrs.evolve(
             fluid_properties,

@@ -479,7 +479,6 @@ def compute_gas_well_rate(
 
     Notes:
     - The 1/1422 constant already includes all unit conversions and gas-law scaling.
-    - In pseudo-pressure formulation, viscosity is embedded in m(p); do NOT multiply by μ again.
 
     Since phase_mobility = kr/mu (no Bg term), Bg must be supplied via
     `formation_volume_factor` or will be computed internally from `gas_gravity`.
@@ -606,7 +605,7 @@ def compute_required_bhp_for_gas_rate(
 
         viscosity = gas_viscosity if gas_viscosity is not None else 1.0
         required_pseudo_pressure = (
-            pseudo_pressure_table(pressure) + target_rate_scf * factor * viscosity
+            pseudo_pressure_table(pressure) + target_rate_scf * factor / viscosity
         )
         return float(
             pseudo_pressure_table.inverse(pseudo_pressure=required_pseudo_pressure)

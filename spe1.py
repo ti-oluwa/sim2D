@@ -568,7 +568,7 @@ injector = bores.injection_well(
     radius=0.25,
     control=bores.AdaptiveRateControl(
         target_rate=100.0e6,  # 100 MMscf/D
-        bhp_limit=9011.0,  # max injection BHP (psia)
+        bhp_limit=7500.0,  # max injection BHP (psia)
         clamp=bores.InjectionClamp(),
     ),
     injected_fluid=bores.InjectedFluid(
@@ -577,8 +577,8 @@ injector = bores.injection_well(
         specific_gravity=0.792,
         molecular_weight=gas_molecular_weight,
         is_miscible=False,
-        pvt_table=pvt_tables.gas,
-        pseudo_pressure_table=pseudo_pressure_table,
+        # pvt_table=pvt_tables.gas,
+        # pseudo_pressure_table=pseudo_pressure_table,
     ),
     is_active=True,
     skin_factor=0.0,
@@ -602,6 +602,7 @@ producer = bores.production_well(
             phase=bores.FluidPhase.OIL,
             specific_gravity=oil_specific_gravity,
             molecular_weight=180.0,
+            pvt_table=pvt_tables.oil,
         ),
         bores.ProducedFluid(
             name="Gas",
@@ -609,6 +610,7 @@ producer = bores.production_well(
             specific_gravity=0.792,
             molecular_weight=gas_molecular_weight,
             pseudo_pressure_table=pseudo_pressure_table,
+            pvt_table=pvt_tables.gas,
         ),
     ],
     skin_factor=0.0,
@@ -639,9 +641,9 @@ config = bores.Config(
     # use_pseudo_pressure=True,
     # freeze_saturation_pressure=True,
     # normalize_saturations=True,
-    # maximum_gas_saturation_change=0.05,
-    # maximum_oil_saturation_change=0.05,
-    # maximum_water_saturation_change=0.05,
+    maximum_gas_saturation_change=0.05,
+    maximum_oil_saturation_change=0.05,
+    maximum_water_saturation_change=0.05,
     # maximum_newton_saturation_change=0.05,
     maximum_pressure_change=300.0,
     cfl_threshold=0.5,
