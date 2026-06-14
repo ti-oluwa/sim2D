@@ -21,3 +21,4 @@ from .cartesian import *  # noqa
 from .corner_point import *  # noqa
 from .polyhedral import *  # noqa
 from .tetrahedral import *  # noqa
+from .voronoi import *  # noqa
