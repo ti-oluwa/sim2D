@@ -11,19 +11,20 @@ from bores.grids.factories.base import (
     assemble_grid,
     build_csr_face_arrays,
 )
+from bores.typing import FloatArray, TwoDimensions
 
 __all__ = ["make_tetrahedral_grid"]
 
-VertexCoordinates3D: TypeAlias = npt.NDArray[np.floating]
+VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
 
 FaceVertexList: TypeAlias = typing.List[int]
 """Ordered list of vertex indices for a single face (CCW from owner)."""
 
 
-def make_tetrahedral_grid(  # type: ignore[override]
+def make_tetrahedral_grid(
     *,
-    vertex_coordinates: VertexCoordinates3D,
+    vertex_coordinates: VertexCoordinates,
     element_vertex_indices: npt.ArrayLike,
     metadata: typing.Optional[dict] = None,
 ) -> Grid:
@@ -72,7 +73,7 @@ def make_tetrahedral_grid(  # type: ignore[override]
             f"element_vertex_indices must be shape (n_elements, 4); got {elements.shape!r}."
         )
 
-    per_cell_face_vertex_lists = _extract_tet_faces(elements)
+    per_cell_face_vertex_lists = _extract_tetrahedron_faces(elements)
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(pts, per_cell_face_vertex_lists)
     )
@@ -85,12 +86,13 @@ def make_tetrahedral_grid(  # type: ignore[override]
     )
 
 
-def _extract_tet_faces(
+def _extract_tetrahedron_faces(
     elements: npt.NDArray[np.int32],
 ) -> typing.List[typing.List[FaceVertexList]]:
-    """Extract outward-facing triangular faces for every tetrahedron.
+    """
+    Extract outward-facing triangular faces for every tetrahedron.
 
-    Uses the face table for `"tetra"` from :data:`ELEMENT_FACE_TABLES`.
+    Uses the face table for `"tetra"` from `ELEMENT_FACE_TABLES`.
     Each face's local vertex indices are mapped to global vertex indices
     using the element connectivity.
 

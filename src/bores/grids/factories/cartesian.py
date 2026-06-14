@@ -7,11 +7,11 @@ from typing_extensions import TypeAlias
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import assemble_grid
-from bores.typing import FloatArray, NumberOrArray
+from bores.typing import FloatArray, NumberOrArray, OneDimension, TwoDimensions
 
 __all__ = ["make_cartesian_grid"]
 
-VertexCoordinates3D: TypeAlias = FloatArray
+VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
 
@@ -20,11 +20,11 @@ def make_cartesian_grid(
     nx: typing.Optional[int] = None,
     ny: typing.Optional[int] = None,
     nz: typing.Optional[int] = None,
-    dx: NumberOrArray = 1.0,
-    dy: NumberOrArray = 1.0,
-    dz: NumberOrArray = 1.0,
+    dx: NumberOrArray[OneDimension] = 1.0,
+    dy: NumberOrArray[OneDimension] = 1.0,
+    dz: NumberOrArray[OneDimension] = 1.0,
     origin: typing.Tuple[float, float, float] = (0.0, 0.0, 0.0),
-    metadata: typing.Optional[dict] = None,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
     Factory for axis-aligned structured Cartesian hexahedral grids.
@@ -64,13 +64,13 @@ def make_cartesian_grid(
         values are non-positive.
     """
     dx, dy, dz = _resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
-    n_x = len(dx)
-    n_y = len(dy)
-    n_z = len(dz)
+    nx = len(dx)
+    ny = len(dy)
+    nz = len(dz)
 
     vertex_coordinates = _build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
     face_vertex_indices, face_vertex_offsets, face_cell_indices = _build_face_arrays(
-        n_x, n_y, n_z
+        nx, ny, nz
     )
     return assemble_grid(
         vertex_coordinates,
@@ -85,9 +85,9 @@ def _resolve_spacing(
     nx: typing.Optional[int],
     ny: typing.Optional[int],
     nz: typing.Optional[int],
-    dx: NumberOrArray,
-    dy: NumberOrArray,
-    dz: NumberOrArray,
+    dx: NumberOrArray[OneDimension],
+    dy: NumberOrArray[OneDimension],
+    dz: NumberOrArray[OneDimension],
 ) -> typing.Tuple[
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
@@ -107,7 +107,7 @@ def _resolve_spacing(
     """
 
     def _to_array(
-        value: NumberOrArray,
+        value: NumberOrArray[OneDimension],
         count: typing.Optional[int],
         axis: str,
     ):
@@ -137,11 +137,11 @@ def _resolve_spacing(
 
 
 def _build_vertex_coordinates(
-    dx: npt.NDArray[np.float64],
-    dy: npt.NDArray[np.float64],
-    dz: npt.NDArray[np.float64],
+    dx: FloatArray[OneDimension],
+    dy: FloatArray[OneDimension],
+    dz: FloatArray[OneDimension],
     origin: typing.Tuple[float, float, float],
-) -> VertexCoordinates3D:
+) -> VertexCoordinates:
     """
     Build the `(n_vertices, 3)` vertex coordinate array via meshgrid.
 
@@ -171,7 +171,7 @@ def _build_vertex_coordinates(
 
 
 def _build_face_arrays(
-    n_x: int, n_y: int, n_z: int
+    nx: int, ny: int, nz: int
 ) -> typing.Tuple[
     npt.NDArray[np.int32],
     npt.NDArray[np.int32],
@@ -195,29 +195,29 @@ def _build_face_arrays(
     Owner is always the cell at the **lower** index in the face-normal
     direction (or -1 for boundary faces).
 
-    :param n_x: Number of cells in x.
-    :param n_y: Number of cells in y.
-    :param n_z: Number of cells in z.
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
     :returns: Tuple `(face_vertex_indices, face_vertex_offsets, face_cell_indices)`.
     """
     # Flat vertex index helper (matches _build_vertex_coordinates meshgrid order)
-    # vert_id(i,j,k) = i + j*(n_x+1) + k*(n_x+1)*(n_y+1)
-    stride_j = n_x + 1
-    stride_k = (n_x + 1) * (n_y + 1)
+    # vert_id(i,j,k) = i + j*(nx+1) + k*(nx+1)*(ny+1)
+    stride_j = nx + 1
+    stride_k = (nx + 1) * (ny + 1)
 
     # Flat cell index helper
-    # cell_id(i,j,k) = i + j*n_x + k*n_x*n_y
-    cell_stride_j = n_x
-    cell_stride_k = n_x * n_y
+    # cell_id(i,j,k) = i + j*nx + k*nx*ny
+    cell_stride_j = nx
+    cell_stride_k = nx * ny
 
     face_vertex_indices_parts: typing.List[npt.NDArray[np.int32]] = []
     face_cell_indices_parts: typing.List[npt.NDArray[np.int32]] = []
 
-    # X-normal faces: (n_x+1) * n_y * n_z faces
-    # For plane i (i=0..n_x): owner=cell(i-1,j,k), neighbour=cell(i,j,k)
-    i_planes = np.arange(n_x + 1, dtype=np.int32)  # (n_x+1,)
-    j_cells = np.arange(n_y, dtype=np.int32)  # (n_y,)
-    k_cells = np.arange(n_z, dtype=np.int32)  # (n_z,)
+    # X-normal faces: (nx+1) * ny * nz faces
+    # For plane i (i=0..nx): owner=cell(i-1,j,k), neighbour=cell(i,j,k)
+    i_planes = np.arange(nx + 1, dtype=np.int32)  # (nx+1,)
+    j_cells = np.arange(ny, dtype=np.int32)  # (ny,)
+    k_cells = np.arange(nz, dtype=np.int32)  # (nz,)
 
     # Build all (i, j, k) combinations with j and k as cell indices
     ii_x, jj_x, kk_x = np.meshgrid(i_planes, j_cells, k_cells, indexing="ij")
@@ -232,8 +232,8 @@ def _build_face_arrays(
     v2_x = ii_x * 1 + (jj_x + 1) * stride_j + (kk_x + 1) * stride_k
     v3_x = ii_x * 1 + jj_x * stride_j + (kk_x + 1) * stride_k
 
-    n_x_faces = len(ii_x)
-    # Interleave: shape (n_x_faces, 4) -> flat
+    nx_faces = len(ii_x)
+    # Interleave: shape (nx_faces, 4) -> flat
     x_face_verts = np.column_stack([v0_x, v1_x, v2_x, v3_x]).astype(np.int32)
     face_vertex_indices_parts.append(x_face_verts.ravel())
 
@@ -243,7 +243,7 @@ def _build_face_arrays(
         -1,
     ).astype(np.int32)
     neighbour_x = np.where(
-        ii_x < n_x,
+        ii_x < nx,
         ii_x + jj_x * cell_stride_j + kk_x * cell_stride_k,
         -1,
     ).astype(np.int32)
@@ -251,11 +251,11 @@ def _build_face_arrays(
         np.column_stack([owner_x, neighbour_x]).astype(np.int32)
     )
 
-    # Y-normal faces: n_x * (n_y+1) * n_z faces
+    # Y-normal faces: nx * (ny+1) * nz faces
     # Winding (normal=+y): (i,j,k) -> (i,j,k+1) -> (i+1,j,k+1) -> (i+1,j,k)
-    i_cells_y = np.arange(n_x, dtype=np.int32)
-    j_planes = np.arange(n_y + 1, dtype=np.int32)
-    k_cells_y = np.arange(n_z, dtype=np.int32)
+    i_cells_y = np.arange(nx, dtype=np.int32)
+    j_planes = np.arange(ny + 1, dtype=np.int32)
+    k_cells_y = np.arange(nz, dtype=np.int32)
 
     ii_y, jj_y, kk_y = np.meshgrid(i_cells_y, j_planes, k_cells_y, indexing="ij")
     ii_y = ii_y.ravel()
@@ -276,7 +276,7 @@ def _build_face_arrays(
         -1,
     ).astype(np.int32)
     neighbour_y = np.where(
-        jj_y < n_y,
+        jj_y < ny,
         ii_y + jj_y * cell_stride_j + kk_y * cell_stride_k,
         -1,
     ).astype(np.int32)
@@ -284,11 +284,11 @@ def _build_face_arrays(
         np.column_stack([owner_y, neighbour_y]).astype(np.int32)
     )
 
-    # Z-normal faces: n_x * n_y * (n_z+1) faces
+    # Z-normal faces: nx * ny * (nz+1) faces
     # Winding (normal=+z): (i,j,k) -> (i+1,j,k) -> (i+1,j+1,k) -> (i,j+1,k)
-    i_cells_z = np.arange(n_x, dtype=np.int32)
-    j_cells_z = np.arange(n_y, dtype=np.int32)
-    k_planes = np.arange(n_z + 1, dtype=np.int32)
+    i_cells_z = np.arange(nx, dtype=np.int32)
+    j_cells_z = np.arange(ny, dtype=np.int32)
+    k_planes = np.arange(nz + 1, dtype=np.int32)
 
     ii_z, jj_z, kk_z = np.meshgrid(i_cells_z, j_cells_z, k_planes, indexing="ij")
     ii_z = ii_z.ravel()
@@ -309,7 +309,7 @@ def _build_face_arrays(
         -1,
     ).astype(np.int32)
     neighbour_z = np.where(
-        kk_z < n_z,
+        kk_z < nz,
         ii_z + jj_z * cell_stride_j + kk_z * cell_stride_k,
         -1,
     ).astype(np.int32)
@@ -321,7 +321,7 @@ def _build_face_arrays(
     all_face_vertices = np.concatenate(face_vertex_indices_parts)
     all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(np.int32)
 
-    n_total_faces = n_x_faces + len(ii_y) + len(ii_z)
+    n_total_faces = nx_faces + len(ii_y) + len(ii_z)
     verts_per_face = 4
     face_vertex_offsets = np.arange(
         0, (n_total_faces + 1) * verts_per_face, verts_per_face, dtype=np.int32

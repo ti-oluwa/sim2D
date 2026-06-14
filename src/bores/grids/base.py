@@ -26,7 +26,13 @@ from bores.errors import (
     InvalidVolumeError,
     ValidationError,
 )
-from bores.typing import FloatArray, IntArray, NumberOrArray
+from bores.typing import (
+    FloatArray,
+    IntArray,
+    NumberOrArray,
+    OneDimension,
+    TwoDimensions,
+)
 
 __all__ = ["Grid"]
 
@@ -61,13 +67,13 @@ _GEOMETRY_TOLERANCE: float = 1e-14
 
 @numba.njit(parallel=True, cache=True)
 def _compute_face_geometry(
-    face_vertex_indices: IntArray,
-    face_vertex_offsets: IntArray,
-    vertex_coordinates: FloatArray,
+    face_vertex_indices: IntArray[OneDimension],
+    face_vertex_offsets: IntArray[OneDimension],
+    vertex_coordinates: FloatArray[TwoDimensions],
 ) -> typing.Tuple[
-    FloatArray,
-    FloatArray,
-    FloatArray,
+    FloatArray[TwoDimensions],
+    FloatArray[OneDimension],
+    FloatArray[TwoDimensions],
 ]:
     """
     Compute face centroids, areas, and unit outward normals via Newell's method.
@@ -144,12 +150,12 @@ def _compute_face_geometry(
 
 @numba.njit(cache=True)
 def _compute_cell_volumes_and_centroids(
-    face_cell_indices: IntArray,
-    face_vertex_indices: IntArray,
-    face_vertex_offsets: IntArray,
-    vertex_coordinates: FloatArray,
+    face_cell_indices: IntArray[TwoDimensions],
+    face_vertex_indices: IntArray[OneDimension],
+    face_vertex_offsets: IntArray[OneDimension],
+    vertex_coordinates: FloatArray[TwoDimensions],
     n_cells: int,
-) -> typing.Tuple[FloatArray, FloatArray]:
+) -> typing.Tuple[FloatArray[OneDimension], FloatArray[TwoDimensions]]:
     """
     Compute cell volumes and centroids via the divergence theorem.
 
@@ -282,14 +288,14 @@ class Grid:
         If any cell ends up with a non-positive volume after construction.
     """
 
-    vertex_coordinates: FloatArray
+    vertex_coordinates: FloatArray[TwoDimensions]
     """
     Shape `(n_vertices, 3)` - world (x, y, z) coordinates of every vertex.
 
     The z-axis is positive downward (reservoir depth convention).
     """
 
-    face_vertex_indices: IntArray
+    face_vertex_indices: IntArray[OneDimension]
     """
     Flat CSR data array: concatenated vertex index lists for all faces.
 
@@ -297,14 +303,14 @@ class Grid:
     Vertices are wound counter-clockwise when viewed from the **owner** cell side.
     """
 
-    face_vertex_offsets: IntArray
+    face_vertex_offsets: IntArray[OneDimension]
     """CSR offset array of length `n_faces + 1`.
 
     `face_vertex_offsets[0]` must be 0; `face_vertex_offsets[-1]` must equal
     `len(face_vertex_indices)`.
     """
 
-    face_cell_indices: IntArray
+    face_cell_indices: IntArray[TwoDimensions]
     """
     Shape `(n_faces, 2)` - `(owner_cell_index, neighbour_cell_index)` per face.
 
@@ -324,78 +330,78 @@ class Grid:
     )
     """Optional free-form metadata mapping (e.g. units, CRS, source filename)."""
 
-    cell_statuses: typing.Optional[IntArray] = attrs.field(default=None)
+    cell_statuses: typing.Optional[IntArray[OneDimension]] = attrs.field(default=None)
     """Shape `(n_cells,)` - per-cell `CellStatus` flags (optional)."""
 
-    face_types: typing.Optional[IntArray] = attrs.field(default=None)
+    face_types: typing.Optional[IntArray[OneDimension]] = attrs.field(default=None)
     """Shape `(n_faces,)` - per-face `FaceType` classification (optional)."""
 
-    face_statuses: typing.Optional[IntArray] = attrs.field(default=None)
+    face_statuses: typing.Optional[IntArray[OneDimension]] = attrs.field(default=None)
     """Shape `(n_faces,)` - per-face `FaceStatus` flags (optional)."""
 
     # Derived topology
-    cell_face_indices: IntArray = attrs.field(init=False)
+    cell_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Flat CSR data array: concatenated face index lists for all cells.
 
     Cell *c* uses `cell_face_indices[cell_face_offsets[c]:cell_face_offsets[c+1]]`.
     """
 
-    cell_face_offsets: IntArray = attrs.field(init=False)
+    cell_face_offsets: IntArray[OneDimension] = attrs.field(init=False)
     """CSR offset array of length `n_cells + 1` for the cell to face map."""
 
-    cell_neighbor_indices: IntArray = attrs.field(init=False)
+    cell_neighbor_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Flat CSR data array: concatenated neighbour cell index lists for all cells.
 
     Cell *c* uses `cell_neighbor_indices[cell_neighbor_offsets[c]:cell_neighbor_offsets[c+1]]`.
     """
 
-    cell_neighbor_offsets: IntArray = attrs.field(init=False)
+    cell_neighbor_offsets: IntArray[OneDimension] = attrs.field(init=False)
     """CSR offset array of length `n_cells + 1` for the cell to neighbour map."""
 
-    boundary_face_indices: IntArray = attrs.field(init=False)
+    boundary_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Indices of all boundary faces (faces with `neighbour_cell == -1`)."""
 
-    interior_face_indices: IntArray = attrs.field(init=False)
+    interior_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Indices of all interior faces (faces with both owner and neighbour cells)."""
 
     # Derived geometry
-    face_centroids: FloatArray = attrs.field(init=False)
+    face_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - (x, y, z) centroid of each face polygon."""
 
-    face_areas: FloatArray = attrs.field(init=False)
+    face_areas: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_faces,)` - geometric area of each face in grid units²."""
 
-    face_unit_normals: FloatArray = attrs.field(init=False)
+    face_unit_normals: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - unit outward normal from the owner cell for each face."""
 
-    cell_centroids: FloatArray = attrs.field(init=False)
+    cell_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - volume-weighted (x, y, z) centroid of each cell."""
 
-    cell_volumes: FloatArray = attrs.field(init=False)
+    cell_volumes: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - bulk geometric volume of each cell in grid units³."""
 
-    cell_min_xyz: FloatArray = attrs.field(init=False)
+    cell_min_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - axis-aligned bounding box minimum corner per cell."""
 
-    cell_max_xyz: FloatArray = attrs.field(init=False)
+    cell_max_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - axis-aligned bounding box maximum corner per cell."""
 
-    cell_length_x: FloatArray = attrs.field(init=False)
+    cell_length_x: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - bounding-box extent in the x direction per cell."""
 
-    cell_length_y: FloatArray = attrs.field(init=False)
+    cell_length_y: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - bounding-box extent in the y direction per cell."""
 
-    cell_length_z: FloatArray = attrs.field(init=False)
+    cell_length_z: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - bounding-box extent in the z direction per cell (thickness)."""
 
-    cell_thickness: FloatArray = attrs.field(init=False)
+    cell_thickness: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - vertical thickness of each cell (alias for `cell_length_z`)."""
 
-    cell_center_depths: FloatArray = attrs.field(init=False)
+    cell_center_depths: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - depth of each cell centroid (positive downward = centroid z)."""
 
-    cell_center_elevations: FloatArray = attrs.field(init=False)
+    cell_center_elevations: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - elevation of each cell centroid (positive upward = −depth)."""
 
     _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
@@ -692,7 +698,7 @@ class Grid:
         """
         return len(self.interior_face_indices)
 
-    def get_cell_face_indices(self, cell_index: int) -> IntArray:
+    def get_cell_face_indices(self, cell_index: int) -> IntArray[OneDimension]:
         """
         Return the indices of all faces belonging to a given cell.
 
@@ -708,7 +714,7 @@ class Grid:
         end = self.cell_face_offsets[cell_index + 1]
         return self.cell_face_indices[start:end]
 
-    def get_cell_neighbor_indices(self, cell_index: int) -> IntArray:
+    def get_cell_neighbor_indices(self, cell_index: int) -> IntArray[OneDimension]:
         """
         Return the indices of all cells neighbouring a given cell.
 
@@ -726,7 +732,7 @@ class Grid:
         end = self.cell_neighbor_offsets[cell_index + 1]
         return self.cell_neighbor_indices[start:end]
 
-    def get_face_vertex_coordinates(self, face_index: int) -> FloatArray:
+    def get_face_vertex_coordinates(self, face_index: int) -> FloatArray[TwoDimensions]:
         """
         Return the (x, y, z) coordinates of all vertices of a given face.
 
@@ -738,7 +744,9 @@ class Grid:
         end = int(self.face_vertex_offsets[face_index + 1])
         return self.vertex_coordinates[self.face_vertex_indices[start:end]]
 
-    def get_face_normal_for_cell(self, face_index: int, cell_index: int) -> FloatArray:
+    def get_face_normal_for_cell(
+        self, face_index: int, cell_index: int
+    ) -> FloatArray[OneDimension]:
         """
         Return the outward unit normal of a face relative to a specific cell.
 
@@ -762,7 +770,7 @@ class Grid:
             f"(owner={owner}, neighbour={neighbour})."
         )
 
-    def get_boundary_cell_indices(self) -> IntArray:
+    def get_boundary_cell_indices(self) -> IntArray[OneDimension]:
         """
         Return the indices of all cells that touch at least one boundary face.
 
@@ -780,7 +788,7 @@ class Grid:
         )
         return np.unique(all_boundary_cells).astype(self.index_dtype)
 
-    def get_interior_cell_indices(self) -> IntArray:
+    def get_interior_cell_indices(self) -> IntArray[OneDimension]:
         """
         Return the indices of all cells that have no boundary faces.
 
@@ -826,7 +834,7 @@ class Grid:
 
     def find_cells_in_radius(
         self, x: float, y: float, z: float, radius: float
-    ) -> IntArray:
+    ) -> IntArray[OneDimension]:
         """
         Return all cell indices whose centroids fall within `radius` of a point.
 
@@ -839,7 +847,9 @@ class Grid:
         raw_indices = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore[union-attr]
         return np.asarray(raw_indices, dtype=self.index_dtype)
 
-    def compute_pore_volume(self, porosity: NumberOrArray) -> FloatArray:
+    def compute_pore_volume(
+        self, porosity: NumberOrArray[OneDimension]
+    ) -> FloatArray[OneDimension]:
         """
         Compute the pore volume for each cell given a porosity field.
 
@@ -882,4 +892,3 @@ class Grid:
                     "One or more face unit normals do not have unit magnitude "
                     f"(max deviation = {deviation.max():.3e})."
                 )
-

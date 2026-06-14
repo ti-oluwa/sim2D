@@ -1,7 +1,6 @@
 import typing
 
 import numpy as np
-import numpy.typing as npt
 from typing_extensions import TypeAlias
 
 from bores.errors import InvalidPointArrayError, ValidationError
@@ -12,10 +11,11 @@ from bores.grids.factories.base import (
     assemble_grid,
     build_csr_face_arrays,
 )
+from bores.typing import FloatArray, TwoDimensions
 
 __all__ = ["make_polyhedral_grid"]
 
-VertexCoordinates3D: TypeAlias = npt.NDArray[np.floating]
+VertexCoordinate: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
 
 FaceVertexList: TypeAlias = typing.List[int]
@@ -28,7 +28,7 @@ vertex indices wound CCW from outside (outward normal)."""
 
 def make_polyhedral_grid(
     *,
-    vertex_coordinates: VertexCoordinates3D,
+    vertex_coordinates: VertexCoordinate,
     cell_blocks: typing.Sequence[typing.Dict[str, typing.Any]],
     custom_cell_faces: typing.Optional[typing.Dict[str, CellFaceTable]] = None,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
@@ -53,7 +53,7 @@ def make_polyhedral_grid(
         vertex_coordinates=mesh.points,
         cell_blocks=[
             {"cell_type": "hexahedron", "connectivity": hex_cells},
-            {"cell_type": "tetra",      "connectivity": tet_cells},
+            {"cell_type": "tetra", "connectivity": tet_cells},
         ],
     )
 
@@ -72,8 +72,7 @@ def make_polyhedral_grid(
     :param vertex_coordinates: Shape `(n_vertices, 3)` float64 point array.
     :param cell_blocks: List of dictionaries, one per element block.
         Each dict must contain a `"connectivity"` key whose value is an
-        array-like of shape `(n_cells_in_block, n_verts_per_cell)`, plus
-        one of:
+        array-like of shape `(n_cells_in_block, n_verts_per_cell)`, plus one of:
 
         - `"cell_type"`: string name matching a key in
             `ELEMENT_FACE_TABLES` or `custom_cell_faces` (e.g.
@@ -81,12 +80,11 @@ def make_polyhedral_grid(
         - `"vtk_type"`: integer VTK cell type code (e.g. `12` for hex).
 
     :param custom_cell_faces: Optional mapping from cell-type name to face
-        table, extending or overriding `ELEMENT_FACE_TABLES`.  Use
-        this for non-standard polyhedral element types.
+        table, extending or overriding `ELEMENT_FACE_TABLES`.  
+        Use this for non-standard polyhedral element types.
     :param metadata: Optional metadata dictionary.
     :returns: A fully initialised `bores.grids.base.Grid`.
-    :raises ValidationError: If a cell block contains an unrecognised
-        element type.
+    :raises ValidationError: If a cell block contains an unrecognised element type.
     :raises InvalidPointArrayError: If `vertex_coordinates` is not `(N, 3)`.
     """
     pts = np.asarray(vertex_coordinates, dtype=np.float64)

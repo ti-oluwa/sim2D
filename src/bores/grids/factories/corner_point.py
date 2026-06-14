@@ -1,7 +1,6 @@
 import typing
 
 import numpy as np
-import numpy.typing as npt
 from typing_extensions import TypeAlias
 
 from bores.errors import InvalidGridError, ValidationError
@@ -11,24 +10,30 @@ from bores.grids.factories.base import (
     assemble_grid,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray
+from bores.typing import (
+    FloatArray,
+    IntArray,
+    OneDimension,
+    ThreeDimensions,
+    TwoDimensions,
+)
 
 __all__ = ["make_corner_point_grid"]
 
-VertexCoordinates3D: TypeAlias = FloatArray
+VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
 
 FaceVertexList: TypeAlias = typing.List[int]
 """Ordered list of vertex indices for a single face (CCW from owner)."""
 
 
-CoordArray: TypeAlias = FloatArray
+CoordArray: TypeAlias = FloatArray[ThreeDimensions]
 """Corner-point COORD array, shape `(NY+1, NX+1, 6)`."""
 
-ZcornArray: TypeAlias = FloatArray
+ZcornArray: TypeAlias = FloatArray[ThreeDimensions]
 """Corner-point ZCORN array, shape `(NZ*2, NY*2, NX*2)`."""
 
-ActnumArray: TypeAlias = npt.NDArray[np.integer]
+ActnumArray: TypeAlias = IntArray[ThreeDimensions]
 """Corner-point ACTNUM array, shape `(NZ, NY, NX)`; 1 = active, 0 = inactive."""
 
 
@@ -83,29 +88,29 @@ def make_corner_point_grid(
     if zcorn_arr.ndim != 3:
         raise ValidationError(f"zcorn must be a 3-D array; got ndim={zcorn_arr.ndim}.")
 
-    n_y_plus1, n_x_plus1 = coord_arr.shape[:2]
-    n_x = n_x_plus1 - 1
-    n_y = n_y_plus1 - 1
-    n_z = zcorn_arr.shape[0] // 2
+    ny_plus1, nx_plus1 = coord_arr.shape[:2]
+    nx = nx_plus1 - 1
+    ny = ny_plus1 - 1
+    nz = zcorn_arr.shape[0] // 2
 
-    if zcorn_arr.shape != (n_z * 2, n_y * 2, n_x * 2):
+    if zcorn_arr.shape != (nz * 2, ny * 2, nx * 2):
         raise ValidationError(
             f"zcorn shape {zcorn_arr.shape!r} is inconsistent with "
-            f"coord-derived grid dimensions ({n_x} x {n_y} x {n_z})."
+            f"coord-derived grid dimensions ({nx} x {ny} x {nz})."
         )
 
     if actnum is None:
-        actnum_arr = np.ones((n_z, n_y, n_x), dtype=np.int32)
+        actnum_arr = np.ones((nz, ny, nx), dtype=np.int32)
     else:
         actnum_arr = np.asarray(actnum, dtype=np.int32)
-        if actnum_arr.shape != (n_z, n_y, n_x):
+        if actnum_arr.shape != (nz, ny, nx):
             raise ValidationError(
                 f"actnum shape {actnum_arr.shape!r} does not match "
-                f"grid dimensions ({n_x} x {n_y} x {n_z})."
+                f"grid dimensions ({nx} x {ny} x {nz})."
             )
 
     vertex_coordinates, per_cell_face_vertex_lists = _compute_corner_point_geometry(
-        coord_arr, zcorn_arr, actnum_arr, n_x, n_y, n_z
+        coord_arr, zcorn_arr, actnum_arr, nx, ny, nz
     )
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(vertex_coordinates, per_cell_face_vertex_lists)
@@ -120,10 +125,10 @@ def make_corner_point_grid(
 
 
 def _interpolate_pillar_point(
-    pillar_top: npt.NDArray[np.float64],
-    pillar_bot: npt.NDArray[np.float64],
+    pillar_top: FloatArray[OneDimension],
+    pillar_bot: FloatArray[OneDimension],
     z: float,
-) -> npt.NDArray[np.float64]:
+) -> FloatArray[OneDimension]:
     """
     Interpolate an (x, y) position along a pillar at depth `z`.
 
@@ -146,13 +151,13 @@ def _interpolate_pillar_point(
 
 
 def _compute_corner_point_geometry(
-    coord: npt.NDArray[np.float64],
-    zcorn: npt.NDArray[np.float64],
-    actnum: npt.NDArray[np.int32],
-    n_x: int,
-    n_y: int,
-    n_z: int,
-) -> typing.Tuple[VertexCoordinates3D, typing.List[typing.List[FaceVertexList]]]:
+    coord: FloatArray[ThreeDimensions],
+    zcorn: FloatArray[ThreeDimensions],
+    actnum: IntArray[ThreeDimensions],
+    nx: int,
+    ny: int,
+    nz: int,
+) -> typing.Tuple[VertexCoordinates, typing.List[typing.List[FaceVertexList]]]:
     """
     Compute 3-D corner coordinates for every active cell.
 
@@ -166,18 +171,18 @@ def _compute_corner_point_geometry(
     :param coord: Shape `(NY+1, NX+1, 6)` pillar array.
     :param zcorn: Shape `(NZ*2, NY*2, NX*2)` depth array.
     :param actnum: Shape `(NZ, NY, NX)` active cell mask.
-    :param n_x: Number of cells in x.
-    :param n_y: Number of cells in y.
-    :param n_z: Number of cells in z.
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
     :returns: Tuple `(vertex_coordinates, per_cell_face_vertex_lists)`.
     """
-    all_vertices: typing.List[npt.NDArray[np.float64]] = []
+    all_vertices: typing.List[FloatArray[OneDimension]] = []
     vertex_dedup: typing.Dict[typing.Tuple[float, float, float], int] = {}
     per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexList]] = []
     # Map from (i,j,k) cell to its sequential active-cell index
     active_cell_global_index: typing.Dict[typing.Tuple[int, int, int], int] = {}
 
-    def _add_vertex(xyz: npt.NDArray[np.float64]) -> int:
+    def _add_vertex(xyz: FloatArray[OneDimension]) -> int:
         """
         Register or retrieve a vertex by rounded coordinates.
 
@@ -194,9 +199,9 @@ def _compute_corner_point_geometry(
             all_vertices.append(xyz.copy())
         return vertex_dedup[key]
 
-    for k in range(n_z):
-        for j in range(n_y):
-            for i in range(n_x):
+    for k in range(nz):
+        for j in range(ny):
+            for i in range(nx):
                 if actnum[k, j, i] == 0:
                     continue
 
