@@ -45,7 +45,7 @@ from bores.grids.pvt import (
 )
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.types import (
+from bores.typing import (
     FluidPhase,
     NDimensionalGrid,
     OneDimensionalGrid,

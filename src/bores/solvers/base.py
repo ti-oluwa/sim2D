@@ -32,7 +32,7 @@ from scipy.sparse.linalg import (  # type: ignore[import-untyped]
 
 from bores.errors import PreconditionerError, SolverError, ValidationError
 from bores.precision import get_floating_point_info
-from bores.types import (
+from bores.typing import (
     Preconditioner,
     PreconditionerFactory,
     Solver,

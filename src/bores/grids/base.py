@@ -1,574 +1,885 @@
+"""
+Face-based unstructured polyhedral grid implementation for reservoir simulation.
+
+**Uses**:
+
+- Face-centric finite-volume topology stored in CSR (compressed-sparse-row) format.
+- Fully unstructured polyhedral cells (triangles, quads, arbitrary polygons).
+- Numba-accelerated geometry kernels (Newell normals, divergence-theorem volumes,
+  simultaneous centroid accumulation).
+"""
+
+import enum
 import typing
 
 import attrs
-import numba  # type: ignore[import-untyped]
+import numba
 import numpy as np
-import numpy.typing as npt
-from typing_extensions import Self
+from scipy.spatial import cKDTree
 
-from bores.errors import ValidationError
-from bores.precision import get_dtype
-from bores.serialization import Serializable
-from bores.types import ArrayLike, NDimension, NDimensionalGrid, Orientation
+from bores.errors import (
+    CellNotFoundError,
+    InvalidFaceAreaError,
+    InvalidFaceConnectivityError,
+    InvalidNormalVectorError,
+    InvalidPointArrayError,
+    InvalidVolumeError,
+    ValidationError,
+)
+from bores.typing import FloatArray, IntArray, NumberOrArray
 
-__all__ = [
-    "CapillaryPressureGrids",
-    "RelativeMobilityGrids",
-    "apply_structural_dip",
-    "array",
-    "build_depth_grid",
-    "build_elevation_grid",
-    "build_layered_grid",
-    "build_uniform_grid",
-    "depth_grid",
-    "elevation_grid",
-    "layered_grid",
-    "uniform_grid",
-]
+__all__ = ["Grid"]
 
 
-def array(obj: typing.Any, **kwargs: typing.Any):
-    """
-    Wrapper around `np.array` to enforce global dtype.
+class FaceType(enum.IntEnum):
+    """Topological classification of a grid face."""
 
-    :param obj: Object to convert to numpy array
-    :param kwargs: Additional keyword arguments for `np.array`
-    :return: return value of `np.array`
-    """
-    kwargs.setdefault("dtype", get_dtype())
-    return np.array(obj, **kwargs)
+    INTERIOR = 0
+    BOUNDARY = 1
+    FAULT = 2
+    PINCHOUT = 3
+    NON_NEIGHBOR_CONNECTION = 4
 
 
-def build_uniform_grid(
-    grid_shape: NDimension,
-    value: float = 0.0,
-) -> NDimensionalGrid[NDimension]:
-    """
-    Constructs a N-Dimensional uniform grid with the specified initial value.
+class FaceStatus(enum.IntEnum):
+    """Activation status of a grid face (e.g. closed faults)."""
 
-    :param grid_shape: Tuple of number of cells in all directions (x, y, z).
-    :param value: Initial value to fill the grid with
-    :return: Numpy array representing the grid
-    """
-    return np.full(  # type: ignore
-        grid_shape,
-        fill_value=value,
-        dtype=get_dtype(),
-        order="C",
-    )
+    ACTIVE = 1
+    INACTIVE = 2
 
 
-uniform_grid = build_uniform_grid  # Alias for convenience
+class CellStatus(enum.IntEnum):
+    """Activation status of a grid cell (e.g. pinched-out cells)."""
+
+    ACTIVE = 1
+    INACTIVE = 2
 
 
-def build_layered_grid(
-    grid_shape: NDimension,
-    layer_values: ArrayLike[float],
-    orientation: typing.Union[Orientation, typing.Literal["x", "y", "z"]],
-) -> NDimensionalGrid[NDimension]:
-    """
-    Constructs a N-Dimensional layered grid with specified layer values.
-
-    :param grid_shape: Tuple of number of cells in x, y, and z directions (cell_count_x, cell_count_y, cell_count_z)
-    :param orientation: Direction or axis along which layers are defined ('x', 'y', or 'z')
-    :param layer_values: Values for each layer (must match number of layers).
-        The number of values should match the number of cells in that direction.
-        If the grid NDimension is (50, 30, 10) and orientation is 'horizontal',
-        then values should have exactly 50 values.
-        If orientation is 'vertical', then values should have exactly 30 values.
-
-    :return: N-Dimensional numpy array representing the grid
-    """
-    if len(layer_values) < 1:
-        raise ValidationError("At least one layer value must be provided.")
-
-    orientation = (
-        Orientation(orientation) if isinstance(orientation, str) else orientation
-    )
-    dtype = get_dtype()
-    layered_grid = build_uniform_grid(grid_shape=grid_shape, value=0.0)
-    if orientation == Orientation.X:  # Layering along x-axis
-        if len(layer_values) != grid_shape[0]:
-            raise ValidationError(
-                "Number of layer values must match number of cells in x direction."
-            )
-
-        for i, layer_value in enumerate(layer_values):
-            layered_grid[i, :, :] = layer_value
-        return layered_grid.astype(dtype, copy=False)
-
-    elif orientation == Orientation.Y:  # Layering along y-axis
-        if len(layer_values) != grid_shape[1]:
-            raise ValidationError(
-                "Number of layer values must match number of cells in y direction."
-            )
-
-        for j, layer_value in enumerate(layer_values):
-            layered_grid[:, j, :] = layer_value
-        return layered_grid.astype(dtype, copy=False)
-
-    elif orientation == Orientation.Z:  # Layering along z-axis
-        if len(grid_shape) != 3:
-            raise ValidationError(
-                "Grid dimension must be N-Dimensional for z-direction layering."
-            )
-
-        if len(layer_values) != grid_shape[2]:
-            raise ValidationError(
-                "Number of layer values must match number of cells in z direction."
-            )
-
-        for k, layer_value in enumerate(layer_values):
-            layered_grid[:, :, k] = layer_value
-        return layered_grid.astype(dtype, copy=False)
-
-    raise ValidationError(
-        "Invalid layering direction. Must be one of 'x', 'y', or 'z'."
-    )
-
-
-layered_grid = build_layered_grid  # Alias for convenience
-
-
-@numba.njit(cache=True)
-def _compute_elevation_downward(
-    thickness_grid: NDimensionalGrid[NDimension],
-    dtype: npt.DTypeLike,
-    datum: float = 0.0,
-) -> NDimensionalGrid[NDimension]:
-    """
-    Compute elevation grid in downward direction (depth from top).
-
-    :param thickness_grid: 3D array of cell thicknesses (ft)
-    :param dtype: NumPy dtype for array allocation
-    :param datum: Reference elevation/depth for the bottom/top of the grid (ft).
-    :return: 3D elevation grid (ft)
-    """
-    _, _, nz = thickness_grid.shape
-    elevation_grid = np.zeros_like(thickness_grid, dtype=dtype)
-
-    # Start from top layer
-    elevation_grid[:, :, 0] = thickness_grid[:, :, 0] / 2
-    for k in range(1, nz):
-        elevation_grid[:, :, k] = (
-            elevation_grid[:, :, k - 1]
-            + thickness_grid[:, :, k - 1] / 2
-            + thickness_grid[:, :, k] / 2
-        )
-
-    return elevation_grid + datum  # type: ignore
-
-
-@numba.njit(cache=True)
-def _compute_elevation_upward(
-    thickness_grid: NDimensionalGrid[NDimension],
-    dtype: npt.DTypeLike,
-    datum: float = 0.0,
-) -> NDimensionalGrid[NDimension]:
-    """
-    Compute elevation grid in upward direction (elevation from bottom).
-
-    :param thickness_grid: 3D array of cell thicknesses (ft)
-    :param dtype: NumPy dtype for array allocation
-    :param datum: Reference elevation/depth for the bottom/top of the grid (ft).
-    :return: 3D elevation grid (ft)
-    """
-    _, _, nz = thickness_grid.shape
-    elevation_grid = np.zeros_like(thickness_grid, dtype=dtype)
-
-    # Start from bottom layer
-    elevation_grid[:, :, -1] = thickness_grid[:, :, -1] / 2
-    for k in range(nz - 2, -1, -1):
-        elevation_grid[:, :, k] = (
-            elevation_grid[:, :, k + 1]
-            + thickness_grid[:, :, k + 1] / 2
-            + thickness_grid[:, :, k] / 2
-        )
-
-    return elevation_grid + datum  # type: ignore
-
-
-def _build_elevation_grid(
-    thickness_grid: NDimensionalGrid[NDimension],
-    direction: typing.Literal["downward", "upward"] = "downward",
-    datum: float = 0.0,
-) -> NDimensionalGrid[NDimension]:
-    """
-    Convert a cell thickness (height) grid into an absolute elevation grid (cell center z-coordinates).
-
-    The elevation grid is generated based on the thickness of each cell, starting from the top or bottom
-    of the reservoir, depending on the specified direction.
-
-    :param thickness_grid: N-dimensional numpy array representing the thickness of each cell in the reservoir (ft).
-    :param direction: Direction to generate the elevation grid.
-        Can be "downward" (from top to bottom) or "upward" (from bottom to top).
-        "downward" basically gives a depth grid from the top of the reservoir.
-    :param datum: Reference elevation/depth for the bottom/top of the grid (ft).
-    :return: N-dimensional numpy array representing the elevation of each cell in the reservoir (ft).
-    """
-    if direction not in {"downward", "upward"}:
-        raise ValidationError("direction must be 'downward' or 'upward'")
-
-    dtype = get_dtype()
-
-    if direction == "downward":
-        return _compute_elevation_downward(thickness_grid, dtype=dtype, datum=datum)
-    return _compute_elevation_upward(thickness_grid, dtype=dtype, datum=datum)
-
-
-def build_elevation_grid(
-    thickness_grid: NDimensionalGrid[NDimension], datum: float = 0.0
-) -> NDimensionalGrid[NDimension]:
-    """
-    Build an upward elevation grid from a thickness grid.
-
-    Elevation is measured upward from a datum level, where positive elevation
-    means above the datum. The datum typically represents:
-    - Sea level (datum = 0)
-    - Base of reservoir (datum = base elevation)
-    - Reference surface (datum = reference elevation)
-
-    :param thickness_grid: N-dimensional numpy array representing the thickness
-        of each cell in the reservoir (ft).
-    :param datum: Reference elevation for the bottom of the grid (ft). Elevation of the bottom surface of the grid.
-        - datum = 0: Bottom layer starts at elevation 0 (e.g., sea level)
-        - datum > 0: Bottom layer starts above the reference (e.g., above sea level)
-        - datum < 0: Bottom layer starts below the reference (e.g., subsea)
-        Default is 0.0 (bottom layer at reference level).
-        - Negative if bottom is subsea (most common)
-        - Positive if bottom is above sea level
-        - Zero if bottom is exactly at sea level
-    :return: N-dimensional numpy array representing the elevation of each cell
-        center in the reservoir (ft), measured upward from datum.
-
-    Example:
-    ```python
-    # Reservoir from -2000 to -1000 ft (subsea)
-    thickness = np.full((10, 10, 20), 50.0)  # 20 layers, 50 ft each
-
-    # Datum at base of reservoir
-    elev_grid = build_elevation_grid(thickness, datum=-2000.0)
-    # elev_grid[0,0,-1] = -1975.0 ft (center of bottom 50-ft layer)
-    # elev_grid[0,0,0] = -1025.0 ft  (center of top layer)
-
-    # Datum at sea level (bottom at -1000 ft from top)
-    elev_grid = build_elevation_grid(thickness, datum=-1000.0)
-    # elev_grid[0,0,-1] = -975.0 ft
-    # elev_grid[0,0,0] = -25.0 ft
-    ```
-
-    Notes:
-        - Elevation increases upward (k=-1 is lowest, k=0 is highest)
-        - For depth (downward-positive), use `build_depth_grid()` instead
-        - Datum represents the elevation of the BOTTOM of the grid
-    """
-    return _build_elevation_grid(thickness_grid, direction="upward", datum=datum)
-
-
-elevation_grid = build_elevation_grid  # Alias for convenience
-
-
-def build_depth_grid(
-    thickness_grid: NDimensionalGrid[NDimension], datum: float = 0.0
-) -> NDimensionalGrid[NDimension]:
-    """
-    Build a downward depth grid from a thickness grid.
-
-    Depth is measured downward from a datum level, where positive depth means
-    below the datum. The datum typically represents:
-    - Sea level (datum = 0)
-    - Ground surface (datum = surface elevation)
-    - Top of reservoir (datum = top depth)
-
-    :param thickness_grid: N-dimensional numpy array representing the thickness
-        of each cell in the reservoir (ft).
-    :param datum: Reference depth for the top of the grid (ft). Depth of the top surface of the grid.
-        - datum = 0: Top layer starts at depth 0 (e.g., sea level)
-        - datum > 0: Top layer starts below the reference (e.g., subsea depth)
-        - datum < 0: Top layer starts above the reference (e.g., above sea level)
-        Default is 0.0 (top layer at reference level).
-        - Always positive (depth increases downward)
-        - datum = 1000.0 means top is at 1000 ft depth
-    :return: N-dimensional numpy array representing the depth of each cell
-        center in the reservoir (ft), measured downward from datum.
-
-    Example:
-    ```python
-    # Reservoir 1000-2000 ft subsea depth
-    thickness = np.full((10, 10, 20), 50.0)  # 20 layers, 50 ft each
-
-    # Option 1: Datum at sea level, specify top depth
-    depth_grid = build_depth_grid(thickness, datum=1000.0)
-    # depth_grid[0,0,0] = 1025.0 ft  (center of first 50-ft layer)
-    # depth_grid[0,0,-1] = 1975.0 ft (center of last layer)
-
-    # Option 2: Datum at top of reservoir
-    depth_grid = build_depth_grid(thickness, datum=0.0)
-    # depth_grid[0,0,0] = 25.0 ft  (relative to top)
-    # depth_grid[0,0,-1] = 975.0 ft
-    ```
-
-    Notes:
-        - Depth increases downward (k=0 is shallowest, k=-1 is deepest)
-        - For elevation (upward-positive), use `build_elevation_grid()` instead
-        - Datum represents the depth/elevation of the TOP of the grid
-    """
-    return _build_elevation_grid(thickness_grid, direction="downward", datum=datum)
-
-
-depth_grid = build_depth_grid  # Alias for convenience
+# Absolute tolerance used in geometry validation.
+_GEOMETRY_TOLERANCE: float = 1e-14
 
 
 @numba.njit(parallel=True, cache=True)
-def _apply_dip_upward(
-    dipped_elevation_grid: NDimensionalGrid[NDimension],
-    grid_dimensions: typing.Tuple[int, int],
-    cell_dimensions: typing.Tuple[float, float],
-    dip_components: typing.Tuple[float, float, float],
-) -> NDimensionalGrid[NDimension]:
+def _compute_face_geometry(
+    face_vertex_indices: IntArray,
+    face_vertex_offsets: IntArray,
+    vertex_coordinates: FloatArray,
+) -> typing.Tuple[
+    FloatArray,
+    FloatArray,
+    FloatArray,
+]:
     """
-    Apply structural dip for upward elevation convention (parallel).
+    Compute face centroids, areas, and unit outward normals via Newell's method.
 
-    Each (i,j) column is processed independently, allowing parallelization.
+    Uses Newell's method [Sutherland et al. 1974] which is robust for planar
+    polygons with an arbitrary number of vertices and does not require a
+    pre-computed face centroid. The normal magnitude equals twice the face area,
+    so `area = ||n|| / 2`.
 
-    :param dipped_elevation_grid: Grid to modify in-place
-    :param grid_dimensions: (nx, ny) - number of cells in x and y directions
-    :param cell_dimensions: (cell_size_x, cell_size_y) - cell sizes in feet
-    :param dip_components: (dx_component, dy_component, tan_dip_angle) - pre-computed dip parameters
-    :return: Modified elevation grid
+    :param face_vertex_indices: Flat CSR data array of vertex indices (all faces).
+    :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
+    :param vertex_coordinates: Shape `(n_vertices, 3)` coordinate array.
+    :returns: Tuple `(face_centroids, face_areas, face_unit_normals)` each of
+        shape `(n_faces, 3)`, `(n_faces,)`, `(n_faces, 3)` respectively.
     """
-    nx, ny = grid_dimensions
-    cell_size_x, cell_size_y = cell_dimensions
-    dx_component, dy_component, tan_dip_angle = dip_components
+    n_faces = face_vertex_offsets.shape[0] - 1
+    face_centroids = np.zeros((n_faces, 3), dtype=np.float64)
+    face_unit_normals = np.zeros((n_faces, 3), dtype=np.float64)
+    face_areas = np.zeros(n_faces, dtype=np.float64)
 
-    for i in numba.prange(nx):  # type: ignore  # Parallel outer loop
-        for j in range(ny):
-            x_distance = i * cell_size_x
-            y_distance = j * cell_size_y
-            distance_along_dip = (x_distance * dx_component) + (
-                y_distance * dy_component
-            )
-            dip_offset = distance_along_dip * tan_dip_angle
-            # Upward: moving in dip direction decreases elevation
-            dipped_elevation_grid[i, j, :] -= dip_offset
+    for face_idx in numba.prange(n_faces):  # type: ignore[attr-defined]
+        start = face_vertex_offsets[face_idx]
+        end = face_vertex_offsets[face_idx + 1]
+        n_verts = end - start
 
-    return dipped_elevation_grid
+        # Centroid: simple vertex average (exact for planar convex polygons)
+        cx = 0.0
+        cy = 0.0
+        cz = 0.0
+        for local_idx in range(n_verts):
+            vert_idx = face_vertex_indices[start + local_idx]
+            cx += vertex_coordinates[vert_idx, 0]
+            cy += vertex_coordinates[vert_idx, 1]
+            cz += vertex_coordinates[vert_idx, 2]
+        cx /= n_verts
+        cy /= n_verts
+        cz /= n_verts
+        face_centroids[face_idx, 0] = cx
+        face_centroids[face_idx, 1] = cy
+        face_centroids[face_idx, 2] = cz
+
+        # Newell's method for outward normal and area
+        # n_x += (y_i - y_{i+1}) * (z_i + z_{i+1})
+        # n_y += (z_i - z_{i+1}) * (x_i + x_{i+1})
+        # n_z += (x_i - x_{i+1}) * (y_i + y_{i+1})
+        # ||n|| = 2 * face_area for any planar polygon.
+        nx = 0.0
+        ny = 0.0
+        nz = 0.0
+        for local_idx in range(n_verts):
+            idx_a = face_vertex_indices[start + local_idx]
+            idx_b = face_vertex_indices[start + (local_idx + 1) % n_verts]
+
+            ax = vertex_coordinates[idx_a, 0]
+            ay = vertex_coordinates[idx_a, 1]
+            az = vertex_coordinates[idx_a, 2]
+            bx = vertex_coordinates[idx_b, 0]
+            by = vertex_coordinates[idx_b, 1]
+            bz = vertex_coordinates[idx_b, 2]
+
+            nx += (ay - by) * (az + bz)
+            ny += (az - bz) * (ax + bx)
+            nz += (ax - bx) * (ay + by)
+
+        normal_magnitude = np.sqrt(nx * nx + ny * ny + nz * nz)
+        if normal_magnitude > 0.0:
+            face_unit_normals[face_idx, 0] = nx / normal_magnitude
+            face_unit_normals[face_idx, 1] = ny / normal_magnitude
+            face_unit_normals[face_idx, 2] = nz / normal_magnitude
+            face_areas[face_idx] = normal_magnitude * 0.5
+
+    return face_centroids, face_areas, face_unit_normals
 
 
-@numba.njit(parallel=True, cache=True)
-def _apply_dip_downward(
-    dipped_elevation_grid: NDimensionalGrid[NDimension],
-    grid_dimensions: typing.Tuple[int, int],
-    cell_dimensions: typing.Tuple[float, float],
-    dip_components: typing.Tuple[float, float, float],
-) -> NDimensionalGrid[NDimension]:
+@numba.njit(cache=True)
+def _compute_cell_volumes_and_centroids(
+    face_cell_indices: IntArray,
+    face_vertex_indices: IntArray,
+    face_vertex_offsets: IntArray,
+    vertex_coordinates: FloatArray,
+    n_cells: int,
+) -> typing.Tuple[FloatArray, FloatArray]:
     """
-    Apply structural dip for downward depth convention (parallel).
+    Compute cell volumes and centroids via the divergence theorem.
 
-    Each (i,j) column is processed independently, allowing parallelization.
+    Decomposes every face into a fan of triangles anchored at the first face
+    vertex, then accumulates signed tetrahedral contributions for each
+    owner/neighbour cell.
 
-    :param dipped_elevation_grid: Grid to modify in-place
-    :param grid_dimensions: (nx, ny) - number of cells in x and y directions
-    :param cell_dimensions: (cell_size_x, cell_size_y) - cell sizes in feet
-    :param dip_components: (dx_component, dy_component, tan_dip_angle) - pre-computed dip parameters
-    :return: Modified elevation grid
+    **Sign convention**:
+
+    Face vertices are wound counter-clockwise from the **owner** (c1) side, so
+    the Newell normal points from c1 toward c2 (outward for c1). The signed tet
+    volume is positive when computed relative to the c1 centroid, and negative
+    when computed relative to the c2 centroid. Therefore:
+
+    - `cell_volumes[owner] += signed_tet_vol`
+    - `cell_volumes[neighbour] -= signed_tet_vol`
+
+    Both accumulate positive contributions. The centroid is computed
+    simultaneously as the volume-weighted average of tet barycentres.
+
+    :param face_cell_indices: Shape `(n_faces, 2)` - `(owner, neighbour)` per face.
+    :param face_vertex_indices: Flat CSR vertex index data array.
+    :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
+    :param vertex_coordinates: Shape `(n_vertices, 3)` coordinate array.
+    :param n_cells: Total number of cells in the grid.
+    :returns: Tuple `(cell_volumes, cell_centroids)` of shapes `(n_cells,)`
+              and `(n_cells, 3)`.
     """
-    nx, ny = grid_dimensions
-    cell_size_x, cell_size_y = cell_dimensions
-    dx_component, dy_component, tan_dip_angle = dip_components
+    n_faces = face_cell_indices.shape[0]
 
-    for i in numba.prange(nx):  # type: ignore  # Parallel outer loop
-        for j in range(ny):
-            x_distance = i * cell_size_x
-            y_distance = j * cell_size_y
-            distance_along_dip = (x_distance * dx_component) + (
-                y_distance * dy_component
-            )
-            dip_offset = distance_along_dip * tan_dip_angle
-            # Downward: moving in dip direction increases depth
-            dipped_elevation_grid[i, j, :] += dip_offset
+    cell_volumes = np.zeros(n_cells, dtype=np.float64)
+    # Accumulator for volume-weighted centroid sum: centroid = accum / volume
+    centroid_accumulators = np.zeros((n_cells, 3), dtype=np.float64)
 
-    return dipped_elevation_grid
+    for face_idx in range(n_faces):
+        owner_cell = face_cell_indices[face_idx, 0]
+        neighbour_cell = face_cell_indices[face_idx, 1]
+
+        start = face_vertex_offsets[face_idx]
+        end = face_vertex_offsets[face_idx + 1]
+
+        # Fan triangulation anchored at the first face vertex
+        apex = vertex_coordinates[face_vertex_indices[start]]
+
+        # Process owner (sign=+1) then neighbour (sign=-1)
+        for iteration in range(2):
+            if iteration == 0:
+                cell_idx = owner_cell
+                sign = 1.0
+            else:
+                cell_idx = neighbour_cell
+                sign = -1.0
+
+            if cell_idx < 0:
+                continue
+
+            for fan_idx in range(start + 1, end - 1):
+                v1 = vertex_coordinates[face_vertex_indices[fan_idx]]
+                v2 = vertex_coordinates[face_vertex_indices[fan_idx + 1]]
+
+                # Signed tet volume: (1/6) * apex . (v1 x v2) using the
+                # scalar triple product expanded about the origin (all verts
+                # already in world coords - ref is subtracted implicitly via
+                # the standard divergence-theorem formula):
+                #   vol = (apex . ((v1 - apex) x (v2 - apex))) / 6
+                # Equivalently (Kahan's form for numerical stability):
+                ax = apex[0]
+                ay = apex[1]
+                az = apex[2]
+                bx = v1[0]
+                by = v1[1]
+                bz = v1[2]
+                cx = v2[0]
+                cy = v2[1]
+                cz = v2[2]
+
+                signed_tet_vol = (
+                    ax * (by * cz - bz * cy)
+                    + ay * (bz * cx - bx * cz)
+                    + az * (bx * cy - by * cx)
+                ) / 6.0
+
+                cell_volumes[cell_idx] += sign * signed_tet_vol
+
+                # Tet barycentre (origin + 3 face verts) / 4, weighted by tet vol
+                bary_x = (ax + bx + cx) / 4.0
+                bary_y = (ay + by + cy) / 4.0
+                bary_z = (az + bz + cz) / 4.0
+
+                weighted_vol = sign * signed_tet_vol
+                centroid_accumulators[cell_idx, 0] += weighted_vol * bary_x
+                centroid_accumulators[cell_idx, 1] += weighted_vol * bary_y
+                centroid_accumulators[cell_idx, 2] += weighted_vol * bary_z
+
+    # Finalise centroids: divide accumulated weighted sums by total volume
+    cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
+    for cell_idx in range(n_cells):
+        vol = cell_volumes[cell_idx]
+        if abs(vol) > 0.0:
+            cell_centroids[cell_idx, 0] = centroid_accumulators[cell_idx, 0] / vol
+            cell_centroids[cell_idx, 1] = centroid_accumulators[cell_idx, 1] / vol
+            cell_centroids[cell_idx, 2] = centroid_accumulators[cell_idx, 2] / vol
+
+    return cell_volumes, cell_centroids
 
 
-def apply_structural_dip(
-    elevation_grid: NDimensionalGrid[NDimension],
-    cell_dimension: typing.Tuple[float, float],
-    elevation_direction: typing.Literal["downward", "upward"],
-    dip_angle: float,
-    dip_azimuth: float,
-) -> NDimensionalGrid[NDimension]:
+@attrs.define(frozen=True, slots=True, kw_only=True)
+class Grid:
     """
-    Apply structural dip to a base elevation grid using azimuth convention.
+    Immutable face-based unstructured polyhedral grid.
 
-    The dip is applied by adding a planar gradient in the specified azimuth direction.
-    The dip angle represents the angle of the reservoir surface from horizontal.
+    All topology and geometry is computed once during construction and stored as
+    read-only NumPy arrays.  The grid is fully unstructured: cells may be
+    arbitrary convex polyhedra; faces may be arbitrary planar polygons.
 
-    ---
+    **Construction**:
 
-    ## **Azimuth Convention:**
-    ```
-    Grid Coordinate System:
-    North (0°/360°)
-         ↑ (+y)
-         |
-         |
-    West ←─────┼─────-> East (90°)
-    (270°)  |    (+x)
-         |
-         ↓ (-y)
-    South (180°)
-    ```
+    Supply the three mandatory arrays and any optional metadata; all derived
+    arrays (connectivity, geometry, bounding boxes) are computed automatically.
 
-    Azimuth Examples:
-    - 0° (North): Dips toward North
-    - 90° (East): Dips toward East
-    - 180° (South): Dips toward South
-    - 270° (West): Dips toward West
-    - 45° (NE): Dips toward Northeast
+    **Raises**:
 
-    The surface tilts DOWN in the azimuth direction, meaning elevation
-    DECREASES in that direction (or depth INCREASES for downward convention).
-
-    :param elevation_grid: Base flat elevation grid (shape: [nx, ny, nz])
-    :param cell_dimension: Tuple of (cell_size_x, cell_size_y) in feet
-    :param elevation_direction: Whether elevation is "upward" (elevation) or "downward" (depth)
-    :param dip_angle: Dip angle in degrees (0-90)
-    :param dip_azimuth: Dip azimuth in degrees (0-360), measured clockwise from North
-    :return: Elevation grid with structural dip applied
+    `InvalidPointArrayError`:
+        If `vertex_coordinates` is not a 2-D `(n_vertices, 3)` array.
+    `InvalidFaceConnectivityError`:
+        If `face_cell_indices` is not a 2-D `(n_faces, 2)` array, or if
+        `face_vertex_offsets` does not start at 0 or is inconsistent with
+        `face_vertex_indices`.
+    `InvalidVolumeError`:
+        If any cell ends up with a non-positive volume after construction.
     """
-    if elevation_direction not in {"downward", "upward"}:
-        raise ValidationError("`elevation_direction` must be 'downward' or 'upward'")
 
-    if not (0.0 <= dip_angle <= 90.0):
-        raise ValidationError("`dip_angle` must be between 0 and 90 degrees")
+    vertex_coordinates: FloatArray
+    """
+    Shape `(n_vertices, 3)` - world (x, y, z) coordinates of every vertex.
 
-    if not (0.0 <= dip_azimuth < 360.0):
-        raise ValidationError("`dip_azimuth` must be between 0 and 360 degrees")
+    The z-axis is positive downward (reservoir depth convention).
+    """
 
-    dtype = get_dtype()
-    dipped_elevation_grid = elevation_grid.copy().astype(dtype, copy=False)
-    dip_angle_radians = np.radians(dip_angle, dtype=dtype)
-    dip_azimuth_radians = np.radians(dip_azimuth, dtype=dtype)
+    face_vertex_indices: IntArray
+    """
+    Flat CSR data array: concatenated vertex index lists for all faces.
 
-    grid_shape = elevation_grid.shape
-    nx, ny = grid_shape[0], grid_shape[1]
+    Face *f* uses `face_vertex_indices[face_vertex_offsets[f]:face_vertex_offsets[f+1]]`.
+    Vertices are wound counter-clockwise when viewed from the **owner** cell side.
+    """
 
-    # Convert azimuth to directional components
-    # Azimuth: 0° = North (+y), 90° = East (+x), 180° = South (-y), 270° = West (-x)
-    dx_component = np.sin(dip_azimuth_radians)  # Positive = East
-    dy_component = np.cos(dip_azimuth_radians)  # Positive = North
-    tan_dip_angle = np.tan(dip_angle_radians)
+    face_vertex_offsets: IntArray
+    """CSR offset array of length `n_faces + 1`.
 
-    grid_dimensions = (nx, ny)
-    dip_components = (dx_component, dy_component, tan_dip_angle)
+    `face_vertex_offsets[0]` must be 0; `face_vertex_offsets[-1]` must equal
+    `len(face_vertex_indices)`.
+    """
 
-    if elevation_direction == "upward":
-        return _apply_dip_upward(
-            dipped_elevation_grid=dipped_elevation_grid,
-            grid_dimensions=grid_dimensions,
-            cell_dimensions=cell_dimension,
-            dip_components=dip_components,
-        )
-    return _apply_dip_downward(
-        dipped_elevation_grid=dipped_elevation_grid,
-        grid_dimensions=grid_dimensions,
-        cell_dimensions=cell_dimension,
-        dip_components=dip_components,
+    face_cell_indices: IntArray
+    """
+    Shape `(n_faces, 2)` - `(owner_cell_index, neighbour_cell_index)` per face.
+
+    Boundary faces have `neighbour_cell_index == -1`. Interior faces have
+    both indices `>= 0`. The owner cell is the one from whose perspective the
+    face vertices are wound counter-clockwise.
+    """
+
+    index_dtype: np.dtype = attrs.field(default=np.dtype(np.int32))
+    """NumPy integer dtype used for all connectivity index arrays."""
+
+    floating_dtype: np.dtype = attrs.field(default=np.dtype(np.float64))
+    """NumPy floating-point dtype used for all coordinate and geometry arrays."""
+
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = attrs.field(
+        default=None
     )
+    """Optional free-form metadata mapping (e.g. units, CRS, source filename)."""
 
+    cell_statuses: typing.Optional[IntArray] = attrs.field(default=None)
+    """Shape `(n_cells,)` - per-cell `CellStatus` flags (optional)."""
 
-@attrs.frozen(slots=True)
-class RelPermGrids(Serializable, typing.Generic[NDimension]):
-    """
-    Wrapper for n-dimensional grids representing relative permeabilities
-    for different fluid phases (oil, water, gas).
-    """
+    face_types: typing.Optional[IntArray] = attrs.field(default=None)
+    """Shape `(n_faces,)` - per-face `FaceType` classification (optional)."""
 
-    oil_relative_permeability: NDimensionalGrid[NDimension]
-    """Grid representing oil relative permeability."""
-    water_relative_permeability: NDimensionalGrid[NDimension]
-    """Grid representing water relative permeability."""
-    gas_relative_permeability: NDimensionalGrid[NDimension]
-    """Grid representing gas relative permeability."""
+    face_statuses: typing.Optional[IntArray] = attrs.field(default=None)
+    """Shape `(n_faces,)` - per-face `FaceStatus` flags (optional)."""
 
-    @property
-    def kro(self) -> NDimensionalGrid[NDimension]:
-        return self.oil_relative_permeability
+    # Derived topology
+    cell_face_indices: IntArray = attrs.field(init=False)
+    """Flat CSR data array: concatenated face index lists for all cells.
 
-    @property
-    def krw(self) -> NDimensionalGrid[NDimension]:
-        return self.water_relative_permeability
-
-    @property
-    def krg(self) -> NDimensionalGrid[NDimension]:
-        return self.gas_relative_permeability
-
-    Kro = kro
-    Krw = krw
-    Krg = krg
-
-    def __iter__(self) -> typing.Iterator[NDimensionalGrid[NDimension]]:
-        yield self.water_relative_permeability
-        yield self.oil_relative_permeability
-        yield self.gas_relative_permeability
-
-
-@attrs.frozen(slots=True)
-class RelativeMobilityGrids(Serializable, typing.Generic[NDimension]):
-    """
-    Wrapper for n-dimensional grids representing relative mobilities
-    for different fluid phases (oil, water, gas).
+    Cell *c* uses `cell_face_indices[cell_face_offsets[c]:cell_face_offsets[c+1]]`.
     """
 
-    oil_relative_mobility: NDimensionalGrid[NDimension]
-    """Grid representing oil relative mobility."""
-    water_relative_mobility: NDimensionalGrid[NDimension]
-    """Grid representing water relative mobility."""
-    gas_relative_mobility: NDimensionalGrid[NDimension]
-    """Grid representing gas relative mobility."""
+    cell_face_offsets: IntArray = attrs.field(init=False)
+    """CSR offset array of length `n_cells + 1` for the cell to face map."""
 
-    @property
-    def λo(self) -> NDimensionalGrid[NDimension]:
-        return self.oil_relative_mobility
+    cell_neighbor_indices: IntArray = attrs.field(init=False)
+    """Flat CSR data array: concatenated neighbour cell index lists for all cells.
 
-    @property
-    def λw(self) -> NDimensionalGrid[NDimension]:
-        return self.water_relative_mobility
-
-    @property
-    def λg(self) -> NDimensionalGrid[NDimension]:
-        return self.gas_relative_mobility
-
-    def __iter__(self) -> typing.Iterator[NDimensionalGrid[NDimension]]:
-        yield self.water_relative_mobility
-        yield self.oil_relative_mobility
-        yield self.gas_relative_mobility
-
-
-@attrs.frozen(slots=True)
-class CapillaryPressureGrids(Serializable, typing.Generic[NDimension]):
-    """
-    Wrapper for n-dimensional grids representing capillary pressures
-    for different fluid phases (oil-water, oil-gas).
+    Cell *c* uses `cell_neighbor_indices[cell_neighbor_offsets[c]:cell_neighbor_offsets[c+1]]`.
     """
 
-    oil_water_capillary_pressure: NDimensionalGrid[NDimension]
-    """Grid representing oil-water capillary pressure."""
-    gas_oil_capillary_pressure: NDimensionalGrid[NDimension]
-    """Grid representing gas-oil capillary pressure."""
+    cell_neighbor_offsets: IntArray = attrs.field(init=False)
+    """CSR offset array of length `n_cells + 1` for the cell to neighbour map."""
+
+    boundary_face_indices: IntArray = attrs.field(init=False)
+    """Indices of all boundary faces (faces with `neighbour_cell == -1`)."""
+
+    interior_face_indices: IntArray = attrs.field(init=False)
+    """Indices of all interior faces (faces with both owner and neighbour cells)."""
+
+    # Derived geometry
+    face_centroids: FloatArray = attrs.field(init=False)
+    """Shape `(n_faces, 3)` - (x, y, z) centroid of each face polygon."""
+
+    face_areas: FloatArray = attrs.field(init=False)
+    """Shape `(n_faces,)` - geometric area of each face in grid units²."""
+
+    face_unit_normals: FloatArray = attrs.field(init=False)
+    """Shape `(n_faces, 3)` - unit outward normal from the owner cell for each face."""
+
+    cell_centroids: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells, 3)` - volume-weighted (x, y, z) centroid of each cell."""
+
+    cell_volumes: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - bulk geometric volume of each cell in grid units³."""
+
+    cell_min_xyz: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells, 3)` - axis-aligned bounding box minimum corner per cell."""
+
+    cell_max_xyz: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells, 3)` - axis-aligned bounding box maximum corner per cell."""
+
+    cell_length_x: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - bounding-box extent in the x direction per cell."""
+
+    cell_length_y: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - bounding-box extent in the y direction per cell."""
+
+    cell_length_z: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - bounding-box extent in the z direction per cell (thickness)."""
+
+    cell_thickness: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - vertical thickness of each cell (alias for `cell_length_z`)."""
+
+    cell_center_depths: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - depth of each cell centroid (positive downward = centroid z)."""
+
+    cell_center_elevations: FloatArray = attrs.field(init=False)
+    """Shape `(n_cells,)` - elevation of each cell centroid (positive upward = −depth)."""
+
+    _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
+    """KD-tree built on cell centroids for fast spatial lookup. Internal use only."""
+
+    def __attrs_post_init__(self) -> None:
+        """Validate inputs and compute all derived topology and geometry.
+
+        Called automatically by `attrs` after `__init__`.  Raises grid-specific
+        errors on any validation failure.
+        """
+        self._validate_inputs()
+        self._classify_faces()
+        self._build_cell_face_connectivity()
+        self._build_cell_neighbor_connectivity()
+        self._compute_face_geometry()
+        self._compute_cell_geometry()
+        self._compute_bounding_boxes()
+        self._compute_derived_dimensions()
+        self._build_spatial_index()
+
+    def _validate_inputs(self) -> None:
+        """
+        Validate primary input arrays for shape and internal consistency.
+
+        :raises `InvalidPointArrayError`: If `vertex_coordinates` is not `(N, 3)`.
+        :raises `InvalidFaceConnectivityError`: If face connectivity arrays are malformed.
+        """
+        if self.vertex_coordinates.ndim != 2 or self.vertex_coordinates.shape[1] != 3:
+            raise InvalidPointArrayError(
+                f"`vertex_coordinates` must be shape (n_vertices, 3); "
+                f"got {self.vertex_coordinates.shape!r}."
+            )
+        if self.face_cell_indices.ndim != 2 or self.face_cell_indices.shape[1] != 2:
+            raise InvalidFaceConnectivityError(
+                f"`face_cell_indices` must be shape (n_faces, 2); "
+                f"got {self.face_cell_indices.shape!r}."
+            )
+        if self.face_vertex_offsets.ndim != 1 or self.face_vertex_offsets[0] != 0:
+            raise InvalidFaceConnectivityError(
+                "`face_vertex_offsets` must be a 1-D array starting at 0."
+            )
+        expected_n_faces = self.face_cell_indices.shape[0]
+        if self.face_vertex_offsets.shape[0] != expected_n_faces + 1:
+            raise InvalidFaceConnectivityError(
+                f"`face_vertex_offsets` length must be n_faces + 1 = {expected_n_faces + 1}; "
+                f"got {self.face_vertex_offsets.shape[0]}."
+            )
+        if int(self.face_vertex_offsets[-1]) != len(self.face_vertex_indices):
+            raise InvalidFaceConnectivityError(
+                f"face_vertex_offsets[-1] = {self.face_vertex_offsets[-1]} does not match "
+                f"len(face_vertex_indices) = {len(self.face_vertex_indices)}."
+            )
+        max_valid_vertex = self.vertex_coordinates.shape[0] - 1
+        if self.face_vertex_indices.size > 0:
+            if int(self.face_vertex_indices.max()) > max_valid_vertex:
+                raise InvalidFaceConnectivityError(
+                    f"`face_vertex_indices` contains vertex index "
+                    f"{int(self.face_vertex_indices.max())} which exceeds "
+                    f"the maximum valid index {max_valid_vertex}."
+                )
+        min_cell_index = int(self.face_cell_indices.min())
+        if min_cell_index < -1:
+            raise InvalidFaceConnectivityError(
+                f"`face_cell_indices` contains negative cell index {min_cell_index}; "
+                "only -1 is allowed (boundary sentinel)."
+            )
+
+    def _classify_faces(self) -> None:
+        """
+        Partition face indices into boundary and interior subsets.
+
+        A boundary face has `neighbour_cell == -1`; an interior face has both
+        owner and neighbour cells `>= 0`.
+        """
+        owner_cells = self.face_cell_indices[:, 0]
+        neighbour_cells = self.face_cell_indices[:, 1]
+
+        boundary_mask = (owner_cells < 0) | (neighbour_cells < 0)
+        interior_mask = (owner_cells >= 0) & (neighbour_cells >= 0)
+
+        object.__setattr__(
+            self,
+            "boundary_face_indices",
+            np.where(boundary_mask)[0].astype(self.index_dtype),
+        )
+        object.__setattr__(
+            self,
+            "interior_face_indices",
+            np.where(interior_mask)[0].astype(self.index_dtype),
+        )
+
+    def _build_cell_face_connectivity(self) -> None:
+        """
+        Build CSR cell to face adjacency lists from `face_cell_indices`.
+
+        Each cell accumulates the indices of every face that touches it (as
+        either owner or neighbour).  The result is stored in
+        `cell_face_indices` and `cell_face_offsets`.
+        """
+        n_cells = int(self.face_cell_indices.max()) + 1
+
+        # Build per-cell face lists
+        cell_face_lists: list[list[int]] = [[] for _ in range(n_cells)]
+        for face_idx, (owner, neighbour) in enumerate(self.face_cell_indices):
+            if owner >= 0:
+                cell_face_lists[owner].append(face_idx)
+            if neighbour >= 0:
+                cell_face_lists[neighbour].append(face_idx)
+
+        # Flatten to CSR
+        flat_face_indices: list[int] = []
+        csr_offsets: list[int] = [0]
+        for faces in cell_face_lists:
+            flat_face_indices.extend(faces)
+            csr_offsets.append(len(flat_face_indices))
+
+        object.__setattr__(
+            self,
+            "cell_face_indices",
+            np.asarray(flat_face_indices, dtype=self.index_dtype),
+        )
+        object.__setattr__(
+            self,
+            "cell_face_offsets",
+            np.asarray(csr_offsets, dtype=self.index_dtype),
+        )
+
+    def _build_cell_neighbor_connectivity(self) -> None:
+        """
+        Build CSR cell to neighbour adjacency lists from face_cell_indices.
+
+        Two cells are neighbours if they share an interior face.  Boundary faces
+        do not contribute neighbours.  The result is stored in
+        `cell_neighbor_indices` and `cell_neighbor_offsets`.
+        """
+        n_cells = int(self.face_cell_indices.max()) + 1
+
+        neighbor_sets: list[set[int]] = [set() for _ in range(n_cells)]
+        for owner, neighbour in self.face_cell_indices:
+            if owner >= 0 and neighbour >= 0:
+                neighbor_sets[owner].add(neighbour)
+                neighbor_sets[neighbour].add(owner)
+
+        flat_neighbor_indices: list[int] = []
+        csr_offsets: list[int] = [0]
+        for neighbors in neighbor_sets:
+            flat_neighbor_indices.extend(sorted(neighbors))  # sorted for determinism
+            csr_offsets.append(len(flat_neighbor_indices))
+
+        object.__setattr__(
+            self,
+            "cell_neighbor_indices",
+            np.asarray(flat_neighbor_indices, dtype=self.index_dtype),
+        )
+        object.__setattr__(
+            self,
+            "cell_neighbor_offsets",
+            np.asarray(csr_offsets, dtype=self.index_dtype),
+        )
+
+    def _compute_face_geometry(self) -> None:
+        """Compute face centroids, areas, and normals."""
+        face_centroids, face_areas, face_unit_normals = _compute_face_geometry(
+            self.face_vertex_indices,
+            self.face_vertex_offsets,
+            self.vertex_coordinates,
+        )
+        object.__setattr__(self, "face_centroids", face_centroids)
+        object.__setattr__(self, "face_areas", face_areas)
+        object.__setattr__(self, "face_unit_normals", face_unit_normals)
+
+    def _compute_cell_geometry(self) -> None:
+        """
+        Compute cell volumes and volume-weighted centroids.
+
+        :raises `InvalidVolumeError`: If any cell has a non-positive volume.
+        """
+        n_cells = int(self.face_cell_indices.max()) + 1
+        cell_volumes, cell_centroids = _compute_cell_volumes_and_centroids(
+            self.face_cell_indices,
+            self.face_vertex_indices,
+            self.face_vertex_offsets,
+            self.vertex_coordinates,
+            n_cells,
+        )
+        invalid_volume_mask = cell_volumes <= 0.0
+        if invalid_volume_mask.any():
+            bad_cells = np.where(invalid_volume_mask)[0].tolist()
+            raise InvalidVolumeError(
+                f"Cells {bad_cells[:10]}{'...' if len(bad_cells) > 10 else ''} "
+                f"have non-positive computed volumes.  Check face winding order "
+                f"(vertices must be CCW from the owner-cell side)."
+            )
+        object.__setattr__(self, "cell_volumes", cell_volumes)
+        object.__setattr__(self, "cell_centroids", cell_centroids)
+
+    def _compute_bounding_boxes(self) -> None:
+        """
+        Compute per-cell axis-aligned bounding boxes from face vertex coordinates.
+
+        Each cell's bounding box is derived from the min/max of all vertices
+        belonging to its faces.
+        """
+        n_cells = len(self.cell_centroids)
+
+        cell_min = np.full((n_cells, 3), np.inf, dtype=self.floating_dtype)
+        cell_max = np.full((n_cells, 3), -np.inf, dtype=self.floating_dtype)
+
+        for face_idx, (owner, neighbour) in enumerate(self.face_cell_indices):
+            start = self.face_vertex_offsets[face_idx]
+            end = self.face_vertex_offsets[face_idx + 1]
+            face_vertex_coords = self.vertex_coordinates[
+                self.face_vertex_indices[start:end]
+            ]
+            face_min = face_vertex_coords.min(axis=0)
+            face_max = face_vertex_coords.max(axis=0)
+
+            for cell_idx in (owner, neighbour):
+                if cell_idx >= 0:
+                    np.minimum(cell_min[cell_idx], face_min, out=cell_min[cell_idx])
+                    np.maximum(cell_max[cell_idx], face_max, out=cell_max[cell_idx])
+
+        object.__setattr__(self, "cell_min_xyz", cell_min)
+        object.__setattr__(self, "cell_max_xyz", cell_max)
+
+    def _compute_derived_dimensions(self) -> None:
+        """
+        Derive per-cell scalar dimensions from the axis-aligned bounding boxes.
+
+        Computes `cell_length_x/y/z`, `cell_thickness`, `cell_center_depths`,
+        and `cell_center_elevations`.
+
+        Note: depth is positive downward (z-axis convention); elevation is the
+        negation of depth.
+        """
+        delta = self.cell_max_xyz - self.cell_min_xyz
+
+        object.__setattr__(self, "cell_length_x", delta[:, 0])
+        object.__setattr__(self, "cell_length_y", delta[:, 1])
+        object.__setattr__(self, "cell_length_z", delta[:, 2])
+        object.__setattr__(self, "cell_thickness", delta[:, 2])
+
+        depths = self.cell_centroids[:, 2].copy()
+        object.__setattr__(self, "cell_center_depths", depths)
+        object.__setattr__(self, "cell_center_elevations", -depths)
+
+    def _build_spatial_index(self) -> None:
+        """Construct a KD-tree on cell centroids for fast nearest-cell queries."""
+        object.__setattr__(self, "_spatial_index", cKDTree(self.cell_centroids))
 
     @property
-    def pcow(self) -> NDimensionalGrid[NDimension]:
-        return self.oil_water_capillary_pressure
+    def n_cells(self) -> int:
+        """
+        Total number of cells in the grid.
+
+        :returns: Integer count of grid cells.
+        """
+        return self.cell_centroids.shape[0]
 
     @property
-    def pcgo(self) -> NDimensionalGrid[NDimension]:
-        return self.gas_oil_capillary_pressure
+    def n_faces(self) -> int:
+        """
+        Total number of faces (boundary + interior) in the grid.
 
-    Pcow = pcow
-    Pcgo = pcgo
+        :returns: Integer count of grid faces.
+        """
+        return self.face_cell_indices.shape[0]
 
-    def __iter__(self) -> typing.Iterator[NDimensionalGrid[NDimension]]:
-        yield self.oil_water_capillary_pressure
-        yield self.gas_oil_capillary_pressure
+    @property
+    def n_vertices(self) -> int:
+        """
+        Total number of vertex points in the grid.
+
+        :returns: Integer count of grid vertices.
+        """
+        return self.vertex_coordinates.shape[0]
+
+    @property
+    def n_boundary_faces(self) -> int:
+        """
+        Number of boundary faces (faces on the outer hull of the domain).
+
+        :returns: Integer count of boundary faces.
+        """
+        return len(self.boundary_face_indices)
+
+    @property
+    def n_interior_faces(self) -> int:
+        """
+        Number of interior faces (faces shared between two cells).
+
+        :returns: Integer count of interior faces.
+        """
+        return len(self.interior_face_indices)
+
+    def get_cell_face_indices(self, cell_index: int) -> IntArray:
+        """
+        Return the indices of all faces belonging to a given cell.
+
+        :param cell_index: Zero-based cell index.
+        :returns: 1-D array of face indices for the requested cell.
+        :raises CellNotFoundError: If `cell_index` is out of range.
+        """
+        if cell_index < 0 or cell_index >= self.n_cells:
+            raise CellNotFoundError(
+                f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
+            )
+        start = self.cell_face_offsets[cell_index]
+        end = self.cell_face_offsets[cell_index + 1]
+        return self.cell_face_indices[start:end]
+
+    def get_cell_neighbor_indices(self, cell_index: int) -> IntArray:
+        """
+        Return the indices of all cells neighbouring a given cell.
+
+        Only cells sharing an interior face are considered neighbours.
+
+        :param cell_index: Zero-based cell index.
+        :returns: 1-D array of neighbouring cell indices.
+        :raises CellNotFoundError: If `cell_index` is out of range.
+        """
+        if cell_index < 0 or cell_index >= self.n_cells:
+            raise CellNotFoundError(
+                f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
+            )
+        start = self.cell_neighbor_offsets[cell_index]
+        end = self.cell_neighbor_offsets[cell_index + 1]
+        return self.cell_neighbor_indices[start:end]
+
+    def get_face_vertex_coordinates(self, face_index: int) -> FloatArray:
+        """
+        Return the (x, y, z) coordinates of all vertices of a given face.
+
+        :param face_index: Zero-based face index.
+        :returns: Shape `(n_verts_for_face, 3)` coordinate array.
+        :raises IndexError: If `face_index` is out of range.
+        """
+        start = int(self.face_vertex_offsets[face_index])
+        end = int(self.face_vertex_offsets[face_index + 1])
+        return self.vertex_coordinates[self.face_vertex_indices[start:end]]
+
+    def get_face_normal_for_cell(self, face_index: int, cell_index: int) -> FloatArray:
+        """
+        Return the outward unit normal of a face relative to a specific cell.
+
+        The stored normal points outward from the owner cell. For the neighbour
+        cell the normal is reversed.
+
+        :param face_index: Zero-based face index.
+        :param cell_index: Zero-based cell index (must be owner or neighbour of the face).
+        :returns: Shape `(3,)` unit normal vector pointing outward from `cell_index`.
+        :raises ValidationError: If `cell_index` is not connected to `face_index`.
+        """
+        owner = int(self.face_cell_indices[face_index, 0])
+        neighbour = int(self.face_cell_indices[face_index, 1])
+
+        if cell_index == owner:
+            return self.face_unit_normals[face_index]
+        elif cell_index == neighbour:
+            return -self.face_unit_normals[face_index]
+        raise ValidationError(
+            f"Cell {cell_index} is not connected to face {face_index} "
+            f"(owner={owner}, neighbour={neighbour})."
+        )
+
+    def get_boundary_cell_indices(self) -> IntArray:
+        """
+        Return the indices of all cells that touch at least one boundary face.
+
+        :returns: 1-D sorted array of boundary-adjacent cell indices.
+        """
+        boundary_owners = self.face_cell_indices[self.boundary_face_indices, 0]
+        boundary_neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
+
+        # Only one of owner/neighbour is a real cell on a boundary face
+        all_boundary_cells = np.concatenate(
+            [
+                boundary_owners[boundary_owners >= 0],
+                boundary_neighbours[boundary_neighbours >= 0],
+            ]
+        )
+        return np.unique(all_boundary_cells).astype(self.index_dtype)
+
+    def get_interior_cell_indices(self) -> IntArray:
+        """
+        Return the indices of all cells that have no boundary faces.
+
+        :returns: 1-D sorted array of fully interior cell indices.
+        """
+        boundary_cells = self.get_boundary_cell_indices()
+        all_cells = np.arange(self.n_cells, dtype=self.index_dtype)
+        return np.setdiff1d(all_cells, boundary_cells)
+
+    def is_boundary_cell(self, cell_index: int) -> bool:
+        """
+        Return whether a given cell is adjacent to at least one boundary face.
+
+        :param cell_index: Zero-based cell index.
+        :returns: `True` if the cell has at least one boundary face.
+        :raises CellNotFoundError: If `cell_index` is out of range.
+        """
+        if cell_index < 0 or cell_index >= self.n_cells:
+            raise CellNotFoundError(
+                f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
+            )
+        face_indices = self.get_cell_face_indices(cell_index)
+        for face_idx in face_indices:
+            owner = int(self.face_cell_indices[face_idx, 0])
+            neighbour = int(self.face_cell_indices[face_idx, 1])
+            if owner < 0 or neighbour < 0:
+                return True
+        return False
+
+    def find_nearest_cell(self, x: float, y: float, z: float) -> int:
+        """
+        Find the cell whose centroid is nearest to the given (x, y, z) point.
+
+        Uses a pre-built KD-tree for O(log n) lookup.
+
+        :param x: Query x-coordinate.
+        :param y: Query y-coordinate.
+        :param z: Query z-coordinate (depth, positive downward).
+        :returns: Zero-based index of the nearest cell.
+        """
+        _, cell_index = self._spatial_index.query([x, y, z])  # type: ignore[union-attr]
+        return int(cell_index)
+
+    def find_cells_in_radius(
+        self, x: float, y: float, z: float, radius: float
+    ) -> IntArray:
+        """
+        Return all cell indices whose centroids fall within `radius` of a point.
+
+        :param x: Query x-coordinate.
+        :param y: Query y-coordinate.
+        :param z: Query z-coordinate (depth, positive downward).
+        :param radius: Search radius in grid length units.
+        :returns: 1-D array of matching cell indices (unsorted).
+        """
+        raw_indices = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore[union-attr]
+        return np.asarray(raw_indices, dtype=self.index_dtype)
+
+    def compute_pore_volume(self, porosity: NumberOrArray) -> FloatArray:
+        """
+        Compute the pore volume for each cell given a porosity field.
+
+        :param porosity: Scalar or shape `(n_cells,)` array of porosity values
+            (dimensionless, in `[0, 1]`).
+        :returns: Pore volumes in the same units³ as `cell_volumes`, broadcast
+            against `porosity`.
+        """
+        return porosity * self.cell_volumes
+
+    def validate_geometry(self) -> None:
+        """
+        Validate that all computed geometry values are physically reasonable.
+
+        Checks that all cell volumes are strictly positive, all face areas are
+        non-negative, and all face unit normals have unit magnitude.
+
+        :raises InvalidVolumeError: If any cell volume is `<= 0`.
+        :raises InvalidFaceAreaError: If any face area is negative.
+        :raises InvalidNormalVectorError: If any face normal deviates from unit length
+            by more than a loose tolerance.
+        """
+        if (self.cell_volumes <= 0.0).any():
+            bad = np.where(self.cell_volumes <= 0.0)[0]
+            raise InvalidVolumeError(
+                f"{len(bad)} cell(s) have non-positive volume: {bad[:5].tolist()}..."
+            )
+        if (self.face_areas < 0.0).any():
+            bad = np.where(self.face_areas < 0.0)[0]
+            raise InvalidFaceAreaError(
+                f"{len(bad)} face(s) have negative area: {bad[:5].tolist()}..."
+            )
+        normal_magnitudes = np.linalg.norm(self.face_unit_normals, axis=1)
+        # Faces with zero area legitimately have zero-magnitude normals - allow those.
+        active_mask = self.face_areas > _GEOMETRY_TOLERANCE
+        if active_mask.any():
+            deviation = np.abs(normal_magnitudes[active_mask] - 1.0)
+            if (deviation > 1e-10).any():
+                raise InvalidNormalVectorError(
+                    "One or more face unit normals do not have unit magnitude "
+                    f"(max deviation = {deviation.max():.3e})."
+                )
+

@@ -23,7 +23,7 @@ from bores.tables.pseudo_pressure import (
     build_pseudo_pressure_table,
 )
 from bores.tables.pvt import PVTTable
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ import plotly.graph_objects as go  # type: ignore[import-untyped]
 from plotly.subplots import make_subplots  # type: ignore[import-untyped]
 
 from bores.errors import ValidationError
-from bores.types import TwoDimensionalGrid
+from bores.typing import TwoDimensionalGrid
 
 logger = logging.getLogger(__name__)
 

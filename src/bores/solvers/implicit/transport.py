@@ -26,7 +26,7 @@ from bores.solvers.implicit.linesearch import line_search
 from bores.solvers.rates import WellRates
 from bores.tables.rock_fluid import RockFluidTables
 from bores.transmissibility import FaceTransmissibilities
-from bores.types import ThreeDimensionalGrid, ThreeDimensions
+from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.wells.indices import WellsIndices
 
 logger = logging.getLogger(__name__)

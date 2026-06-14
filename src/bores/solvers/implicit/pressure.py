@@ -28,9 +28,9 @@ from bores.solvers.base import (
 from bores.solvers.rates import WellRates, compute_well_rates
 from bores.tables.pvt import PVTTable, PVTTables
 from bores.transmissibility import FaceTransmissibilities
-from bores.types import (
-    FloatOrArray,
+from bores.typing import (
     MiscibilityModel,
+    NumberOrArray,
     ThreeDimensionalGrid,
     ThreeDimensions,
 )
@@ -662,7 +662,7 @@ def compute_solution_gas_to_oil_ratio_pressure_derivative(
     oil_api_gravity_grid: ThreeDimensionalGrid,
     bubble_point_pressure_grid: ThreeDimensionalGrid,
     pvt_table: typing.Optional[PVTTable] = None,
-    perturbation: FloatOrArray = 1.0,
+    perturbation: NumberOrArray = 1.0,
 ) -> ThreeDimensionalGrid:
     """
     Computes the pressure derivative of the solution gas-to-oil ratio using a
@@ -708,10 +708,10 @@ def compute_solution_gas_to_oil_ratio_pressure_derivative(
 def compute_gas_solubility_in_water_pressure_derivative(
     pressure_grid: ThreeDimensionalGrid,
     temperature_grid: ThreeDimensionalGrid,
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
     gas: str = "methane",
     pvt_table: typing.Optional[PVTTable] = None,
-    perturbation: FloatOrArray = 1.0,
+    perturbation: NumberOrArray = 1.0,
 ) -> ThreeDimensionalGrid:
     """
     Computes the pressure derivative of gas solubility in water using a
@@ -759,7 +759,7 @@ def compute_gas_solubility_in_water_pressure_derivative(
 @numba.njit(cache=True)
 def compute_mass_accumulation_derivative(
     pore_volume_grid: ThreeDimensionalGrid,
-    rock_compressibility: FloatOrArray,
+    rock_compressibility: NumberOrArray,
     water_mass_grid: ThreeDimensionalGrid,
     oil_mass_grid: ThreeDimensionalGrid,
     free_gas_mass_grid: ThreeDimensionalGrid,

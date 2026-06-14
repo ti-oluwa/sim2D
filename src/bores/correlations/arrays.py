@@ -29,7 +29,7 @@ from bores.correlations.core import (
 )
 from bores.errors import ComputationError, ValidationError
 from bores.precision import get_dtype
-from bores.types import FloatOrArray, NDimension, NDimensionalGrid, ZFactorMethod
+from bores.typing import NDimension, NDimensionalGrid, NumberOrArray, ZFactorMethod
 from bores.utils import apply_mask, clip, get_mask, max_, min_
 
 logger = logging.getLogger(__name__)
@@ -616,7 +616,7 @@ def compute_oil_formation_volume_factor(
 
 
 def compute_water_formation_volume_factor(
-    water_density: NDimensionalGrid[NDimension], salinity: FloatOrArray
+    water_density: NDimensionalGrid[NDimension], salinity: NumberOrArray
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the water formation volume factor (B_w) in bbl/STB of water
@@ -653,8 +653,8 @@ def compute_water_formation_volume_factor(
 def compute_water_formation_volume_factor_mccain(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
-    gas_solubility: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
+    gas_solubility: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     McCain water FVF correlation (more commonly used in industry).
@@ -746,9 +746,9 @@ def compute_gas_compressibility_factor_papay(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes gas compressibility factor using Papay's correlation,
@@ -829,9 +829,9 @@ def compute_gas_compressibility_factor_hall_yarborough(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
     maximum_iterations: int = 50,
     tolerance: float = 1e-10,
 ) -> NDimensionalGrid[NDimension]:
@@ -959,9 +959,9 @@ def compute_gas_compressibility_factor_dranchuk_abou_kassem(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
     maximum_iterations: int = 50,
     tolerance: float = 1e-10,
 ) -> NDimensionalGrid[NDimension]:
@@ -1088,9 +1088,9 @@ def compute_gas_compressibility_factor(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
     method: ZFactorMethod = "dak",
 ) -> NDimensionalGrid[NDimension]:
     """
@@ -1270,7 +1270,7 @@ def compute_oil_bubble_point_pressure(
 def compute_water_bubble_point_pressure_mccain(
     temperature: NDimensionalGrid[NDimension],
     gas_solubility_in_water: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray,
+    salinity: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the bubble point pressure using the inverted McCain correlation for methane.
@@ -1316,7 +1316,7 @@ def _water_bubble_point_residual(
 def compute_water_bubble_point_pressure(
     temperature: NDimensionalGrid[NDimension],
     gas_solubility_in_water: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
     gas: str = "methane",
 ) -> NDimensionalGrid[NDimension]:
     """
@@ -1720,9 +1720,9 @@ def compute_gas_molecular_weight(
 @numba.njit(cache=True)
 def compute_gas_pseudocritical_properties(
     gas_gravity: NDimensionalGrid[NDimension],
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
 ) -> typing.Tuple[NDimensionalGrid[NDimension], NDimensionalGrid[NDimension]]:
     """
     Computes pseudocritical pressure and temperature of natural gas in psi and °F.
@@ -1800,7 +1800,7 @@ def compute_gas_density(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    gas_compressibility_factor: FloatOrArray,
+    gas_compressibility_factor: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the gas density (lbm/ft³) using the real gas equation of state.
@@ -1828,7 +1828,7 @@ def compute_gas_density(
 def compute_gas_viscosity(
     temperature: NDimensionalGrid[NDimension],
     gas_density: NDimensionalGrid[NDimension],
-    gas_molecular_weight: FloatOrArray,
+    gas_molecular_weight: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the gas viscosity (cP) using the Lee-Gonzalez-Eakin (LGE) correlation.
@@ -1889,9 +1889,9 @@ def compute_gas_viscosity(
 @numba.njit(cache=True)
 def _compute_water_viscosity(
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray,
-    pressure: FloatOrArray,
-    ppm_to_weight_fraction: FloatOrArray,
+    salinity: NumberOrArray,
+    pressure: NumberOrArray,
+    ppm_to_weight_fraction: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     salinity_fraction = salinity * ppm_to_weight_fraction  # type: ignore
     A = 1.0 + 1.17 * salinity_fraction + 3.15e-6 * salinity_fraction**2
@@ -1908,8 +1908,8 @@ def _compute_water_viscosity(
 
 def compute_water_viscosity(
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
-    pressure: FloatOrArray = 14.7,
+    salinity: NumberOrArray = 0.0,
+    pressure: NumberOrArray = 14.7,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes water viscosity using McCain's corrected correlation for reservoir conditions.
@@ -1980,8 +1980,8 @@ def _compute_oil_compressibility_liberation_correction_term(
     gor_at_bubble_point_pressure: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
     oil_api_gravity: NDimensionalGrid[NDimension],
-    gas_formation_volume_factor: FloatOrArray,
-    oil_formation_volume_factor: FloatOrArray,
+    gas_formation_volume_factor: NumberOrArray,
+    oil_formation_volume_factor: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the liberation correction term for oil compressibility below bubble point pressure.
@@ -2069,8 +2069,8 @@ def compute_oil_compressibility(
     oil_api_gravity: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
     gor_at_bubble_point_pressure: NDimensionalGrid[NDimension],
-    gas_formation_volume_factor: FloatOrArray = 1.0,
-    oil_formation_volume_factor: FloatOrArray = 1.0,
+    gas_formation_volume_factor: NumberOrArray = 1.0,
+    oil_formation_volume_factor: NumberOrArray = 1.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the oil compressibility (C_o) in psi⁻¹ using the Vasquez and Beggs (1980) correlation.
@@ -2181,10 +2181,10 @@ def compute_gas_compressibility(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
     gas_gravity: NDimensionalGrid[NDimension],
-    gas_compressibility_factor: typing.Optional[FloatOrArray] = None,
-    h2s_mole_fraction: FloatOrArray = 0.0,
-    co2_mole_fraction: FloatOrArray = 0.0,
-    n2_mole_fraction: FloatOrArray = 0.0,
+    gas_compressibility_factor: typing.Optional[NumberOrArray] = None,
+    h2s_mole_fraction: NumberOrArray = 0.0,
+    co2_mole_fraction: NumberOrArray = 0.0,
+    n2_mole_fraction: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates isothermal gas compressibility (C_g) in psi^-1 using a
@@ -2262,7 +2262,7 @@ def compute_gas_compressibility(
 def _gas_solubility_in_water_mccain_methane(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates gas solubility in water (Rsw) using McCain's correlation (1990).
@@ -2315,7 +2315,7 @@ def _gas_solubility_in_water_mccain_methane(
 def _gas_solubility_in_water_duan_sun_co2(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
     nacl_molecular_weight: float = 58.44,
     psi_to_bar: float = 0.0689476,
 ) -> NDimensionalGrid[NDimension]:
@@ -2410,7 +2410,7 @@ def _gas_solubility_in_water_henry_law(
     gas: str,
     molar_masses: typing.Dict[str, float],
     henry_coefficients: typing.Dict[str, typing.Tuple[float, float, float]],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Estimates gas solubility in water using Henry's Law with Setschenow salinity correction.
@@ -2481,7 +2481,7 @@ def _gas_solubility_in_water_henry_law(
 def compute_gas_solubility_in_water(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
     gas: str = "methane",
 ) -> NDimensionalGrid[NDimension]:
     """
@@ -2620,7 +2620,7 @@ def compute_gas_free_water_formation_volume_factor(
 
 @numba.njit(cache=True)
 def _compute_dRsw_dP_mccain(
-    temperature: NDimensionalGrid[NDimension], salinity: FloatOrArray
+    temperature: NDimensionalGrid[NDimension], salinity: NumberOrArray
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the derivative of gas solubility in water (Rsw) with respect to pressure,
@@ -2675,7 +2675,7 @@ def compute_water_compressibility(
     gas_formation_volume_factor: NDimensionalGrid[NDimension],  # Bg in ft3/SCF
     gas_solubility_in_water: NDimensionalGrid[NDimension],  # Rsw in SCF/STB
     gas_free_water_formation_volume_factor: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the isothermal water compressibility (C_w) using McCain's correlations.
@@ -2834,7 +2834,7 @@ def compute_live_oil_density(
 def compute_water_density_mccain(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the live water/brine density at reservoir conditions using McCain's correlation.
@@ -2879,7 +2879,7 @@ def compute_water_density_mccain(
 def compute_water_density_batzle(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    salinity: FloatOrArray,
+    salinity: NumberOrArray,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the live water/brine density using Batzle & Wang's correlation.
@@ -2938,10 +2938,10 @@ def compute_water_density_batzle(
 def compute_water_density(
     pressure: NDimensionalGrid[NDimension],
     temperature: NDimensionalGrid[NDimension],
-    gas_gravity: FloatOrArray = 0.0,
-    salinity: FloatOrArray = 0.0,
-    gas_solubility_in_water: FloatOrArray = 0.0,
-    gas_free_water_formation_volume_factor: FloatOrArray = 1.0,
+    gas_gravity: NumberOrArray = 0.0,
+    salinity: NumberOrArray = 0.0,
+    gas_solubility_in_water: NumberOrArray = 0.0,
+    gas_free_water_formation_volume_factor: NumberOrArray = 1.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Calculates the live water/brine density at reservoir conditions
@@ -3211,10 +3211,10 @@ def compute_hydrocarbon_in_place(
     porosity: NDimensionalGrid[NDimension],
     phase_saturation: NDimensionalGrid[NDimension],
     formation_volume_factor: NDimensionalGrid[NDimension],
-    net_to_gross_ratio: FloatOrArray = 1.0,
+    net_to_gross_ratio: NumberOrArray = 1.0,
     hydrocarbon_type: typing.Literal["oil", "gas", "water"] = "oil",
-    acre_ft_to_bbl: FloatOrArray = 7758.0,
-    acre_ft_to_ft3: FloatOrArray = 43560.0,
+    acre_ft_to_bbl: NumberOrArray = 7758.0,
+    acre_ft_to_ft3: NumberOrArray = 43560.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Computes the (free) hydrocarbon (or free water) in place (HCIP or FWIP) in stock tank barrels (STB) or standard cubic feet (SCF)
@@ -3302,8 +3302,8 @@ def compute_hydrocarbon_in_place(
 @numba.njit(cache=True)
 def compute_miscibility_transition_factor(
     pressure: NDimensionalGrid[NDimension],
-    minimum_miscibility_pressure: FloatOrArray,
-    transition_width: FloatOrArray = 500.0,
+    minimum_miscibility_pressure: NumberOrArray,
+    transition_width: NumberOrArray = 500.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Compute pressure-dependent miscibility transition factor.
@@ -3382,9 +3382,9 @@ def compute_miscibility_transition_factor(
 @numba.njit(cache=True)
 def compute_effective_todd_longstaff_omega(
     pressure: NDimensionalGrid[NDimension],
-    base_omega: FloatOrArray,
-    minimum_miscibility_pressure: FloatOrArray,
-    transition_width: FloatOrArray = 500.0,
+    base_omega: NumberOrArray,
+    minimum_miscibility_pressure: NumberOrArray,
+    transition_width: NumberOrArray = 500.0,
 ) -> NDimensionalGrid[NDimension]:
     """
     Compute pressure-dependent effective Todd-Longstaff omega parameter.

@@ -55,9 +55,9 @@ from bores.errors import ComputationError, ValidationError
 from bores.fluids import Fluid
 from bores.tables.pseudo_pressure import PseudoPressureTable
 from bores.tables.pvt import PVTTables
-from bores.types import (
-    FloatOrArray,
+from bores.typing import (
     FluidPhase,
+    NumberOrArray,
     Orientation,
     ThreeDimensions,
     TwoDimensions,
@@ -650,10 +650,10 @@ class WellFluid(Fluid):
 
     def get_specific_gravity(
         self,
-        pressure: FloatOrArray,
-        temperature: FloatOrArray,
-        salinity: typing.Optional[FloatOrArray] = None,
-    ) -> typing.Optional[FloatOrArray]:
+        pressure: NumberOrArray,
+        temperature: NumberOrArray,
+        salinity: typing.Optional[NumberOrArray] = None,
+    ) -> typing.Optional[NumberOrArray]:
         """
         Get the specific gravity of the fluid at given pressure and temperature.
 
@@ -677,10 +677,10 @@ class WellFluid(Fluid):
 
     def get_molecular_weight(
         self,
-        pressure: FloatOrArray,
-        temperature: FloatOrArray,
-        salinity: typing.Optional[FloatOrArray] = None,
-    ) -> typing.Optional[FloatOrArray]:
+        pressure: NumberOrArray,
+        temperature: NumberOrArray,
+        salinity: typing.Optional[NumberOrArray] = None,
+    ) -> typing.Optional[NumberOrArray]:
         """
         Get the molecular weight of the fluid at given pressure and temperature.
 
@@ -770,8 +770,8 @@ class InjectedFluid(WellFluid):
                 )
 
     def get_density(
-        self, pressure: FloatOrArray, temperature: FloatOrArray, **kwargs: typing.Any
-    ) -> FloatOrArray:
+        self, pressure: NumberOrArray, temperature: NumberOrArray, **kwargs: typing.Any
+    ) -> NumberOrArray:
         """
         Get the density of the fluid at given pressure and temperature.
 
@@ -896,8 +896,8 @@ class InjectedFluid(WellFluid):
         )
 
     def get_viscosity(
-        self, pressure: FloatOrArray, temperature: FloatOrArray, **kwargs: typing.Any
-    ) -> FloatOrArray:
+        self, pressure: NumberOrArray, temperature: NumberOrArray, **kwargs: typing.Any
+    ) -> NumberOrArray:
         """
         Get the viscosity of the fluid at given pressure and temperature.
 
@@ -1012,14 +1012,14 @@ class InjectedFluid(WellFluid):
 
     def get_mobility(
         self,
-        relative_permeability: FloatOrArray,
+        relative_permeability: NumberOrArray,
         endpoint_relative_permeability: float,
-        pressure: typing.Optional[FloatOrArray] = None,
-        temperature: typing.Optional[FloatOrArray] = None,
-        viscosity: typing.Optional[FloatOrArray] = None,
+        pressure: typing.Optional[NumberOrArray] = None,
+        temperature: typing.Optional[NumberOrArray] = None,
+        viscosity: typing.Optional[NumberOrArray] = None,
         eta: float = 1e-3,
         **kwargs: typing.Any,
-    ) -> FloatOrArray:
+    ) -> NumberOrArray:
         """
         Compute the effective well-connection mobility for this injected fluid,
         applying a startup floor to prevent zero injectivity when the reservoir
@@ -1095,8 +1095,8 @@ class InjectedFluid(WellFluid):
         return effective_relative_permeability / viscosity
 
     def get_compressibility(
-        self, pressure: FloatOrArray, temperature: FloatOrArray, **kwargs: typing.Any
-    ) -> FloatOrArray:
+        self, pressure: NumberOrArray, temperature: NumberOrArray, **kwargs: typing.Any
+    ) -> NumberOrArray:
         """
         Get the compressibility of the fluid at given pressure and temperature.
 
@@ -1190,8 +1190,8 @@ class InjectedFluid(WellFluid):
         )
 
     def get_formation_volume_factor(
-        self, pressure: FloatOrArray, temperature: FloatOrArray, **kwargs: typing.Any
-    ) -> FloatOrArray:
+        self, pressure: NumberOrArray, temperature: NumberOrArray, **kwargs: typing.Any
+    ) -> NumberOrArray:
         """
         Get the formation volume factor of the fluid at given pressure and temperature.
 

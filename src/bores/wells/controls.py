@@ -11,7 +11,7 @@ from bores.errors import ComputationError, ValidationError
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
 from bores.tables.pvt import PVTTables
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 from bores.wells.core import (
     WellFluid,
     compute_average_compressibility_factor,

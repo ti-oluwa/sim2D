@@ -7,7 +7,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.serialization import Serializable, deserialize_ndarray, serialize_ndarray
-from bores.types import T
+from bores.typing import T
 
 DType = typing.TypeVar("DType", float, np.floating)
 ShapeT = typing.TypeVar("ShapeT", bound=typing.Tuple[int, ...])
@@ -108,7 +108,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         Entries equal to `default` are discarded to maintain sparsity.
 
         :param key: A `ShapeT` integer tuple within the declared shape bounds.
-        :param value: Numeric value to store. Will be cast to `dtype`.
+        :param value: Number value to store. Will be cast to `dtype`.
         :raises KeyError: If `key` is not a valid non-negative integer tuple
             of the correct rank.
         :raises IndexError: If `key` falls outside the declared `shape`.
@@ -237,7 +237,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         """
         Scalar multiplication: `self * scalar`.
 
-        :param scalar: Numeric multiplier.
+        :param scalar: Number multiplier.
         :returns: New `SparseTensor` with all entries scaled.
         :raises TypeError: If `scalar` is not numeric.
         """
@@ -255,7 +255,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         """
         Right scalar multiplication: `scalar * self`.
 
-        :param scalar: Numeric multiplier.
+        :param scalar: Number multiplier.
         :returns: New `SparseTensor` with all entries scaled.
         """
         return self.__mul__(scalar)
@@ -373,7 +373,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         """
         Scalar division: `self / scalar`.
 
-        :param scalar: Numeric divisor.
+        :param scalar: Number divisor.
         :returns: New `SparseTensor` with all entries divided by `scalar`.
         :raises TypeError: If `scalar` is not numeric.
         :raises ZeroDivisionError: If `scalar` is zero.
@@ -398,7 +398,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         Only stored (non-default) entries are raised to the power. If `default`
         is `0.0` this is correct since `0 ** n == 0` for all positive `n`.
 
-        :param exponent: Numeric exponent.
+        :param exponent: Number exponent.
         :returns: New `SparseTensor` with entries raised to the power.
         :raises TypeError: If `exponent` is not numeric.
         """
@@ -452,7 +452,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
 
         Mutates `self` directly without allocating a new tensor.
 
-        :param scalar: Numeric multiplier.
+        :param scalar: Number multiplier.
         :returns: `self` after mutation.
         :raises TypeError: If `scalar` is not numeric.
         """
@@ -469,7 +469,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
 
         Mutates `self` directly without allocating a new tensor.
 
-        :param scalar: Numeric divisor.
+        :param scalar: Number divisor.
         :returns: `self` after mutation.
         :raises TypeError: If `scalar` is not numeric.
         :raises ZeroDivisionError: If `scalar` is zero.
@@ -490,7 +490,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
         Only stored (non-default) entries are raised to the power. If `default`
         is `0.0` this is correct since `0 ** n == 0` for all positive `n`.
 
-        :param exponent: Numeric exponent.
+        :param exponent: Number exponent.
         :returns: `self` after mutation.
         :raises TypeError: If `exponent` is not numeric.
         """

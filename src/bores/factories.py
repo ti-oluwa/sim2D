@@ -44,7 +44,7 @@ from bores.models import (
     RockProperties,
 )
 from bores.tables.pvt import PVTTables
-from bores.types import Coordinates, NDimension, NDimensionalGrid
+from bores.typing import Coordinates, NDimension, NDimensionalGrid
 from bores.wells import (
     InjectedFluid,
     InjectionWell,

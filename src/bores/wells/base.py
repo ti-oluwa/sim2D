@@ -10,7 +10,6 @@ import attrs
 import numpy as np
 from typing_extensions import Self
 
-from bores.boundary_conditions import BoundaryConditions, NeumannBoundary
 from bores.errors import ValidationError
 from bores.serialization import (
     make_registry_deserializer,
@@ -21,7 +20,7 @@ from bores.serialization import (
 )
 from bores.stores import StoreSerializable
 from bores.tables.pvt import PVTTables
-from bores.types import (
+from bores.typing import (
     Coordinates,
     FluidPhase,
     Orientation,

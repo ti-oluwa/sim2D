@@ -28,7 +28,7 @@ The key differences between the array and scalar modules are:
 
 **Input types.** Scalar functions accept `float` parameters. Array functions accept `NDimensionalGrid[NDimension]` parameters, which are NumPy arrays of shape `(nx,)`, `(nx, ny)`, or `(nx, ny, nz)` depending on the simulation dimensionality.
 
-**Broadcasting.** Array functions follow NumPy broadcasting rules. You can pass a scalar value for a parameter that is uniform across the grid (like gas gravity) and it will be broadcast against the grid-shaped parameters (like pressure). Some parameters explicitly accept `FloatOrArray` types for this purpose.
+**Broadcasting.** Array functions follow NumPy broadcasting rules. You can pass a scalar value for a parameter that is uniform across the grid (like gas gravity) and it will be broadcast against the grid-shaped parameters (like pressure). Some parameters explicitly accept `NumberOrArray` types for this purpose.
 
 **Validation.** Scalar functions raise `ValidationError` immediately when a single invalid value is detected. Array functions use `min_()` and `max_()` helpers to check the entire grid at once, raising an error if any element violates the constraint.
 

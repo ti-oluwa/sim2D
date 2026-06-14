@@ -29,7 +29,7 @@ from bores.grids.utils import coarsen_grid
 from bores.models import ReservoirModel
 from bores.precision import get_dtype
 from bores.states import ModelState
-from bores.types import ThreeDimensionalGrid, ThreeDimensions
+from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.visualization.base import (
     ColorScheme,
     PropertyMeta,
