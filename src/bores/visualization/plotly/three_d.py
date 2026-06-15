@@ -50,12 +50,12 @@ logger = logging.getLogger(__name__)
 _active_figures: typing.List[weakref.ref] = []
 
 
-def _register_figure(fig: go.Figure) -> None:
+def _track_figure(figure: go.Figure) -> None:
     """Track active figures for memory cleanup."""
-    _active_figures.append(weakref.ref(fig, _on_figure_deleted))
+    _active_figures.append(weakref.ref(figure, _untrack_figure))
 
 
-def _on_figure_deleted(ref: typing.Any) -> None:
+def _untrack_figure(ref: typing.Any) -> None:
     """Remove dead weakref from registry."""
     try:
         _active_figures.remove(ref)
@@ -2772,7 +2772,7 @@ class DataVisualizer:
             layout_updates["height"] = height
 
         fig.update_layout(**layout_updates)
-        _register_figure(fig)
+        _track_figure(fig)
         return fig
 
     def animate(
@@ -3082,7 +3082,7 @@ class DataVisualizer:
                 }
             ],
         )
-        _register_figure(base_fig)
+        _track_figure(base_fig)
 
         if save is not None:
             if isinstance(save, str):

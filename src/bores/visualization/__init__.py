@@ -1,10 +1,11 @@
 """1D, 2D, & 3D visualization utilities for BORES."""
 
 from .base import *  # noqa
-from . import config, plotly1d, plotly2d, plotly3d  # noqa
-from .plotly1d import make_series_plot  # noqa
+from . import config  # noqa
+from .plotly import one_d, two_d, three_d  # noqa
+from .plotly.one_d import make_series_plot  # noqa
 
 try:
-    from . import pyvista3d  # noqa
+    from . import three_d  # noqa
 except ImportError:
     pass

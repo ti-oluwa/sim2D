@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 _active_figures: typing.List[weakref.ref] = []
 
 
-def _register_figure(fig: go.Figure) -> None:
+def _track_figure(figure: go.Figure) -> None:
     """Track active figures for memory cleanup."""
-    _active_figures.append(weakref.ref(fig, _on_figure_deleted))
+    _active_figures.append(weakref.ref(figure, _untrack_figure))
 
 
-def _on_figure_deleted(ref: typing.Any) -> None:
+def _untrack_figure(ref: typing.Any) -> None:
     """Remove dead weakref from registry."""
     try:
         _active_figures.remove(ref)
@@ -60,6 +60,7 @@ def cleanup_figures() -> None:
         if fig is not None:
             try:
                 fig.data = []
+                del fig
             except (AttributeError, RuntimeError) as exc:
                 logger.debug(f"Failed to cleanup figure: {exc}")
     _active_figures.clear()
@@ -215,6 +216,7 @@ class BaseRenderer(ABC):
     @abstractmethod
     def render(
         self,
+        figure: go.Figure,
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
@@ -326,7 +328,7 @@ class BaseRenderer(ABC):
 
     def update_layout(
         self,
-        fig: go.Figure,
+        figure: go.Figure,
         title: typing.Optional[str],
         x_label: str,
         y_label: str,
@@ -374,7 +376,7 @@ class BaseRenderer(ABC):
             else ("bottom" if self.config.legend_position == "top" else "top"),
         )
 
-        fig.update_layout(
+        figure.update_layout(
             title=dict(
                 text=title_text,
                 x=0.5,
@@ -448,6 +450,7 @@ class LineRenderer(BaseRenderer):
 
     def render(
         self,
+        figure: go.Figure,
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
@@ -583,8 +586,6 @@ class LineRenderer(BaseRenderer):
             param_name="fill_colors",
         )
 
-        fig = go.Figure()
-
         # Add each series to the figure
         for i, (series_data, name) in enumerate(zip(series_list, names_list)):
             x_values = series_data[:, 0]
@@ -651,11 +652,11 @@ class LineRenderer(BaseRenderer):
                     trace_kwargs["fillcolor"] = fillcolor_rgba
 
             trace_kwargs.update(kwargs)
-            fig.add_trace(go.Scatter(**trace_kwargs))
+            figure.add_trace(go.Scatter(**trace_kwargs))
 
         # Apply layout
         self.update_layout(
-            fig=fig,
+            figure=figure,
             title=title,
             x_label=x_label,
             y_label=y_label,
@@ -667,7 +668,7 @@ class LineRenderer(BaseRenderer):
             width=width,
             height=height,
         )
-        return fig
+        return figure
 
 
 class BarRenderer(BaseRenderer):
@@ -679,6 +680,7 @@ class BarRenderer(BaseRenderer):
 
     def render(
         self,
+        figure: go.Figure,
         data: SeriesData,
         x_label: str = "Category",
         y_label: str = "Value",
@@ -764,8 +766,6 @@ class BarRenderer(BaseRenderer):
             param_name="bar_colors",
         )
 
-        fig = go.Figure()
-
         # Add each series as a bar trace
         for i, (series_data, name) in enumerate(zip(series_list, names_list)):
             x_values = series_data[:, 0]
@@ -801,10 +801,10 @@ class BarRenderer(BaseRenderer):
                 opacity=self.config.opacity,
             )
             trace_kwargs.update(kwargs)
-            fig.add_trace(go.Bar(**trace_kwargs))
+            figure.add_trace(go.Bar(**trace_kwargs))
 
         # Set bar mode
-        fig.update_layout(barmode=bar_mode)
+        figure.update_layout(barmode=bar_mode)
 
         # Apply custom x-axis category labels if provided
         if categories is not None:
@@ -816,7 +816,7 @@ class BarRenderer(BaseRenderer):
                     f"Number of categories ({len(categories)}) must match number of x-positions ({len(x_positions)})"
                 )
             # Update x-axis with custom tick labels
-            fig.update_xaxes(
+            figure.update_xaxes(
                 tickmode="array",
                 tickvals=x_positions,
                 ticktext=categories,
@@ -824,7 +824,7 @@ class BarRenderer(BaseRenderer):
 
         # Apply layout
         self.update_layout(
-            fig=fig,
+            figure=figure,
             title=title,
             x_label=x_label,
             y_label=y_label,
@@ -836,7 +836,7 @@ class BarRenderer(BaseRenderer):
             width=width,
             height=height,
         )
-        return fig
+        return figure
 
 
 class TornadoRenderer(BaseRenderer):
@@ -850,6 +850,7 @@ class TornadoRenderer(BaseRenderer):
 
     def render(
         self,
+        figure: go.Figure,
         data: typing.Union[
             TwoDimensionalGrid,  # Shape (n, 3): [low, base, high]
             typing.Mapping[
@@ -950,10 +951,8 @@ class TornadoRenderer(BaseRenderer):
             negative_impacts = negative_impacts[sorted_indices]
             positive_impacts = positive_impacts[sorted_indices]
 
-        fig = go.Figure()
-
         # Add negative impact bars (left side)
-        fig.add_trace(
+        figure.add_trace(
             go.Bar(
                 y=var_names,
                 x=negative_impacts,
@@ -971,7 +970,7 @@ class TornadoRenderer(BaseRenderer):
         )
 
         # Add positive impact bars (right side)
-        fig.add_trace(
+        figure.add_trace(
             go.Bar(
                 y=var_names,
                 x=positive_impacts,
@@ -989,7 +988,7 @@ class TornadoRenderer(BaseRenderer):
         )
 
         # Configure layout for tornado plot
-        fig.update_layout(
+        figure.update_layout(
             barmode="overlay",
             title=dict(  # noqa
                 text=title
@@ -1034,14 +1033,14 @@ class TornadoRenderer(BaseRenderer):
         )
 
         # Add vertical line at base value
-        fig.add_vline(
+        figure.add_vline(
             x=0,
             line_width=2,
             line_color="black",
             annotation_text=f"Base: {base_value:{value_format}}",
             annotation_position="top",
         )
-        return fig
+        return figure
 
 
 class ScatterRenderer(BaseRenderer):
@@ -1051,6 +1050,7 @@ class ScatterRenderer(BaseRenderer):
 
     def render(
         self,
+        figure: go.Figure,
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
@@ -1145,8 +1145,6 @@ class ScatterRenderer(BaseRenderer):
             param_name="marker_symbols",
         )
 
-        fig = go.Figure()
-
         # Add each series as scatter trace
         for i, (series_data, name) in enumerate(zip(series_list, names_list)):
             x_values = series_data[:, 0]
@@ -1175,12 +1173,12 @@ class ScatterRenderer(BaseRenderer):
                 hoverinfo="skip" if not self.config.show_hover else None,
             )
             trace_kwargs.update(kwargs)
-            fig.add_trace(go.Scatter(**trace_kwargs))
+            figure.add_trace(go.Scatter(**trace_kwargs))
 
             # Add trendline if requested
             if show_trendline:
                 self._add_trendline(
-                    fig=fig,
+                    figure=figure,
                     x_values=x_values,
                     y_values=y_values,
                     trendline_type=trendline_type,
@@ -1190,7 +1188,7 @@ class ScatterRenderer(BaseRenderer):
                 )
 
         self.update_layout(
-            fig=fig,
+            figure=figure,
             title=title,
             x_label=x_label,
             y_label=y_label,
@@ -1202,11 +1200,11 @@ class ScatterRenderer(BaseRenderer):
             width=width,
             height=height,
         )
-        return fig
+        return figure
 
     def _add_trendline(
         self,
-        fig: go.Figure,
+        figure: go.Figure,
         x_values: np.ndarray,
         y_values: np.ndarray,
         trendline_type: typing.Literal["linear", "polynomial", "exponential"],
@@ -1244,7 +1242,7 @@ class ScatterRenderer(BaseRenderer):
         else:
             return
 
-        fig.add_trace(
+        figure.add_trace(
             go.Scatter(
                 x=x_trend,
                 y=y_trend,
@@ -1256,9 +1254,9 @@ class ScatterRenderer(BaseRenderer):
         )
 
 
-class DataVisualizer:
+class Plotter:
     """
-    1D data visualizer for series data.
+    Plots 1D series data.
 
     Supports multiple plot types via registered renderers.
     """
@@ -1334,7 +1332,8 @@ class DataVisualizer:
                 )
 
         renderer = self.get_renderer(plot_type)
-        return renderer.render(data, **kwargs)
+        figure = go.Figure()
+        return renderer.render(figure, data, **kwargs)
 
     def make_plots(
         self,
@@ -1409,7 +1408,7 @@ class DataVisualizer:
         if horizontal_spacing is not None:
             subplot_kwargs["horizontal_spacing"] = horizontal_spacing
 
-        fig = make_subplots(**subplot_kwargs)
+        figure = make_subplots(**subplot_kwargs)
 
         # Add each plot to its subplot
         for idx, (data, plot_type) in enumerate(zip(data_list, plot_types_list)):
@@ -1417,24 +1416,23 @@ class DataVisualizer:
             col = (idx % cols) + 1
 
             # Create temporary figure for this subplot
-            temp_fig = go.Figure()
-
+            temp_figure = go.Figure()
             # Render on temporary figure
             renderer = self.get_renderer(plot_type)
-            temp_fig = renderer.render(data, **kwargs)
+            temp_figure = renderer.render(temp_figure, data, **kwargs)
 
             # Add traces to main figure at the correct subplot position
-            for trace in temp_fig.data:
-                fig.add_trace(trace, row=row, col=col)
+            for trace in temp_figure.data:
+                figure.add_trace(trace, row=row, col=col)
 
         # Update layout
-        fig.update_layout(
+        figure.update_layout(
             width=self.config.width,
             height=self.config.height * rows,  # Scale height by number of rows
             showlegend=self.config.show_legend,
         )
-        _register_figure(fig)
-        return fig
+        _track_figure(figure)
+        return figure
 
     def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
         """
@@ -1460,8 +1458,8 @@ class DataVisualizer:
         return "\n".join(help_strings)
 
 
-viz = DataVisualizer()
-"""Global visualizer instance for 1D plots."""
+plotter = Plotter()
+"""Global Plotter instance for 1D plots."""
 
 
 def make_series_plot(

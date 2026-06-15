@@ -386,6 +386,15 @@ class Grid:
     cell_max_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - axis-aligned bounding box maximum corner per cell."""
 
+    bounding_box: tuple[float, float, float, float, float, float] = attrs.field(
+        init=False
+    )
+    """
+    Axis-aligned bounding box of the entire grid.
+
+    `(x_min, x_max, y_min, y_max, z_min, z_max)` in grid coordinates.
+    """
+
     cell_length_x: FloatArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - bounding-box extent in the x direction per cell."""
 
@@ -402,7 +411,7 @@ class Grid:
     """Shape `(n_cells,)` - depth of each cell centroid (positive downward = centroid z)."""
 
     cell_center_elevations: FloatArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - elevation of each cell centroid (positive upward = −depth)."""
+    """Shape `(n_cells,)` - elevation of each cell centroid (positive upward = -depth)."""
 
     _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
     """KD-tree built on cell centroids for fast spatial lookup. Internal use only."""
@@ -625,8 +634,17 @@ class Grid:
                     np.minimum(cell_min[cell_idx], face_min, out=cell_min[cell_idx])
                     np.maximum(cell_max[cell_idx], face_max, out=cell_max[cell_idx])
 
+        bounding_box = (
+            float(cell_min[:, 0].min()),
+            float(cell_max[:, 0].max()),
+            float(cell_min[:, 1].min()),
+            float(cell_max[:, 1].max()),
+            float(cell_min[:, 2].min()),
+            float(cell_max[:, 2].max()),
+        )
         object.__setattr__(self, "cell_min_xyz", cell_min)
         object.__setattr__(self, "cell_max_xyz", cell_max)
+        object.__setattr__(self, "bounding_box", bounding_box)
 
     def _compute_derived_dimensions(self) -> None:
         """

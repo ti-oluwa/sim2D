@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 _active_figures: typing.List[weakref.ref] = []
 
 
-def _register_figure(fig: go.Figure) -> None:
+def _track_figure(figure: go.Figure) -> None:
     """Track active figures for memory cleanup."""
-    _active_figures.append(weakref.ref(fig, _on_figure_deleted))
+    _active_figures.append(weakref.ref(figure, _untrack_figure))
 
 
-def _on_figure_deleted(ref: typing.Any) -> None:
+def _untrack_figure(ref: typing.Any) -> None:
     """Remove dead weakref from registry."""
     try:
         _active_figures.remove(ref)
@@ -62,6 +62,7 @@ def cleanup_figures() -> None:
         if fig is not None:
             try:
                 fig.data = []
+                del fig
             except (AttributeError, RuntimeError) as exc:
                 logger.debug(f"Failed to cleanup figure: {exc}")
     _active_figures.clear()
@@ -869,9 +870,11 @@ PLOT_TYPE_NAMES: typing.Dict[PlotType, str] = {
 }
 
 
-class DataVisualizer:
+class Plotter:
     """
-    2D visualizer for two-dimensional (reservoir) data.
+    Plots two-dimensional (array) data.
+
+    Supports multiple plot types via registered renderers.
     """
 
     def __init__(self, config: typing.Optional[PlotConfig] = None) -> None:
@@ -1027,7 +1030,7 @@ class DataVisualizer:
 
         if layout_updates:
             fig.update_layout(**layout_updates)
-        _register_figure(fig)
+        _track_figure(fig)
         return fig
 
     def make_plots(
@@ -1038,7 +1041,7 @@ class DataVisualizer:
         plot_types: typing.Union[
             PlotType, str, typing.Sequence[typing.Union[PlotType, str]]
         ],
-        metadata_list: typing.Optional[typing.Sequence[PropertyMeta]] = None,
+        metadatas: typing.Optional[typing.Sequence[PropertyMeta]] = None,
         titles: typing.Optional[typing.Sequence[str]] = None,
         rows: int = 1,
         cols: int = 1,
@@ -1058,7 +1061,7 @@ class DataVisualizer:
 
         :param data_list: Sequence of 2D data arrays to visualize
         :param plot_types: Plot type(s) to use (single type or list)
-        :param metadata_list: Optional list of property metadata
+        :param metadatas: Optional list of property metadata
         :param titles: Optional list of plot titles
         :param rows: Number of subplot rows
         :param cols: Number of subplot columns
@@ -1127,8 +1130,8 @@ class DataVisualizer:
 
             # Get metadata
             metadata = (
-                metadata_list[idx]
-                if metadata_list
+                metadatas[idx]
+                if metadatas
                 else PropertyMeta(
                     name=f"data_{idx}",
                     display_name=f"Data {idx}",
@@ -1161,7 +1164,7 @@ class DataVisualizer:
             height=self.config.height,
             title=self.config.title or "2D Visualization Subplots",
         )
-        _register_figure(fig)
+        _track_figure(fig)
         return fig
 
     def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
@@ -1188,5 +1191,5 @@ class DataVisualizer:
         return "\n".join(help_strings)
 
 
-viz = DataVisualizer()
-"""Global visualizer instance for 2D plots."""
+plotter = Plotter()
+"""Global `Plotter` instance for 2D plots."""
