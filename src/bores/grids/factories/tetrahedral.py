@@ -61,12 +61,12 @@ def make_tetrahedral_grid(
     :raises InvalidFaceConnectivityError: If elements reference out-of-range
         vertex indices.
     """
-    pts = np.asarray(vertex_coordinates, dtype=np.float64)
+    points = np.asarray(vertex_coordinates, dtype=np.float64)
     elements = np.asarray(element_vertex_indices, dtype=np.int32)
 
-    if pts.ndim != 2 or pts.shape[1] != 3:
+    if points.ndim != 2 or points.shape[1] != 3:
         raise InvalidPointArrayError(
-            f"vertex_coordinates must be shape (n_vertices, 3); got {pts.shape!r}."
+            f"vertex_coordinates must be shape (n_vertices, 3); got {points.shape!r}."
         )
     if elements.ndim != 2 or elements.shape[1] != 4:
         raise ValidationError(
@@ -75,10 +75,10 @@ def make_tetrahedral_grid(
 
     per_cell_face_vertex_lists = _extract_tetrahedron_faces(elements)
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(pts, per_cell_face_vertex_lists)
+        build_csr_face_arrays(points, per_cell_face_vertex_lists)
     )
     return assemble_grid(
-        pts,
+        points,
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
@@ -101,13 +101,13 @@ def _extract_tetrahedron_faces(
         (element) index, inner list contains 4 triangular faces each given
         as a list of 3 global vertex indices.
     """
-    tet_face_table = ELEMENT_FACE_TABLES["tetra"]  # 4 faces × 3 local verts
+    tetrahedron_face_table = ELEMENT_FACE_TABLES["tetra"]  # 4 faces × 3 local verts
     per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexList]] = []
 
     for global_vert_indices in elements:
         cell_faces: typing.List[FaceVertexList] = [
             [int(global_vert_indices[local_v]) for local_v in face_local]
-            for face_local in tet_face_table
+            for face_local in tetrahedron_face_table
         ]
         per_cell_face_vertex_lists.append(cell_faces)
 

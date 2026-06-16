@@ -28,6 +28,7 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.corner_point import make_corner_point_grid
+from bores.typing import IntArray, ThreeDimensions
 
 __all__ = ["load_eclipse_grid"]
 
@@ -76,11 +77,11 @@ def load_eclipse_grid(source: _BytesOrPath) -> Grid:
     :raises UnsupportedGridFormatError: If the file does not appear to be a
         recognised Eclipse binary grid.
     """
-    raw = _resolve_bytes_source(source)
-    return _parse_eclipse_binary(raw)
+    raw = _resolve_source(source)
+    return _parse_binary(raw)
 
 
-def _resolve_bytes_source(source: _BytesOrPath) -> bytes:
+def _resolve_source(source: _BytesOrPath) -> bytes:
     """
     Coerce `source` to raw bytes ready for binary parsing.
 
@@ -97,9 +98,7 @@ def _resolve_bytes_source(source: _BytesOrPath) -> bytes:
         raise GridImportError(f"Cannot read Eclipse grid file {path!r}: {exc}") from exc
 
 
-def _iter_eclipse_records(
-    raw: bytes,
-) -> typing.Iterator[typing.Tuple[str, np.ndarray]]:
+def _iter_records(raw: bytes) -> typing.Iterator[typing.Tuple[str, np.ndarray]]:
     """
     Iterate over keyword records in an Eclipse Fortran unformatted binary stream.
 
@@ -185,18 +184,18 @@ def _iter_eclipse_records(
         yield keyword, arr
 
 
-def _parse_eclipse_binary(raw: bytes) -> Grid:
+def _parse_binary(raw: bytes) -> Grid:
     """
-    Parse a complete Eclipse binary blob and construct a `~bores.grids.base.Grid`.
+    Parse a complete Eclipse binary blob and construct a `bores.grids.base.Grid`.
 
     :param raw: Complete `.EGRID` / `.GRID` file bytes.
-    :returns: A fully initialised `~bores.grids.base.Grid`.
+    :returns: A fully initialised `bores.grids.base.Grid`.
     :raises GridImportError: If required keywords are absent or dimensions
         are inconsistent.
     """
     keywords: typing.Dict[str, np.ndarray] = {}
-    for kw, arr in _iter_eclipse_records(raw):
-        keywords[kw] = arr
+    for keyword, arr in _iter_records(raw):
+        keywords[keyword] = arr
 
     # GRIDHEAD / DIMENS
     nx = ny = nz = None
@@ -221,42 +220,59 @@ def _parse_eclipse_binary(raw: bytes) -> Grid:
     # COORD
     if "COORD" not in keywords:
         raise GridImportError("Eclipse binary grid is missing required COORD keyword.")
-    coord_flat = keywords["COORD"].astype(np.float64)
+
+    coord_flat = keywords["COORD"].astype(np.float64, order="F")
     expected_coord = (nx + 1) * (ny + 1) * 6
     if len(coord_flat) != expected_coord:
         raise GridImportError(
             f"COORD expected {expected_coord} values; got {len(coord_flat)}."
         )
-    coord_arr = coord_flat.reshape(ny + 1, nx + 1, 6)
+    coord_arr = coord_flat.reshape(
+        nx + 1,
+        ny + 1,
+        6,
+        order="F",
+    ).transpose(1, 0, 2)  # → (ny+1, nx+1, 6) C-order
 
     # ZCORN
     if "ZCORN" not in keywords:
         raise GridImportError("Eclipse binary grid is missing required ZCORN keyword.")
-    zcorn_flat = keywords["ZCORN"].astype(np.float64)
+
+    zcorn_flat = keywords["ZCORN"].astype(np.float64, order="F")
     expected_zcorn = nx * ny * nz * 8
     if len(zcorn_flat) != expected_zcorn:
         raise GridImportError(
             f"ZCORN expected {expected_zcorn} values; got {len(zcorn_flat)}."
         )
-    zcorn_arr = zcorn_flat.reshape(nz * 2, ny * 2, nx * 2)
+    zcorn_arr = zcorn_flat.reshape(
+        nx * 2,
+        ny * 2,
+        nz * 2,
+        order="F",
+    ).transpose(2, 1, 0)
 
     # ACTNUM (optional)
-    actnum_arr: typing.Optional[np.ndarray] = None
+    actnum_arr: typing.Optional[IntArray[ThreeDimensions]] = None
     if "ACTNUM" in keywords:
-        actnum_flat = keywords["ACTNUM"].astype(np.int32)
+        actnum_flat = keywords["ACTNUM"].astype(np.int32, order="F")
         expected_actnum = nx * ny * nz
         if len(actnum_flat) != expected_actnum:
             raise GridImportError(
                 f"ACTNUM expected {expected_actnum} values; got {len(actnum_flat)}."
             )
-        actnum_arr = actnum_flat.reshape(nz, ny, nx)
+        actnum_arr = actnum_flat.reshape(nx, ny, nz, order="F").transpose(2, 1, 0)
 
     try:
         return make_corner_point_grid(
             coord=coord_arr,
             zcorn=zcorn_arr,
             actnum=actnum_arr,
-            metadata={"source_format": "eclipse_binary"},
+            metadata={
+                "source_format": "eclipse_binary",
+                "zcorn": zcorn_arr,
+                "coord": coord_arr,
+                "actnum": actnum_arr,
+            },
         )
     except Exception as exc:
         raise GridImportError(

@@ -74,7 +74,7 @@ def load_grdecl(
     :raises UnsupportedGridFormatError: If the source cannot be interpreted
         as valid GRDECL content.
     """
-    text = _resolve_text_source(source, encoding=encoding)
+    text = _resolve_source(source, encoding=encoding)
     return _parse_grdecl(text)
 
 
@@ -154,7 +154,7 @@ def dump_grdecl(
     return None
 
 
-def _resolve_text_source(
+def _resolve_source(
     source: _TextOrPath,
     *,
     encoding: str,
@@ -231,7 +231,7 @@ def _extract_keyword_block(text: str, keyword: str) -> typing.Optional[str]:
         terminator, or `None` if the keyword is absent.
     """
     pattern = re.compile(
-        r"" + re.escape(keyword) + r"\s*(.*?)\s*/",
+        r"\b" + re.escape(keyword) + r"\b\s*(.*?)(?:\n\s*/\s*|\s*/\s*)",
         re.DOTALL | re.IGNORECASE,
     )
     m = pattern.search(text)
@@ -253,6 +253,7 @@ def _parse_grdecl(text: str) -> Grid:
     specgrid_block = _extract_keyword_block(clean, "SPECGRID")
     if specgrid_block is None:
         raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
+
     specgrid_tokens = specgrid_block.split()
     if len(specgrid_tokens) < 3:
         raise GridImportError(
@@ -272,6 +273,7 @@ def _parse_grdecl(text: str) -> Grid:
     coord_block = _extract_keyword_block(clean, "COORD")
     if coord_block is None:
         raise GridImportError("GRDECL file is missing the required COORD keyword.")
+
     coord_tokens = _tokenise(coord_block)
     expected_coord = (nx + 1) * (ny + 1) * 6
     if len(coord_tokens) != expected_coord:
@@ -279,7 +281,13 @@ def _parse_grdecl(text: str) -> Grid:
             f"COORD expected {expected_coord} values for {nx}x{ny} grid; "
             f"got {len(coord_tokens)}."
         )
-    coord_arr = np.array(coord_tokens, dtype=np.float64).reshape(ny + 1, nx + 1, 6)
+
+    # COORD flat order is (x_pillar, y_pillar, 6) with x fastest
+    coord_arr = (
+        np.array(coord_tokens, dtype=np.float64)
+        .reshape(nx + 1, ny + 1, 6, order="F")
+        .transpose(1, 0, 2)  # → (ny+1, nx+1, 6) C-order
+    )
 
     # ZCORN
     zcorn_block = _extract_keyword_block(clean, "ZCORN")
@@ -292,7 +300,13 @@ def _parse_grdecl(text: str) -> Grid:
             f"ZCORN expected {expected_zcorn} values for {nx}x{ny}x{nz} grid; "
             f"got {len(zcorn_tokens)}."
         )
-    zcorn_arr = np.array(zcorn_tokens, dtype=np.float64).reshape(nz * 2, ny * 2, nx * 2)
+
+    # Read flat Fortran-order data, then convert to your internal C-order (nz, ny, nx) axis layout
+    zcorn_arr = (
+        np.array(zcorn_tokens, dtype=np.float64)
+        .reshape(nx * 2, ny * 2, nz * 2, order="F")
+        .transpose(2, 1, 0)  # → (nz*2, ny*2, nx*2) C-order
+    )
 
     # ACTNUM (optional)
     actnum_block = _extract_keyword_block(clean, "ACTNUM")
@@ -303,9 +317,11 @@ def _parse_grdecl(text: str) -> Grid:
             raise GridImportError(
                 f"ACTNUM expected {expected_actnum} values; got {len(actnum_tokens)}."
             )
-        actnum_arr: typing.Optional[np.ndarray] = np.array(
-            actnum_tokens, dtype=np.int32
-        ).reshape(nz, ny, nx)
+        actnum_arr: typing.Optional[np.ndarray] = (
+            np.array(actnum_tokens, dtype=np.int32)
+            .reshape(nx, ny, nz, order="F")
+            .transpose(2, 1, 0)
+        )
     else:
         actnum_arr = None
 
@@ -314,7 +330,12 @@ def _parse_grdecl(text: str) -> Grid:
             coord=coord_arr,
             zcorn=zcorn_arr,
             actnum=actnum_arr,
-            metadata={"source_format": "grdecl"},
+            metadata={
+                "source_format": "grdecl",
+                "zcorn": zcorn_arr,
+                "coord": coord_arr,
+                "actnum": actnum_arr,
+            },
         )
     except Exception as exc:
         raise GridImportError(
@@ -323,42 +344,88 @@ def _parse_grdecl(text: str) -> Grid:
 
 
 def _build_grdecl_text(
-    grid: Grid, *, actnum: typing.Optional[IntArray[OneDimension]]
+    grid: Grid,
+    *,
+    actnum: typing.Optional[IntArray[OneDimension]] = None,
 ) -> str:
     """
     Render a `bores.grids.base.Grid` as GRDECL text.
 
-    The function reconstructs a structured pillar representation from the
-    cell bounding boxes stored on the grid.  The result is valid GRDECL
-    that can be read back via :func:`load_grdecl`, but it is an
-    *approximation* for non-corner-point grids.
+    If the grid originates from a GRDECL file and contains stored
+    metadata (`coord`, `zcorn`, `actnum`), the function performs a
+    lossless reconstruction.
+
+    Otherwise, it falls back to an approximate representation using
+    cell bounding boxes, producing a degenerate but valid GRDECL grid.
 
     :param grid: Source grid.
-    :param actnum: Optional per-cell active flags.
-    :returns: GRDECL text as a `str`.
-    :raises GridExportError: If the grid cannot be represented in GRDECL form.
+    :param actnum: Optional override active-cell array.
+    :returns: GRDECL text as a string.
+    :raises GridExportError: If grid dimensions are inconsistent.
     """
-    # For a general unstructured grid we cannot recover NX/NY/NZ exactly.
-    # We write each cell as a degenerate pillar cell using its bounding box.
-    # This preserves cell geometry at the cost of shared-face accuracy.
-    n_cells = grid.n_cells
     lines: typing.List[str] = []
+    meta = getattr(grid, "metadata", {}) or {}
+    coord = meta.get("coord", None)
+    zcorn = meta.get("zcorn", None)
+    stored_actnum = meta.get("actnum", None)
 
-    # Write as a 1 × 1 × n_cells column stack (degenerate but valid GRDECL)
-    nx, ny, nz = 1, 1, n_cells
-    lines.append(f"SPECGRID")
-    lines.append(f"  {nx}  {ny}  {nz}  1  F /")
+    use_native = coord is not None and zcorn is not None
+    if use_native:
+        coord_arr = np.asarray(coord, dtype=np.float64)
+        zcorn_arr = np.asarray(zcorn, dtype=np.float64)
+        if stored_actnum is not None and actnum is None:
+            actnum_arr = np.asarray(stored_actnum, dtype=np.int32)
+        elif actnum is not None:
+            actnum_arr = np.asarray(actnum, dtype=np.int32)
+        else:
+            actnum_arr = None
+
+        ny_plus1, nx_plus1 = coord_arr.shape[:2]
+        nx = nx_plus1 - 1
+        ny = ny_plus1 - 1
+        nz = zcorn_arr.shape[0] // 2
+
+        lines.append("SPECGRID")
+        lines.append(f"  {nx}  {ny}  {nz}  1  F /")
+        lines.append("")
+
+        lines.append("COORD")
+        flat_coord = coord_arr.transpose(1, 0, 2).reshape(-1, 6)
+        for i in range(0, len(flat_coord)):
+            x1, y1, z1, x2, y2, z2 = flat_coord[i]
+            lines.append(
+                f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}"
+            )
+        lines.append("/")
+        lines.append("")
+
+        lines.append("ZCORN")
+        flat_zcorn = zcorn_arr.transpose(2, 1, 0).reshape(-1)
+        for i in range(0, len(flat_zcorn), 6):
+            chunk = flat_zcorn[i : i + 6]
+            lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+        lines.append("/")
+
+        if actnum_arr is not None:
+            nz, ny, nx = actnum_arr.shape
+            lines.append("")
+            lines.append("ACTNUM")
+            flat_actnum = actnum_arr.transpose(2, 1, 0).reshape(-1)
+            for i in range(0, len(flat_actnum), 20):
+                chunk = flat_actnum[i : i + 20]
+                lines.append("  " + "  ".join(str(int(v)) for v in chunk))
+            lines.append("/")
+
+        return "\n".join(lines)
+
+    n_cells = grid.n_cells
+    x_min, x_max, y_min, y_max, z_min, z_max = grid.bounding_box
+
+    lines.append("SPECGRID")
+    lines.append(f"  1  1  {n_cells}  1  F /")
     lines.append("")
 
-    # Build a trivial 2×2 pillar grid from cell bounding-box extremes
-    # Pillars: (ny+1)*(nx+1) = 4 pillars, each with top/bot xyz
-    # We use the overall bounding box for simplicity
-    x_min, x_max, y_min, y_max, z_min, z_max = (
-        grid.bounding_box
-    )  # (xmin, xmax, ymin, ymax, zmin, zmax)
-
     lines.append("COORD")
-    # 4 corner pillars: each "pillar top x y z  bot x y z"
     for px in (x_min, x_max):
         for py in (y_min, y_max):
             lines.append(
@@ -367,33 +434,28 @@ def _build_grdecl_text(
     lines.append("/")
     lines.append("")
 
-    # ZCORN: 8 values per cell (top-4 + bottom-4 corners)
-    # For each cell: use cell_min_xyz and cell_max_xyz
     lines.append("ZCORN")
-    zcorn_values: typing.List[str] = []
-    for cell_idx in range(n_cells):
-        z_top_cell = float(grid.cell_min_xyz[cell_idx, 2])
-        z_bot_cell = float(grid.cell_max_xyz[cell_idx, 2])
-        # 8 corner z values: all top corners = z_top, all bottom = z_bot
-        zcorn_values.extend([f"{z_top_cell:.6f}"] * 4)
-        zcorn_values.extend([f"{z_bot_cell:.6f}"] * 4)
-    # Write 6 values per line for readability
-    for i in range(0, len(zcorn_values), 6):
-        lines.append("  " + "  ".join(zcorn_values[i : i + 6]))
-    lines.append("/")
-    lines.append("")
+    zcorn_values = []
+    for c in range(n_cells):
+        zt = float(grid.cell_min_xyz[c, 2])
+        zb = float(grid.cell_max_xyz[c, 2])
+        zcorn_values.extend([zt, zt, zt, zt, zb, zb, zb, zb])
 
-    # ACTNUM
+    for i in range(0, len(zcorn_values), 6):
+        chunk = zcorn_values[i : i + 6]
+        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+    lines.append("/")
+
     if actnum is not None:
         if len(actnum) != n_cells:
             raise GridExportError(
                 f"actnum length {len(actnum)} does not match n_cells {n_cells}."
             )
+        lines.append("")
         lines.append("ACTNUM")
         for i in range(0, n_cells, 20):
             chunk = actnum[i : i + 20]
             lines.append("  " + "  ".join(str(int(v)) for v in chunk))
         lines.append("/")
-        lines.append("")
 
     return "\n".join(lines)

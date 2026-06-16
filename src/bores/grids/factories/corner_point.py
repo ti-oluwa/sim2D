@@ -1,14 +1,17 @@
 import typing
 
+import numba
 import numpy as np
+import numpy.typing as npt
 from typing_extensions import TypeAlias
 
-from bores.errors import InvalidGridError, ValidationError
+from bores.errors import InvalidFaceConnectivityError, InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import (
     ELEMENT_FACE_TABLES,
+    CanonicalFaceKey,
+    _FaceRecord,
     assemble_grid,
-    build_csr_face_arrays,
 )
 from bores.typing import (
     FloatArray,
@@ -42,6 +45,7 @@ def make_corner_point_grid(
     coord: CoordArray,
     zcorn: ZcornArray,
     actnum: typing.Optional[ActnumArray] = None,
+    vertex_tolerance: float = 1e-8,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -60,7 +64,7 @@ def make_corner_point_grid(
     grid = make_corner_point_grid(
         coord=coord_array,   # shape (NY+1, NX+1, 6)
         zcorn=zcorn_array,   # shape (NZ*2, NY*2, NX*2)
-        actnum=actnum_array, # shape (NZ, NY, NX)  — optional
+        actnum=actnum_array, # shape (NZ, NY, NX) (optional)
     )
     ```
 
@@ -69,8 +73,7 @@ def make_corner_point_grid(
         the top and bottom anchor points of a pillar.
     :param zcorn: Shape `(NZ*2, NY*2, NX*2)` depth array. For each
         cell `(i, j, k)` the 8 corner z-values are at indices
-        `[2k:2k+2, 2j:2j+2, 2i:2i+2]` in `[top/bot, left/right, near/far]`
-        order.
+        `[2k:2k+2, 2j:2j+2, 2i:2i+2]` in `[top/bot, left/right, near/far]` order.
     :param actnum: Shape `(NZ, NY, NX)` integer mask (1=active, 0=inactive).
         If `None`, all cells are treated as active.
     :param metadata: Optional metadata dictionary.
@@ -80,7 +83,6 @@ def make_corner_point_grid(
     """
     coord_arr = np.asarray(coord, dtype=np.float64)
     zcorn_arr = np.asarray(zcorn, dtype=np.float64)
-
     if coord_arr.ndim != 3 or coord_arr.shape[2] != 6:
         raise ValidationError(
             f"coord must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}."
@@ -109,11 +111,13 @@ def make_corner_point_grid(
                 f"grid dimensions ({nx} x {ny} x {nz})."
             )
 
-    vertex_coordinates, per_cell_face_vertex_lists = _compute_corner_point_geometry(
-        coord_arr, zcorn_arr, actnum_arr, nx, ny, nz
-    )
-    _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(vertex_coordinates, per_cell_face_vertex_lists)
+    vertex_coordinates, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
+        _compute_corner_point_geometry(
+            coord=coord_arr,
+            zcorn=zcorn_arr,
+            actnum=actnum_arr,
+            vertex_tolerance=vertex_tolerance,
+        )
     )
     return assemble_grid(
         vertex_coordinates,
@@ -124,9 +128,10 @@ def make_corner_point_grid(
     )
 
 
+@numba.njit(cache=True)
 def _interpolate_pillar_point(
     pillar_top: FloatArray[OneDimension],
-    pillar_bot: FloatArray[OneDimension],
+    pillar_bottom: FloatArray[OneDimension],
     z: float,
 ) -> FloatArray[OneDimension]:
     """
@@ -140,24 +145,96 @@ def _interpolate_pillar_point(
     :param z: Depth at which to evaluate the pillar position.
     :returns: Shape `(3,)` array `[x, y, z]` on the pillar at depth `z`.
     """
-    dz_pillar = pillar_bot[2] - pillar_top[2]
-    if abs(dz_pillar) < 1e-14:
-        # Vertical or degenerate pillar: return top xy at requested z
-        return np.array([pillar_top[0], pillar_top[1], z])
-    t = (z - pillar_top[2]) / dz_pillar
-    x = pillar_top[0] + t * (pillar_bot[0] - pillar_top[0])
-    y = pillar_top[1] + t * (pillar_bot[1] - pillar_top[1])
-    return np.array([x, y, z])
+    xyz = np.empty(3, dtype=np.float64)
+    dz = pillar_bottom[2] - pillar_top[2]
+    if abs(dz) < 1e-14:
+        xyz[0] = pillar_top[0]
+        xyz[1] = pillar_top[1]
+        xyz[2] = z
+        return xyz
+
+    t = (z - pillar_top[2]) / dz
+    xyz[0] = pillar_top[0] + t * (pillar_bottom[0] - pillar_top[0])
+    xyz[1] = pillar_top[1] + t * (pillar_bottom[1] - pillar_top[1])
+    xyz[2] = z
+    return xyz
+
+
+@numba.njit(parallel=True, cache=True)
+def _compute_active_cell_corner_coordinates(
+    active_cells: np.ndarray, coord: CoordArray, zcorn: ZcornArray
+) -> FloatArray[ThreeDimensions]:
+    """
+    Compute all active-cell corner coordinates.
+
+    :return: Array of shape (n_active_cells, 8, 3)
+    """
+    n_active_cells = active_cells.shape[0]
+    corner_coordinates = np.empty(
+        (n_active_cells, 8, 3),
+        dtype=np.float64,
+    )
+    pillar_order = np.array(
+        [0, 1, 2, 3, 0, 1, 2, 3],
+        dtype=np.int64,
+    )
+
+    for cell_index in numba.prange(n_active_cells):  # type: ignore
+        k = active_cells[cell_index, 0]
+        j = active_cells[cell_index, 1]
+        i = active_cells[cell_index, 2]
+
+        pillar_tops = np.empty((4, 3), dtype=np.float64)
+        pillar_bottoms = np.empty((4, 3), dtype=np.float64)
+
+        pillar_tops[0] = coord[j, i, :3]
+        pillar_bottoms[0] = coord[j, i, 3:]
+
+        pillar_tops[1] = coord[j, i + 1, :3]
+        pillar_bottoms[1] = coord[j, i + 1, 3:]
+
+        pillar_tops[2] = coord[j + 1, i, :3]
+        pillar_bottoms[2] = coord[j + 1, i, 3:]
+
+        pillar_tops[3] = coord[j + 1, i + 1, :3]
+        pillar_bottoms[3] = coord[j + 1, i + 1, 3:]
+
+        z_values = np.empty(8, dtype=np.float64)
+        z_values[0] = zcorn[2 * k, 2 * j, 2 * i]
+        z_values[1] = zcorn[2 * k, 2 * j, 2 * i + 1]
+        z_values[2] = zcorn[2 * k, 2 * j + 1, 2 * i]
+        z_values[3] = zcorn[2 * k, 2 * j + 1, 2 * i + 1]
+
+        z_values[4] = zcorn[2 * k + 1, 2 * j, 2 * i]
+        z_values[5] = zcorn[2 * k + 1, 2 * j, 2 * i + 1]
+        z_values[6] = zcorn[2 * k + 1, 2 * j + 1, 2 * i]
+        z_values[7] = zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1]
+
+        for corner_index in range(8):
+            pillar_index = pillar_order[corner_index]
+            xyz = _interpolate_pillar_point(
+                pillar_top=pillar_tops[pillar_index],
+                pillar_bottom=pillar_bottoms[pillar_index],
+                z=z_values[corner_index],
+            )
+            corner_coordinates[cell_index, corner_index, 0] = xyz[0]
+            corner_coordinates[cell_index, corner_index, 1] = xyz[1]
+            corner_coordinates[cell_index, corner_index, 2] = xyz[2]
+
+    return corner_coordinates
 
 
 def _compute_corner_point_geometry(
-    coord: FloatArray[ThreeDimensions],
-    zcorn: FloatArray[ThreeDimensions],
-    actnum: IntArray[ThreeDimensions],
-    nx: int,
-    ny: int,
-    nz: int,
-) -> typing.Tuple[VertexCoordinates, typing.List[typing.List[FaceVertexList]]]:
+    coord: CoordArray,
+    zcorn: ZcornArray,
+    actnum: ActnumArray,
+    vertex_tolerance: float = 1e-8,
+) -> typing.Tuple[
+    VertexCoordinates,
+    npt.NDArray[np.int32],
+    npt.NDArray[np.int32],
+    npt.NDArray[np.int32],
+]:
     """
     Compute 3-D corner coordinates for every active cell.
 
@@ -176,101 +253,81 @@ def _compute_corner_point_geometry(
     :param nz: Number of cells in z.
     :returns: Tuple `(vertex_coordinates, per_cell_face_vertex_lists)`.
     """
-    all_vertices: typing.List[FloatArray[OneDimension]] = []
-    vertex_dedup: typing.Dict[typing.Tuple[float, float, float], int] = {}
-    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexList]] = []
-    # Map from (i,j,k) cell to its sequential active-cell index
-    active_cell_global_index: typing.Dict[typing.Tuple[int, int, int], int] = {}
-
-    def _add_vertex(xyz: FloatArray[OneDimension]) -> int:
-        """
-        Register or retrieve a vertex by rounded coordinates.
-
-        :param xyz: Shape `(3,)` coordinate array.
-        :returns: Global vertex index.
-        """
-        key = (
-            round(float(xyz[0]), 8),
-            round(float(xyz[1]), 8),
-            round(float(xyz[2]), 8),
-        )
-        if key not in vertex_dedup:
-            vertex_dedup[key] = len(all_vertices)
-            all_vertices.append(xyz.copy())
-        return vertex_dedup[key]
-
-    for k in range(nz):
-        for j in range(ny):
-            for i in range(nx):
-                if actnum[k, j, i] == 0:
-                    continue
-
-                cell_global_idx = len(active_cell_global_index)
-                active_cell_global_index[(i, j, k)] = cell_global_idx
-
-                # Retrieve the 4 pillars bounding cell (i,j,k)
-                # Pillar ordering: (j,i), (j,i+1), (j+1,i), (j+1,i+1)
-                pillars = [
-                    (coord[j, i, :3], coord[j, i, 3:]),  # NW
-                    (coord[j, i + 1, :3], coord[j, i + 1, 3:]),  # NE
-                    (coord[j + 1, i, :3], coord[j + 1, i, 3:]),  # SW
-                    (coord[j + 1, i + 1, :3], coord[j + 1, i + 1, 3:]),  # SE
-                ]
-
-                # ZCORN indices for this cell:
-                # top layer k → zcorn[2k, :, :]; bottom → zcorn[2k+1, :, :]
-                # Within the cell layer: near row j → zcorn[:, 2j, :]; far → zcorn[:, 2j+1, :]
-                # Left col i → zcorn[:, :, 2i]; right → zcorn[:, :, 2i+1]
-                z_corners = np.array(
-                    [
-                        # Top face (k layer top): [NW-top, NE-top, SW-top, SE-top]
-                        zcorn[2 * k, 2 * j, 2 * i],  # corner 0: NW top
-                        zcorn[2 * k, 2 * j, 2 * i + 1],  # corner 1: NE top
-                        zcorn[2 * k, 2 * j + 1, 2 * i],  # corner 2: SW top
-                        zcorn[2 * k, 2 * j + 1, 2 * i + 1],  # corner 3: SE top
-                        # Bottom face (k layer bottom):
-                        zcorn[2 * k + 1, 2 * j, 2 * i],  # corner 4: NW bot
-                        zcorn[2 * k + 1, 2 * j, 2 * i + 1],  # corner 5: NE bot
-                        zcorn[2 * k + 1, 2 * j + 1, 2 * i],  # corner 6: SW bot
-                        zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1],  # corner 7: SE bot
-                    ]
-                )
-
-                # Pillar order matching corner order:
-                # corners [0,1,2,3,4,5,6,7] → pillars [NW,NE,SW,SE,NW,NE,SW,SE]
-                pillar_order = [0, 1, 2, 3, 0, 1, 2, 3]
-                corner_xyz = [
-                    _interpolate_pillar_point(
-                        pillars[pillar_order[c]][0],
-                        pillars[pillar_order[c]][1],
-                        float(z_corners[c]),
-                    )
-                    for c in range(8)
-                ]
-
-                # Register global vertex indices for this cell's 8 corners
-                corner_global_indices = [_add_vertex(xyz) for xyz in corner_xyz]
-
-                # Build cell faces (hex element: corners 0-3=top, 4-7=bottom)
-                # Remap from local corner layout to VTK hex convention:
-                # VTK hex: v0=(NW-top), v1=(NE-top), v2=(SE-top), v3=(SW-top)
-                #           v4=(NW-bot), v5=(NE-bot), v6=(SE-bot), v7=(SW-bot)
-                # Our corner layout: 0=NW-top,1=NE-top,2=SW-top,3=SE-top
-                #                    4=NW-bot,5=NE-bot,6=SW-bot,7=SE-bot
-                # Map to VTK: v0=c0, v1=c1, v2=c3, v3=c2, v4=c4, v5=c5, v6=c7, v7=c6
-                vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
-                vtk_global = [corner_global_indices[vtk_to_corner[v]] for v in range(8)]
-
-                hex_faces: typing.List[FaceVertexList] = [
-                    [vtk_global[f] for f in face_local]
-                    for face_local in ELEMENT_FACE_TABLES["hexahedron"]
-                ]
-                per_cell_face_vertex_lists.append(hex_faces)
-
-    if not all_vertices:
+    active_cells = np.argwhere(actnum > 0)
+    if active_cells.size == 0:
         raise InvalidGridError(
             "No active cells found in the corner-point grid (ACTNUM is all zeros)."
         )
 
-    vertex_coordinate_array = np.array(all_vertices, dtype=np.float64)
-    return vertex_coordinate_array, per_cell_face_vertex_lists
+    corner_coordinates = _compute_active_cell_corner_coordinates(
+        active_cells=active_cells,
+        coord=coord,
+        zcorn=zcorn,
+    )
+    # Deduplicate vertices
+    flat_corner_coordinates = corner_coordinates.reshape(-1, 3)
+    quantized_coordinates = np.round(flat_corner_coordinates / vertex_tolerance).astype(
+        np.int64
+    )
+    (
+        _,
+        unique_vertex_indices,
+        inverse_indices,
+    ) = np.unique(
+        quantized_coordinates,
+        axis=0,
+        return_index=True,
+        return_inverse=True,
+    )
+
+    vertex_coordinate_array = flat_corner_coordinates[unique_vertex_indices]
+    corner_global_indices = inverse_indices.reshape(len(active_cells), 8)
+
+    # Build cell face lists
+    vtk_to_corner = np.array(
+        [0, 1, 3, 2, 4, 5, 7, 6],
+        dtype=np.int64,
+    )
+    hexahedron_face_table = ELEMENT_FACE_TABLES["hexahedron"]
+
+    face_registry: typing.Dict[CanonicalFaceKey, _FaceRecord] = {}
+    for cell_index in range(len(active_cells)):
+        vtk_vertices = [
+            int(
+                corner_global_indices[
+                    cell_index,
+                    vtk_to_corner[local_corner],
+                ]
+            )
+            for local_corner in range(8)
+        ]
+        for face_id, face_local in enumerate(hexahedron_face_table):
+            face_vertices = [vtk_vertices[v] for v in face_local]
+            canonical_key = (cell_index, face_id)
+            if canonical_key not in face_registry:
+                face_registry[canonical_key] = _FaceRecord(
+                    owner_cell_index=cell_index,
+                    vertex_indices=face_vertices,
+                )
+            else:
+                record = face_registry[canonical_key]
+                if record.neighbour_cell_index != -1:
+                    raise InvalidFaceConnectivityError(
+                        f"Face {canonical_key} shared by more than two cells."
+                    )
+                record.neighbour_cell_index = cell_index
+
+    flat_vertex_indices: list[int] = []
+    face_vertex_offsets: list[int] = [0]
+    face_cell_pairs: list[tuple[int, int]] = []
+    for record in face_registry.values():
+        flat_vertex_indices.extend(record.vertex_indices)
+        face_vertex_offsets.append(len(flat_vertex_indices))
+        face_cell_pairs.append((record.owner_cell_index, record.neighbour_cell_index))
+
+    return (
+        vertex_coordinate_array,
+        np.asarray(flat_vertex_indices, dtype=np.int32),
+        np.asarray(face_vertex_offsets, dtype=np.int32),
+        np.asarray(face_cell_pairs, dtype=np.int32),
+    )

@@ -15,6 +15,7 @@ import typing
 import attrs
 import numba
 import numpy as np
+import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from bores.errors import (
@@ -94,7 +95,7 @@ def _compute_face_geometry(
     face_unit_normals = np.zeros((n_faces, 3), dtype=np.float64)
     face_areas = np.zeros(n_faces, dtype=np.float64)
 
-    for face_idx in numba.prange(n_faces):  # type: ignore[attr-defined]
+    for face_idx in numba.prange(n_faces):  # type: ignore
         start = face_vertex_offsets[face_idx]
         end = face_vertex_offsets[face_idx + 1]
         n_verts = end - start
@@ -124,15 +125,15 @@ def _compute_face_geometry(
         ny = 0.0
         nz = 0.0
         for local_idx in range(n_verts):
-            idx_a = face_vertex_indices[start + local_idx]
-            idx_b = face_vertex_indices[start + (local_idx + 1) % n_verts]
+            a_idx = face_vertex_indices[start + local_idx]
+            b_idx = face_vertex_indices[start + (local_idx + 1) % n_verts]
 
-            ax = vertex_coordinates[idx_a, 0]
-            ay = vertex_coordinates[idx_a, 1]
-            az = vertex_coordinates[idx_a, 2]
-            bx = vertex_coordinates[idx_b, 0]
-            by = vertex_coordinates[idx_b, 1]
-            bz = vertex_coordinates[idx_b, 2]
+            ax = vertex_coordinates[a_idx, 0]
+            ay = vertex_coordinates[a_idx, 1]
+            az = vertex_coordinates[a_idx, 2]
+            bx = vertex_coordinates[b_idx, 0]
+            by = vertex_coordinates[b_idx, 1]
+            bz = vertex_coordinates[b_idx, 2]
 
             nx += (ay - by) * (az + bz)
             ny += (az - bz) * (ax + bx)
@@ -170,8 +171,8 @@ def _compute_cell_volumes_and_centroids(
     volume is positive when computed relative to the c1 centroid, and negative
     when computed relative to the c2 centroid. Therefore:
 
-    - `cell_volumes[owner] += signed_tet_vol`
-    - `cell_volumes[neighbour] -= signed_tet_vol`
+    - `cell_volumes[owner] += signed_tetrahedron_volume`
+    - `cell_volumes[neighbour] -= signed_tetrahedron_volume`
 
     Both accumulate positive contributions. The centroid is computed
     simultaneously as the volume-weighted average of tet barycentres.
@@ -185,7 +186,6 @@ def _compute_cell_volumes_and_centroids(
               and `(n_cells, 3)`.
     """
     n_faces = face_cell_indices.shape[0]
-
     cell_volumes = np.zeros(n_cells, dtype=np.float64)
     # Accumulator for volume-weighted centroid sum: centroid = accum / volume
     centroid_accumulators = np.zeros((n_cells, 3), dtype=np.float64)
@@ -216,7 +216,7 @@ def _compute_cell_volumes_and_centroids(
                 v1 = vertex_coordinates[face_vertex_indices[fan_idx]]
                 v2 = vertex_coordinates[face_vertex_indices[fan_idx + 1]]
 
-                # Signed tet volume: (1/6) * apex . (v1 x v2) using the
+                # Signed tetrahedron volume: (1/6) * apex . (v1 x v2) using the
                 # scalar triple product expanded about the origin (all verts
                 # already in world coords - ref is subtracted implicitly via
                 # the standard divergence-theorem formula):
@@ -232,34 +232,106 @@ def _compute_cell_volumes_and_centroids(
                 cy = v2[1]
                 cz = v2[2]
 
-                signed_tet_vol = (
+                signed_tetrahedron_volume = (
                     ax * (by * cz - bz * cy)
                     + ay * (bz * cx - bx * cz)
                     + az * (bx * cy - by * cx)
                 ) / 6.0
+                cell_volumes[cell_idx] += sign * signed_tetrahedron_volume
 
-                cell_volumes[cell_idx] += sign * signed_tet_vol
+                # Tet barycentre (origin + 3 face verts) / 4, weighted by tetrahedron volume
+                x_barycentre = (ax + bx + cx) / 4.0
+                y_barycentre = (ay + by + cy) / 4.0
+                z_barycentre = (az + bz + cz) / 4.0
 
-                # Tet barycentre (origin + 3 face verts) / 4, weighted by tet vol
-                bary_x = (ax + bx + cx) / 4.0
-                bary_y = (ay + by + cy) / 4.0
-                bary_z = (az + bz + cz) / 4.0
-
-                weighted_vol = sign * signed_tet_vol
-                centroid_accumulators[cell_idx, 0] += weighted_vol * bary_x
-                centroid_accumulators[cell_idx, 1] += weighted_vol * bary_y
-                centroid_accumulators[cell_idx, 2] += weighted_vol * bary_z
+                weighted_volume = sign * signed_tetrahedron_volume
+                centroid_accumulators[cell_idx, 0] += weighted_volume * x_barycentre
+                centroid_accumulators[cell_idx, 1] += weighted_volume * y_barycentre
+                centroid_accumulators[cell_idx, 2] += weighted_volume * z_barycentre
 
     # Finalise centroids: divide accumulated weighted sums by total volume
     cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
     for cell_idx in range(n_cells):
-        vol = cell_volumes[cell_idx]
-        if abs(vol) > 0.0:
-            cell_centroids[cell_idx, 0] = centroid_accumulators[cell_idx, 0] / vol
-            cell_centroids[cell_idx, 1] = centroid_accumulators[cell_idx, 1] / vol
-            cell_centroids[cell_idx, 2] = centroid_accumulators[cell_idx, 2] / vol
+        cell_volume = cell_volumes[cell_idx]
+        if abs(cell_volume) > 0.0:
+            cell_centroids[cell_idx, 0] = (
+                centroid_accumulators[cell_idx, 0] / cell_volume
+            )
+            cell_centroids[cell_idx, 1] = (
+                centroid_accumulators[cell_idx, 1] / cell_volume
+            )
+            cell_centroids[cell_idx, 2] = (
+                centroid_accumulators[cell_idx, 2] / cell_volume
+            )
 
     return cell_volumes, cell_centroids
+
+
+@numba.njit(cache=True)
+def _compute_cell_bounding_boxes(
+    face_cell_indices: IntArray[TwoDimensions],
+    face_vertex_indices: IntArray[OneDimension],
+    face_vertex_offsets: IntArray[OneDimension],
+    vertex_coordinates: FloatArray[TwoDimensions],
+    n_cells: int,
+    dtype: npt.DTypeLike = np.float64,
+) -> typing.Tuple[FloatArray[TwoDimensions], FloatArray[TwoDimensions]]:
+    """
+    Compute per-cell axis-aligned bounding boxes.
+
+    :returns: Tuple of cell_min_xyz: (n_cells, 3) and cell_max_xyz: (n_cells, 3)
+    """
+    cell_min = np.full((n_cells, 3), np.inf, dtype=dtype)
+    cell_max = np.full((n_cells, 3), -np.inf, dtype=dtype)
+    n_faces = face_cell_indices.shape[0]
+
+    for face_idx in range(n_faces):
+        owner = face_cell_indices[face_idx, 0]
+        neighbour = face_cell_indices[face_idx, 1]
+
+        start = face_vertex_offsets[face_idx]
+        end = face_vertex_offsets[face_idx + 1]
+
+        for i in range(start, end):
+            vid = face_vertex_indices[i]
+
+            vx = vertex_coordinates[vid, 0]
+            vy = vertex_coordinates[vid, 1]
+            vz = vertex_coordinates[vid, 2]
+
+            # update owner
+            if owner >= 0:
+                if vx < cell_min[owner, 0]:
+                    cell_min[owner, 0] = vx
+                if vy < cell_min[owner, 1]:
+                    cell_min[owner, 1] = vy
+                if vz < cell_min[owner, 2]:
+                    cell_min[owner, 2] = vz
+
+                if vx > cell_max[owner, 0]:
+                    cell_max[owner, 0] = vx
+                if vy > cell_max[owner, 1]:
+                    cell_max[owner, 1] = vy
+                if vz > cell_max[owner, 2]:
+                    cell_max[owner, 2] = vz
+
+            # update neighbour
+            if neighbour >= 0:
+                if vx < cell_min[neighbour, 0]:
+                    cell_min[neighbour, 0] = vx
+                if vy < cell_min[neighbour, 1]:
+                    cell_min[neighbour, 1] = vy
+                if vz < cell_min[neighbour, 2]:
+                    cell_min[neighbour, 2] = vz
+
+                if vx > cell_max[neighbour, 0]:
+                    cell_max[neighbour, 0] = vx
+                if vy > cell_max[neighbour, 1]:
+                    cell_max[neighbour, 1] = vy
+                if vz > cell_max[neighbour, 2]:
+                    cell_max[neighbour, 2] = vz
+
+    return cell_min, cell_max
 
 
 @attrs.define(frozen=True, slots=True, kw_only=True)
@@ -304,7 +376,8 @@ class Grid:
     """
 
     face_vertex_offsets: IntArray[OneDimension]
-    """CSR offset array of length `n_faces + 1`.
+    """
+    CSR offset array of length `n_faces + 1`.
 
     `face_vertex_offsets[0]` must be 0; `face_vertex_offsets[-1]` must equal
     `len(face_vertex_indices)`.
@@ -341,7 +414,8 @@ class Grid:
 
     # Derived topology
     cell_face_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """Flat CSR data array: concatenated face index lists for all cells.
+    """
+    Flat CSR data array: concatenated face index lists for all cells.
 
     Cell *c* uses `cell_face_indices[cell_face_offsets[c]:cell_face_offsets[c+1]]`.
     """
@@ -350,7 +424,8 @@ class Grid:
     """CSR offset array of length `n_cells + 1` for the cell to face map."""
 
     cell_neighbor_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """Flat CSR data array: concatenated neighbour cell index lists for all cells.
+    """
+    Flat CSR data array: concatenated neighbour cell index lists for all cells.
 
     Cell *c* uses `cell_neighbor_indices[cell_neighbor_offsets[c]:cell_neighbor_offsets[c+1]]`.
     """
@@ -575,9 +650,9 @@ class Grid:
     def _compute_face_geometry(self) -> None:
         """Compute face centroids, areas, and normals."""
         face_centroids, face_areas, face_unit_normals = _compute_face_geometry(
-            self.face_vertex_indices,
-            self.face_vertex_offsets,
-            self.vertex_coordinates,
+            face_vertex_indices=self.face_vertex_indices,
+            face_vertex_offsets=self.face_vertex_offsets,
+            vertex_coordinates=self.vertex_coordinates,
         )
         object.__setattr__(self, "face_centroids", face_centroids)
         object.__setattr__(self, "face_areas", face_areas)
@@ -591,18 +666,18 @@ class Grid:
         """
         n_cells = int(self.face_cell_indices.max()) + 1
         cell_volumes, cell_centroids = _compute_cell_volumes_and_centroids(
-            self.face_cell_indices,
-            self.face_vertex_indices,
-            self.face_vertex_offsets,
-            self.vertex_coordinates,
-            n_cells,
+            face_cell_indices=self.face_cell_indices,
+            face_vertex_indices=self.face_vertex_indices,
+            face_vertex_offsets=self.face_vertex_offsets,
+            vertex_coordinates=self.vertex_coordinates,
+            n_cells=n_cells,
         )
         invalid_volume_mask = cell_volumes <= 0.0
         if invalid_volume_mask.any():
             bad_cells = np.where(invalid_volume_mask)[0].tolist()
             raise InvalidVolumeError(
                 f"Cells {bad_cells[:10]}{'...' if len(bad_cells) > 10 else ''} "
-                f"have non-positive computed volumes.  Check face winding order "
+                f"have non-positive computed volumes. Check face winding order "
                 f"(vertices must be CCW from the owner-cell side)."
             )
         object.__setattr__(self, "cell_volumes", cell_volumes)
@@ -615,25 +690,15 @@ class Grid:
         Each cell's bounding box is derived from the min/max of all vertices
         belonging to its faces.
         """
-        n_cells = len(self.cell_centroids)
-
-        cell_min = np.full((n_cells, 3), np.inf, dtype=self.floating_dtype)
-        cell_max = np.full((n_cells, 3), -np.inf, dtype=self.floating_dtype)
-
-        for face_idx, (owner, neighbour) in enumerate(self.face_cell_indices):
-            start = self.face_vertex_offsets[face_idx]
-            end = self.face_vertex_offsets[face_idx + 1]
-            face_vertex_coords = self.vertex_coordinates[
-                self.face_vertex_indices[start:end]
-            ]
-            face_min = face_vertex_coords.min(axis=0)
-            face_max = face_vertex_coords.max(axis=0)
-
-            for cell_idx in (owner, neighbour):
-                if cell_idx >= 0:
-                    np.minimum(cell_min[cell_idx], face_min, out=cell_min[cell_idx])
-                    np.maximum(cell_max[cell_idx], face_max, out=cell_max[cell_idx])
-
+        n_cells = int(self.face_cell_indices.max()) + 1
+        cell_min, cell_max = _compute_cell_bounding_boxes(
+            face_cell_indices=self.face_cell_indices,
+            face_vertex_indices=self.face_vertex_indices,
+            face_vertex_offsets=self.face_vertex_offsets,
+            vertex_coordinates=self.vertex_coordinates,
+            n_cells=n_cells,
+            dtype=self.floating_dtype,
+        )
         bounding_box = (
             float(cell_min[:, 0].min()),
             float(cell_max[:, 0].max()),
@@ -657,7 +722,6 @@ class Grid:
         negation of depth.
         """
         delta = self.cell_max_xyz - self.cell_min_xyz
-
         object.__setattr__(self, "cell_length_x", delta[:, 0])
         object.__setattr__(self, "cell_length_y", delta[:, 1])
         object.__setattr__(self, "cell_length_z", delta[:, 2])
@@ -847,7 +911,7 @@ class Grid:
         :param z: Query z-coordinate (depth, positive downward).
         :returns: Zero-based index of the nearest cell.
         """
-        _, cell_index = self._spatial_index.query([x, y, z])  # type: ignore[union-attr]
+        _, cell_index = self._spatial_index.query([x, y, z])  # type: ignore
         return int(cell_index)
 
     def find_cells_in_radius(
@@ -862,7 +926,7 @@ class Grid:
         :param radius: Search radius in grid length units.
         :returns: 1-D array of matching cell indices (unsorted).
         """
-        raw_indices = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore[union-attr]
+        raw_indices = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore
         return np.asarray(raw_indices, dtype=self.index_dtype)
 
     def compute_pore_volume(

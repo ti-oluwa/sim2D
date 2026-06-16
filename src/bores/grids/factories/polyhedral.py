@@ -15,7 +15,7 @@ from bores.typing import FloatArray, TwoDimensions
 
 __all__ = ["make_polyhedral_grid"]
 
-VertexCoordinate: TypeAlias = FloatArray[TwoDimensions]
+VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
 
 FaceVertexList: TypeAlias = typing.List[int]
@@ -28,7 +28,7 @@ vertex indices wound CCW from outside (outward normal)."""
 
 def make_polyhedral_grid(
     *,
-    vertex_coordinates: VertexCoordinate,
+    vertex_coordinates: VertexCoordinates,
     cell_blocks: typing.Sequence[typing.Dict[str, typing.Any]],
     custom_cell_faces: typing.Optional[typing.Dict[str, CellFaceTable]] = None,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
@@ -77,7 +77,7 @@ def make_polyhedral_grid(
         - `"cell_type"`: string name matching a key in
             `ELEMENT_FACE_TABLES` or `custom_cell_faces` (e.g.
             `"hexahedron"`, `"tetra"`).
-        - `"vtk_type"`: integer VTK cell type code (e.g. `12` for hex).
+        - `"vtk_type"`: integer VTK cell type code (e.g. `12` for hexahedron (hex)).
 
     :param custom_cell_faces: Optional mapping from cell-type name to face
         table, extending or overriding `ELEMENT_FACE_TABLES`.  
@@ -87,10 +87,10 @@ def make_polyhedral_grid(
     :raises ValidationError: If a cell block contains an unrecognised element type.
     :raises InvalidPointArrayError: If `vertex_coordinates` is not `(N, 3)`.
     """
-    pts = np.asarray(vertex_coordinates, dtype=np.float64)
-    if pts.ndim != 2 or pts.shape[1] != 3:
+    points = np.asarray(vertex_coordinates, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
         raise InvalidPointArrayError(
-            f"vertex_coordinates must be shape (n_vertices, 3); got {pts.shape!r}."
+            f"vertex_coordinates must be shape (n_vertices, 3); got {points.shape!r}."
         )
 
     combined_face_table = dict(ELEMENT_FACE_TABLES)
@@ -131,10 +131,10 @@ def make_polyhedral_grid(
         raise ValidationError("No cells found across all provided cell blocks.")
 
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(pts, all_per_cell_faces)
+        build_csr_face_arrays(points, all_per_cell_faces)
     )
     return assemble_grid(
-        pts,
+        points,
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,

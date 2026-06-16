@@ -1,7 +1,7 @@
 """Voronoi (PEBI) grid factory for both 2-D extruded and 3-D native tessellations."""
-
 import typing
 
+import numba
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial import Voronoi
@@ -59,7 +59,7 @@ def make_voronoi_grid(
     - `seeds.shape == (N, 2)` -> 2-D Voronoi extruded uniformly in depth.
     - `seeds.shape == (N, 3)` -> 3-D native polyhedral Voronoi.
 
-    Boundary handling uses the **mirror-seed strategy** (see module docstring),
+    Boundary handling uses the **mirror-seed strategy**,
     which is robust against all degenerate configurations and requires no
     additional dependencies beyond `scipy`.
 
@@ -176,19 +176,19 @@ def _make_2d_extruded_voronoi_grid(
     # Compute mirror seeds and run Voronoi
     mirror_seeds = _build_2d_mirror_seeds(seeds, bounding_box)
     all_seeds = np.vstack([seeds, mirror_seeds])
-    vor = Voronoi(all_seeds)
+    voronoi = Voronoi(all_seeds)
 
     # Extract per-column 2-D polygons from Voronoi regions.
     # With the mirror trick, regions for original seeds are guaranteed finite.
     column_polygons: typing.List[typing.Optional[npt.NDArray[np.float64]]] = []
     for seed_idx in range(n_seeds):
-        region_idx = vor.point_region[seed_idx]
-        vert_indices = vor.regions[region_idx]
+        region_idx = voronoi.point_region[seed_idx]
+        vert_indices = voronoi.regions[region_idx]
         if len(vert_indices) < 3 or -1 in vert_indices:
             # Should not happen with mirror seeds, but be defensive
             column_polygons.append(None)
         else:
-            column_polygons.append(vor.vertices[vert_indices])
+            column_polygons.append(voronoi.vertices[vert_indices])
 
     valid_column_indices = [
         col_idx for col_idx, poly in enumerate(column_polygons) if poly is not None
@@ -210,23 +210,25 @@ def _make_2d_extruded_voronoi_grid(
         ]
     ] = []
 
-    for ridge_vert_indices, seed_pair in zip(vor.ridge_vertices, vor.ridge_points):
+    for ridge_vert_indices, seed_pair in zip(
+        voronoi.ridge_vertices, voronoi.ridge_points
+    ):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
-        sa_orig = sa < n_seeds
-        sb_orig = sb < n_seeds
+        sa_original = sa < n_seeds
+        sb_original = sb < n_seeds
 
         # Discard: both mirrors, or infinite ridge
-        if (not sa_orig and not sb_orig) or (-1 in ridge_vert_indices):
+        if (not sa_original and not sb_original) or (-1 in ridge_vert_indices):
             continue
 
-        a_xy = vor.vertices[ridge_vert_indices[0]]
-        b_xy = vor.vertices[ridge_vert_indices[1]]
+        a_xy = voronoi.vertices[ridge_vert_indices[0]]
+        b_xy = voronoi.vertices[ridge_vert_indices[1]]
 
         # Normalise to (original_seed, other_seed_or_-1) convention:
         # owner is the original seed; neighbour is the other original or -1 (boundary)
-        if sa_orig and sb_orig:
+        if sa_original and sb_original:
             valid_ridges.append((a_xy, b_xy, sa, sb))
-        elif sa_orig:
+        elif sa_original:
             valid_ridges.append((a_xy, b_xy, sa, _BOUNDARY_CELL))
         else:
             valid_ridges.append((a_xy, b_xy, sb, _BOUNDARY_CELL))
@@ -245,28 +247,31 @@ def _make_2d_extruded_voronoi_grid(
     n_z_levels = len(z_nodes)  # n_layers + 1
 
     # All 3-D vertex coordinates: (n_voronoi_verts * n_z_levels, 3)
-    n_vor_verts = len(vor.vertices)
-    vertex_coordinates_3d = np.empty((n_vor_verts * n_z_levels, 3), dtype=np.float64)
-    for v_idx in range(n_vor_verts):
-        for lev in range(n_z_levels):
-            row = v_idx * n_z_levels + lev
-            vertex_coordinates_3d[row, 0] = vor.vertices[v_idx, 0]
-            vertex_coordinates_3d[row, 1] = vor.vertices[v_idx, 1]
-            vertex_coordinates_3d[row, 2] = z_nodes[lev]
+    n_voronoi_verts = len(voronoi.vertices)
+    vertex_coordinates_3d = np.empty(
+        (n_voronoi_verts * n_z_levels, 3), dtype=np.float64
+    )
+    for vert_idx in range(n_voronoi_verts):
+        for level in range(n_z_levels):
+            row = vert_idx * n_z_levels + level
+            vertex_coordinates_3d[row, 0] = voronoi.vertices[vert_idx, 0]
+            vertex_coordinates_3d[row, 1] = voronoi.vertices[vert_idx, 1]
+            vertex_coordinates_3d[row, 2] = z_nodes[level]
 
-    def _global_vert(vor_vert_idx: int, z_level: int) -> int:
+    def _global_vert(voronoi_vert_idx: int, z_level: int) -> int:
         """Map a 2-D Voronoi vertex index and depth level to a global 3-D index.
 
-        :param vor_vert_idx: Index into `vor.vertices`.
+        :param voronoi_vert_idx: Index into `voronoi.vertices`.
         :param z_level: Depth level index in `[0, n_layers]`.
         :returns: Global vertex index into `vertex_coordinates_3d`.
         """
-        return vor_vert_idx * n_z_levels + z_level
+        return voronoi_vert_idx * n_z_levels + z_level
 
     # Cell index: cell_index(col_idx, layer) = col_idx * n_layers + layer
     # where col_idx is the index into valid_column_indices
-    col_to_cell_col: typing.Dict[int, int] = {
-        orig_col: cell_col for cell_col, orig_col in enumerate(valid_column_indices)
+    column_to_cell_column: typing.Dict[int, int] = {
+        original_column: cell_column
+        for cell_column, original_column in enumerate(valid_column_indices)
     }
     n_columns = len(valid_column_indices)
     n_cells = n_columns * n_layers
@@ -286,42 +291,47 @@ def _make_2d_extruded_voronoi_grid(
 
     # Vertical (lateral) faces: one per 2-D ridge x n_layers
     for a_xy, b_xy, seed_owner, seed_neighbour in valid_ridges:
-        # Find the ridge's 2-D vertex indices in vor.vertices
+        # Find the ridge's 2-D vertex indices in voronoi.vertices
         # (we stored the coordinates; recover indices by lookup)
-        a_vert_idx = _find_vertex_index(vor.vertices, a_xy)
-        b_vert_idx = _find_vertex_index(vor.vertices, b_xy)
+        a_vert_idx = _find_vertex_index(voronoi.vertices, a_xy)
+        b_vert_idx = _find_vertex_index(voronoi.vertices, b_xy)
 
         owner_seed_xy = seeds[seed_owner]
 
         for layer in range(n_layers):
-            top_lev = layer
-            bot_lev = layer + 1
+            top_level = layer
+            bottom_level = layer + 1
 
-            a_top = _global_vert(a_vert_idx, top_lev)
-            a_bot = _global_vert(a_vert_idx, bot_lev)
-            b_top = _global_vert(b_vert_idx, top_lev)
-            b_bot = _global_vert(b_vert_idx, bot_lev)
+            a_top = _global_vert(a_vert_idx, top_level)
+            a_bottom = _global_vert(a_vert_idx, bottom_level)
+            b_top = _global_vert(b_vert_idx, top_level)
+            b_bottom = _global_vert(b_vert_idx, bottom_level)
 
             # Winding: CCW from owner side so normal points FROM owner TOWARD neighbour.
             # 2-D signed area of triangle (a->b, owner_seed):
-            #   > 0 -> owner is to the LEFT of a->b -> winding [a_bot, b_bot, b_top, a_top]
-            #   < 0 -> owner is to the RIGHT       -> winding [a_bot, a_top, b_top, b_bot]
+            #   > 0 -> owner is to the LEFT of a->b  -> traverse CCW from right (outside) -> [a_top, b_top, b_bottom, a_bottom]
+            #   < 0 -> owner is to the RIGHT of a->b -> traverse CCW from left  (outside) -> [a_top, a_bottom, b_bottom, b_top]
+            # Note: top/bot order is reversed vs. naive intuition because z is positive
+            # downward (z_bot > z_top), so [bot, top] traversal is CW from outside in
+            # a right-hand Newell system. Leading with a_top corrects this.
             signed_area = _signed_area_2d(a_xy, b_xy, owner_seed_xy)
             if signed_area > 0:
-                lateral_face: FaceVertexList = [a_bot, b_bot, b_top, a_top]
+                # owner LEFT of a->b: outward normal points right -> traverse CCW from right
+                lateral_face: FaceVertexList = [a_top, b_top, b_bottom, a_bottom]
             else:
-                lateral_face = [a_bot, a_top, b_top, b_bot]
+                # owner RIGHT of a->b: outward normal points left -> traverse CCW from left
+                lateral_face = [a_top, a_bottom, b_bottom, b_top]
 
-            owner_cell_col = col_to_cell_col.get(seed_owner)
-            if owner_cell_col is None:
+            owner_cell_column = column_to_cell_column.get(seed_owner)
+            if owner_cell_column is None:
                 continue  # owner column was clipped out
-            owner_cell_idx = _cell_index(owner_cell_col, layer)
+            owner_cell_idx = _cell_index(owner_cell_column, layer)
             per_cell_face_vertex_lists[owner_cell_idx].append(lateral_face)
 
             if seed_neighbour != _BOUNDARY_CELL:
-                neighbour_cell_col = col_to_cell_col.get(seed_neighbour)
-                if neighbour_cell_col is not None:
-                    neighbour_cell_idx = _cell_index(neighbour_cell_col, layer)
+                neighbour_cell_column = column_to_cell_column.get(seed_neighbour)
+                if neighbour_cell_column is not None:
+                    neighbour_cell_idx = _cell_index(neighbour_cell_column, layer)
                     per_cell_face_vertex_lists[neighbour_cell_idx].append(
                         list(reversed(lateral_face))
                     )
@@ -333,26 +343,26 @@ def _make_2d_extruded_voronoi_grid(
         polygon_2d = column_polygons[orig_col_idx]
         if polygon_2d is None:
             continue
-        n_poly_verts = len(polygon_2d)
+        n_polygon_verts = len(polygon_2d)
 
         # Recover Voronoi vertex indices for each polygon vertex
-        region_idx = vor.point_region[orig_col_idx]
-        region_vert_indices = vor.regions[region_idx]
-        # region_vert_indices[k] is the vor.vertices index for polygon_2d[k]
-        assert len(region_vert_indices) == n_poly_verts
+        region_idx = voronoi.point_region[orig_col_idx]
+        region_vert_indices = voronoi.regions[region_idx]
+        # region_vert_indices[k] is the voronoi.vertices index for polygon_2d[k]
+        assert len(region_vert_indices) == n_polygon_verts
 
         for layer in range(n_layers):
-            top_lev = layer
-            bot_lev = layer + 1
+            top_level = layer
+            bottom_level = layer + 1
             cell_idx = _cell_index(cell_col_idx, layer)
 
             top_polygon_3d_indices = [
-                _global_vert(region_vert_indices[k], top_lev)
-                for k in range(n_poly_verts)
+                _global_vert(region_vert_indices[k], top_level)
+                for k in range(n_polygon_verts)
             ]
             bottom_polygon_3d_indices = [
-                _global_vert(region_vert_indices[k], bot_lev)
-                for k in range(n_poly_verts)
+                _global_vert(region_vert_indices[k], bottom_level)
+                for k in range(n_polygon_verts)
             ]
 
             # Top face: outward normal = −z -> CCW from above = reversed xy order
@@ -399,30 +409,32 @@ def _make_3d_voronoi_grid(
     # Add mirror seeds and run Voronoi
     mirror_seeds = _build_3d_mirror_seeds(seeds, bounding_box)
     all_seeds = np.vstack([seeds, mirror_seeds])
-    vor = Voronoi(all_seeds)
+    voronoi = Voronoi(all_seeds)
 
     # Build per-cell face lists from Voronoi ridges.
     # In 3-D, each "ridge" is a polygonal face between two seed regions.
     per_cell_face_vertex_lists: PerCellFaceLists = [[] for _ in range(n_seeds)]
 
-    for ridge_vert_indices, seed_pair in zip(vor.ridge_vertices, vor.ridge_points):
+    for ridge_vert_indices, seed_pair in zip(
+        voronoi.ridge_vertices, voronoi.ridge_points
+    ):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
-        sa_orig = sa < n_seeds
-        sb_orig = sb < n_seeds
+        sa_original = sa < n_seeds
+        sb_original = sb < n_seeds
 
         # Skip: both mirrors, or residual infinite ridge (should be zero with mirror trick)
-        if (not sa_orig and not sb_orig) or (-1 in ridge_vert_indices):
+        if (not sa_original and not sb_original) or (-1 in ridge_vert_indices):
             continue
 
-        face_verts_3d = vor.vertices[ridge_vert_indices]
+        face_verts_3d = voronoi.vertices[ridge_vert_indices]
 
         # Determine owner and the direction toward the neighbour
-        if sa_orig and sb_orig:
+        if sa_original and sb_original:
             # Interior face: owner = sa, neighbour = sb
             owner_idx = sa
             neighbour_idx = sb
             direction_to_neighbour = seeds[sb] - seeds[sa]
-        elif sa_orig:
+        elif sa_original:
             # Boundary face: owner = sa, neighbour = exterior (-1)
             owner_idx = sa
             neighbour_idx = _BOUNDARY_CELL
@@ -460,10 +472,10 @@ def _make_3d_voronoi_grid(
 
     # Assemble and return Grid
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(vor.vertices, per_cell_face_vertex_lists)
+        build_csr_face_arrays(voronoi.vertices, per_cell_face_vertex_lists)
     )
     return assemble_grid(
-        vor.vertices,
+        voronoi.vertices,
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
@@ -567,6 +579,7 @@ def _compute_newell_normal(verts: npt.NDArray[np.float64]) -> npt.NDArray[np.flo
     return n / magnitude if magnitude > 0.0 else n
 
 
+@numba.njit(cache=True)
 def _signed_area_2d(
     a: npt.NDArray[np.float64],
     b: npt.NDArray[np.float64],
@@ -632,7 +645,7 @@ def _resolve_2d_bounding_box(
     if bounding_box is not None:
         if len(bounding_box) not in (4, 6):
             raise ValidationError(
-                f"For 2-D seeds, bounding_box must be length 4 or 6; "
+                f"For 2-D seeds, `bounding_box` must be length 4 or 6; "
                 f"got length {len(bounding_box)}."
             )
         x_min, x_max, y_min, y_max = bounding_box[:4]
@@ -667,7 +680,7 @@ def _resolve_3d_bounding_box(
     if bounding_box is not None:
         if len(bounding_box) != 6:
             raise ValidationError(
-                f"For 3-D seeds, bounding_box must be length 6 (x_min, x_max, "
+                f"For 3-D seeds, `bounding_box` must be length 6 (x_min, x_max, "
                 f"y_min, y_max, z_min, z_max); got length {len(bounding_box)}."
             )
         x_min, x_max, y_min, y_max, z_min, z_max = bounding_box
@@ -711,6 +724,6 @@ def _resolve_layer_thicknesses(
     arr = np.atleast_1d(np.asarray(layer_thicknesses, dtype=np.float64)).ravel()
     if np.any(arr <= 0.0):
         raise ValidationError(
-            f"All layer_thicknesses must be strictly positive; got min={arr.min():.6g}."
+            f"All `layer_thicknesses` must be strictly positive; got min={arr.min():.6g}."
         )
     return arr

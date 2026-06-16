@@ -22,7 +22,7 @@ Gmsh ID  Name       Vertices
 
 Gmsh reference manual - MSH file format, v2.
 """
-
+import re
 import typing
 from pathlib import Path
 
@@ -119,8 +119,6 @@ def _extract_section(text: str, section_name: str) -> typing.Optional[str]:
         `"Nodes"`).
     :returns: Section body text, or `None` if the section is absent.
     """
-    import re
-
     pattern = re.compile(
         r"\$" + re.escape(section_name) + r"\s*(.*?)\s*\$End" + re.escape(section_name),
         re.DOTALL,
@@ -199,6 +197,7 @@ def _parse_msh(text: str) -> Grid:
         elem_type_id = int(parts[1])
         if elem_type_id not in _GMSH_ELEM_TYPES:
             continue  # skip 2-D/1-D elements silently
+        
         n_verts, type_name = _GMSH_ELEM_TYPES[elem_type_id]
         n_tags = int(parts[2])
         node_start = 3 + n_tags

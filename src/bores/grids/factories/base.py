@@ -168,7 +168,6 @@ def build_csr_face_arrays(
     face_vertex_indices_arr = np.asarray(flat_vertex_indices, dtype=np.int32)
     face_vertex_offsets_arr = np.asarray(face_vertex_offsets_list, dtype=np.int32)
     face_cell_indices_arr = np.asarray(face_cell_pairs, dtype=np.int32)
-
     return (
         vertex_coordinates,
         face_vertex_indices_arr,
@@ -202,23 +201,3 @@ def assemble_grid(
         metadata=metadata,
     )
 
-
-@typing.runtime_checkable
-class GridFactory(typing.Protocol):
-    """
-    Protocol implemented by all `Grid` factory callables.
-
-    Any callable that accepts arbitrary arguments and returns a `Grid`
-    instance satisfies this protocol.  Use it as a type hint wherever
-    interchangeable grid builders are expected.
-    """
-
-    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> Grid:
-        """
-        Construct and return a `Grid` instance.
-
-        :param args: Positional arguments forwarded to the factory.
-        :param kwargs: Keyword arguments forwarded to the factory.
-        :returns: A fully initialised `Grid` object.
-        """
-        ...
