@@ -17,7 +17,7 @@ def _build_pyvista_arrays(
     cell_max_xyz: np.ndarray,
     all_points: np.ndarray,
     flat_cells: np.ndarray,
-    verts_per_cell: int,
+    n_vertices_per_cell: int,
 ):
     n_cells = cell_min_xyz.shape[0]
     for cell_idx in numba.prange(n_cells):  # type: ignore
@@ -29,7 +29,7 @@ def _build_pyvista_arrays(
         high_y = cell_max_xyz[cell_idx, 1]
         high_z = cell_max_xyz[cell_idx, 2]
 
-        base = cell_idx * verts_per_cell
+        base = cell_idx * n_vertices_per_cell
 
         all_points[base + 0, 0] = low_x
         all_points[base + 0, 1] = low_y
@@ -95,12 +95,12 @@ def to_pyvista(
 
     **Example**:
 
-    ```python
+    ``python
     from bores.grids.utils import to_pyvista
 
     pv_grid = to_pyvista(grid, cell_data={"pressure": pressure})
     pv_grid.plot(scalars="pressure", show_edges=True)
-    ```
+    ``
     """
     try:
         import pyvista as pv  # type: ignore[import-untyped]
@@ -112,19 +112,19 @@ def to_pyvista(
         ) from exc
 
     n_cells = grid.n_cells
-    verts_per_cell = 8  # VTK_HEXAHEDRON = 12
+    n_vertices_per_cell = 8  # VTK_HEXAHEDRON = 12
 
     # Build one hex per grid cell from bounding-box corners
     # PyVista flat cell array layout: [n_pts, p0, p1, ..., p7,  n_pts, ...]
-    all_points = np.empty((n_cells * verts_per_cell, 3), dtype=np.float64)
-    flat_cells = np.empty(n_cells * (verts_per_cell + 1), dtype=np.int64)
+    all_points = np.empty((n_cells * n_vertices_per_cell, 3), dtype=np.float64)
+    flat_cells = np.empty(n_cells * (n_vertices_per_cell + 1), dtype=np.int64)
 
     _build_pyvista_arrays(
         cell_min_xyz=grid.cell_min_xyz,
         cell_max_xyz=grid.cell_max_xyz,
         all_points=all_points,
         flat_cells=flat_cells,
-        verts_per_cell=verts_per_cell,
+        n_vertices_per_cell=n_vertices_per_cell,
     )
     cell_types = np.full(n_cells, 12, dtype=np.uint8)  # VTK_HEXAHEDRON = 12
     pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
@@ -147,7 +147,104 @@ def to_pyvista(
     return pv_grid
 
 
+_METRES_PER_LENGTH_UNIT: typing.Dict[UnitSystem, float] = {
+    UnitSystem.FIELD: 0.3048,  # 1 ft  = 0.3048 m
+    UnitSystem.METRIC: 1.0,  # 1 m   = 1 m
+    UnitSystem.LAB: 0.01,  # 1 cm  = 0.01 m
+    UnitSystem.SI: 1.0,  # 1 m   = 1 m  (SI length unit is metre)
+}
+
+
+def _get_length_conversion_factor(
+    from_system: UnitSystem, to_system: UnitSystem
+) -> float:
+    """
+    Return the multiplicative factor to convert a length value from one unit
+    system to another.
+
+    :param from_system: Source unit system.
+    :param to_system: Target unit system.
+    :returns: Conversion factor `f` such that `value_to = value_from * f`.
+    """
+    return _METRES_PER_LENGTH_UNIT[from_system] / _METRES_PER_LENGTH_UNIT[to_system]
+
+
 def convert(grid: Grid, *, to: UnitSystem) -> Grid:
+    """
+    Return a new `bores.grids.base.Grid` with all coordinates
+    expressed in the target unit system.
+
+    The `Grid` stores raw numbers and carries a declared
+    `bores.typing.UnitSystem` tag. This function rescales
+    `vertex_coordinates` by the appropriate length factor and constructs
+    a new `Grid` with `unit_system=to`. All derived geometry (face
+    areas, cell volumes, centroids, bounding boxes …) is recomputed
+    automatically after `Grid` initialization.
+
+    If `grid.unit_system == to` the original grid object is returned
+    unchanged (no copy, no allocation).
+
+    **Supported conversions** (any combination of FIELD ↔ METRIC ↔ LAB ↔ SI):
+
+    ```md
+    =========  =======  =========
+    From       To       Length
+    =========  =======  =========
+    FIELD      METRIC   0.3048
+    FIELD      LAB      30.48
+    FIELD      SI       0.3048
+    METRIC     FIELD    3.28084
+    METRIC     LAB      100.0
+    METRIC     SI       1.0
+    LAB        METRIC   0.01
+    LAB        FIELD    0.032808
+    SI         METRIC   1.0
+    =========  =======  =========
+    ```
+
+    :param grid: Source grid. Must have a valid `unit_system` tag.
+    :param to: Target `bores.typing.UnitSystem`.
+    :returns: A new `Grid` with rescaled coordinates and `unit_system=to`,
+        or the original `grid` if already in the target system.
+    :raises ValueError: If `grid.unit_system` is not a recognised `UnitSystem` member.
+
+    Example:
+
+    ```python
+    from bores.grids.factories.cartesian import make_cartesian_grid
+    from bores.grids.utils import convert
+    from bores.typing import UnitSystem
+
+    # Build a grid in field units (feet)
+    grid_ft = make_cartesian_grid(
+        nx=10, ny=10, nz=5,
+        dx=328.084, dy=328.084, dz=16.4042,   # ≈ 100 m cells
+        unit_system=UnitSystem.FIELD,
+    )
+
+    # Convert to metric (metres)
+    grid_m = convert(grid_ft, to=UnitSystem.METRIC)
+    assert grid_m.unit_system == UnitSystem.METRIC
+    # cell volume should now be ≈ 100 * 100 * 5 = 50,000 m³
+    ```
+    """
     if grid.unit_system == to:
         return grid
-    return grid
+
+    factor = _get_length_conversion_factor(grid.unit_system, to)
+    # Rescale vertex coordinates only.
+    # All other geometry is derived and will be recomputed in __attrs_post_init__.
+    new_vertex_coordinates = grid.vertex_coordinates * factor
+    return Grid(
+        vertex_coordinates=new_vertex_coordinates,
+        face_vertex_indices=grid.face_vertex_indices,
+        face_vertex_offsets=grid.face_vertex_offsets,
+        face_cell_indices=grid.face_cell_indices,
+        unit_system=to,
+        index_dtype=grid.index_dtype,
+        floating_dtype=grid.floating_dtype,
+        metadata=grid.metadata,
+        cell_statuses=grid.cell_statuses,
+        face_types=grid.face_types,
+        face_statuses=grid.face_statuses,
+    )

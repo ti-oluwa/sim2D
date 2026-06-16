@@ -64,6 +64,7 @@ def load_mesh(
     *,
     file_format: typing.Optional[str] = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -73,6 +74,7 @@ def load_mesh(
     *,
     file_format: typing.Optional[str] = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -82,6 +84,7 @@ def load_mesh(
     *,
     file_format: typing.Optional[str] = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -90,6 +93,7 @@ def load_mesh(
     *,
     file_format: typing.Optional[str] = None,
     unit_system: typing.Optional[UnitSystem] = None,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
     Load any mesh format supported by `meshio` from a path or bytes.
@@ -108,7 +112,7 @@ def load_mesh(
     :raises UnsupportedGridFormatError: If `meshio` is not installed or
         the format is not recognised.
     """
-    grid = _load_via_meshio(source, file_format=file_format)
+    grid = _load(source, file_format=file_format, metadata=metadata)
     return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
@@ -177,7 +181,7 @@ def dump_mesh(
     :raises UnsupportedGridFormatError: If `meshio` is not installed or
         the format is not recognised.
     """
-    return _dump_via_meshio(
+    return _dump(
         grid,
         destination=destination,
         file_format=file_format,
@@ -185,10 +189,11 @@ def dump_mesh(
     )
 
 
-def _load_via_meshio(
+def _load(
     source: _TextOrPath,
     *,
-    file_format: typing.Optional[str],
+    file_format: typing.Optional[str] = None,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
     Load any `meshio`-supported mesh and convert to a
@@ -220,10 +225,12 @@ def _load_via_meshio(
         except Exception as exc:
             raise GridImportError(f"meshio failed to read {path!r}: {exc}") from exc
 
-    return _meshio_mesh_to_grid(mesh)
+    return _mesh_to_grid(mesh, metadata=metadata)
 
 
-def _meshio_mesh_to_grid(mesh: meshio.Mesh) -> Grid:
+def _mesh_to_grid(
+    mesh: meshio.Mesh, metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
+) -> Grid:
     """
     Convert a `meshio.Mesh` object to a `bores.grids.base.Grid`.
 
@@ -260,11 +267,14 @@ def _meshio_mesh_to_grid(mesh: meshio.Mesh) -> Grid:
             f"(supported: {sorted(_VOLUMETRIC_CELL_TYPES)})."
         )
 
+    meta = {"source_format": "meshio"}
+    if metadata:
+        meta.update(metadata)
     try:
         return make_polyhedral_grid(
             vertex_coordinates=points,
             cell_blocks=cell_blocks,
-            metadata={"source_format": "meshio"},
+            metadata=meta,
         )
     except Exception as exc:
         raise GridImportError(
@@ -272,10 +282,8 @@ def _meshio_mesh_to_grid(mesh: meshio.Mesh) -> Grid:
         ) from exc
 
 
-def _grid_to_meshio_mesh(
-    grid: Grid,
-    *,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]],
+def _grid_to_mesh(
+    grid: Grid, *, cell_data: typing.Optional[typing.Dict[str, np.ndarray]]
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `meshio.Mesh`.
@@ -334,7 +342,7 @@ def _grid_to_meshio_mesh(
     )
 
 
-def _dump_via_meshio(
+def _dump(
     grid: Grid,
     *,
     destination: typing.Union[_PathOrStr, None],
@@ -352,7 +360,7 @@ def _dump_via_meshio(
     :raises GridExportError: If serialisation fails.
     """
     try:
-        mesh = _grid_to_meshio_mesh(grid, cell_data=cell_data)
+        mesh = _grid_to_mesh(grid, cell_data=cell_data)
     except GridExportError:
         raise
     except Exception as exc:

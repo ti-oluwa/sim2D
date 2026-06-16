@@ -206,10 +206,12 @@ def _make_2d_extruded_voronoi_grid(
     # Each ridge -> one vertical face per layer.
     valid_ridges: typing.List[
         typing.Tuple[
-            npt.NDArray[np.float64],  # 2D endpoint a
-            npt.NDArray[np.float64],  # 2D endpoint b
-            int,  # seed_a (original index or -1 for mirror)
-            int,  # seed_b
+            int,  # a_vert_idx  (index into voronoi.vertices)
+            int,  # b_vert_idx
+            npt.NDArray[np.float64],  # a_xy  (for signed-area winding test only)
+            npt.NDArray[np.float64],  # b_xy
+            int,  # seed_owner
+            int,  # seed_neighbour  (-1 = boundary)
         ]
     ] = []
 
@@ -220,21 +222,21 @@ def _make_2d_extruded_voronoi_grid(
         sa_original = sa < n_seeds
         sb_original = sb < n_seeds
 
-        # Discard: both mirrors, or infinite ridge
         if (not sa_original and not sb_original) or (-1 in ridge_vert_indices):
             continue
 
-        a_xy = voronoi.vertices[ridge_vert_indices[0]]
-        b_xy = voronoi.vertices[ridge_vert_indices[1]]
+        # Store integer indices directly — no coordinate lookup needed later.
+        a_vi = int(ridge_vert_indices[0])
+        b_vi = int(ridge_vert_indices[1])
+        a_xy = voronoi.vertices[a_vi]
+        b_xy = voronoi.vertices[b_vi]
 
-        # Normalise to (original_seed, other_seed_or_-1) convention:
-        # owner is the original seed; neighbour is the other original or -1 (boundary)
         if sa_original and sb_original:
-            valid_ridges.append((a_xy, b_xy, sa, sb))
+            valid_ridges.append((a_vi, b_vi, a_xy, b_xy, sa, sb))
         elif sa_original:
-            valid_ridges.append((a_xy, b_xy, sa, _BOUNDARY_CELL))
+            valid_ridges.append((a_vi, b_vi, a_xy, b_xy, sa, _BOUNDARY_CELL))
         else:
-            valid_ridges.append((a_xy, b_xy, sb, _BOUNDARY_CELL))
+            valid_ridges.append((a_vi, b_vi, a_xy, b_xy, sb, _BOUNDARY_CELL))
 
     # Build 3-D vertex array and CSR face arrays.
     #
@@ -293,12 +295,9 @@ def _make_2d_extruded_voronoi_grid(
         return col_idx * n_layers + layer
 
     # Vertical (lateral) faces: one per 2-D ridge x n_layers
-    for a_xy, b_xy, seed_owner, seed_neighbour in valid_ridges:
-        # Find the ridge's 2-D vertex indices in voronoi.vertices
-        # (we stored the coordinates; recover indices by lookup)
-        a_vert_idx = _find_vertex_index(voronoi.vertices, a_xy)
-        b_vert_idx = _find_vertex_index(voronoi.vertices, b_xy)
-
+    for a_vert_idx, b_vert_idx, a_xy, b_xy, seed_owner, seed_neighbour in valid_ridges:
+        # a_vert_idx / b_vert_idx are already the correct indices into
+        # voronoi.vertices — no coordinate search needed.
         owner_seed_xy = seeds[seed_owner]
 
         for layer in range(n_layers):
@@ -310,24 +309,15 @@ def _make_2d_extruded_voronoi_grid(
             b_top = _global_vert(b_vert_idx, top_level)
             b_bottom = _global_vert(b_vert_idx, bottom_level)
 
-            # Winding: CCW from owner side so normal points FROM owner TOWARD neighbour.
-            # 2-D signed area of triangle (a->b, owner_seed):
-            #   > 0 -> owner is to the LEFT of a->b  -> traverse CCW from right (outside) -> [a_top, b_top, b_bottom, a_bottom]
-            #   < 0 -> owner is to the RIGHT of a->b -> traverse CCW from left  (outside) -> [a_top, a_bottom, b_bottom, b_top]
-            # Note: top/bot order is reversed vs. naive intuition because z is positive
-            # downward (z_bot > z_top), so [bot, top] traversal is CW from outside in
-            # a right-hand Newell system. Leading with a_top corrects this.
             signed_area = _signed_area_2d(a_xy, b_xy, owner_seed_xy)
             if signed_area > 0:
-                # owner LEFT of a->b: outward normal points right -> traverse CCW from right
                 lateral_face: FaceVertexIndices = [a_top, b_top, b_bottom, a_bottom]
             else:
-                # owner RIGHT of a->b: outward normal points left -> traverse CCW from left
                 lateral_face = [a_top, a_bottom, b_bottom, b_top]
 
             owner_cell_column = column_to_cell_column.get(seed_owner)
             if owner_cell_column is None:
-                continue  # owner column was clipped out
+                continue
             owner_cell_idx = _cell_index(owner_cell_column, layer)
             per_cell_face_vertex_lists[owner_cell_idx].append(lateral_face)
 

@@ -55,6 +55,7 @@ def load_msh(
     *,
     encoding: str = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -64,6 +65,7 @@ def load_msh(
     *,
     encoding: str = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -73,6 +75,7 @@ def load_msh(
     *,
     encoding: str = ...,
     unit_system: typing.Optional[UnitSystem] = ...,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
 ) -> Grid: ...
 
 
@@ -81,6 +84,7 @@ def load_msh(
     *,
     encoding: str = "utf-8",
     unit_system: typing.Optional[UnitSystem] = None,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
     Load a Gmsh `.msh` file (ASCII format 2.2) from a path, string, or bytes.
@@ -100,12 +104,12 @@ def load_msh(
     :raises UnsupportedGridFormatError: If the Gmsh format version is not
         2.2.
     """
-    text = _resolve_text_source(source, encoding=encoding)
-    grid = _parse_msh(text)
+    text = _resolve_source(source, encoding=encoding)
+    grid = _parse_msh(text, metadata=metadata)
     return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
-def _resolve_text_source(source: _TextOrPath, *, encoding: str) -> str:
+def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
     """
     Coerce `source` to a plain text string.
 
@@ -147,7 +151,9 @@ def _extract_section(text: str, section_name: str) -> typing.Optional[str]:
     return m.group(1).strip() if m else None
 
 
-def _parse_msh(text: str) -> Grid:
+def _parse_msh(
+    text: str, metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
+) -> Grid:
     """
     Parse a Gmsh MSH v2.2 ASCII text blob into a `bores.grids.base.Grid`.
 
@@ -245,12 +251,14 @@ def _parse_msh(text: str) -> Grid:
         {"cell_type": ctype, "connectivity": np.array(cells, dtype=np.int32)}
         for ctype, cells in cell_blocks_by_type.items()
     ]
-
+    meta = {"source_format": "gmsh_msh"}
+    if metadata:
+        meta.update(metadata)
     try:
         return make_polyhedral_grid(
             vertex_coordinates=vertex_coordinates,
             cell_blocks=cell_blocks,
-            metadata={"source_format": "gmsh_msh"},
+            metadata=meta,
         )
     except Exception as exc:
         raise GridImportError(

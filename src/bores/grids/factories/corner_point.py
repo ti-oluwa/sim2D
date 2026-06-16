@@ -10,7 +10,6 @@ from bores.grids.base import Grid
 from bores.grids.factories.base import (
     ELEMENT_FACES,
     FaceKey,
-    FaceVertexIndices,
     VertexCoordinates,
     _FaceRecord,
     assemble_grid,
@@ -252,8 +251,7 @@ def _compute_corner_point_geometry(
     :returns: Tuple `(vertex_coordinates, per_cell_face_vertex_lists)`.
     """
     active_cells = np.argwhere(actnum > 0)
-    n_active_cells = active_cells.size
-    if n_active_cells == 0:
+    if active_cells.size == 0:
         raise InvalidGridError(
             "No active cells found in the corner-point grid (ACTNUM is all zeros)."
         )
@@ -280,6 +278,7 @@ def _compute_corner_point_geometry(
     )
 
     vertex_coordinates = flat_corner_coordinates[unique_vertex_indices]
+    n_active_cells = len(active_cells)
     corner_global_indices = inverse_indices.reshape(n_active_cells, 8)
 
     # Build cell face lists

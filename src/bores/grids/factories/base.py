@@ -183,7 +183,7 @@ def assemble_grid(
     Construct a `bores.grids.base.Grid` from pre-built CSR arrays.
 
     :param vertex_coordinates: Shape `(n_vertices, 3)` float64 array.
-    :param face_vertex_indices: Flat CSR vertex index data.
+    :param face_vertex_indices: Flat CSR vertex indices data.
     :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
     :param face_cell_indices: Shape `(n_faces, 2)` owner/neighbour array.
     :param metadata: Optional free-form metadata dictionary.

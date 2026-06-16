@@ -25,7 +25,6 @@ PyVista conversion:
     from bores.grids.io.pyvista import to_pyvista
 """
 
-from .eclipse import *  # noqa
 from .gmsh import *  # noqa
 from .grdecl import *  # noqa
 from .meshio import *  # noqa
