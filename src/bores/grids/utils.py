@@ -8,7 +8,7 @@ import numpy as np
 from bores.grids.base import Grid
 from bores.typing import UnitSystem
 
-__all__ = ["to_pyvista"]
+__all__ = ["as_pyvista_grid", "convert"]
 
 
 @numba.njit(parallel=True, cache=True)
@@ -69,7 +69,7 @@ def _build_pyvista_arrays(
             flat_cells[flat_offset + 1 + i] = base + i
 
 
-def to_pyvista(
+def as_pyvista_grid(
     grid: Grid,
     *,
     cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = None,
@@ -96,9 +96,9 @@ def to_pyvista(
     **Example**:
 
     ``python
-    from bores.grids.utils import to_pyvista
+    from bores.grids.utils import as_pyvista_grid
 
-    pv_grid = to_pyvista(grid, cell_data={"pressure": pressure})
+    pv_grid = as_pyvista_grid(grid, cell_data={"pressure": pressure})
     pv_grid.plot(scalars="pressure", show_edges=True)
     ``
     """
@@ -126,6 +126,17 @@ def to_pyvista(
         flat_cells=flat_cells,
         n_vertices_per_cell=n_vertices_per_cell,
     )
+
+    # Apply MapAxes rotation when available
+    meta = getattr(grid, "metadata", {}) or {}
+    map_axes = meta.get("map_axes", None)
+    if map_axes is not None:
+        # rotation_matrix is (2,2): maps local XY -> map XY
+        # all_points[:, :2] has shape (N, 2); rotate in-place
+        xy_local = all_points[:, :2] - map_axes.origin  # translate to map origin
+        xy_map = xy_local @ map_axes.rotation_matrix.T  # (N,2) @ (2,2) = (N,2)
+        all_points[:, :2] = xy_map + map_axes.origin
+
     cell_types = np.full(n_cells, 12, dtype=np.uint8)  # VTK_HEXAHEDRON = 12
     pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
 

@@ -27,4 +27,3 @@ PyVista conversion:
 
 from .gmsh import *  # noqa
 from .grdecl import *  # noqa
-from .meshio import *  # noqa

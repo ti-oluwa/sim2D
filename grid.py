@@ -2,7 +2,7 @@ import numpy as np
 
 from bores.grids.factories.corner_point import make_corner_point_grid
 from bores.grids.factories.voronoi import make_voronoi_grid
-from bores.grids.utils import to_pyvista
+from bores.grids.utils import as_pyvista_grid
 
 # 3x3x2 grid (NX=3, NY=3, NZ=2)
 NX, NY, NZ = 3, 3, 2
@@ -59,5 +59,5 @@ print(f"cells   : {grid.n_cells}")  # 3*3*2 - 1 = 17
 print(f"faces   : {grid.n_faces}")
 print(f"volumes : {grid.cell_volumes}")
 print(f"bbox    : {grid.bounding_box}")
-pv_grid = to_pyvista(grid)
+pv_grid = as_pyvista_grid(grid)
 pv_grid.plot(scalars="cell_volume", show_edges=True)

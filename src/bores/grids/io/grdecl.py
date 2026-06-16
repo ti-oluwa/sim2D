@@ -6,11 +6,7 @@ most other reservoir simulators to describe corner-point pillar grids.
 
 **Supported keywords**:
 
-`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDTYPE`, `TOPS` , `DX` , `DY` , `DZ`
-
-**References**:
-
-Schlumberger Eclipse Reference Manual - Grid section.
+`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDTYPE`, `TOPS` , `DX` , `DY` , `DZ`, `MAPAXES`
 """
 
 import re
@@ -19,14 +15,27 @@ import warnings
 from pathlib import Path
 
 import attrs
+import numba
 import numpy as np
 
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
 from bores.grids.factories.cartesian import make_cartesian_grid
-from bores.grids.factories.corner_point import make_corner_point_grid
+from bores.grids.factories.corner_point import (
+    ActnumArray,
+    CoordArray,
+    ZcornArray,
+    make_corner_point_grid,
+)
 from bores.grids.utils import convert
-from bores.typing import FloatArray, IntArray, OneDimension, ThreeDimensions, UnitSystem
+from bores.typing import (
+    FloatArray,
+    IntArray,
+    OneDimension,
+    ThreeDimensions,
+    TwoDimensions,
+    UnitSystem,
+)
 
 __all__ = ["load_grdecl", "dump_grdecl"]
 
@@ -131,7 +140,7 @@ def dump_grdecl(
     grid: Grid,
     destination: Path,
     *,
-    actnum: typing.Optional[IntArray[OneDimension]] = ...,
+    actnum: typing.Optional[ActnumArray] = ...,
     encoding: str = ...,
 ) -> None: ...
 
@@ -141,7 +150,7 @@ def dump_grdecl(
     grid: Grid,
     destination: None = None,
     *,
-    actnum: typing.Optional[IntArray[OneDimension]] = ...,
+    actnum: typing.Optional[ActnumArray] = ...,
     encoding: str = ...,
 ) -> str: ...
 
@@ -151,7 +160,7 @@ def dump_grdecl(
     grid: Grid,
     destination: _PathOrStr,
     *,
-    actnum: typing.Optional[IntArray[OneDimension]] = ...,
+    actnum: typing.Optional[ActnumArray] = ...,
     encoding: str = ...,
 ) -> None: ...
 
@@ -160,7 +169,7 @@ def dump_grdecl(
     grid: Grid,
     destination: typing.Union[_PathOrStr, None] = None,
     *,
-    actnum: typing.Optional[IntArray[OneDimension]] = None,
+    actnum: typing.Optional[ActnumArray] = None,
     encoding: str = "ascii",
 ) -> typing.Optional[str]:
     """
@@ -389,6 +398,49 @@ def _detect_unit_system(clean: str) -> UnitSystem:
     return UnitSystem.FIELD
 
 
+def _parse_mapaxes(clean: str) -> typing.Optional[MapAxes]:
+    """
+    Parse the optional MAPAXES keyword from comment-stripped GRDECL text.
+
+    Eclipse MAPAXES format (6 values, no trailing slash):
+        X_ORIGIN  Y_ORIGIN  X_UNITX  Y_UNITX  X_UNITY  Y_UNITY
+
+    where (X_ORIGIN, Y_ORIGIN) is the map origin and (X_UNITX, Y_UNITX),
+    (X_UNITY, Y_UNITY) are points on the map X and Y axes respectively.
+
+    :param clean: Comment-stripped GRDECL text.
+    :returns: A `MapAxes` instance, or `None` if the keyword is absent or
+        the block cannot be parsed.
+    """
+    block = _extract_keyword_block(clean, "MAPAXES")
+    if block is None:
+        return None
+
+    tokens = block.split()
+    if len(tokens) < 6:
+        warnings.warn(
+            f"MAPAXES block has {len(tokens)} values; expected 6. Ignoring.",
+            stacklevel=4,
+        )
+        return None
+    try:
+        vals = [float(t) for t in tokens[:6]]
+    except ValueError as exc:
+        warnings.warn(
+            f"MAPAXES values are not valid floats ({exc}). Ignoring.", stacklevel=4
+        )
+        return None
+
+    origin = np.array([vals[0], vals[1]], dtype=np.float64)
+    map_x_axis_point = np.array([vals[2], vals[3]], dtype=np.float64)
+    map_y_axis_point = np.array([vals[4], vals[5]], dtype=np.float64)
+    return MapAxes(
+        origin=origin,
+        map_x_axis_point=map_x_axis_point,
+        map_y_axis_point=map_y_axis_point,
+    )
+
+
 def _parse_grdecl_cartesian(
     clean: str,
     nx: int,
@@ -596,7 +648,6 @@ def _parse_grdecl(
         have inconsistent shapes.
     """
     clean = _strip_comments(text)
-    unit_system = _detect_unit_system(clean)
 
     # SPECGRID
     specgrid_block = _extract_keyword_block(clean, "SPECGRID")
@@ -620,6 +671,14 @@ def _parse_grdecl(
 
     has_coord = _extract_keyword_block(clean, "COORD") is not None
     has_tops = _extract_keyword_block(clean, "TOPS") is not None
+
+    map_axes = _parse_mapaxes(clean)
+    unit_system = _detect_unit_system(clean)
+    meta: typing.Dict[str, typing.Any] = dict(metadata or {})
+    meta["map_axes"] = map_axes
+    meta["nx"] = nx
+    meta["ny"] = ny
+    meta["nz"] = nz
     try:
         if not has_coord and has_tops:
             return _parse_grdecl_cartesian(
@@ -628,7 +687,7 @@ def _parse_grdecl(
                 ny=ny,
                 nz=nz,
                 unit_system=unit_system,
-                metadata=metadata,
+                metadata=meta,
             )
         return _parse_grdecl_corner_point(
             clean=clean,
@@ -636,7 +695,7 @@ def _parse_grdecl(
             ny=ny,
             nz=nz,
             unit_system=unit_system,
-            metadata=metadata,
+            metadata=meta,
         )
     except Exception as exc:
         raise GridImportError(
@@ -644,119 +703,446 @@ def _parse_grdecl(
         ) from exc
 
 
-def _build_grdecl_text(
+_GRDECL_SOURCES = {"grdecl_corner_point", "grdecl_cartesian"}
+
+
+@numba.njit(cache=True)
+def _accumulate_pillars(
+    cell_min_xyz: FloatArray[TwoDimensions],  # (n_cells, 3)
+    cell_max_xyz: FloatArray[TwoDimensions],  # (n_cells, 3)
+    nx: int,
+    ny: int,
+    nz: int,
+    pillar_x: FloatArray[TwoDimensions],  # (ny+1, nx+1)  out
+    pillar_y: FloatArray[TwoDimensions],  # (ny+1, nx+1)  out
+    pillar_z_top: FloatArray[TwoDimensions],  # (ny+1, nx+1)  out
+    pillar_z_bottom: FloatArray[TwoDimensions],  # (ny+1, nx+1)  out
+    pillar_count: IntArray[TwoDimensions],  # (ny+1, nx+1)  out
+) -> None:
+    """
+    Accumulate per-pillar XY positions and Z extents from cell bounding boxes.
+
+    Cell ordering: cell_idx = i + j*nx + k*nx*ny.
+    Pillar (pj, pi) collects contributions from up to 4 cells per layer.
+
+    :param cell_min_xyz: Shape `(n_cells, 3)` bounding-box minima.
+    :param cell_max_xyz: Shape `(n_cells, 3)` bounding-box maxima.
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
+    :param pillar_x: Accumulator for pillar X coordinate (zeroed on entry).
+    :param pillar_y: Accumulator for pillar Y coordinate (zeroed on entry).
+    :param pillar_z_top: Accumulator for minimum pillar Z (`+inf` on entry).
+    :param pillar_z_bottom: Accumulator for maximum pillar Z (`-inf` on entry).
+    :param pillar_count: Contribution counter per pillar (zeroed on entry).
+    """
+    for k in range(nz):
+        for j in range(ny):
+            for i in range(nx):
+                cell_idx = i + j * nx + k * nx * ny
+                lx = cell_min_xyz[cell_idx, 0]
+                ly = cell_min_xyz[cell_idx, 1]
+                lz = cell_min_xyz[cell_idx, 2]
+                hx = cell_max_xyz[cell_idx, 0]
+                hy = cell_max_xyz[cell_idx, 1]
+                hz = cell_max_xyz[cell_idx, 2]
+
+                # 4 pillar corners: (pj, pi, px, py)
+                # (j,   i  ) -> (lx, ly)
+                # (j,   i+1) -> (hx, ly)
+                # (j+1, i  ) -> (lx, hy)
+                # (j+1, i+1) -> (hx, hy)
+                for corner in range(4):
+                    if corner == 0:
+                        pj = j
+                        pi = i
+                        px = lx
+                        py = ly
+                    elif corner == 1:
+                        pj = j
+                        pi = i + 1
+                        px = hx
+                        py = ly
+                    elif corner == 2:
+                        pj = j + 1
+                        pi = i
+                        px = lx
+                        py = hy
+                    else:
+                        pj = j + 1
+                        pi = i + 1
+                        px = hx
+                        py = hy
+
+                    pillar_x[pj, pi] += px
+                    pillar_y[pj, pi] += py
+                    if lz < pillar_z_top[pj, pi]:
+                        pillar_z_top[pj, pi] = lz
+                    if hz > pillar_z_bottom[pj, pi]:
+                        pillar_z_bottom[pj, pi] = hz
+                    pillar_count[pj, pi] += 1
+
+
+@numba.njit(parallel=True, cache=True)
+def _fill_zcorn(
+    cell_min_xyz: FloatArray[TwoDimensions],  # (n_cells, 3)
+    cell_max_xyz: FloatArray[TwoDimensions],  # (n_cells, 3)
+    nx: int,
+    ny: int,
+    nz: int,
+    zcorn: ZcornArray,  # (nz*2, ny*2, nx*2)  out
+) -> None:
+    """
+    Fill ZCORN array from per-cell Z bounding-box extents.
+
+    Parallel over `k` (layer index): each layer writes to a disjoint
+    `[2k:2k+2, :, :]` slice of `zcorn`, so there are no races.
+
+    ZCORN indexing (Eclipse convention):
+        `zcorn[2k,   2j,   2i  ]` ... `[2k,   2j+1, 2i+1]` = top Z of cell (i,j,k)
+        `zcorn[2k+1, 2j,   2i  ]` ... `[2k+1, 2j+1, 2i+1]` = bottom Z of cell (i,j,k)
+
+    :param cell_min_xyz: Shape `(n_cells, 3)` bounding-box minima.
+    :param cell_max_xyz: Shape `(n_cells, 3)` bounding-box maxima.
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
+    :param zcorn: Output array, must be pre-allocated as `(nz*2, ny*2, nx*2)`.
+    """
+    for k in numba.prange(nz):  # type: ignore
+        for j in range(ny):
+            for i in range(nx):
+                cell_idx = i + j * nx + k * nx * ny
+                z_top = cell_min_xyz[cell_idx, 2]
+                z_bot = cell_max_xyz[cell_idx, 2]
+                # All 4 top corners share the same z_top value.
+                zcorn[2 * k, 2 * j, 2 * i] = z_top
+                zcorn[2 * k, 2 * j, 2 * i + 1] = z_top
+                zcorn[2 * k, 2 * j + 1, 2 * i] = z_top
+                zcorn[2 * k, 2 * j + 1, 2 * i + 1] = z_top
+                # All 4 bottom corners share z_bot.
+                zcorn[2 * k + 1, 2 * j, 2 * i] = z_bot
+                zcorn[2 * k + 1, 2 * j, 2 * i + 1] = z_bot
+                zcorn[2 * k + 1, 2 * j + 1, 2 * i] = z_bot
+                zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1] = z_bot
+
+
+def _rederive_corner_point_arrays(
     grid: Grid,
-    *,
-    actnum: typing.Optional[IntArray[OneDimension]] = None,
+) -> typing.Tuple[CoordArray, ZcornArray, int, int, int]:
+    """
+    Reconstruct approximate COORD and ZCORN arrays from a Grid whose
+    vertex_coordinates encode a corner-point geometry.
+
+    The reconstruction is performed on the bounding-box geometry of every cell
+    because the original pillar structure is not retained after import.
+    Pillars are assumed to be straight and vertical.
+
+    Layout assumption (matches `_parse_grdecl_corner_point` import path):
+    cells are stored in k-major, j-middle, i-minor order (Fortran/Eclipse order),
+    i.e. cell_index = i + j*nx + k*nx*ny.
+
+    :param grid: A Grid whose metadata["source_format"] == "grdecl_corner_point".
+    :returns: Tuple (coord_arr, zcorn_arr, nx, ny, nz).
+    :raises GridExportError: If the cell count is not a perfect nxxnyxnz product.
+    """
+    n_cells = grid.n_cells
+
+    # Try to recover nx, ny, nz from metadata; fall back to cube root heuristic.
+    meta = getattr(grid, "metadata", {}) or {}
+    nx = meta.get("nx")
+    ny = meta.get("ny")
+    nz = meta.get("nz")
+
+    if nx is None or ny is None or nz is None:
+        # Attempt to factor n_cells into a plausible (nx, ny, nz).
+        # We try all divisor pairs for nz (layers) first since nz is usually
+        # much smaller than nx*ny.
+        found = False
+        for nz_try in range(1, n_cells + 1):
+            if n_cells % nz_try != 0:
+                continue
+
+            nxy = n_cells // nz_try
+            # Try to find a square-ish nx, ny
+            for nx_try in range(1, int(nxy**0.5) + 1):
+                if nxy % nx_try == 0:
+                    nx_try2, ny_try2 = nx_try, nxy // nx_try
+                    if nx_try2 * ny_try2 * nz_try == n_cells:
+                        nx, ny, nz = nx_try2, ny_try2, nz_try
+                        found = True
+            if found:
+                break
+
+        if not found or (nx * ny * nz) != n_cells:  # type: ignore
+            raise GridExportError(
+                f"Cannot determine (nx, ny, nz) factorisation for n_cells={n_cells}. "
+                "Store 'nx', 'ny', 'nz' in grid.metadata to enable GRDECL export."
+            )
+
+    warnings.warn(
+        "Exporting a corner-point Grid to GRDECL without stored COORD/ZCORN arrays. "
+        "Pillars are reconstructed as straight vertical lines from cell bounding boxes. "
+        "This is lossy for grids with lateral pillar displacement (faults, dipping layers).",
+        stacklevel=4,
+    )
+    assert nx is not None and ny is not None and nz is not None
+
+    # Pillar accumulation
+    pillar_x = np.zeros((ny + 1, nx + 1), dtype=np.float64)
+    pillar_y = np.zeros((ny + 1, nx + 1), dtype=np.float64)
+    pillar_z_top = np.full((ny + 1, nx + 1), np.inf, dtype=np.float64)
+    pillar_z_bottom = np.full((ny + 1, nx + 1), -np.inf, dtype=np.float64)
+    pillar_count = np.zeros((ny + 1, nx + 1), dtype=np.int32)
+    _accumulate_pillars(
+        grid.cell_min_xyz,
+        grid.cell_max_xyz,
+        nx,
+        ny,
+        nz,
+        pillar_x,
+        pillar_y,
+        pillar_z_top,
+        pillar_z_bottom,
+        pillar_count,
+    )
+
+    # Finalise averages
+    nonzero = pillar_count > 0
+    pillar_x[nonzero] /= pillar_count[nonzero]
+    pillar_y[nonzero] /= pillar_count[nonzero]
+
+    # COORD fill
+    coord = np.empty((ny + 1, nx + 1, 6), dtype=np.float64)
+    coord[:, :, 0] = pillar_x
+    coord[:, :, 1] = pillar_y
+    coord[:, :, 2] = pillar_z_top
+    coord[:, :, 3] = pillar_x
+    coord[:, :, 4] = pillar_y
+    coord[:, :, 5] = pillar_z_bottom
+
+    # ZCORN fill
+    zcorn = np.empty((nz * 2, ny * 2, nx * 2), dtype=np.float64)
+    _fill_zcorn(grid.cell_min_xyz, grid.cell_max_xyz, nx, ny, nz, zcorn)
+
+    return coord, zcorn, nx, ny, nz
+
+
+def _build_grdecl_text(
+    grid: Grid, *, actnum: typing.Optional[ActnumArray] = None
 ) -> str:
     """
     Render a `bores.grids.base.Grid` as GRDECL text.
 
-    If the grid originates from a GRDECL file and contains stored
-    metadata (`coord`, `zcorn`, `actnum`), the function performs a
-    lossless reconstruction.
+    Only grids that originated from `load_grdecl` (corner-point or Cartesian)
+    are supported. Grids from other factories (Voronoi, tetrahedral, meshio,
+    …) cannot be reliably expressed in GRDECL format and will raise an error.
 
-    Otherwise, it falls back to an approximate representation using
-    cell bounding boxes, producing a degenerate but valid GRDECL grid.
+    Corner-point grids are written as SPECGRID / COORD / ZCORN / ACTNUM.
+    Because COORD and ZCORN are no longer cached in metadata, they are
+    re-derived from the Grid's vertex bounding-box geometry (lossy for
+    deformed pillar grids - a warning is emitted in that case).
 
-    :param grid: Source grid.
-    :param actnum: Optional override active-cell array.
+    Cartesian grids (loaded via the TOPS/DX/DY/DZ path) are written back
+    as SPECGRID / TOPS / DX / DY / DZ, which is an exact lossless round-trip.
+
+    :param grid: The grid to serialise.
+    :param actnum: Optional shape `(n_cells,)` active-cell flag array
+        (1 = active, 0 = inactive).
     :returns: GRDECL text as a string.
-    :raises GridExportError: If grid dimensions are inconsistent.
+    :raises GridExportError: If the grid's source format is not a GRDECL
+        variant, or if the grid dimensions cannot be determined.
     """
-    lines: typing.List[str] = []
     meta = getattr(grid, "metadata", {}) or {}
-    coord = meta.get("coord", None)
-    zcorn = meta.get("zcorn", None)
-    stored_actnum = meta.get("actnum", None)
+    source_format: str = meta.get("source_format", "")
+    if source_format not in _GRDECL_SOURCES:
+        raise GridExportError(
+            f"Cannot export a Grid with source_format={source_format!r} to GRDECL. "
+            "Only grids originally loaded by load_grdecl() support GRDECL export. "
+            f"Supported source formats: {sorted(_GRDECL_SOURCES)}."
+        )
 
-    use_native = coord is not None and zcorn is not None
-    if use_native:
-        coord_arr = np.asarray(coord, dtype=np.float64)
-        zcorn_arr = np.asarray(zcorn, dtype=np.float64)
-        if stored_actnum is not None and actnum is None:
-            actnum_arr = np.asarray(stored_actnum, dtype=np.int32)
-        elif actnum is not None:
-            actnum_arr = np.asarray(actnum, dtype=np.int32)
-        else:
-            actnum_arr = None
+    if source_format == "grdecl_cartesian":
+        return _build_grdecl_cartesian_text(grid, actnum=actnum)
+    return _build_grdecl_corner_point_text(grid, actnum=actnum)
 
-        ny_plus1, nx_plus1 = coord_arr.shape[:2]
-        nx = nx_plus1 - 1
-        ny = ny_plus1 - 1
-        nz = zcorn_arr.shape[0] // 2
 
-        lines.append("SPECGRID")
-        lines.append(f"  {nx}  {ny}  {nz}  1  F /")
-        lines.append("")
+def _build_grdecl_cartesian_text(
+    grid: Grid, *, actnum: typing.Optional[ActnumArray] = None
+) -> str:
+    """
+    Render a Cartesian-source Grid as SPECGRID / TOPS / DX / DY / DZ.
 
-        lines.append("COORD")
-        flat_coord = coord_arr.transpose(1, 0, 2).reshape(-1, 6)
-        for i in range(0, len(flat_coord)):
-            x1, y1, z1, x2, y2, z2 = flat_coord[i]
-            lines.append(
-                f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}"
-            )
-        lines.append("/")
-        lines.append("")
+    :param grid: Grid whose metadata["source_format"] == "grdecl_cartesian".
+    :param actnum: Optional active-cell flag array.
+    :returns: GRDECL text.
+    :raises GridExportError: If grid dimensions cannot be recovered.
+    """
+    meta = getattr(grid, "metadata", {}) or {}
+    nx = meta.get("nx")
+    ny = meta.get("ny")
+    nz = meta.get("nz")
 
-        lines.append("ZCORN")
-        flat_zcorn = zcorn_arr.transpose(2, 1, 0).reshape(-1)
-        for i in range(0, len(flat_zcorn), 6):
-            chunk = flat_zcorn[i : i + 6]
-            lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
-        lines.append("/")
+    # Fall back to a flat 1×1×n_cells layout if nx/ny/nz not stored.
+    if nx is None or ny is None or nz is None:
+        nx, ny, nz = 1, 1, grid.n_cells
 
-        if actnum_arr is not None:
-            nz, ny, nx = actnum_arr.shape
-            lines.append("")
-            lines.append("ACTNUM")
-            flat_actnum = actnum_arr.transpose(2, 1, 0).reshape(-1)
-            for i in range(0, len(flat_actnum), 20):
-                chunk = flat_actnum[i : i + 20]
-                lines.append("  " + "  ".join(str(int(v)) for v in chunk))
-            lines.append("/")
+    n_cells = nx * ny * nz
+    if n_cells != grid.n_cells:
+        raise GridExportError(
+            f"Stored dimensions ({nx}x{ny}x{nz}={n_cells}) do not match "
+            f"grid.n_cells={grid.n_cells}."
+        )
 
-        return "\n".join(lines)
-
-    n_cells = grid.n_cells
-    x_min, x_max, y_min, y_max, z_min, z_max = grid.bounding_box
-
+    lines: typing.List[str] = []
     lines.append("SPECGRID")
-    lines.append(f"  1  1  {n_cells}  1  F /")
+    lines.append(f"  {nx}  {ny}  {nz}  1  F /")
     lines.append("")
 
-    lines.append("COORD")
-    for px in (x_min, x_max):
-        for py in (y_min, y_max):
-            lines.append(
-                f"  {px:.6f}  {py:.6f}  {z_min:.6f}  {px:.6f}  {py:.6f}  {z_max:.6f}"
-            )
+    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    if map_axes is not None:
+        _emit_mapaxes(lines, map_axes)
+
+    # TOPS: depth of top face of every cell in the top layer (k=0),
+    # Fortran order (x fastest).  cell_min_xyz[:,2] is the top depth.
+    top_layer_indices = [i + j * nx for j in range(ny) for i in range(nx)]
+    tops_vals = grid.cell_min_xyz[top_layer_indices, 2]
+    lines.append("TOPS")
+    for i in range(0, len(tops_vals), 6):
+        chunk = tops_vals[i : i + 6]
+        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
     lines.append("/")
     lines.append("")
 
-    lines.append("ZCORN")
-    zcorn_values = []
-    for c in range(n_cells):
-        zt = float(grid.cell_min_xyz[c, 2])
-        zb = float(grid.cell_max_xyz[c, 2])
-        zcorn_values.extend([zt, zt, zt, zt, zb, zb, zb, zb])
+    # DX / DY / DZ: per-cell extents (Fortran order: x fastest, z slowest)
+    for axis_name, column in [("DX", 0), ("DY", 1), ("DZ", 2)]:
+        extents = grid.cell_max_xyz[:, column] - grid.cell_min_xyz[:, column]
+        # Fortran order: reshape to (nz, ny, nx) then transpose to (nx, ny, nz)
+        # and ravel F-order so x is innermost.
+        extents_3d = extents.reshape(nz, ny, nx)  # cell ordering: k,j,i
+        flat = extents_3d.transpose(2, 1, 0).ravel(order="F")  # x-fastest
+        lines.append(axis_name)
+        for i in range(0, len(flat), 6):
+            chunk = flat[i : i + 6]
+            lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+        lines.append("/")
+        lines.append("")
 
-    for i in range(0, len(zcorn_values), 6):
-        chunk = zcorn_values[i : i + 6]
+    # ACTNUM (optional)
+    if actnum is not None:
+        _emit_actnum(lines, actnum, grid.n_cells, nx, ny, nz)
+
+    return "\n".join(lines)
+
+
+def _build_grdecl_corner_point_text(
+    grid: Grid, *, actnum: typing.Optional[ActnumArray] = None
+) -> str:
+    """
+    Render a corner-point-source Grid as SPECGRID / COORD / ZCORN / ACTNUM.
+
+    COORD and ZCORN are re-derived from the Grid's bounding-box geometry.
+
+    :param grid: Grid whose metadata["source_format"] == "grdecl_corner_point".
+    :param actnum: Optional active-cell flag array.
+    :returns: GRDECL text.
+    :raises GridExportError: If grid dimensions cannot be determined.
+    """
+    coord, zcorn, nx, ny, nz = _rederive_corner_point_arrays(grid)
+    meta = getattr(grid, "metadata", {}) or {}
+
+    lines: typing.List[str] = []
+    lines.append("SPECGRID")
+    lines.append(f"  {nx}  {ny}  {nz}  1  F /")
+    lines.append("")
+
+    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    if map_axes is not None:
+        _emit_mapaxes(lines, map_axes)
+
+    # COORD - write in Eclipse Fortran order: x fastest (pillar i varies fastest)
+    # Flatten (ny+1, nx+1, 6) -> transpose to (nx+1, ny+1, 6) then ravel
+    lines.append("COORD")
+    flat_coord = coord.transpose(1, 0, 2).reshape(-1, 6)
+    for row in flat_coord:
+        x1, y1, z1, x2, y2, z2 = row
+        lines.append(f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}")
+    lines.append("/")
+    lines.append("")
+
+    # ZCORN - Eclipse Fortran order: x fastest, z slowest
+    # Internal shape: (nz*2, ny*2, nx*2)  C-order  →  transpose to (nx*2, ny*2, nz*2) F-order
+    lines.append("ZCORN")
+    flat_zcorn = zcorn.transpose(2, 1, 0).ravel(order="F")
+    for i in range(0, len(flat_zcorn), 6):
+        chunk = flat_zcorn[i : i + 6]
         lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
     lines.append("/")
 
-    if actnum is not None:
-        if len(actnum) != n_cells:
-            raise GridExportError(
-                f"actnum length {len(actnum)} does not match n_cells {n_cells}."
-            )
-        lines.append("")
-        lines.append("ACTNUM")
-        for i in range(0, n_cells, 20):
-            chunk = actnum[i : i + 20]
-            lines.append("  " + "  ".join(str(int(v)) for v in chunk))
-        lines.append("/")
+    # ACTNUM (optional)
+    meta = getattr(grid, "metadata", {}) or {}
+    effective_actnum = actnum if actnum is not None else meta.get("actnum")
+    if effective_actnum is not None:
+        _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
 
     return "\n".join(lines)
+
+
+def _emit_actnum(
+    lines: typing.List[str],
+    actnum: np.ndarray,
+    n_cells: int,
+    nx: int,
+    ny: int,
+    nz: int,
+) -> None:
+    """
+    Append an ACTNUM block in Eclipse Fortran order to `lines` in-place.
+
+    :param lines: Accumulator list of GRDECL text lines.
+    :param actnum: Shape `(n_cells,)` integer array, cell-ordering k,j,i (C-order).
+    :param n_cells: Expected total cell count.
+    :param nx, ny, nz: Grid dimensions.
+    :raises GridExportError: If actnum length mismatches n_cells.
+    """
+    actnum_arr = np.asarray(actnum, dtype=np.int32)
+    if len(actnum_arr) != n_cells:
+        raise GridExportError(
+            f"actnum length {len(actnum_arr)} does not match n_cells {n_cells}."
+        )
+
+    lines.append("")
+    lines.append("ACTNUM")
+    # Internal ordering: cell_idx = i + j*nx + k*nx*ny  (k outermost)
+    # Eclipse Fortran order: x(i) fastest → same ordering, so reshape and transpose
+    flat = actnum_arr.reshape(nz, ny, nx).transpose(2, 1, 0).ravel(order="F")
+    for i in range(0, len(flat), 20):
+        chunk = flat[i : i + 20]
+        lines.append("  " + "  ".join(str(int(v)) for v in chunk))
+    lines.append("/")
+
+
+def _emit_mapaxes(lines: typing.List[str], map_axes: "MapAxes") -> None:
+    """
+    Append a MAPAXES block to `lines` in-place.
+
+    Eclipse MAPAXES format (6 values on one data line, terminated by `/`):
+        X_ORIGIN  Y_ORIGIN  X_UNITX  Y_UNITX  X_UNITY  Y_UNITY
+
+    where `(X_ORIGIN, Y_ORIGIN)` is the map coordinate origin,
+    `(X_UNITX, Y_UNITX)` is a point on the map X-axis, and
+    `(X_UNITY, Y_UNITY)` is a point on the map Y-axis.
+
+    :param lines: Accumulator list of GRDECL text lines (mutated in-place).
+    :param map_axes: Source `MapAxes` instance.
+    """
+    o = map_axes.origin
+    mx = map_axes.map_x_axis_point
+    my = map_axes.map_y_axis_point
+    lines.append("MAPAXES")
+    lines.append(
+        f"  {o[0]:.6f}  {o[1]:.6f}"
+        f"  {mx[0]:.6f}  {mx[1]:.6f}"
+        f"  {my[0]:.6f}  {my[1]:.6f}  /"
+    )
+    lines.append("")
