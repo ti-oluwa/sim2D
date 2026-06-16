@@ -1,4 +1,5 @@
 """Voronoi (PEBI) grid factory for both 2-D extruded and 3-D native tessellations."""
+
 import typing
 
 import numba
@@ -10,7 +11,7 @@ from typing_extensions import TypeAlias
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import assemble_grid, build_csr_face_arrays
-from bores.typing import FloatArray
+from bores.typing import FloatArray, UnitSystem
 
 __all__ = ["make_voronoi_grid"]
 
@@ -49,6 +50,7 @@ def make_voronoi_grid(
     # 2-D extruded parameters (ignored for 3-D seeds)
     z_top: float = 0.0,
     layer_thicknesses: typing.Union[float, npt.ArrayLike] = 1.0,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -137,6 +139,7 @@ def make_voronoi_grid(
             bounding_box=_resolve_2d_bounding_box(seeds, bounding_box),
             z_top=float(z_top),
             layer_thicknesses=_resolve_layer_thicknesses(layer_thicknesses),
+            unit_system=unit_system,
             metadata=metadata,
         )
 
@@ -144,6 +147,7 @@ def make_voronoi_grid(
     return _make_3d_voronoi_grid(
         seeds=seeds,
         bounding_box=_resolve_3d_bounding_box(seeds, bounding_box),
+        unit_system=unit_system,
         metadata=metadata,
     )
 
@@ -153,7 +157,8 @@ def _make_2d_extruded_voronoi_grid(
     bounding_box: BoundingBox2D,
     z_top: float,
     layer_thicknesses: LayerThicknessArray,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]],
+    unit_system: UnitSystem = UnitSystem.FIELD,
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
     Build a 2-D Voronoi grid extruded through one or more depth layers.
@@ -382,6 +387,7 @@ def _make_2d_extruded_voronoi_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 
@@ -389,7 +395,8 @@ def _make_2d_extruded_voronoi_grid(
 def _make_3d_voronoi_grid(
     seeds: SeedCoordinates3D,
     bounding_box: BoundingBox3D,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]],
+    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
 ) -> Grid:
     """
     Build a 3-D native polyhedral Voronoi grid.
@@ -479,6 +486,7 @@ def _make_3d_voronoi_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 

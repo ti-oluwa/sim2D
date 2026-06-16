@@ -11,7 +11,7 @@ from bores.grids.factories.base import (
     assemble_grid,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray, TwoDimensions
+from bores.typing import FloatArray, TwoDimensions, UnitSystem
 
 __all__ = ["make_tetrahedral_grid"]
 
@@ -26,6 +26,7 @@ def make_tetrahedral_grid(
     *,
     vertex_coordinates: VertexCoordinates,
     element_vertex_indices: npt.ArrayLike,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[dict] = None,
 ) -> Grid:
     """
@@ -82,6 +83,7 @@ def make_tetrahedral_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 

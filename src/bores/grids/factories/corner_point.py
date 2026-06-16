@@ -19,6 +19,7 @@ from bores.typing import (
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
+    UnitSystem,
 )
 
 __all__ = ["make_corner_point_grid"]
@@ -46,6 +47,7 @@ def make_corner_point_grid(
     zcorn: ZcornArray,
     actnum: typing.Optional[ActnumArray] = None,
     vertex_tolerance: float = 1e-8,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -124,6 +126,7 @@ def make_corner_point_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 
@@ -301,9 +304,9 @@ def _compute_corner_point_geometry(
             )
             for local_corner in range(8)
         ]
-        for face_id, face_local in enumerate(hexahedron_face_table):
+        for face_local in hexahedron_face_table:
             face_vertices = [vtk_vertices[v] for v in face_local]
-            canonical_key = (cell_index, face_id)
+            canonical_key = tuple(sorted(face_vertices))
             if canonical_key not in face_registry:
                 face_registry[canonical_key] = _FaceRecord(
                     owner_cell_index=cell_index,

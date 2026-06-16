@@ -22,6 +22,7 @@ Gmsh ID  Name       Vertices
 
 Gmsh reference manual - MSH file format, v2.
 """
+
 import re
 import typing
 from pathlib import Path
@@ -31,6 +32,8 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
+from bores.grids.utils import convert
+from bores.typing import UnitSystem
 
 __all__ = ["load_msh"]
 
@@ -47,21 +50,37 @@ _GMSH_ELEM_TYPES: typing.Dict[int, typing.Tuple[int, str]] = {
 
 
 @typing.overload
-def load_msh(source: Path, *, encoding: str = ...) -> Grid: ...
+def load_msh(
+    source: Path,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_msh(source: str, *, encoding: str = ...) -> Grid: ...
+def load_msh(
+    source: str,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_msh(source: bytes, *, encoding: str = ...) -> Grid: ...
+def load_msh(
+    source: bytes,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 def load_msh(
     source: _TextOrPath,
     *,
     encoding: str = "utf-8",
+    unit_system: typing.Optional[UnitSystem] = None,
 ) -> Grid:
     """
     Load a Gmsh `.msh` file (ASCII format 2.2) from a path, string, or bytes.
@@ -82,7 +101,8 @@ def load_msh(
         2.2.
     """
     text = _resolve_text_source(source, encoding=encoding)
-    return _parse_msh(text)
+    grid = _parse_msh(text)
+    return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
 def _resolve_text_source(source: _TextOrPath, *, encoding: str) -> str:
@@ -197,7 +217,7 @@ def _parse_msh(text: str) -> Grid:
         elem_type_id = int(parts[1])
         if elem_type_id not in _GMSH_ELEM_TYPES:
             continue  # skip 2-D/1-D elements silently
-        
+
         n_verts, type_name = _GMSH_ELEM_TYPES[elem_type_id]
         n_tags = int(parts[2])
         node_start = 3 + n_tags

@@ -11,7 +11,7 @@ from bores.grids.factories.base import (
     assemble_grid,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray, TwoDimensions
+from bores.typing import FloatArray, TwoDimensions, UnitSystem
 
 __all__ = ["make_polyhedral_grid"]
 
@@ -31,6 +31,7 @@ def make_polyhedral_grid(
     vertex_coordinates: VertexCoordinates,
     cell_blocks: typing.Sequence[typing.Dict[str, typing.Any]],
     custom_cell_faces: typing.Optional[typing.Dict[str, CellFaceTable]] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -138,6 +139,7 @@ def make_polyhedral_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 

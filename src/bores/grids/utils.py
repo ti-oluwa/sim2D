@@ -6,6 +6,7 @@ import numba
 import numpy as np
 
 from bores.grids.base import Grid
+from bores.typing import UnitSystem
 
 __all__ = ["to_pyvista"]
 
@@ -144,3 +145,9 @@ def to_pyvista(
                 )
             pv_grid.cell_data[field_name] = arr
     return pv_grid
+
+
+def convert(grid: Grid, *, to: UnitSystem) -> Grid:
+    if grid.unit_system == to:
+        return grid
+    return grid

@@ -6,7 +6,7 @@ from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
 from bores.grids.base import Grid
-from bores.typing import FloatArray, TwoDimensions
+from bores.typing import FloatArray, TwoDimensions, UnitSystem
 
 VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
@@ -181,6 +181,7 @@ def assemble_grid(
     face_vertex_indices: npt.NDArray[np.int32],
     face_vertex_offsets: npt.NDArray[np.int32],
     face_cell_indices: npt.NDArray[np.int32],
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -198,6 +199,7 @@ def assemble_grid(
         face_vertex_indices=face_vertex_indices,
         face_vertex_offsets=face_vertex_offsets,
         face_cell_indices=face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 

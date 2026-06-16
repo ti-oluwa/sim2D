@@ -15,6 +15,9 @@ from pathlib import Path
 
 import numpy as np
 
+from bores.grids.utils import convert
+from bores.typing import UnitSystem
+
 try:
     import meshio  # type: ignore[import-untyped]
 
@@ -60,6 +63,7 @@ def load_mesh(
     source: Path,
     *,
     file_format: typing.Optional[str] = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
 ) -> Grid: ...
 
 
@@ -68,6 +72,7 @@ def load_mesh(
     source: str,
     *,
     file_format: typing.Optional[str] = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
 ) -> Grid: ...
 
 
@@ -76,6 +81,7 @@ def load_mesh(
     source: bytes,
     *,
     file_format: typing.Optional[str] = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
 ) -> Grid: ...
 
 
@@ -83,6 +89,7 @@ def load_mesh(
     source: _TextOrPath,
     *,
     file_format: typing.Optional[str] = None,
+    unit_system: typing.Optional[UnitSystem] = None,
 ) -> Grid:
     """
     Load any mesh format supported by `meshio` from a path or bytes.
@@ -101,7 +108,8 @@ def load_mesh(
     :raises UnsupportedGridFormatError: If `meshio` is not installed or
         the format is not recognised.
     """
-    return _load_via_meshio(source, file_format=file_format)
+    grid = _load_via_meshio(source, file_format=file_format)
+    return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
 @typing.overload
@@ -322,7 +330,7 @@ def _grid_to_meshio_mesh(
     return meshio.Mesh(
         points=all_verts,
         cells=[("hexahedron", connectivity)],
-        cell_data=meshio_cell_data if meshio_cell_data else {},  # type: ignore[arg-type]
+        cell_data=meshio_cell_data if meshio_cell_data else {},  # type: ignore
     )
 
 

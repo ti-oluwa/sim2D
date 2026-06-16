@@ -32,11 +32,19 @@ __all__ = [
     "WellFluidType",
     "Wettability",
     "Wettability",
+    "UnitSystem",
 ]
 
 T = typing.TypeVar("T")
 Tco = typing.TypeVar("Tco", covariant=True)
 S = typing.TypeVar("S")
+
+
+class UnitSystem(enum.Enum):
+    FIELD = "field"  # ft, ft², ft³, md, psi, °F, bbl, Mscf
+    METRIC = "metric"  # m, m², m³, mD, bar, °C, m³, m³
+    LAB = "lab"  # cm, cm², cm³, mD, atm, °C, cc, cc
+    SI = "si"  # m, m², m³, m², Pa, K, m³, m³
 
 
 NDimension = typing.TypeVar("NDimension", bound=typing.Tuple[int, ...])

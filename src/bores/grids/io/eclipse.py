@@ -28,7 +28,8 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.corner_point import make_corner_point_grid
-from bores.typing import IntArray, ThreeDimensions
+from bores.grids.utils import convert
+from bores.typing import IntArray, ThreeDimensions, UnitSystem
 
 __all__ = ["load_eclipse_grid"]
 
@@ -50,18 +51,34 @@ _INT_STRUCT_LE = struct.Struct("<i")
 
 
 @typing.overload
-def load_eclipse_grid(source: Path) -> Grid: ...
+def load_eclipse_grid(
+    source: Path,
+    *,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_eclipse_grid(source: str) -> Grid: ...
+def load_eclipse_grid(
+    source: str,
+    *,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_eclipse_grid(source: bytes) -> Grid: ...
+def load_eclipse_grid(
+    source: bytes,
+    *,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
-def load_eclipse_grid(source: _BytesOrPath) -> Grid:
+def load_eclipse_grid(
+    source: _BytesOrPath,
+    *,
+    unit_system: typing.Optional[UnitSystem] = None,
+) -> Grid:
     """
     Load an Eclipse binary grid (`.EGRID` / `.GRID`) from a path or bytes.
 
@@ -78,7 +95,8 @@ def load_eclipse_grid(source: _BytesOrPath) -> Grid:
         recognised Eclipse binary grid.
     """
     raw = _resolve_source(source)
-    return _parse_binary(raw)
+    grid = _parse_binary(raw)
+    return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
 def _resolve_source(source: _BytesOrPath) -> bytes:

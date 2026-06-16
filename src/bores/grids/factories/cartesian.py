@@ -7,7 +7,13 @@ from typing_extensions import TypeAlias
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import assemble_grid
-from bores.typing import FloatArray, NumberOrArray, OneDimension, TwoDimensions
+from bores.typing import (
+    FloatArray,
+    NumberOrArray,
+    OneDimension,
+    TwoDimensions,
+    UnitSystem,
+)
 
 __all__ = ["make_cartesian_grid"]
 
@@ -24,6 +30,7 @@ def make_cartesian_grid(
     dy: NumberOrArray[OneDimension] = 1.0,
     dz: NumberOrArray[OneDimension] = 1.0,
     origin: typing.Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
@@ -77,6 +84,7 @@ def make_cartesian_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
+        unit_system=unit_system,
         metadata=metadata,
     )
 

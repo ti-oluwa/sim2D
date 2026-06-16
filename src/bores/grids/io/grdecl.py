@@ -26,7 +26,8 @@ import numpy as np
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
 from bores.grids.factories.corner_point import make_corner_point_grid
-from bores.typing import IntArray, OneDimension
+from bores.grids.utils import convert
+from bores.typing import IntArray, OneDimension, UnitSystem
 
 __all__ = ["load_grdecl", "dump_grdecl"]
 
@@ -36,21 +37,37 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 
 @typing.overload
-def load_grdecl(source: Path, *, encoding: str = ...) -> Grid: ...
+def load_grdecl(
+    source: Path,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_grdecl(source: str, *, encoding: str = ...) -> Grid: ...
+def load_grdecl(
+    source: str,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 @typing.overload
-def load_grdecl(source: bytes, *, encoding: str = ...) -> Grid: ...
+def load_grdecl(
+    source: bytes,
+    *,
+    encoding: str = ...,
+    unit_system: typing.Optional[UnitSystem] = ...,
+) -> Grid: ...
 
 
 def load_grdecl(
     source: _TextOrPath,
     *,
     encoding: str = "ascii",
+    unit_system: typing.Optional[UnitSystem] = None,
 ) -> Grid:
     """
     Load a GRDECL corner-point grid from a file path, raw string, or bytes.
@@ -75,7 +92,8 @@ def load_grdecl(
         as valid GRDECL content.
     """
     text = _resolve_source(source, encoding=encoding)
-    return _parse_grdecl(text)
+    grid = _parse_grdecl(text)
+    return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
 @typing.overload

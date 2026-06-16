@@ -33,6 +33,7 @@ from bores.typing import (
     NumberOrArray,
     OneDimension,
     TwoDimensions,
+    UnitSystem,
 )
 
 __all__ = ["Grid"]
@@ -397,6 +398,8 @@ class Grid:
 
     floating_dtype: np.dtype = attrs.field(default=np.dtype(np.float64))
     """NumPy floating-point dtype used for all coordinate and geometry arrays."""
+
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
 
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = attrs.field(
         default=None
