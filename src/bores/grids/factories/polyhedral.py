@@ -1,36 +1,28 @@
 import typing
 
 import numpy as np
-from typing_extensions import TypeAlias
 
 from bores.errors import InvalidPointArrayError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import (
-    ELEMENT_FACE_TABLES,
+    ELEMENT_FACES,
     VTK_CELL_TYPE_NAMES,
+    ElementFaces,
+    FaceVertexIndices,
+    VertexCoordinates,
     assemble_grid,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray, TwoDimensions, UnitSystem
+from bores.typing import UnitSystem
 
 __all__ = ["make_polyhedral_grid"]
-
-VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
-"""Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
-
-FaceVertexList: TypeAlias = typing.List[int]
-"""Ordered list of vertex indices for a single face (CCW from owner)."""
-
-CellFaceTable: TypeAlias = typing.List[typing.List[int]]
-"""Per-element-type local face definitions; each entry is a list of local
-vertex indices wound CCW from outside (outward normal)."""
 
 
 def make_polyhedral_grid(
     *,
     vertex_coordinates: VertexCoordinates,
     cell_blocks: typing.Sequence[typing.Dict[str, typing.Any]],
-    custom_cell_faces: typing.Optional[typing.Dict[str, CellFaceTable]] = None,
+    custom_cell_faces: typing.Optional[typing.Dict[str, ElementFaces]] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
@@ -42,7 +34,7 @@ def make_polyhedral_grid(
     `bores.grids.base.Grid`.  It supports any combination of
     tetrahedra, hexahedra, wedges, pyramids, and custom polyhedral cells.
 
-    For custom cell types (not in `ELEMENT_FACE_TABLES`), callers must
+    For custom cell types (not in `ELEMENT_FACES`), callers must
     supply the face definitions explicitly via `custom_cell_faces`.
 
     Example usage:
@@ -76,12 +68,12 @@ def make_polyhedral_grid(
         array-like of shape `(n_cells_in_block, n_verts_per_cell)`, plus one of:
 
         - `"cell_type"`: string name matching a key in
-            `ELEMENT_FACE_TABLES` or `custom_cell_faces` (e.g.
+            `ELEMENT_FACES` or `custom_cell_faces` (e.g.
             `"hexahedron"`, `"tetra"`).
         - `"vtk_type"`: integer VTK cell type code (e.g. `12` for hexahedron (hex)).
 
     :param custom_cell_faces: Optional mapping from cell-type name to face
-        table, extending or overriding `ELEMENT_FACE_TABLES`.  
+        table, extending or overriding `ELEMENT_FACES`.
         Use this for non-standard polyhedral element types.
     :param metadata: Optional metadata dictionary.
     :returns: A fully initialised `bores.grids.base.Grid`.
@@ -94,11 +86,11 @@ def make_polyhedral_grid(
             f"vertex_coordinates must be shape (n_vertices, 3); got {points.shape!r}."
         )
 
-    combined_face_table = dict(ELEMENT_FACE_TABLES)
+    combined_face_table = dict(ELEMENT_FACES)
     if custom_cell_faces:
         combined_face_table.update(custom_cell_faces)
 
-    all_per_cell_faces: typing.List[typing.List[FaceVertexList]] = []
+    all_per_cell_faces: typing.List[typing.List[FaceVertexIndices]] = []
 
     for block_index, block in enumerate(cell_blocks):
         cell_type_name = _resolve_cell_type_name(
@@ -122,7 +114,7 @@ def make_polyhedral_grid(
             )
 
         for global_vert_indices in connectivity:
-            cell_faces: typing.List[FaceVertexList] = [
+            cell_faces: typing.List[FaceVertexIndices] = [
                 [int(global_vert_indices[local_v]) for local_v in face_local]
                 for face_local in face_table
             ]
@@ -146,7 +138,7 @@ def make_polyhedral_grid(
 
 def _resolve_cell_type_name(
     block: typing.Dict[str, typing.Any],
-    combined_face_table: typing.Dict[str, CellFaceTable],
+    combined_face_table: typing.Dict[str, ElementFaces],
     block_index: int,
 ) -> str:
     """

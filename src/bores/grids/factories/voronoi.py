@@ -10,15 +10,19 @@ from typing_extensions import TypeAlias
 
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
-from bores.grids.factories.base import assemble_grid, build_csr_face_arrays
-from bores.typing import FloatArray, UnitSystem
+from bores.grids.factories.base import (
+    FaceVertexIndices,
+    assemble_grid,
+    build_csr_face_arrays,
+)
+from bores.typing import FloatArray, OneDimension, TwoDimensions, UnitSystem
 
 __all__ = ["make_voronoi_grid"]
 
-SeedCoordinates2D: TypeAlias = npt.NDArray[np.float64]
+SeedCoordinates2D: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_seeds, 2)` - (x, y) Voronoi generator / seed coordinates."""
 
-SeedCoordinates3D: TypeAlias = npt.NDArray[np.float64]
+SeedCoordinates3D: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_seeds, 3)` - (x, y, z) Voronoi generator / seed coordinates."""
 
 BoundingBox2D: TypeAlias = typing.Tuple[float, float, float, float]
@@ -27,16 +31,10 @@ BoundingBox2D: TypeAlias = typing.Tuple[float, float, float, float]
 BoundingBox3D: TypeAlias = typing.Tuple[float, float, float, float, float, float]
 """`(x_min, x_max, y_min, y_max, z_min, z_max)` axis-aligned bounding box."""
 
-LayerThicknessArray: TypeAlias = npt.NDArray[np.float64]
+LayerThicknessArray: TypeAlias = FloatArray[OneDimension]
 """Shape `(n_layers,)` - positive thickness of each vertical layer."""
 
-VertexCoordinates3D: TypeAlias = FloatArray
-"""Shape `(n_vertices, 3)` - 3-D (x, y, z) vertex coordinates."""
-
-FaceVertexList: TypeAlias = typing.List[int]
-"""Ordered list of global vertex indices for one face, wound CCW from owner."""
-
-PerCellFaceLists: TypeAlias = typing.List[typing.List[FaceVertexList]]
+PerCellFaceLists: TypeAlias = typing.List[typing.List[FaceVertexIndices]]
 """Outer list indexed by cell; inner list contains that cell's face vertex lists."""
 
 # Index sentinel for boundary (exterior) pseudo-cell.
@@ -99,7 +97,7 @@ def make_voronoi_grid(
         bounding_box=(0.0, 1000.0, 0.0, 1000.0),
         z_top=2000.0,
         layer_thicknesses=10.0,
-        )
+    )
     ```
 
     2-D extruded, multiple layers:
@@ -322,7 +320,7 @@ def _make_2d_extruded_voronoi_grid(
             signed_area = _signed_area_2d(a_xy, b_xy, owner_seed_xy)
             if signed_area > 0:
                 # owner LEFT of a->b: outward normal points right -> traverse CCW from right
-                lateral_face: FaceVertexList = [a_top, b_top, b_bottom, a_bottom]
+                lateral_face: FaceVertexIndices = [a_top, b_top, b_bottom, a_bottom]
             else:
                 # owner RIGHT of a->b: outward normal points left -> traverse CCW from left
                 lateral_face = [a_top, a_bottom, b_bottom, b_top]
@@ -371,9 +369,9 @@ def _make_2d_extruded_voronoi_grid(
             ]
 
             # Top face: outward normal = −z -> CCW from above = reversed xy order
-            top_face: FaceVertexList = list(reversed(top_polygon_3d_indices))
+            top_face: FaceVertexIndices = list(reversed(top_polygon_3d_indices))
             # Bottom face: outward normal = +z -> CCW from below = xy order
-            bottom_face: FaceVertexList = list(bottom_polygon_3d_indices)
+            bottom_face: FaceVertexIndices = list(bottom_polygon_3d_indices)
 
             per_cell_face_vertex_lists[cell_idx].append(top_face)
             per_cell_face_vertex_lists[cell_idx].append(bottom_face)
@@ -492,8 +490,7 @@ def _make_3d_voronoi_grid(
 
 
 def _build_2d_mirror_seeds(
-    seeds: SeedCoordinates2D,
-    bounding_box: BoundingBox2D,
+    seeds: SeedCoordinates2D, bounding_box: BoundingBox2D
 ) -> npt.NDArray[np.float64]:
     """
     Build mirror seeds reflected across each edge of a 2-D bounding rectangle.
@@ -518,9 +515,8 @@ def _build_2d_mirror_seeds(
 
 
 def _build_3d_mirror_seeds(
-    seeds: SeedCoordinates3D,
-    bounding_box: BoundingBox3D,
-) -> npt.NDArray[np.float64]:
+    seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
+) -> FloatArray[TwoDimensions]:
     """
     Build mirror seeds reflected across each face of a 3-D bounding box.
 
@@ -544,10 +540,10 @@ def _build_3d_mirror_seeds(
 
 
 def _orient_face_vertices(
-    vert_index_list: FaceVertexList,
-    face_verts_3d: npt.NDArray[np.float64],
-    direction_to_neighbour: npt.NDArray[np.float64],
-) -> FaceVertexList:
+    vert_index_list: FaceVertexIndices,
+    face_verts_3d: FloatArray[TwoDimensions],
+    direction_to_neighbour: FloatArray[TwoDimensions],
+) -> FaceVertexIndices:
     """
     Return `vert_index_list`, possibly reversed, so Newell's normal aligns
     with `direction_to_neighbour` (outward from owner toward neighbour).
@@ -568,7 +564,9 @@ def _orient_face_vertices(
     return list(reversed(vert_index_list))
 
 
-def _compute_newell_normal(verts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_newell_normal(
+    verts: FloatArray[TwoDimensions],
+) -> FloatArray[OneDimension]:
     """
     Compute the (unnormalised) Newell normal for a planar polygon.
 
@@ -589,9 +587,9 @@ def _compute_newell_normal(verts: npt.NDArray[np.float64]) -> npt.NDArray[np.flo
 
 @numba.njit(cache=True)
 def _signed_area_2d(
-    a: npt.NDArray[np.float64],
-    b: npt.NDArray[np.float64],
-    point: npt.NDArray[np.float64],
+    a: FloatArray[OneDimension],
+    b: FloatArray[OneDimension],
+    point: FloatArray[OneDimension],
 ) -> float:
     """
     Compute the 2-D signed area of triangle `(a, b, point)`.
@@ -610,8 +608,8 @@ def _signed_area_2d(
 
 
 def _find_vertex_index(
-    vertices: npt.NDArray[np.float64],
-    target: npt.NDArray[np.float64],
+    vertices: FloatArray[TwoDimensions],
+    target: FloatArray[OneDimension],
 ) -> int:
     """
     Find the index of `target` in `vertices` by nearest-neighbour search.
@@ -627,7 +625,7 @@ def _find_vertex_index(
 def _compute_depth_nodes(
     z_top: float,
     layer_thicknesses: LayerThicknessArray,
-) -> npt.NDArray[np.float64]:
+) -> FloatArray[OneDimension]:
     """
     Compute the depth of every node surface from `z_top` downward.
 
@@ -639,7 +637,7 @@ def _compute_depth_nodes(
 
 
 def _resolve_2d_bounding_box(
-    seeds: npt.NDArray[np.float64],
+    seeds: FloatArray[TwoDimensions],
     bounding_box: typing.Optional[BoundingBox2D],
 ) -> BoundingBox2D:
     """
@@ -674,8 +672,7 @@ def _resolve_2d_bounding_box(
 
 
 def _resolve_3d_bounding_box(
-    seeds: npt.NDArray[np.float64],
-    bounding_box: typing.Optional[BoundingBox3D],
+    seeds: FloatArray[TwoDimensions], bounding_box: typing.Optional[BoundingBox3D]
 ) -> BoundingBox3D:
     """
     Resolve or infer a 3-D bounding box from seed extents.

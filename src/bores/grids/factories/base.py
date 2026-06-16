@@ -11,15 +11,17 @@ from bores.typing import FloatArray, TwoDimensions, UnitSystem
 VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
-FaceVertexList: TypeAlias = typing.List[int]
+FaceVertexIndices: TypeAlias = typing.List[int]
 """Ordered list of vertex indices for a single face (CCW from owner)."""
 
-CanonicalFaceKey: TypeAlias = typing.Tuple[int, ...]
+FaceKey: TypeAlias = typing.Tuple[int, ...]
 """Sorted tuple of vertex indices used as a face deduplication key."""
 
-CellFaceTable: TypeAlias = typing.List[typing.List[int]]
-"""Per-element-type local face definitions; each entry is a list of local
-vertex indices wound CCW from outside (outward normal)."""
+ElementFaces: TypeAlias = typing.List[FaceVertexIndices]
+"""
+Per-element-type local face definitions; each entry is a list of local
+vertex indices wound CCW from outside (outward normal).
+"""
 
 
 # Element face tables
@@ -27,7 +29,7 @@ vertex indices wound CCW from outside (outward normal)."""
 #: Outward-pointing face definitions for standard element types.
 #: Each value is a list of faces; each face is a list of *local* vertex
 #: indices wound counter-clockwise when viewed from outside the cell.
-ELEMENT_FACE_TABLES: typing.Dict[str, CellFaceTable] = {
+ELEMENT_FACES: typing.Dict[str, ElementFaces] = {
     # #####################################################################
     # Tetrahedron (4 vertices: v0 v1 v2 = base CCW from below, v3 = apex)
     # #####################################################################
@@ -84,29 +86,27 @@ VTK_CELL_TYPE_NAMES: typing.Dict[int, str] = {
 
 
 class _FaceRecord:
-    """
-    Mutable record accumulating owner/neighbour information for one face.
+    """Mutable record accumulating owner/neighbour information for one face."""
 
-    :param owner_cell_index: Index of the first cell that claimed this face.
-    :param vertex_indices: Vertex index list wound CCW from the owner side.
-    """
+    __slots__ = ("owner_cell_index", "neighbour_cell_index", "face_vertex_indices")
 
-    __slots__ = ("owner_cell_index", "neighbour_cell_index", "vertex_indices")
-
-    def __init__(self, owner_cell_index: int, vertex_indices: FaceVertexList) -> None:
-        """Initialise with only an owner; neighbour is set later if face is interior.
+    def __init__(
+        self, owner_cell_index: int, face_vertex_indices: FaceVertexIndices
+    ) -> None:
+        """
+        Initialise with only an owner; neighbour is set later if face is interior.
 
         :param owner_cell_index: The cell that first registered this face.
-        :param vertex_indices: Vertex winding from the owner's perspective.
+        :param face_vertex_indices: Face vertex indices winding from the owner's perspective.
         """
         self.owner_cell_index: int = owner_cell_index
         self.neighbour_cell_index: int = -1
-        self.vertex_indices: FaceVertexList = vertex_indices
+        self.face_vertex_indices: FaceVertexIndices = face_vertex_indices
 
 
 def build_csr_face_arrays(
     vertex_coordinates: VertexCoordinates,
-    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexList]],
+    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexIndices]],
 ) -> typing.Tuple[
     FloatArray,
     npt.NDArray[np.int32],
@@ -130,24 +130,22 @@ def build_csr_face_arrays(
     :raises InvalidFaceConnectivityError: If any face is shared by more
         than two cells.
     """
-    face_registry: typing.Dict[CanonicalFaceKey, _FaceRecord] = {}
-
+    face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
     for cell_index, cell_faces in enumerate(per_cell_face_vertex_lists):
         for face_vertex_indices in cell_faces:
-            canonical_key: CanonicalFaceKey = tuple(sorted(face_vertex_indices))
-
-            if canonical_key not in face_registry:
+            key: FaceKey = tuple(sorted(face_vertex_indices))
+            if key not in face_registry:
                 # First time seen: this cell becomes the owner.
                 # Store the winding as-is (CCW from owner's outside = outward from owner).
-                face_registry[canonical_key] = _FaceRecord(
+                face_registry[key] = _FaceRecord(
                     owner_cell_index=cell_index,
-                    vertex_indices=list(face_vertex_indices),
+                    face_vertex_indices=face_vertex_indices,
                 )
             else:
-                record = face_registry[canonical_key]
+                record = face_registry[key]
                 if record.neighbour_cell_index != -1:
                     raise InvalidFaceConnectivityError(
-                        f"Face with canonical key {canonical_key} is shared by "
+                        f"Face with canonical key {key} is shared by "
                         f"more than two cells (already has owner "
                         f"{record.owner_cell_index} and neighbour "
                         f"{record.neighbour_cell_index}; tried to add cell "
@@ -156,23 +154,20 @@ def build_csr_face_arrays(
                 record.neighbour_cell_index = cell_index
 
     # Flatten registry to CSR arrays
-    flat_vertex_indices: typing.List[int] = []
-    face_vertex_offsets_list: typing.List[int] = [0]
+    flat_face_vertex_indices: typing.List[int] = []
+    face_vertex_offsets: typing.List[int] = [0]
     face_cell_pairs: typing.List[typing.Tuple[int, int]] = []
 
     for record in face_registry.values():
-        flat_vertex_indices.extend(record.vertex_indices)
-        face_vertex_offsets_list.append(len(flat_vertex_indices))
+        flat_face_vertex_indices.extend(record.face_vertex_indices)
+        face_vertex_offsets.append(len(flat_face_vertex_indices))
         face_cell_pairs.append((record.owner_cell_index, record.neighbour_cell_index))
 
-    face_vertex_indices_arr = np.asarray(flat_vertex_indices, dtype=np.int32)
-    face_vertex_offsets_arr = np.asarray(face_vertex_offsets_list, dtype=np.int32)
-    face_cell_indices_arr = np.asarray(face_cell_pairs, dtype=np.int32)
     return (
         vertex_coordinates,
-        face_vertex_indices_arr,
-        face_vertex_offsets_arr,
-        face_cell_indices_arr,
+        np.asarray(flat_face_vertex_indices, dtype=np.int32),
+        np.asarray(face_vertex_offsets, dtype=np.int32),
+        np.asarray(face_cell_pairs, dtype=np.int32),
     )
 
 
@@ -202,4 +197,3 @@ def assemble_grid(
         unit_system=unit_system,
         metadata=metadata,
     )
-

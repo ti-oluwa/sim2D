@@ -6,7 +6,7 @@ from typing_extensions import TypeAlias
 
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.grids.factories.base import assemble_grid
+from bores.grids.factories.base import VertexCoordinates, assemble_grid
 from bores.typing import (
     FloatArray,
     NumberOrArray,
@@ -16,9 +16,6 @@ from bores.typing import (
 )
 
 __all__ = ["make_cartesian_grid"]
-
-VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
-"""Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
 
 def make_cartesian_grid(
@@ -60,7 +57,7 @@ def make_cartesian_grid(
     :param nx: Number of cells in the x direction.
     :param ny: Number of cells in the y direction.
     :param nz: Number of cells in the z direction (positive downward).
-    :param dx: Cell width(s) in x.  Scalar = uniform; 1-D array = variable.
+    :param dx: Cell width(s) in x. Scalar = uniform; 1-D array = variable.
     :param dy: Cell width(s) in y.
     :param dz: Cell thickness(es) in z.
     :param origin: `(x0, y0, z0)` coordinate of the grid origin (top-left-front

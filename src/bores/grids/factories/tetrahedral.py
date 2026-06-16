@@ -7,19 +7,15 @@ from typing_extensions import TypeAlias
 from bores.errors import InvalidPointArrayError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import (
-    ELEMENT_FACE_TABLES,
+    ELEMENT_FACES,
+    FaceVertexIndices,
+    VertexCoordinates,
     assemble_grid,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray, TwoDimensions, UnitSystem
+from bores.typing import UnitSystem
 
 __all__ = ["make_tetrahedral_grid"]
-
-VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
-"""Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
-
-FaceVertexList: TypeAlias = typing.List[int]
-"""Ordered list of vertex indices for a single face (CCW from owner)."""
 
 
 def make_tetrahedral_grid(
@@ -90,11 +86,11 @@ def make_tetrahedral_grid(
 
 def _extract_tetrahedron_faces(
     elements: npt.NDArray[np.int32],
-) -> typing.List[typing.List[FaceVertexList]]:
+) -> typing.List[typing.List[FaceVertexIndices]]:
     """
     Extract outward-facing triangular faces for every tetrahedron.
 
-    Uses the face table for `"tetra"` from `ELEMENT_FACE_TABLES`.
+    Uses the face table for `"tetra"` from `ELEMENT_FACES`.
     Each face's local vertex indices are mapped to global vertex indices
     using the element connectivity.
 
@@ -103,11 +99,11 @@ def _extract_tetrahedron_faces(
         (element) index, inner list contains 4 triangular faces each given
         as a list of 3 global vertex indices.
     """
-    tetrahedron_face_table = ELEMENT_FACE_TABLES["tetra"]  # 4 faces × 3 local verts
-    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexList]] = []
+    tetrahedron_face_table = ELEMENT_FACES["tetra"]  # 4 faces × 3 local verts
+    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexIndices]] = []
 
     for global_vert_indices in elements:
-        cell_faces: typing.List[FaceVertexList] = [
+        cell_faces: typing.List[FaceVertexIndices] = [
             [int(global_vert_indices[local_v]) for local_v in face_local]
             for face_local in tetrahedron_face_table
         ]

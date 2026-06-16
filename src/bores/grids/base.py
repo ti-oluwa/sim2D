@@ -1,13 +1,4 @@
-"""
-Face-based unstructured polyhedral grid implementation for reservoir simulation.
-
-**Uses**:
-
-- Face-centric finite-volume topology stored in CSR (compressed-sparse-row) format.
-- Fully unstructured polyhedral cells (triangles, quads, arbitrary polygons).
-- Numba-accelerated geometry kernels (Newell normals, divergence-theorem volumes,
-  simultaneous centroid accumulation).
-"""
+"""Face-based unstructured polyhedral grid implementation for reservoir simulation."""
 
 import enum
 import typing
@@ -400,6 +391,12 @@ class Grid:
     """NumPy floating-point dtype used for all coordinate and geometry arrays."""
 
     unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Declared unit system for all coordinate and geometry arrays.
+ 
+    Set by the factory or IO reader that built this grid.  Downstream
+    physics code reads this field to perform any necessary conversions.
+    """
 
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = attrs.field(
         default=None

@@ -136,14 +136,14 @@ def to_pyvista(
 
     # Attach caller-supplied arrays
     if cell_data:
-        for field_name, field_array in cell_data.items():
-            arr = np.asarray(field_array)
+        for name, array in cell_data.items():
+            arr = np.asarray(array)
             if arr.shape[0] != n_cells:
                 raise ValueError(
-                    f"cell_data[{field_name!r}] has {arr.shape[0]} entries "
+                    f"cell_data[{name!r}] has {arr.shape[0]} entries "
                     f"but grid has {n_cells} cells."
                 )
-            pv_grid.cell_data[field_name] = arr
+            pv_grid.cell_data[name] = arr
     return pv_grid
 
 

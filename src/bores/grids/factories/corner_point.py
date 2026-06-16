@@ -8,8 +8,10 @@ from typing_extensions import TypeAlias
 from bores.errors import InvalidFaceConnectivityError, InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import (
-    ELEMENT_FACE_TABLES,
-    CanonicalFaceKey,
+    ELEMENT_FACES,
+    FaceKey,
+    FaceVertexIndices,
+    VertexCoordinates,
     _FaceRecord,
     assemble_grid,
 )
@@ -18,17 +20,10 @@ from bores.typing import (
     IntArray,
     OneDimension,
     ThreeDimensions,
-    TwoDimensions,
     UnitSystem,
 )
 
 __all__ = ["make_corner_point_grid"]
-
-VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
-"""Shape `(n_points, 3)` — 3-D (x, y, z) vertex coordinates."""
-
-FaceVertexList: TypeAlias = typing.List[int]
-"""Ordered list of vertex indices for a single face (CCW from owner)."""
 
 
 CoordArray: TypeAlias = FloatArray[ThreeDimensions]
@@ -257,7 +252,8 @@ def _compute_corner_point_geometry(
     :returns: Tuple `(vertex_coordinates, per_cell_face_vertex_lists)`.
     """
     active_cells = np.argwhere(actnum > 0)
-    if active_cells.size == 0:
+    n_active_cells = active_cells.size
+    if n_active_cells == 0:
         raise InvalidGridError(
             "No active cells found in the corner-point grid (ACTNUM is all zeros)."
         )
@@ -283,54 +279,50 @@ def _compute_corner_point_geometry(
         return_inverse=True,
     )
 
-    vertex_coordinate_array = flat_corner_coordinates[unique_vertex_indices]
-    corner_global_indices = inverse_indices.reshape(len(active_cells), 8)
+    vertex_coordinates = flat_corner_coordinates[unique_vertex_indices]
+    corner_global_indices = inverse_indices.reshape(n_active_cells, 8)
 
     # Build cell face lists
     vtk_to_corner = np.array(
         [0, 1, 3, 2, 4, 5, 7, 6],
         dtype=np.int64,
     )
-    hexahedron_face_table = ELEMENT_FACE_TABLES["hexahedron"]
+    hexahedron_faces = ELEMENT_FACES["hexahedron"]
 
-    face_registry: typing.Dict[CanonicalFaceKey, _FaceRecord] = {}
-    for cell_index in range(len(active_cells)):
+    face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
+    for cell_index in range(n_active_cells):
+        # Convert corner-point vertices to VTK vertices
         vtk_vertices = [
-            int(
-                corner_global_indices[
-                    cell_index,
-                    vtk_to_corner[local_corner],
-                ]
-            )
-            for local_corner in range(8)
+            int(corner_global_indices[cell_index, vtk_to_corner[vert]])
+            for vert in range(8)
         ]
-        for face_local in hexahedron_face_table:
-            face_vertices = [vtk_vertices[v] for v in face_local]
-            canonical_key = tuple(sorted(face_vertices))
-            if canonical_key not in face_registry:
-                face_registry[canonical_key] = _FaceRecord(
+        for face in hexahedron_faces:
+            face_vertex_indices = [vtk_vertices[vert] for vert in face]
+            key = tuple(sorted(face_vertex_indices))
+            if key not in face_registry:
+                face_registry[key] = _FaceRecord(
                     owner_cell_index=cell_index,
-                    vertex_indices=face_vertices,
+                    face_vertex_indices=face_vertex_indices,
                 )
             else:
-                record = face_registry[canonical_key]
+                record = face_registry[key]
                 if record.neighbour_cell_index != -1:
                     raise InvalidFaceConnectivityError(
-                        f"Face {canonical_key} shared by more than two cells."
+                        f"Face {key} shared by more than two cells."
                     )
                 record.neighbour_cell_index = cell_index
 
-    flat_vertex_indices: list[int] = []
+    flat_face_vertex_indices: list[int] = []
     face_vertex_offsets: list[int] = [0]
     face_cell_pairs: list[tuple[int, int]] = []
     for record in face_registry.values():
-        flat_vertex_indices.extend(record.vertex_indices)
-        face_vertex_offsets.append(len(flat_vertex_indices))
+        flat_face_vertex_indices.extend(record.face_vertex_indices)
+        face_vertex_offsets.append(len(flat_face_vertex_indices))
         face_cell_pairs.append((record.owner_cell_index, record.neighbour_cell_index))
 
     return (
-        vertex_coordinate_array,
-        np.asarray(flat_vertex_indices, dtype=np.int32),
+        vertex_coordinates,
+        np.asarray(flat_face_vertex_indices, dtype=np.int32),
         np.asarray(face_vertex_offsets, dtype=np.int32),
         np.asarray(face_cell_pairs, dtype=np.int32),
     )

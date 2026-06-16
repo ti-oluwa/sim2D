@@ -41,10 +41,27 @@ S = typing.TypeVar("S")
 
 
 class UnitSystem(enum.Enum):
-    FIELD = "field"  # ft, ft², ft³, md, psi, °F, bbl, Mscf
-    METRIC = "metric"  # m, m², m³, mD, bar, °C, m³, m³
-    LAB = "lab"  # cm, cm², cm³, mD, atm, °C, cc, cc
-    SI = "si"  # m, m², m³, m², Pa, K, m³, m³
+    """
+    Declared unit system.
+
+    Systems follow Eclipse/OPM conventions:
+
+    ```md
+    =========  =======  ======  =======  =========  =======  ========  ========
+    System     Length   Area    Volume   Perm.      Press.   Temp.     Rates
+    =========  =======  ======  =======  =========  =======  ========  ========
+    FIELD      ft       ft²     ft³      mD         psi      °F        bbl/Mscf
+    METRIC     m        m²      m³       mD         bar      °C        m³
+    LAB        cm       cm²     cm³      mD         atm      °C        cc
+    SI         m        m²      m³       m²         Pa       K         m³
+    =========  =======  ======  =======  =========  =======  ========  ========
+    ```
+    """
+
+    FIELD = "field"
+    METRIC = "metric"
+    LAB = "lab"
+    SI = "si"
 
 
 NDimension = typing.TypeVar("NDimension", bound=typing.Tuple[int, ...])
