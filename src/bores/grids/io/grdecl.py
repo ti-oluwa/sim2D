@@ -6,7 +6,8 @@ most other reservoir simulators to describe corner-point pillar grids.
 
 **Supported keywords**:
 
-`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDTYPE`, `TOPS` , `DX` , `DY` , `DZ`, `MAPAXES`
+`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDTYPE`, `TOPS` ,
+`DX` , `DY` , `DZ`, `MAPAXES`, `GRIDUNIT`, `MAPUNIT`
 """
 
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 import attrs
 import numba
 import numpy as np
+from typing_extensions import Self
 
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
@@ -27,7 +29,7 @@ from bores.grids.factories.corner_point import (
     ZcornArray,
     make_corner_point_grid,
 )
-from bores.grids.utils import convert
+from bores.grids.utils import _get_length_conversion_factor, convert
 from bores.typing import (
     FloatArray,
     IntArray,
@@ -49,9 +51,10 @@ class MapAxes:
     origin: FloatArray[OneDimension]
     map_x_axis_point: FloatArray[OneDimension]
     map_y_axis_point: FloatArray[OneDimension]
+    unit_system: UnitSystem = UnitSystem.FIELD
     rotation_matrix: FloatArray[ThreeDimensions] = attrs.field(init=False)
 
-    def __post_init__(self) -> None:
+    def __attrs_post_init__(self) -> None:
         object.__setattr__(self, "rotation_matrix", self._compute_rotation_matrix())
 
     def _compute_rotation_matrix(self):
@@ -69,6 +72,25 @@ class MapAxes:
             ]
         )
         return rotation_matrix
+
+    def convert(self, to: UnitSystem) -> Self:
+        """
+        Return a new `MapAxes` with all coordinates expressed in `to`.
+
+        :param to: Target `UnitSystem`.
+        :returns: New `MapAxes` in the target unit system, or `self` if
+            already in the target system.
+        """
+        if self.unit_system == to:
+            return self
+
+        factor = _get_length_conversion_factor(self.unit_system, to)
+        return self.__class__(
+            origin=self.origin * factor,
+            map_x_axis_point=self.map_x_axis_point * factor,
+            map_y_axis_point=self.map_y_axis_point * factor,
+            unit_system=to,
+        )
 
 
 @typing.overload
@@ -369,7 +391,74 @@ def _extract_keyword_block(text: str, keyword: str) -> typing.Optional[str]:
     return m.group(1).strip() if m else None
 
 
-_GRDECL_UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
+_UNITS_MAP = {
+    "METRES": UnitSystem.METRIC,
+    "METER": UnitSystem.METRIC,
+    "M": UnitSystem.METRIC,
+    "FEET": UnitSystem.FIELD,
+    "FT": UnitSystem.FIELD,
+    "CM": UnitSystem.LAB,
+    "CENTIMETRES": UnitSystem.LAB,
+    "CENTIMETERS": UnitSystem.LAB,
+}
+
+
+def _parse_gridunit(clean: str) -> typing.Optional[UnitSystem]:
+    """
+    Parse the GRIDUNIT keyword to determine grid geometry unit system.
+
+    GRIDUNIT format:
+        GRIDUNIT
+          'METRES  ' '        ' /
+
+    The first quoted token is the unit string. The second (optional) is
+    a coordinate transformation flag and is ignored here.
+
+    Recognised unit strings (case-insensitive, whitespace-stripped):
+        'METRES' / 'METER' / 'M'  -> METRIC
+        'FEET' / 'FT'             -> FIELD
+        'CM' / 'CENTIMETRES'      -> LAB
+
+    :param clean: Comment-stripped GRDECL text.
+    :returns: `UnitSystem` or `None` if GRIDUNIT is absent.
+    """
+    block = _extract_keyword_block(clean, "GRIDUNIT")
+    if block is None:
+        return None
+
+    # Extract first quoted token
+    quoted = re.findall(r"['\"]([^'\"]*)['\"]", block)
+    if not quoted:
+        return None
+
+    unit_str = quoted[0].strip().upper()
+    return _UNITS_MAP.get(unit_str)
+
+
+def _parse_mapunits(clean: str) -> typing.Optional[UnitSystem]:
+    """
+    Parse the MAPUNITS keyword to determine the map coordinate unit system.
+
+    MAPUNITS format:
+        MAPUNITS
+          'METRES  ' /
+
+    :param clean: Comment-stripped GRDECL text.
+    :returns: `UnitSystem` or `None` if MAPUNITS is absent.
+    """
+    block = _extract_keyword_block(clean, "MAPUNITS")
+    if block is None:
+        return None
+
+    quoted = re.findall(r"['\"]([^'\"]*)['\"]", block)
+    if not quoted:
+        return None
+
+    unit_str = quoted[0].strip().upper()
+    return _UNITS_MAP.get(unit_str)
+
+
+_UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
     "FIELD": UnitSystem.FIELD,
     "METRIC": UnitSystem.METRIC,
     "LAB": UnitSystem.LAB,
@@ -379,22 +468,34 @@ _GRDECL_UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
 
 def _detect_unit_system(clean: str) -> UnitSystem:
     """
-    Scan comment-stripped GRDECL text for a unit-declaration keyword.
+    Determine the grid geometry unit system from comment-stripped GRDECL text.
 
-    FIELD, METRIC, LAB, and SI appear as bare keywords (no data block, no
-    trailing slash) anywhere in the file. We match them as whole words to
-    avoid false positives inside data values or keyword names.
+    Resolution order (highest to lowest priority):
+
+    1. `GRIDUNIT` keyword - explicit geometry unit declaration.
+    2. Bare section keywords `FIELD`, `METRIC`, `LAB`, `SI` - Eclipse
+       physics-unit declarations that conventionally also govern geometry.
+    3. Default: `FIELD` (Eclipse default when no unit keyword is present).
+
+    Note: `GRIDUNIT` and the bare section keywords are semantically distinct.
+    `GRIDUNIT` declares the coordinate system of the grid geometry arrays;
+    the bare keywords declare the simulator physics unit system. In practice
+    they are always consistent, but `GRIDUNIT` takes precedence when present.
 
     :param clean: Comment-stripped GRDECL text.
-    :returns: The declared `UnitSystem`, defaulting to FIELD if none
-        is found (Eclipse default when the keyword is absent).
+    :returns: The declared `UnitSystem`.
     """
-    for keyword, unit_system in _GRDECL_UNIT_KEYWORDS.items():
-        # Match the keyword as a whole word on its own line or surrounded by
-        # whitespace.  The keyword has no trailing data or slash.
+    # Explicit GRIDUNIT declaration
+    gridunit = _parse_gridunit(clean)
+    if gridunit is not None:
+        return gridunit
+
+    # Bare Eclipse section keywords
+    for keyword, unit_system in _UNIT_KEYWORDS.items():
         if re.search(r"(?<!\w)" + keyword + r"(?!\w)", clean, re.IGNORECASE):
             return unit_system
-    # Eclipse default when no unit keyword is present
+
+    # Eclipse default
     return UnitSystem.FIELD
 
 
@@ -434,10 +535,12 @@ def _parse_mapaxes(clean: str) -> typing.Optional[MapAxes]:
     origin = np.array([vals[0], vals[1]], dtype=np.float64)
     map_x_axis_point = np.array([vals[2], vals[3]], dtype=np.float64)
     map_y_axis_point = np.array([vals[4], vals[5]], dtype=np.float64)
+    map_unit_system = _parse_mapunits(clean) or UnitSystem.FIELD
     return MapAxes(
         origin=origin,
         map_x_axis_point=map_x_axis_point,
         map_y_axis_point=map_y_axis_point,
+        unit_system=map_unit_system,
     )
 
 
@@ -523,8 +626,6 @@ def _parse_grdecl_cartesian(
     meta["source_format"] = "grdecl_cartesian"
 
     if actnum_block is not None:
-        from bores.grids.io.grdecl import _tokenise as _tok  # avoid re-import
-
         actnum_tokens = _tokenise(actnum_block)
         if len(actnum_tokens) == n_cells:
             meta["actnum"] = (

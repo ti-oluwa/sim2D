@@ -131,6 +131,7 @@ def as_pyvista_grid(
     meta = getattr(grid, "metadata", {}) or {}
     map_axes = meta.get("map_axes", None)
     if map_axes is not None:
+        map_axes = map_axes.convert(grid.unit_system)
         # rotation_matrix is (2,2): maps local XY -> map XY
         # all_points[:, :2] has shape (N, 2); rotate in-place
         xy_local = all_points[:, :2] - map_axes.origin  # translate to map origin
