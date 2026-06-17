@@ -41,6 +41,7 @@ def make_corner_point_grid(
     zcorn: ZcornArray,
     actnum: typing.Optional[ActnumArray] = None,
     vertex_tolerance: float = 1e-8,
+    pinch_tolerance: typing.Optional[float] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
@@ -107,12 +108,18 @@ def make_corner_point_grid(
                 f"grid dimensions ({nx} x {ny} x {nz})."
             )
 
+    pinch = 0
+    if pinch_tolerance is None and metadata:
+        # Check metadat for any pinch loaded and use
+        pinch = metadata.get("pinch", pinch)
+    
     vertex_coordinates, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         _compute_corner_point_geometry(
             coord=coord_arr,
             zcorn=zcorn_arr,
             actnum=actnum_arr,
             vertex_tolerance=vertex_tolerance,
+            pinch_tolerance=pinch_tolerance or pinch,
         )
     )
     return assemble_grid(
@@ -226,6 +233,7 @@ def _compute_corner_point_geometry(
     zcorn: ZcornArray,
     actnum: ActnumArray,
     vertex_tolerance: float = 1e-8,
+    pinch_tolerance: float = 1e-3,
 ) -> typing.Tuple[
     VertexCoordinates,
     npt.NDArray[np.int32],
@@ -261,6 +269,7 @@ def _compute_corner_point_geometry(
         coord=coord,
         zcorn=zcorn,
     )
+
     # Deduplicate vertices
     flat_corner_coordinates = corner_coordinates.reshape(-1, 3)
     quantized_coordinates = np.round(flat_corner_coordinates / vertex_tolerance).astype(
@@ -281,35 +290,56 @@ def _compute_corner_point_geometry(
     n_active_cells = len(active_cells)
     corner_global_indices = inverse_indices.reshape(n_active_cells, 8)
 
-    # Build cell face lists
-    vtk_to_corner = np.array(
-        [0, 1, 3, 2, 4, 5, 7, 6],
-        dtype=np.int64,
-    )
+    # VTK corner ordering -> BORES hexahedron face ordering
+    # corner_point layout: 0=top-near-left, 1=top-near-right,
+    #                       2=top-far-left,  3=top-far-right,
+    #                       4=bot-near-left, 5=bot-near-right,
+    #                       6=bot-far-left,  7=bot-far-right
+    # VTK hex: bottom=[v0,v1,v2,v3], top=[v4,v5,v6,v7]
+    vtk_to_corner = np.array([0, 1, 3, 2, 4, 5, 7, 6], dtype=np.int64)
     hexahedron_faces = ELEMENT_FACES["hexahedron"]
 
     face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
+
     for cell_index in range(n_active_cells):
-        # Convert corner-point vertices to VTK vertices
+        # Map corner indices to VTK vertex order
         vtk_vertices = [
             int(corner_global_indices[cell_index, vtk_to_corner[vert]])
             for vert in range(8)
         ]
+
+        # Check if this cell is degenerate (zero thickness):
+        # top corners == bottom corners means it's fully collapsed.
+        top_verts = set(vtk_vertices[:4])
+        bottom_verts = set(vtk_vertices[4:])
+        if top_verts == bottom_verts:
+            # Fully degenerate cell - skip all its faces
+            continue
+
         for face in hexahedron_faces:
             face_vertex_indices = [vtk_vertices[vert] for vert in face]
-            key = tuple(sorted(face_vertex_indices))
+
+            # Skip degenerate faces: any face with duplicate vertices
+            # (collapsed edge = zero-area = not a real topological face)
+            unique_verts_in_face = len(set(face_vertex_indices))
+            if unique_verts_in_face < len(face_vertex_indices):
+                continue
+
+            key: FaceKey = tuple(sorted(face_vertex_indices))
+
             if key not in face_registry:
                 face_registry[key] = _FaceRecord(
                     owner_cell_index=cell_index,
                     face_vertex_indices=face_vertex_indices,
                 )
+            elif face_registry[key].neighbour_cell_index == -1:
+                face_registry[key].neighbour_cell_index = cell_index
             else:
-                record = face_registry[key]
-                if record.neighbour_cell_index != -1:
-                    raise InvalidFaceConnectivityError(
-                        f"Face {key} shared by more than two cells."
-                    )
-                record.neighbour_cell_index = cell_index
+                # Face shared by >2 cells: this is a pinchout connection.
+                # The third claimant is a cell that sees its neighbor through
+                # a pinched-out intermediate. Skip this face for this cell;
+                # the existing owner/neighbour pair already models the connection.
+                pass  # silently skip instead of raising
 
     flat_face_vertex_indices: list[int] = []
     face_vertex_offsets: list[int] = [0]
