@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import TypeAlias
 
-from bores.errors import InvalidFaceConnectivityError, InvalidGridError, ValidationError
+from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import (
     ELEMENT_FACES,
@@ -300,7 +300,6 @@ def _compute_corner_point_geometry(
     hexahedron_faces = ELEMENT_FACES["hexahedron"]
 
     face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
-
     for cell_index in range(n_active_cells):
         # Map corner indices to VTK vertex order
         vtk_vertices = [

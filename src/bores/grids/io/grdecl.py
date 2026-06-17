@@ -544,6 +544,53 @@ def _parse_mapaxes(clean: str) -> typing.Optional[MapAxes]:
     )
 
 
+def _parse_pinch(clean: str) -> typing.Optional[float]:
+    """
+    Parse PINCH or PINCHOUT from comment-stripped GRDECL text.
+
+    Returns the pinch thickness tolerance in grid length units.
+
+    PINCH takes precedence over PINCHOUT when both are present.
+
+    **Examples**:
+
+    PINCH
+      0.01 /
+    -> 0.01
+
+    PINCHOUT
+    /
+    -> default tolerance
+
+    :param clean: Comment-stripped GRDECL text.
+    :returns: Pinch thickness tolerance or None if neither keyword exists.
+    :raises GridImportError: If PINCH contains invalid data.
+    """
+    pinch_block = _extract_keyword_block(clean, "PINCH")
+    if pinch_block is not None:
+        tokens = pinch_block.split()
+        if not tokens:
+            warnings.warn(
+                "PINCH keyword found but no thickness tolerance was specified. Use PINCHOUT instead.",
+                stacklevel=4,
+            )
+            # Eclipse default pinch threshold.
+            return 1e-6
+
+        try:
+            return float(tokens[0])
+        except ValueError as exc:
+            raise GridImportError(
+                f"Invalid PINCH thickness tolerance: {tokens[0]!r}."
+            ) from exc
+
+    pinchout_block = _extract_keyword_block(clean, "PINCHOUT")
+    if pinchout_block is not None:
+        # Eclipse default pinch threshold.
+        return 1e-6
+    return None
+
+
 def _parse_grdecl_cartesian(
     clean: str,
     nx: int,
@@ -774,9 +821,11 @@ def _parse_grdecl(
     has_tops = _extract_keyword_block(clean, "TOPS") is not None
 
     map_axes = _parse_mapaxes(clean)
+    pinch = _parse_pinch(clean)
     unit_system = _detect_unit_system(clean)
     meta: typing.Dict[str, typing.Any] = dict(metadata or {})
     meta["map_axes"] = map_axes
+    meta["pinch"] = pinch
     meta["nx"] = nx
     meta["ny"] = ny
     meta["nz"] = nz
