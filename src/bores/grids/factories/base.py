@@ -24,7 +24,7 @@ vertex indices wound CCW from outside (outward normal).
 """
 
 
-# Element face tables
+# Element face tables (VTK convention)
 
 #: Outward-pointing face definitions for standard element types.
 #: Each value is a list of faces; each face is a list of *local* vertex
