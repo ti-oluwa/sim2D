@@ -2,7 +2,6 @@ import typing
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import TypeAlias
 
 from bores.errors import InvalidPointArrayError, ValidationError
 from bores.grids.base import Grid
@@ -10,7 +9,6 @@ from bores.grids.factories.base import (
     ELEMENT_FACES,
     FaceVertexIndices,
     VertexCoordinates,
-    assemble_grid,
     build_csr_face_arrays,
 )
 from bores.typing import UnitSystem
@@ -74,11 +72,11 @@ def make_tetrahedral_grid(
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(points, per_cell_face_vertex_lists)
     )
-    return assemble_grid(
-        points,
-        face_vertex_indices,
-        face_vertex_offsets,
-        face_cell_indices,
+    return Grid(
+        vertex_coordinates=points,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
     )

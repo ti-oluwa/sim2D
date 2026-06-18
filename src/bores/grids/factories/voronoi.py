@@ -10,11 +10,7 @@ from typing_extensions import TypeAlias
 
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
-from bores.grids.factories.base import (
-    FaceVertexIndices,
-    assemble_grid,
-    build_csr_face_arrays,
-)
+from bores.grids.factories.base import FaceVertexIndices, build_csr_face_arrays
 from bores.typing import FloatArray, OneDimension, TwoDimensions, UnitSystem
 
 __all__ = ["make_voronoi_grid"]
@@ -370,11 +366,11 @@ def _make_2d_extruded_voronoi_grid(
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(vertex_coordinates_3d, per_cell_face_vertex_lists)
     )
-    return assemble_grid(
-        vertex_coordinates_3d,
-        face_vertex_indices,
-        face_vertex_offsets,
-        face_cell_indices,
+    return Grid(
+        vertex_coordinates=vertex_coordinates_3d,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
     )
@@ -469,11 +465,11 @@ def _make_3d_voronoi_grid(
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(voronoi.vertices, per_cell_face_vertex_lists)
     )
-    return assemble_grid(
-        voronoi.vertices,
-        face_vertex_indices,
-        face_vertex_offsets,
-        face_cell_indices,
+    return Grid(
+        vertex_coordinates=voronoi.vertices,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
     )

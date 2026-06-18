@@ -10,7 +10,6 @@ from bores.grids.factories.base import (
     ElementFaces,
     FaceVertexIndices,
     VertexCoordinates,
-    assemble_grid,
     build_csr_face_arrays,
 )
 from bores.typing import UnitSystem
@@ -126,11 +125,11 @@ def make_polyhedral_grid(
     _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(points, all_per_cell_faces)
     )
-    return assemble_grid(
-        points,
-        face_vertex_indices,
-        face_vertex_offsets,
-        face_cell_indices,
+    return Grid(
+        vertex_coordinates=points,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
     )

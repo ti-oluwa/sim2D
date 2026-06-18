@@ -2,18 +2,11 @@ import typing
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import TypeAlias
 
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.grids.factories.base import VertexCoordinates, assemble_grid
-from bores.typing import (
-    FloatArray,
-    NumberOrArray,
-    OneDimension,
-    TwoDimensions,
-    UnitSystem,
-)
+from bores.grids.factories.base import VertexCoordinates
+from bores.typing import FloatArray, NumberOrArray, OneDimension, UnitSystem
 
 __all__ = ["make_cartesian_grid"]
 
@@ -76,11 +69,11 @@ def make_cartesian_grid(
     face_vertex_indices, face_vertex_offsets, face_cell_indices = _build_face_arrays(
         nx, ny, nz
     )
-    return assemble_grid(
-        vertex_coordinates,
-        face_vertex_indices,
-        face_vertex_offsets,
-        face_cell_indices,
+    return Grid(
+        vertex_coordinates=vertex_coordinates,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
     )
