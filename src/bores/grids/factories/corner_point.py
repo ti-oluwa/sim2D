@@ -13,7 +13,7 @@ from owner toward neighbour (outward for the owner).
 **Pinchout handling**:
 
 A cell is considered pinched out when its average pillar-to-pillar thickness
-is at or below `pinch_tolerance`.  For such cells:
+is at or below `pinch_tolerance`. For such cells:
 
 - Their top and bottom faces are suppressed so that the cells immediately
   above and below can share those face keys directly — forming a
