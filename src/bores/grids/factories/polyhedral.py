@@ -30,7 +30,7 @@ def make_polyhedral_grid(
 
     This is the **most general** factory and is used internally by the IO
     layer to convert VTK, meshio, and other mesh formats into a
-    `bores.grids.base.Grid`.  It supports any combination of
+    `bores.grids.base.Grid`. It supports any combination of
     tetrahedra, hexahedra, wedges, pyramids, and custom polyhedral cells.
 
     For custom cell types (not in `ELEMENT_FACES`), callers must

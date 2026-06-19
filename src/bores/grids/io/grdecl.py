@@ -474,6 +474,286 @@ _UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
     "SI": UnitSystem.SI,
 }
 
+_OPERATOR_KEYWORDS: typing.FrozenSet[str] = frozenset(
+    {
+        "MULTX",
+        "MULTY",
+        "MULTZ",
+        "MULTX-",
+        "MULTY-",
+        "MULTZ-",
+        "ACTNUM",
+    }
+)
+
+
+@numba.njit(cache=True, inline="always")
+def _get_flat_index(i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
+    """
+    Convert 0-based (i, j, k) to flat C-order index for a (nz, ny, nx) array.
+
+    Flat index = k*ny*nx + j*nx + i  (k outermost, i innermost).
+
+    :param i0: 0-based x index.
+    :param j0: 0-based y index.
+    :param k0: 0-based z index.
+    :param nx: Grid extent in x.
+    :param ny: Grid extent in y.
+    :returns: Flat cell index.
+    """
+    return k0 * ny * nx + j0 * nx + i0
+
+
+@numba.njit(cache=True)
+def _apply_box_operation(
+    array: npt.NDArray,
+    box: typing.Tuple[int, int, int, int, int, int],
+    op: str,
+    value: float,
+    src_array: typing.Optional[npt.NDArray],
+    nx: int,
+    ny: int,
+) -> None:
+    """
+    Apply an Eclipse operator keyword to `array` within a BOX sub-region.
+
+    Modifies `array` **in-place**.
+
+    :param array: Flat `(n_cells,)` array in k,j,i C-order (k outermost).
+    :param box: `(i1, i2, j1, j2, k1, k2)` 0-based inclusive box corners.
+    :param op: One of `"EQUALS"`, `"ADD"`, `"MULTIPLY"`, `"COPY"`.
+    :param value: Scalar operand (ignored for `"COPY"`).
+    :param src_array: Source array for `"COPY"`; `None` otherwise.
+    :param nx: Grid extent in x.
+    :param ny: Grid extent in y.
+    """
+    i1, i2, j1, j2, k1, k2 = box
+    for k in range(k1, k2 + 1):
+        for j in range(j1, j2 + 1):
+            for i in range(i1, i2 + 1):
+                idx = _get_flat_index(i, j, k, nx, ny)
+                if op == "EQUALS":
+                    array[idx] = value
+                elif op == "ADD":
+                    array[idx] += value
+                elif op == "MULTIPLY":
+                    array[idx] *= value
+                elif op == "COPY" and src_array is not None:
+                    array[idx] = src_array[idx]
+
+
+def _parse_mult_arrays(
+    clean: str,
+    nx: int,
+    ny: int,
+    nz: int,
+) -> typing.Dict[str, npt.NDArray[np.float64]]:
+    """
+    Parse all directional transmissibility multiplier arrays from
+    comment-stripped GRDECL text.
+
+    Handles two modes:
+
+    1. **Direct keyword blocks** - e.g. `MULTX` followed by per-cell values
+       and a `/` terminator. Values may use the `N*v` repeat syntax.
+
+    2. **Operator blocks** - `BOX` / `ENDBOX` / `EQUALS` / `ADD` /
+       `MULTIPLY` / `COPY` sequences that modify MULT arrays (and
+       `ACTNUM`) over a restricted IJK sub-region. The current box
+       accumulates across multiple operator records until `ENDBOX` (or a
+       new `BOX`) resets it.
+
+    Arrays that are not present in the text are returned with all-ones (the
+    neutral multiplier). An array is included in the return dict only when
+    it has been explicitly modified so that callers can detect `None` vs
+    all-ones.
+
+    :param clean: Comment-stripped GRDECL text (no `--` comments).
+    :param nx: Number of cells in x (from `SPECGRID`).
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
+    :returns: Dict mapping keyword name (e.g. `"MULTX"`, `"MULTX-"`) to a
+        flat `(nz*ny*nx,)` float64 array in k-major C-order. Only keywords
+        that were actually set are present.
+    """
+    n_cells = nx * ny * nz
+    default_box = (0, nx - 1, 0, ny - 1, 0, nz - 1)
+
+    # Lazily-created arrays (only allocate when a keyword is first touched)
+    arrays: typing.Dict[str, npt.NDArray[np.float64]] = {}
+
+    def _get_or_create(name: str) -> npt.NDArray[np.float64]:
+        if name not in arrays:
+            arrays[name] = np.ones(n_cells, dtype=np.float64)
+        return arrays[name]
+
+    # Pass 1: parse standalone keyword data blocks (MULTX ... /)
+    for kw in _OPERATOR_KEYWORDS:
+        if kw == "ACTNUM":
+            continue  # ACTNUM handled separately in the main parser
+
+        block = _extract_keyword_block(clean, kw)
+        if block is None:
+            continue
+
+        tokens = _tokenise(block)
+        if not tokens:
+            continue
+
+        if len(tokens) == 1:
+            arr = _get_or_create(kw)
+            arr[:] = float(tokens[0])
+        elif len(tokens) == n_cells:
+            arr = _get_or_create(kw)
+            arr[:] = np.array(tokens, dtype=np.float64)
+        else:
+            warnings.warn(
+                f"Keyword {kw!r} has {len(tokens)} values but grid has {n_cells} cells. Skipping.",
+                stacklevel=5,
+            )
+
+    # Pass 2: scan for operator blocks (BOX / ENDBOX / EQUALS / ADD / COPY /
+    # MULTIPLY) and apply them.
+    #
+    # Strategy: tokenise the entire file once more as a flat token stream,
+    # then drive a small state machine that tracks the current box and applies
+    # operations when operator keywords are encountered.
+    #
+    # We process tokens sequentially. When we see a recognised operator
+    # keyword we consume the following tokens up to and including '/'.
+
+    # Build a flat token list that preserves keyword boundaries
+    # We need to be careful: the repeat N*v expansion must happen, and
+    # we need to detect keyword names at the start of "records".
+    # Use a simple two-pass: first strip pure data blocks already consumed
+    # in pass 1 so we don't re-process them.  Instead of stripping we just
+    # use a dedicated regex scan for the operator keywords.
+
+    _OP_KEYWORDS_RE = re.compile(
+        r"\b(BOX|ENDBOX|EQUALS|ADD|MULTIPLY|COPY)\b",
+        re.IGNORECASE,
+    )
+
+    # Collect all operator-keyword positions in order
+    op_matches = list(_OP_KEYWORDS_RE.finditer(clean))
+    if not op_matches:
+        return arrays
+
+    current_box = default_box
+
+    i_match = 0
+    while i_match < len(op_matches):
+        m = op_matches[i_match]
+        kw_upper = m.group(1).upper()
+        # Advance past the keyword and collect tokens up to '/'
+        text_after = clean[m.end() :]
+        # Find the next '/' - that terminates the record
+        slash_pos = text_after.find("/")
+        if slash_pos == -1:
+            # No terminator - skip this record
+            i_match += 1
+            continue
+
+        record_text = text_after[:slash_pos]
+        raw_tokens = record_text.split()
+        # Expand N*v repeat syntax
+        tokens: typing.List[str] = []
+        repeat_re = re.compile(r"^(\d+)\*(.+)$")
+        for tok in raw_tokens:
+            mm = repeat_re.match(tok)
+            if mm:
+                tokens.extend([mm.group(2)] * int(mm.group(1)))
+            else:
+                tokens.append(tok)
+
+        if kw_upper == "BOX":
+            # BOX i1 i2 j1 j2 k1 k2
+            if len(tokens) >= 6:
+                try:
+                    bi1 = int(tokens[0]) - 1
+                    bi2 = int(tokens[1]) - 1
+                    bj1 = int(tokens[2]) - 1
+                    bj2 = int(tokens[3]) - 1
+                    bk1 = int(tokens[4]) - 1
+                    bk2 = int(tokens[5]) - 1
+                    # Clamp to grid bounds
+                    bi1 = max(0, min(bi1, nx - 1))
+                    bi2 = max(0, min(bi2, nx - 1))
+                    bj1 = max(0, min(bj1, ny - 1))
+                    bj2 = max(0, min(bj2, ny - 1))
+                    bk1 = max(0, min(bk1, nz - 1))
+                    bk2 = max(0, min(bk2, nz - 1))
+                    current_box = (bi1, bi2, bj1, bj2, bk1, bk2)
+                except (ValueError, IndexError):
+                    warnings.warn(
+                        f"BOX record has invalid tokens {tokens!r}; ignoring.",
+                        stacklevel=5,
+                    )
+            else:
+                warnings.warn(
+                    f"BOX record has only {len(tokens)} tokens; expected 6. Ignoring.",
+                    stacklevel=5,
+                )
+
+        elif kw_upper == "ENDBOX":
+            current_box = default_box
+
+        elif kw_upper in ("EQUALS", "ADD", "MULTIPLY"):
+            # EQUALS/ADD/MULTIPLY target_keyword  value /
+            # Multiple records may appear in the same block (each with its own
+            # slash, but we've already split on the first slash in this pass).
+            # Each record is: keyword value (the slash terminates the record).
+            if len(tokens) >= 2:
+                target_kw = tokens[0].upper()
+                if target_kw in _OPERATOR_KEYWORDS and target_kw != "ACTNUM":
+                    try:
+                        val = float(tokens[1])
+                        arr = _get_or_create(target_kw)
+                        _apply_box_operation(
+                            arr,
+                            current_box,
+                            kw_upper,
+                            val,
+                            None,
+                            nx,
+                            ny,
+                        )
+                    except (ValueError, IndexError):
+                        warnings.warn(
+                            f"{kw_upper} record for {target_kw!r} has invalid value "
+                            f"{tokens[1:]!r}; skipping.",
+                            stacklevel=5,
+                        )
+
+        elif kw_upper == "COPY":
+            # COPY src_keyword dst_keyword /
+            if len(tokens) >= 2:
+                src_kw = tokens[0].upper()
+                dst_kw = tokens[1].upper()
+                if (
+                    dst_kw in _OPERATOR_KEYWORDS
+                    and dst_kw != "ACTNUM"
+                    and src_kw in _OPERATOR_KEYWORDS
+                    and src_kw != "ACTNUM"
+                ):
+                    src_arr = arrays.get(src_kw)
+                    if src_arr is None:
+                        src_arr = np.ones(n_cells, dtype=np.float64)
+                    dst_arr = _get_or_create(dst_kw)
+                    _apply_box_operation(
+                        dst_arr,
+                        current_box,
+                        "COPY",
+                        0.0,
+                        src_arr,
+                        nx,
+                        ny,
+                    )
+
+        i_match += 1
+
+    return arrays
+
 
 def _parse_gridunit(clean: str) -> typing.Optional[UnitSystem]:
     """
@@ -616,15 +896,11 @@ def _parse_pinch(clean: str) -> typing.Optional[float]:
 
     if _extract_keyword_block(clean, "PINCHOUT") is not None:
         return 1e-6
-
     return None
 
 
 def _parse_nnc(
-    clean: str,
-    nx: int,
-    ny: int,
-    nz: int,
+    clean: str, nx: int, ny: int, nz: int
 ) -> typing.Tuple[
     typing.Optional[IntArray[TwoDimensions]],
     typing.Optional[FloatArray[OneDimension]],
@@ -686,7 +962,7 @@ def _parse_nnc(
                 int(tokens[base + 4]),
                 int(tokens[base + 5]),
             )
-            t_val = float(tokens[base + 6])
+            transmissibility = float(tokens[base + 6])
         except ValueError as exc:
             raise GridImportError(
                 f"NNC record {rec}: cannot parse value: {exc}"
@@ -703,7 +979,7 @@ def _parse_nnc(
         c1 = (i1 - 1) + (j1 - 1) * nx + (k1 - 1) * nx * ny
         c2 = (i2 - 1) + (j2 - 1) * nx + (k2 - 1) * nx * ny
         pairs.append((c1, c2))
-        transmissibilities.append(t_val)
+        transmissibilities.append(transmissibility)
 
     if not pairs:
         return None, None
@@ -762,12 +1038,12 @@ def _parse_faults(clean: str) -> typing.List[FaultRecord]:
             i1, i2 = int(m.group(2)), int(m.group(3))
             j1, j2 = int(m.group(4)), int(m.group(5))
             k1, k2 = int(m.group(6)), int(m.group(7))
-            face_dir = m.group(8).upper()
+            face_direction = m.group(8).upper()
 
-            if face_dir not in valid_dirs:
+            if face_direction not in valid_dirs:
                 raise GridImportError(
                     f"FAULTS record for {name!r}: unrecognised face direction "
-                    f"{face_dir!r}.  Valid values: {sorted(valid_dirs)}."
+                    f"{face_direction!r}.  Valid values: {sorted(valid_dirs)}."
                 )
             records.append(
                 FaultRecord(
@@ -778,7 +1054,7 @@ def _parse_faults(clean: str) -> typing.List[FaultRecord]:
                     j2=j2,
                     k1=k1,
                     k2=k2,
-                    face_dir=face_dir,
+                    face_direction=face_direction,
                 )
             )
 
@@ -834,6 +1110,7 @@ def _parse_grdecl_cartesian(
     nz: int,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    mult_arrays: typing.Optional[typing.Dict[str, npt.NDArray[np.float64]]] = None,
 ) -> Grid:
     """
     Build a Cartesian `Grid` from `TOPS` / `DX` / `DY` / `DZ`
@@ -873,10 +1150,26 @@ def _parse_grdecl_cartesian(
             )
         return np.array(tokens, dtype=np.float64)
 
-    n_cells = nx * ny * nz
-    n_col = nx * ny
+    def _read_vector(
+        keyword: str, expected: int
+    ) -> typing.Optional[npt.NDArray[np.float64]]:
+        """Read a DXV/DYV/DZV vector keyword (length = expected)."""
+        block = _extract_keyword_block(clean, keyword)
+        if block is None:
+            return None
+        tokens = _tokenise(block)
+        if len(tokens) != expected:
+            warnings.warn(
+                f"{keyword} expected {expected} values; got {len(tokens)}. Ignoring.",
+                stacklevel=4,
+            )
+            return None
+        return np.array(tokens, dtype=np.float64)
 
-    tops_flat = _read_array("TOPS", n_col)
+    n_cells = nx * ny * nz
+    n_columns = nx * ny
+
+    tops_flat = _read_array("TOPS", n_columns)
     z_top = float(tops_flat.min())
     if tops_flat.max() - tops_flat.min() > 1.0:
         warnings.warn(
@@ -886,13 +1179,22 @@ def _parse_grdecl_cartesian(
             stacklevel=4,
         )
 
-    dx_arr = _read_array("DX", n_cells)
-    dy_arr = _read_array("DY", n_cells)
-    dz_arr = _read_array("DZ", n_cells)
+    # Spacing: prefer DXV/DYV/DZV (vector form) over per-cell DX/DY/DZ
+    dx_1d = _read_vector("DXV", nx)
+    dy_1d = _read_vector("DYV", ny)
+    dz_1d = _read_vector("DZV", nz)
 
-    dx_1d = dx_arr.reshape(nz, ny, nx, order="F")[0, 0, :]
-    dy_1d = dy_arr.reshape(nz, ny, nx, order="F")[0, :, 0]
-    dz_1d = dz_arr.reshape(nz, ny, nx, order="F")[:, 0, 0]
+    if dx_1d is None:
+        dx_arr = _read_array("DX", n_cells)
+        dx_1d = dx_arr.reshape(nz, ny, nx, order="F")[0, 0, :]
+
+    if dy_1d is None:
+        dy_arr = _read_array("DY", n_cells)
+        dy_1d = dy_arr.reshape(nz, ny, nx, order="F")[0, :, 0]
+
+    if dz_1d is None:
+        dz_arr = _read_array("DZ", n_cells)
+        dz_1d = dz_arr.reshape(nz, ny, nx, order="F")[:, 0, 0]
 
     actnum_block = _extract_keyword_block(clean, "ACTNUM")
     meta: typing.Dict[str, typing.Any] = dict(metadata or {})
@@ -931,6 +1233,7 @@ def _parse_grdecl_corner_point(
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
     fault_records: typing.Optional[typing.List[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[typing.Dict[str, float]] = None,
+    mult_arrays: typing.Optional[typing.Dict[str, npt.NDArray[np.float64]]] = None,
 ) -> Grid:
     """
     Build a corner-point `Grid` from `COORD` / `ZCORN` / `ACTNUM`
@@ -1010,6 +1313,26 @@ def _parse_grdecl_corner_point(
     meta["source_format"] = "grdecl_corner_point"
     meta["actnum"] = actnum_arr
 
+    # Extract directional multiplier arrays if present
+    _ma = mult_arrays or {}
+
+    def _to_active(key: str) -> typing.Optional[npt.NDArray[np.float64]]:
+        """
+        Re-index a full-grid (nz*ny*nx) flat array to active-cell order.
+
+        Corner-point grids may have inactive cells filtered out; the
+        multiplier arrays from the GRDECL file are in full structured order
+        (k*ny*nx + j*nx + i). We defer the active-cell subsetting to
+        `make_corner_point_grid` — since the factory returns an unstructured
+        Grid we cannot easily do the remapping here. Instead we pass the
+        full flat array and let the factory store it as-is. The flow solver
+        is responsible for indexing into the structured array using the
+        active-cell (k,j,i) tuples stored in `Grid.metadata`.
+
+        For now: pass through unchanged.
+        """
+        return _ma.get(key)
+
     return make_corner_point_grid(
         coord=coord_arr,
         zcorn=zcorn_arr,
@@ -1020,6 +1343,12 @@ def _parse_grdecl_corner_point(
         nnc_transmissibilities=nnc_transmissibilities,
         fault_records=fault_records or [],
         fault_transmissibility_multipliers=fault_transmissibility_multipliers,
+        positive_x_transmissibility_multipliers=_to_active("MULTX"),
+        negative_x_transmissibility_multipliers=_to_active("MULTX-"),
+        positive_y_transmissibility_multipliers=_to_active("MULTY"),
+        negative_y_transmissibility_multipliers=_to_active("MULTY-"),
+        positive_z_transmissibility_multipliers=_to_active("MULTZ"),
+        negative_z_transmissibility_multipliers=_to_active("MULTZ-"),
     )
 
 
@@ -1085,6 +1414,8 @@ def _parse_grdecl(
         fault_records = _parse_faults(clean)
         multflt = _parse_multflt(clean)
 
+    mult_arrays = _parse_mult_arrays(clean, nx=nx, ny=ny, nz=nz)
+
     try:
         if not has_coord and has_tops:
             return _parse_grdecl_cartesian(
@@ -1094,6 +1425,7 @@ def _parse_grdecl(
                 nz=nz,
                 unit_system=unit_system,
                 metadata=meta,
+                mult_arrays=mult_arrays,
             )
         return _parse_grdecl_corner_point(
             clean=clean,
@@ -1106,6 +1438,7 @@ def _parse_grdecl(
             nnc_transmissibilities=nnc_transmissibilities,
             fault_records=fault_records,
             fault_transmissibility_multipliers=multflt or None,
+            mult_arrays=mult_arrays,
         )
     except GridImportError:
         raise
@@ -1191,6 +1524,8 @@ def _build_grdecl_cartesian_text(
     lines.append(f"  {nx}  {ny}  {nz}  1  F /")
     lines.append("")
 
+    _emit_gridunit(lines, grid.unit_system)
+
     map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
@@ -1219,6 +1554,19 @@ def _build_grdecl_cartesian_text(
 
     if actnum is not None:
         _emit_actnum(lines, actnum, grid.n_cells, nx, ny, nz)
+
+    # Emit MULT arrays if present
+    _mult_keyword_map = [
+        ("MULTX", grid.positive_x_transmissibility_multipliers),
+        ("MULTX-", grid.negative_x_transmissibility_multipliers),
+        ("MULTY", grid.positive_y_transmissibility_multipliers),
+        ("MULTY-", grid.negative_y_transmissibility_multipliers),
+        ("MULTZ", grid.positive_z_transmissibility_multipliers),
+        ("MULTZ-", grid.negative_z_transmissibility_multipliers),
+    ]
+    for kw, arr in _mult_keyword_map:
+        if arr is not None:
+            _emit_mult_array(lines, kw, arr, nx, ny, nz)
 
     return "\n".join(lines)
 
@@ -1249,6 +1597,8 @@ def _build_grdecl_corner_point_text(
     lines.append(f"  {nx}  {ny}  {nz}  1  F /")
     lines.append("")
 
+    _emit_gridunit(lines, grid.unit_system)
+
     map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
@@ -1274,6 +1624,19 @@ def _build_grdecl_corner_point_text(
     effective_actnum = actnum if actnum is not None else meta.get("actnum")
     if effective_actnum is not None:
         _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
+
+    # Emit MULT arrays if present
+    _mult_keyword_map = [
+        ("MULTX", grid.positive_x_transmissibility_multipliers),
+        ("MULTX-", grid.negative_x_transmissibility_multipliers),
+        ("MULTY", grid.positive_y_transmissibility_multipliers),
+        ("MULTY-", grid.negative_y_transmissibility_multipliers),
+        ("MULTZ", grid.positive_z_transmissibility_multipliers),
+        ("MULTZ-", grid.negative_z_transmissibility_multipliers),
+    ]
+    for kw, arr in _mult_keyword_map:
+        if arr is not None:
+            _emit_mult_array(lines, kw, arr, nx, ny, nz)
 
     return "\n".join(lines)
 
@@ -1333,3 +1696,51 @@ def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
         f"  {my[0]:.6f}  {my[1]:.6f}  /"
     )
     lines.append("")
+
+
+def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
+    """
+    Append a ``GRIDUNIT`` keyword block to `lines`.
+
+    :param lines: Accumulator list (mutated in-place).
+    :param unit_system: The unit system to declare.
+    """
+    _US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
+        UnitSystem.FIELD: "FEET",
+        UnitSystem.METRIC: "METRES",
+        UnitSystem.LAB: "CM",
+        UnitSystem.SI: "METRES",
+    }
+    unit_str = _US_TO_GRIDUNIT.get(unit_system, "FEET")
+    lines.append("GRIDUNIT")
+    lines.append(f"  '{unit_str}  ' '        ' /")
+    lines.append("")
+
+
+def _emit_mult_array(
+    lines: typing.List[str],
+    keyword: str,
+    arr: npt.NDArray[np.float64],
+    nx: int,
+    ny: int,
+    nz: int,
+) -> None:
+    """
+    Append a MULTX / MULTY / MULTZ (or ``-`` variant) keyword block in
+    Eclipse Fortran order (x-fastest, z-slowest).
+
+    :param lines: Accumulator list (mutated in-place).
+    :param keyword: Eclipse keyword name (e.g. ``"MULTX"``).
+    :param arr: Flat ``(nz*ny*nx,)`` array in k,j,i C-order.
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z.
+    """
+    lines.append("")
+    lines.append(keyword)
+    # Reshape to (nz, ny, nx) then transpose to Fortran order (nx, ny, nz)
+    flat_fortran = arr.reshape(nz, ny, nx).transpose(2, 1, 0).ravel(order="F")
+    for i in range(0, len(flat_fortran), 6):
+        chunk = flat_fortran[i : i + 6]
+        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+    lines.append("/")

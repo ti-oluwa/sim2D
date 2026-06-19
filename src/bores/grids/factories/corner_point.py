@@ -129,7 +129,7 @@ class FaultRecord:
     :param j2: 1-based end index in the J direction (inclusive).
     :param k1: 1-based start index in the K (z) direction (inclusive).
     :param k2: 1-based end index in the K direction (inclusive).
-    :param face_dir: Eclipse face direction string, one of
+    :param face_direction: Eclipse face direction string, one of
         `'I'`, `'I-'`, `'J'`, `'J-'`, `'K'`, `'K-'`.
     """
 
@@ -140,7 +140,7 @@ class FaultRecord:
     j2: int
     k1: int
     k2: int
-    face_dir: str
+    face_direction: str
 
 
 def make_corner_point_grid(
@@ -152,13 +152,29 @@ def make_corner_point_grid(
     pinch_tolerance: typing.Optional[float] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    # NNC data from the GRDECL NNC keyword
     nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
-    # Fault data from the GRDECL FAULTS / MULTFLT keywords
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
         typing.Mapping[str, float]
+    ] = None,
+    positive_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
     ] = None,
 ) -> Grid:
     """
@@ -203,6 +219,13 @@ def make_corner_point_grid(
     :param fault_transmissibility_multipliers: Mapping from fault name to
         multiplier value (from GRDECL `MULTFLT`). Stored verbatim on the
         returned `Grid`.
+    :param positive_x_transmissibility_multipliers: Shape `(n_active_cells,)` float64 array of
+        per-cell MULTX values. `None` if not supplied.
+    :param negative_x_transmissibility_multipliers: Shape `(n_active_cells,)` MULTX- values.
+    :param positive_y_transmissibility_multipliers: Shape `(n_active_cells,)` MULTY values.
+    :param negative_y_transmissibility_multipliers: Shape `(n_active_cells,)` MULTY- values.
+    :param positive_z_transmissibility_multipliers: Shape `(n_active_cells,)` MULTZ values.
+    :param negative_z_transmissibility_multipliers: Shape `(n_active_cells,)` MULTZ- values.
     :returns: A fully initialised `bores.grids.base.Grid`.
     :raises ValidationError: If COORD or ZCORN shapes are inconsistent, or
         if NNC transmissibility length mismatches NNC pair count.
@@ -332,6 +355,12 @@ def make_corner_point_grid(
             if fault_transmissibility_multipliers is not None
             else None
         ),
+        positive_x_transmissibility_multipliers=positive_x_transmissibility_multipliers,
+        negative_x_transmissibility_multipliers=negative_x_transmissibility_multipliers,
+        positive_y_transmissibility_multipliers=positive_y_transmissibility_multipliers,
+        negative_y_transmissibility_multipliers=negative_y_transmissibility_multipliers,
+        positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
+        negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
     )
 
 
@@ -668,11 +697,11 @@ def _resolve_fault_face_indices(
 
     result: typing.Dict[str, typing.List[int]] = {}
 
-    for rec in fault_records:
-        face_dir = rec.face_dir.upper()
-        if face_dir not in _FACE_DIR_TO_LOCAL:
+    for record in fault_records:
+        face_direction = record.face_direction.upper()
+        if face_direction not in _FACE_DIR_TO_LOCAL:
             warnings.warn(
-                f"Fault {rec.name!r}: unrecognised face direction {rec.face_dir!r}. "
+                f"Fault {record.name!r}: unrecognised face direction {record.face_direction!r}. "
                 f"Valid directions: {sorted(_FACE_DIR_TO_LOCAL)}. Skipping.",
                 stacklevel=4,
             )
@@ -683,9 +712,9 @@ def _resolve_fault_face_indices(
         # I / I-  → neighbour is at i±1, same j, k
         # J / J-  → neighbour is at j±1, same i, k
         # K / K-  → neighbour is at k±1, same i, j
-        if face_dir in ("I", "I-"):
+        if face_direction in ("I", "I-"):
             di, dj, dk = 1, 0, 0
-        elif face_dir in ("J", "J-"):
+        elif face_direction in ("J", "J-"):
             di, dj, dk = 0, 1, 0
         else:  # K, K-
             di, dj, dk = 0, 0, 1
@@ -694,9 +723,9 @@ def _resolve_fault_face_indices(
         n_missed = 0
 
         # IJK ranges are 1-based and inclusive in Eclipse convention
-        for k in range(rec.k1 - 1, rec.k2):
-            for j in range(rec.j1 - 1, rec.j2):
-                for i in range(rec.i1 - 1, rec.i2):
+        for k in range(record.k1 - 1, record.k2):
+            for j in range(record.j1 - 1, record.j2):
+                for i in range(record.i1 - 1, record.i2):
                     # Cell A (the cell at (k, j, i))
                     cell_a = kji_to_cell.get((k, j, i))
                     # Cell B (the neighbour across the fault plane)
@@ -716,22 +745,22 @@ def _resolve_fault_face_indices(
 
         if n_missed > 0:
             warnings.warn(
-                f"Fault {rec.name!r}: {n_missed} cell pair(s) in the IJK range "
-                f"I=[{rec.i1},{rec.i2}] J=[{rec.j1},{rec.j2}] K=[{rec.k1},{rec.k2}] "
+                f"Fault {record.name!r}: {n_missed} cell pair(s) in the IJK range "
+                f"I=[{record.i1},{record.i2}] J=[{record.j1},{record.j2}] K=[{record.k1},{record.k2}] "
                 f"could not be resolved to face indices (inactive cells or no shared "
                 f"face). These pairs are skipped.",
                 stacklevel=4,
             )
 
         if face_indices:
-            existing = result.get(rec.name)
+            existing = result.get(record.name)
             if existing is not None:
                 existing.extend(face_indices)
             else:
-                result[rec.name] = face_indices
+                result[record.name] = face_indices
         elif n_missed == 0:
             warnings.warn(
-                f"Fault {rec.name!r} produced no resolvable face indices.",
+                f"Fault {record.name!r} produced no resolvable face indices.",
                 stacklevel=4,
             )
 

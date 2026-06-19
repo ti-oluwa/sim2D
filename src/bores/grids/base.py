@@ -552,7 +552,65 @@ class Grid:
         T_effective = T_geometric * fault_transmissibility_multipliers[fault_name]
     """
 
-    # Derived topology (computed in __attrs_post_init__)
+    # Directional transmissibility multipliers (MULTX / MULTY / MULTZ and their - variants)
+
+    positive_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **positive-x** face of each cell (GRDECL ``MULTX`` keyword).
+
+    The effective inter-cell transmissibility between cell *i* and its
+    +x neighbour *i+1* is scaled by
+    ``positive_x_transmissibility_multipliers[i] * negative_x_transmissibility_multipliers[i+1]``.
+    `None` when not supplied (equivalent to all-ones).
+    """
+
+    negative_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **negative-x** face of each cell (GRDECL ``MULTX-`` keyword).
+
+    Combined with `positive_x_transmissibility_multipliers` on the adjacent cell to give the
+    face multiplier in the x-direction.  `None` when not supplied.
+    """
+
+    positive_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **positive-y** face (GRDECL ``MULTY``).  `None` when not supplied.
+    """
+
+    negative_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **negative-y** face (GRDECL ``MULTY-``).  `None` when not supplied.
+    """
+
+    positive_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **positive-z** face (GRDECL ``MULTZ``).  `None` when not supplied.
+    """
+
+    negative_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
+    the **negative-z** face (GRDECL ``MULTZ-``).  `None` when not supplied.
+    """
+
+    # Derived topology
 
     cell_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """
@@ -1004,6 +1062,28 @@ class Grid:
         if self.fault_face_indices is None:
             return 0
         return len(self.fault_face_indices)
+
+    @property
+    def has_transmissibility_multipliers(self) -> bool:
+        """
+        Return `True` if any directional transmissibility multiplier array
+        is present on this grid.
+
+        Checks all six MULT arrays (MULTX, MULTX-, MULTY, MULTY-, MULTZ,
+        MULTZ-). A return value of `False` means all inter-cell
+        transmissibilities can be computed from geometry alone.
+        """
+        return any(
+            arr is not None
+            for arr in (
+                self.positive_x_transmissibility_multipliers,
+                self.negative_x_transmissibility_multipliers,
+                self.positive_y_transmissibility_multipliers,
+                self.negative_y_transmissibility_multipliers,
+                self.positive_z_transmissibility_multipliers,
+                self.negative_z_transmissibility_multipliers,
+            )
+        )
 
     def get_cell_face_indices(self, cell_index: int) -> IntArray[OneDimension]:
         """
