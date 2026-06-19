@@ -70,10 +70,10 @@ __all__ = ["make_corner_point_grid", "FaultRecord"]
 CoordArray: typing.TypeAlias = FloatArray[ThreeDimensions]
 """Corner-point COORD array, shape `(NY+1, NX+1, 6)`."""
 
-ZcornArray: typing.TypeAlias = FloatArray[ThreeDimensions]
+ZCornArray: typing.TypeAlias = FloatArray[ThreeDimensions]
 """Corner-point ZCORN array, shape `(NZ*2, NY*2, NX*2)`."""
 
-ActnumArray: typing.TypeAlias = IntArray[ThreeDimensions]
+ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
 """Corner-point ACTNUM array, shape `(NZ, NY, NX)`; 1 = active, 0 = inactive."""
 
 
@@ -146,8 +146,8 @@ class FaultRecord:
 def make_corner_point_grid(
     *,
     coord: CoordArray,
-    zcorn: ZcornArray,
-    actnum: typing.Optional[ActnumArray] = None,
+    zcorn: ZCornArray,
+    actnum: typing.Optional[ActNumArray] = None,
     vertex_tolerance: float = 1e-8,
     pinch_tolerance: typing.Optional[float] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
@@ -264,7 +264,7 @@ def make_corner_point_grid(
 
     # Resolve pinch tolerance: explicit arg > metadata > 0.0 (no pinching)
     if pinch_tolerance is None:
-        pinch_tolerance = float((metadata or {}).get("pinch", 0.0))
+        pinch_tolerance = float((metadata or {}).get("pinch", None) or 0.0)
 
     # Validate NNC transmissibility length consistency up front
     if nnc_cell_pairs is not None and nnc_transmissibilities is not None:
@@ -388,6 +388,7 @@ def _interpolate_pillar_point(
         xyz[1] = pillar_top[1]
         xyz[2] = z
         return xyz
+    
     t = (z - pillar_top[2]) / dz
     xyz[0] = pillar_top[0] + t * (pillar_bottom[0] - pillar_top[0])
     xyz[1] = pillar_top[1] + t * (pillar_bottom[1] - pillar_top[1])
@@ -399,7 +400,7 @@ def _interpolate_pillar_point(
 def _compute_active_cell_corner_coordinates(
     active_cells: np.ndarray,
     coord: CoordArray,
-    zcorn: ZcornArray,
+    zcorn: ZCornArray,
 ) -> FloatArray[ThreeDimensions]:
     """
     Compute all active-cell corner coordinates.
@@ -502,8 +503,8 @@ def _is_cell_pinched(
 
 def _compute_corner_point_geometry(
     coord: CoordArray,
-    zcorn: ZcornArray,
-    actnum: ActnumArray,
+    zcorn: ZCornArray,
+    actnum: ActNumArray,
     vertex_tolerance: float = 1e-8,
     pinch_tolerance: float = 0.0,
 ) -> typing.Tuple[
@@ -616,7 +617,7 @@ def _compute_corner_point_geometry(
             f"{n_pinched} pinched-out cell(s) detected "
             f"(pinch_tolerance={pinch_tolerance:.3g}). "
             f"Their top/bottom faces have been suppressed to enable "
-            f"transmissibility across the pinch.  "
+            f"transmissibility across the pinch. "
             f"{len(nnc_pairs)} explicit NNC pair(s) were recorded.",
             stacklevel=4,
         )
@@ -838,7 +839,7 @@ def _fill_zcorn(
     nx: int,
     ny: int,
     nz: int,
-    zcorn: ZcornArray,
+    zcorn: ZCornArray,
 ) -> None:
     """
     Fill ZCORN array from per-cell Z bounding-box extents.
@@ -876,7 +877,7 @@ def _fill_zcorn(
 
 def rederive_corner_point_arrays(
     grid: Grid,
-) -> typing.Tuple[CoordArray, ZcornArray, int, int, int]:
+) -> typing.Tuple[CoordArray, ZCornArray, int, int, int]:
     """
     Reconstruct approximate COORD and ZCORN arrays from a `Grid` whose
     geometry originates from a corner-point source.

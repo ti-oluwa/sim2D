@@ -38,7 +38,7 @@ __all__ = ["load_mesh", "dump_mesh"]
 _PathOrStr = typing.Union[str, Path]
 _TextOrPath = typing.Union[str, bytes, Path]
 
-# meshio cell type names that map to 3-D volumetric elements.
+# `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
 _VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
     {
@@ -51,7 +51,7 @@ _VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
     }
 )
 
-# Map from meshio quadratic type to the linear equivalent and node count.
+# Map from `meshio` quadratic type to the linear equivalent and node count.
 _QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {
     "tetra10": ("tetra", 4),
     "hexahedron20": ("hexahedron", 8),
@@ -98,7 +98,7 @@ def load_mesh(
     """
     Load any mesh format supported by `meshio` from a path or bytes.
 
-    This is the most general import path.  `meshio` supports over 20
+    This is the most general import path. `meshio` supports over 20
     formats including Abaqus, Ansys, OpenFOAM, MEDIT, etc.
 
     :param source: Filesystem path (`pathlib.Path` or `str`)
@@ -159,7 +159,7 @@ def dump_mesh(
     This is the most general export path.  `meshio` supports over 20
     formats including Abaqus, Ansys, MEDIT, OpenFOAM, etc.
 
-    .. note::
+    Note:
         `file_format` is mandatory here (unlike `load_mesh`) because
         when `destination` is `None` there is no file extension for
         `meshio` to infer from.  Being explicit also avoids surprises when
@@ -310,18 +310,18 @@ def _grid_to_mesh(
     connectivity = np.empty((n_cells, verts_per_cell), dtype=np.int32)
 
     for cell_idx in range(n_cells):
-        lo = grid.cell_min_xyz[cell_idx]
-        hi = grid.cell_max_xyz[cell_idx]
+        low = grid.cell_min_xyz[cell_idx]
+        high = grid.cell_max_xyz[cell_idx]
         base = cell_idx * verts_per_cell
         # VTK hex vertex order: bottom face CCW then top face CCW
-        all_verts[base + 0] = [lo[0], lo[1], lo[2]]
-        all_verts[base + 1] = [hi[0], lo[1], lo[2]]
-        all_verts[base + 2] = [hi[0], hi[1], lo[2]]
-        all_verts[base + 3] = [lo[0], hi[1], lo[2]]
-        all_verts[base + 4] = [lo[0], lo[1], hi[2]]
-        all_verts[base + 5] = [hi[0], lo[1], hi[2]]
-        all_verts[base + 6] = [hi[0], hi[1], hi[2]]
-        all_verts[base + 7] = [lo[0], hi[1], hi[2]]
+        all_verts[base + 0] = [low[0], low[1], low[2]]
+        all_verts[base + 1] = [high[0], low[1], low[2]]
+        all_verts[base + 2] = [high[0], high[1], low[2]]
+        all_verts[base + 3] = [low[0], high[1], low[2]]
+        all_verts[base + 4] = [low[0], low[1], high[2]]
+        all_verts[base + 5] = [high[0], low[1], high[2]]
+        all_verts[base + 6] = [high[0], high[1], high[2]]
+        all_verts[base + 7] = [low[0], high[1], high[2]]
         connectivity[cell_idx] = np.arange(base, base + verts_per_cell, dtype=np.int32)
 
     meshio_cell_data: typing.Dict[str, typing.List[np.ndarray]] = {}

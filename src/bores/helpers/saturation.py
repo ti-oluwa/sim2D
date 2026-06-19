@@ -644,7 +644,7 @@ def _build_transition_zones(
     oil_saturation[gas_cap] = residual_oil_saturation_gas[gas_cap]
     water_saturation[gas_cap] = connate_water_saturation[gas_cap]
 
-    # Gas–oil transition: blend from (gas cap with Sor_gas) to (oil zone with Sgr)
+    # Gas-oil transition: blend from (gas cap with Sor_gas) to (oil zone with Sgr)
     gas_oil_zone = (
         (depth_grid >= gas_oil_contact_top)
         & (depth_grid <= gas_oil_contact_bottom)
@@ -691,7 +691,7 @@ def _build_transition_zones(
     water_saturation[oil_zone] = connate_water_saturation[oil_zone]
     gas_saturation[oil_zone] = residual_gas_saturation[oil_zone]
 
-    # Oil–water transition: blend from (oil zone) to (water zone with Sor_water)
+    # Oil-water transition: blend from (oil zone) to (water zone with Sor_water)
     oil_water_zone = (
         (depth_grid >= oil_water_contact_top)
         & (depth_grid <= oil_water_contact_bottom)

@@ -1,0 +1,398 @@
+################################################################################
+
+                          1ST SPE COMPARATIVE STUDY
+
+    The problem is from SPE-9723 paper (case 2):
+    Odeh, A. 1981 Comparison of Solutions to a Three-Dimensional Black-Oil
+       Reservoir Simulation Problem. JPT 33, 13-25. DOI: 10.2118/9723-PA.
+
+    See description at: http://dx.doi.org/10.2118/9723-PA
+
+--------------------------------------------------------------------------------
+
+    Last update on 28.04.2015
+    Program Version: 2015.C05
+
+################################################################################
+
+
+   Follow comments starting with $1$ to get better fit to the article.
+
+--------------------------------------------------------------------------------
+
+   Note:
+   We type all comments in lowercase letters while all keywords and mnemonics
+      must be in uppercase letters.
+
+--------------------------------------------------------------------------------
+
+   Note:
+-- any line beginning with '!' or '--' is a comment line; 
+   any line not beginning with an uppercase letter outside keyword
+!  instruction is also a comment line.
+
+--------------------------------------------------------------------------------
+
+   Note:
+   Any data line must be terminated by the slash '/' sign.
+
+--------------------------------------------------------------------------------
+
+   Note:
+   We denote by the repeated symbols the following structural elements of this
+      RUN-file:
+      '##############' - delimits the sections of the RUN-file.
+      '<<<<<<<<<<<<<<' - designates an opening bracket.
+      '>>>>>>>>>>>>>>' - designates a closing bracket.
+      '^^^^^^^^^^^^^^' - designates the keyword, which affects the order of the
+                         data input for all the following keywords (both in the
+                         current and in the following sections).
+      '==============' - merge the keywords and the comments in paragraphs.
+
+--------------------------------------------------------------------------------
+  
+
+RUNSPEC   ################### RUNSPEC section begins here ######################
+
+BLACKOIL  ^^^^^^ We switch the program to the BLACKOIL EOS module ^^^^^^^^^^^^^^
+
+                                        We enable:
+WATER                                   - water phase;
+OIL                                     - oil phase;
+GAS                                     - gas phase;
+DISGAS                                  - gas dissolution in oil phase.
+
+FIELD     ^^^^^^^^^^^^ We use FIELD units ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                        Note, this keywords affects the units
+                                        in many keywords below.
+
+ROCKCOMP                                We enable rock compaction.
+ 
+FAST                                    We use FAST option.
+
+--OPTIONS                               $1$ Piecewise linear interpolation
+--  53* 1 /                             of relative permeabilities. Use this 
+                                        option if you want a better fit to the
+                                        SPE-9723 paper.
+
+GRID      ##################### GRID section begins here #######################
+
+          The grid is specified within brackets MAKE-ENDMAKE  
+MAKE      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-- cartesian                            We select Cartesian gridding
+--    grid   nx  ny  nz                 option and specify the number of
+      CART   10  10  3   /              grid blocks along every axis.         
+XYZBOUND
+-- xmin-xmax   ymin-ymax   zmin-zmax    We specify the domain extent in feet.
+   0   10000   0   10000   8325 8425 /  The reservoir is buried at depth
+                                        8325 ft.
+
+DZV                                     We define the thickness of 3 layers:            
+  20 30 50 /                            top layer thickness is 20 ft;
+                                        middle layer thickness is 30 ft;
+                                        bottom layer thickness is 50 ft.
+
+GETWELLS                                We read wells specificactions from the
+                                        SCHEDULE section.
+
+DZWELL                                  We define that the wells are visible in 
+  100 10 /                              ParaView up to 100 feet above the top
+                                        layer and up to 10 feet below the
+                                        bottom layer.
+
+ENDMAKE   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+EQUALS                                  
+--  --------  --------                  We equal:
+    PORO      0.3      /                - porosity to 0.3 in the whole domain;
+    PERMX     500       4* 2*1 /        - X-perm. to 500 mD in the layer k=1;
+    PERMX     50        4* 2*2 /        - X-perm. to 50 mD in the layer k=2;
+    PERMX     200       4* 2*3 /        - X-perm. to 200 mD in the layer k=3.
+--  --------  --------
+/
+
+COPY                                    We copy:
+  PERMX PERMY /                         - X-perm. into Y-perm in the whole          
+/                                         domain.
+
+<<<<<<<<<<<<<<<<<<<<<< We define Z-direction permeability <<<<<<<<<<<<<<<<<<<<<<
+
+COPY                                    We copy:
+  PERMX PERMZ /                         - X-perm. into Y-perm in the whole  
+/                                         domain.
+
+EQUALS
+--  --------  --------                  We equal:
+    MULTZ     0.64      4* 2*1 /        - Z-perm. multiplyer to 0.64 between
+--  --------  --------                    layers k=1 and k=2;
+    MULTZ     0.265625  4* 2*2 /        - Z-perm. multiplyer to 0.64 between
+--  --------  --------                    layers k=2 and k=3.
+/
+
+========= This keyword can be used insted of the two keywords above ============
+
+--EQUALS                                We equal:
+--    PERM  50   4* 2*1   4* 2*2 /      - perm. to 50 mD between layers k=1,2;
+--    PERM  25   4* 2*2   4* 2*3 /      - perm. to 25 mD between layers k=2,3.
+--/
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+PROPS     ####################### PROPS section begins here ####################
+
+          Rock properties are specified within brackets ROCK-ENDROCK
+ROCK      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+   /     
+           
+ROCKECL                                 We specify the reference pressure (psia)
+-- -refpres- --compr--                  and the rock compressibility (1/psi).
+      14.7     3.0D-6   /
+
+ENDROCK   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+          The relative permeabilities are specified within brackets SAT-ENDSAT
+SAT       <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+   /
+
+SWFN                                    We define the water relative 
+--  swat  krw                           permeability (krw) as a function of 
+    0.12  0       /                     water saturation (swat).
+    1.0   0.00001 /
+/
+
+SGFN                                    We define the gas relative
+--  sgas  krg                           permeability (krg) as a function of
+    0     0     /                       gas saturation (sgas).
+    0.02  0     /
+    0.05  0.005 /
+    0.12  0.025 /
+    0.2   0.075 /
+    0.25  0.125 /
+    0.3   0.19  /
+    0.4   0.41  /
+    0.45  0.6   /
+    0.5   0.72  /
+    0.6   0.87  /
+    0.7   0.94  /
+    0.85  0.98  /
+    1.0   1.0   /
+/
+
+SOF3                                    We define oil relative permeability
+--  soil     krow     krog              for oil-water flows (krow) and oil
+    0        0        0      /          relative permeability for oil-gas 
+    0.18     0        0      /          flows (krog) as a function of oil
+    0.28     0.0001   0.0001 /          saturation (soil).
+    0.38     0.001    0.001  /
+    0.43     0.01     0.01   /
+    0.48     0.021    0.021  /
+    0.58     0.09     0.09   /
+    0.63     0.2      0.2    /
+    0.68     0.35     0.35   /
+    0.76     0.7      0.7    /
+    0.83     0.98     0.98   /
+    0.86     0.997    0.997  /
+    0.879    1        1      /
+    0.88     1        1      /
+/
+
+ENDSAT    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+          The fluid properties are specified within brackets EOS-ENDEOS
+EOS       <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+   /
+
+--OPTBO                                 $1$ Use these options if you want a 
+--  10*  10*1 /                         better fit to the SPE papaer
+
+DENSITY                                 We specify the phases densities at 
+--   oil       water      gas           surface conditions (lb/cft).    
+    49.1      64.79     0.06054  /
+
+PVTW                                    We specify water properties: reference
+--  refpres   bwat    viswat  comprw    pressure (refpres), form. vol. factor at
+    4014.7   1.029   3.13D-6   0.31  /  refpres (bwats), viscosity (viswat) and 
+                                        water compressibility (comprw).
+
+PVDG
+--   pgas   bgas    visgas              We specify the properies of dry gas,
+     14.7 166.666   0.008    /          i.e. the formation volume factor (bgas),
+    264.7  12.093   0.0096   /          and viscosity (visgas) on pressure
+    514.7   6.274   0.0112   /          (pgas).
+   1014.7   3.197   0.014    /
+   2014.7   1.614   0.0189   /
+   2514.7   1.294   0.0208   /
+   3014.7   1.080   0.0228   /
+   4014.7   0.811   0.0268   /
+   5014.7   0.649   0.0309   /
+   9014.7   0.386   0.047    / 
+/
+
+PVTO
+--   rs      poil  boil  visoil         We specify the properties of live oil,
+    0.001    14.7 1.062  1.04    /      i.e. the oil pressure (poil), 
+    0.0905  264.7 1.15   0.975   /      formation volume factor (boil),
+    0.18    514.7 1.207  0.91    /      viscosity (visoil) on gas-oil ratio
+    0.371  1014.7 1.295  0.83    /      of the solution (rs).
+    0.636  2014.7 1.435  0.695   /
+    0.775  2514.7 1.5    0.641   /
+    0.93   3014.7 1.565  0.594   /
+    1.270  4014.7 1.695  0.51    
+           5014.7 1.671  0.549
+           9014.7 1.579  0.74    /
+    1.618  5014.7 1.827  0.449 
+           9014.7 1.726  0.605   /       
+    2.984  9014.7 2.357  0.203   /      $1$ Comment out this line if you want 
+/                                       a better fit to the SPE paper.
+
+ENDEOS    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+INIT      ####################### INIT section begins here #####################
+
+          The initial equilibrium is specified within brackets EQL-ENDEQL
+EQL       <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+   /
+
+EQUIL
+-- -------- -------- -------- -------- -------- --------
+-- datum    datum     OWC     OWC      GOC      GOC
+--   depth  pressure   depth   cappres   depth   cappres
+-- -------- -------- -------- -------- -------- --------
+     8400     4800     8500      1*       8200      1*    /
+-- -------- -------- -------- -------- -------- --------
+
+                    Using the keyword EQUIL we specify that
+                    - pressure is 4800 (psi) at depth 8400 ft;
+                    - oil-water contact is below the bottom layer;
+                    - gas-oil contact is above the top layer.
+
+RSVD
+-- --depth- ---rs---
+     8200     1.270  /                  We specify that initial gas-oil ratio
+     8500     1.270  /                  (rs) is 1.270 (Mscf/stb).
+-- -------- --------
+/
+
+ENDEQL    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+RPTSUM                                  We specify the properties which are
+   PRESSURE SWAT SOIL SGAS RS /         saved at every report time (in the files
+                                        SPE1.####.SUM (.vtu)).
+
+RPTSUM                                  These properties are saved too at every
+   I-IJKRES J-IJKRES K-IJKRES /         report step.
+
+RPTWELL                                 We specify the wells parameters saved
+   WBHP WGOR WOPR WGPR /                at every report time (in the files
+                                        SPE1.####.SUM (.vtu)).
+
+SCHEDULE   #################### SCHEDULE section begins here ####################
+
+WEEKTOL                                 We enable option WEEKTOL (week 
+                                        convergence tolerances).
+VARS               
+  PRES  DMAX 300   /                    Maximal pressure change in a grid block
+  PRES  MAXV 10000 /                    is 300 psi. Maximal pressure is 10000
+/                                       psi.
+
+WELSPECS
+-- -------- -- ---- ---- -------- 
+-- well        i-   j-   datum          We specify two wells named PRODUCER and
+--     name     ind  ind   depth        INJECTOR:
+-- -------- -- ---- ---- --------
+   PRODUCER 1*   10 10    8400    /     - PRODUCER well head is in  i,j=10,10;
+   INJECTOR 1*    1  1    8335    /     - INJECTOR well head is in  i,j=1,1.
+-- -------- -- ---- ---- --------
+/
+
+COMPDAT
+-- -------- ---- ---- ---- ---- ---- -------- -------- --------
+-- well     i-   j-   k-   k-   mode satnum   explicit   well
+--     name  ind  ind  min  max                 tran   diameter
+-- -------- ---- ---- ---- ---- ---- -------- -------- --------
+   PRODUCER  10   10   3    3   OPEN  1*        1*        0.5    /
+   INJECTOR   1    1   1    1   OPEN  1*        1*        0.5    /
+-- -------- ---- ---- ---- ---- ---- -------- -------- --------
+/
+
+                    Using the keyword COMPDAT we specify that:
+                    - PRODUCER is completed in the layer k=3;
+                    - INJECTOR is completed in the layer k=1;
+                    - both wellbore diameter is 0.5 ft.
+
+WCONHIST
+   PRODUCER OPEN ORAT  20000 5* 1000 /
+/
+                    Using the keyword WCONHIST we specify that:
+                    - PRODUCER target production rate is 20000 stb/day of oil;
+                    - the minimal bottom-hole pressure is 1000 psi.
+
+WCONINJE     
+   INJECTOR GAS OPEN GRAT 100000 /
+/
+                   Using the keyword WCONINJE we specify that:
+                   - INJECTOR target injection rate is 100000 Mscf/day.
+
+REPORTS                                 No reports in the LOG-file.
+   NOTHING  /
+
+TSTEP                                   We advance simulation to 10 years 
+  1 2 3 4 5 10 11.525 99*36.525 /       (3652.5 days)
+
+POST      ####################### POST section begins here #####################
+
+RPTPOST                                 We define the properties output from the 
+  TIMEY WBHP WGOR WOPR WGPR /           following POSTWELL keyword.
+POSTWELL                                We save consolidated time series
+   PRODUCER /                           report for PRODUCER.
+/
+
+RPTPOST                                 We define the properties output from the 
+  NOTHING TIMEY WBHP /                  following POSTWELL keyword.
+POSTWELL                                We save consolidated time series
+   INJECTOR /                           report for INJECTOR.
+/
+
+RPTPOST                            
+   NOTHING TIMEY PRESSURE SGAS /        We save consolidated time series reports
+POSTBLOC                                for the grid blocks (1,1,1) and 
+    1 1 1   /                           (10,10,3).
+   10 10 3  / 
+/
+
+RPTPOST
+   NOTHING I-IJKRES PRESSURE SGAS TIMEY /
+POSTSPEC
+   1* LAYER1.CSV  86 /                  We save parameters in the grid blocks
+POSTBLK                                 i=j in the layer k=1 at 8 years (report                                        
+    1  1  1 /                           step 86). The output file is LAYER1.CSV.
+    2  2  1 /
+    3  3  1 /
+    4  4  1 /
+    5  5  1 /
+    6  6  1 /
+    7  7  1 /
+    8  8  1 /
+    9  9  1 /
+   10 10  1 /
+/
+
+POSTSPEC                                We save parameters in the grid blocks
+   1* LAYER2.CSV  86 /                  i=j in the layer k=1 at 8 years (report
+POSTBLK                                 step 86). The output file is LAYER2.CSV.
+    1  1  2 /
+    2  2  2 /
+    3  3  2 /
+    4  4  2 /
+    5  5  2 /
+    6  6  2 /
+    7  7  2 /
+    8  8  2 /
+    9  9  2 /
+   10 10  2 /
+/
+
+CONVERT                                 We convert the output to ParaView
+                                        compatible format.
+
+END        #####################################################################

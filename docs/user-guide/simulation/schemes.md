@@ -103,7 +103,7 @@ Important outer-loop parameters:
 - `pressure_outer_convergence_tolerance` — relative pressure inter-iterate tolerance for outer-loop convergence.
 - `transport_outer_convergence_tolerance` — absolute saturation inter-iterate tolerance for outer-loop convergence.
 
-Full-SI is appropriate when pressure–saturation coupling is strong (for example, high-rate gas injection, near-critical PVT behaviour, or situations with strong compositional feedback) and you need better coupling than SI provides but want to avoid the complexity or cost of a fully monolithic implicit Jacobian.
+Full-SI is appropriate when pressure-saturation coupling is strong (for example, high-rate gas injection, near-critical PVT behaviour, or situations with strong compositional feedback) and you need better coupling than SI provides but want to avoid the complexity or cost of a fully monolithic implicit Jacobian.
 
 ## Explicit
 
@@ -147,7 +147,7 @@ Lowering these thresholds increases stability at the cost of requiring even smal
 
 A fully monolithic implicit scheme — which treats pressure and saturation together in a single coupled Jacobian and solves them simultaneously — is architecturally interesting because it is unconditionally stable and allows arbitrarily large time steps. However, it is **not currently implemented** in BORES.
 
-Instead, use **Full Sequential Implicit** (described above) when you need strong pressure–saturation coupling. Full-SI achieves most of the stability and coupling benefits without the complexity of assembling and solving a single monolithic system. For most applications, the outer-iteration approach in Full-SI strikes a good balance between accuracy, stability, and computational cost.
+Instead, use **Full Sequential Implicit** (described above) when you need strong pressure-saturation coupling. Full-SI achieves most of the stability and coupling benefits without the complexity of assembling and solving a single monolithic system. For most applications, the outer-iteration approach in Full-SI strikes a good balance between accuracy, stability, and computational cost.
 
 ---
 
@@ -160,11 +160,11 @@ Instead, use **Full Sequential Implicit** (described above) when you need strong
 | Stability | CFL-limited (saturation) | CFL-limited (both) | Unconditionally stable | Unconditionally stable |
 | Cost per step | Moderate | Low | Higher (Newton iterations) | Highest (outer + Newton loops) |
 | Max time step | Moderate | Small | Large | Large |
-| Pressure–saturation coupling | Weak (one-way per step) | Weak | Moderate (implicit) | Strong (outer iterations) |
+| Pressure-saturation coupling | Weak (one-way per step) | Weak | Moderate (implicit) | Strong (outer iterations) |
 | Best for | Most depletion / waterflood | Debugging, small models | CFL-restricted problems | Strong coupling, near-critical |
 | Default | Yes | No | No | No |
 
-**Recommended progression:** Start with IMPES. If the saturation CFL becomes too restrictive (time steps < 0.01 days for field-scale models), switch to SI. If pressure–saturation coupling is strong (high-rate gas injection, near-critical PVT), use Full-SI with `maximum_outer_iterations=5–10`. The explicit scheme is mainly for debugging and education.
+**Recommended progression:** Start with IMPES. If the saturation CFL becomes too restrictive (time steps < 0.01 days for field-scale models), switch to SI. If pressure-saturation coupling is strong (high-rate gas injection, near-critical PVT), use Full-SI with `maximum_outer_iterations=5-10`. The explicit scheme is mainly for debugging and education.
 
 ---
 
