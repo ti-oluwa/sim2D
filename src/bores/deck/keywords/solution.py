@@ -1,3 +1,32 @@
+"""
+SOLUTION section keyword implementations.
+
+The SOLUTION section specifies initial reservoir conditions: either as
+explicit per-cell arrays (`PRESSURE`, `SWAT`, `SGAS`, `RS`,
+`RV`) or via gravity/capillary equilibration (`EQUIL`), or by
+restarting from a previously saved state (`RESTART`).
+
+**Explicit initialisation keywords** (return shape `(n_cells,)`
+float64 arrays):
+
+- `PRESSURE` - initial reservoir pressure (psi in FIELD, bar in
+  METRIC).
+- `SWAT` / `SW` - initial water saturation.
+- `SOIL` / `SO` - initial oil saturation.
+- `SGAS` / `SG` - initial gas saturation.
+- `RS` - initial solution gas-oil ratio.
+- `RV` - initial vaporised oil-gas ratio.
+
+**Equilibration keyword**:
+
+- `EQUIL` - one record per equilibration region specifying datum
+  depth/pressure, contact depths, and capillary pressure at contacts.
+
+**Restart keyword**:
+
+- `RESTART` - resumes from a previously written restart file instead
+  of explicit initial conditions.
+"""
 import typing
 
 import numpy as np

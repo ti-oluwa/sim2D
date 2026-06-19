@@ -8,10 +8,10 @@ import typing
 
 import numpy as np
 
-from bores.deck import FlagKeyword
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.keywords.base import (
     Field,
+    FlagKeyword,
     GridArrayKeyword,
     Keyword,
     RecordKeyword,
@@ -19,7 +19,41 @@ from bores.deck.keywords.base import (
 )
 from bores.typing import FloatArray, ThreeDimensions
 
-__all__ = []
+__all__ = [
+    "SPECGRID",
+    "DIMENS",
+    "COORD",
+    "ZCORN",
+    "MAPAXES",
+    "GRIDUNIT",
+    "MAPUNITS",
+    "MAPUNIT",
+    "PINCHOUT",
+    "PINCH",
+    "TOPS",
+    "DX",
+    "DY",
+    "DZ",
+    "DXV",
+    "DYV",
+    "DZV",
+    "ACTNUM",
+    "MULTX",
+    "MULTY",
+    "MULTZ",
+    "MULTX_MINUX",
+    "MULTY_MINUX",
+    "MULTZ_MINUX",
+    "PORO",
+    "PERMX",
+    "PERMY",
+    "PERMZ",
+    "FAULTS",
+    "MULTFLT",
+    "NNC",
+    "PORV",
+    "NTG",
+]
 
 
 SPECGRID = RecordKeyword(
@@ -458,7 +492,7 @@ file order.  Indices `I1`/`I2`/`J1`/`J2`/`K1`/`K2` are
 *1-based* Eclipse IJK indices, passed through unchanged to the caller.
 """
 
-MULFLT = MultFLTKeyword()
+MULTFLT = MultFLTKeyword()
 """
 `MULTFLT 'NAME' MULTIPLIER / ... /` - per-fault transmissibility multiplier.
 

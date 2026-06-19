@@ -31,8 +31,23 @@ import numpy as np
 
 from bores.deck.keywords.base import Field, PVTTableKeyword
 
-__all__ = []
-
+__all__ = [
+    "DENSITY",
+    "PVTW",
+    "PVDO",
+    "PVTO",
+    "PVCO",
+    "PVDG",
+    "PVTG",
+    "ROCK",
+    "ROCKTAB",
+    "SWOF",
+    "SGOF",
+    "SWFN",
+    "SGFN",
+    "SOF2",
+    "SOF3",
+]
 
 DENSITY = PVTTableKeyword(
     "DENSITY",

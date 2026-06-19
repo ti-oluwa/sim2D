@@ -17,7 +17,25 @@ from bores.deck.keywords.base import (
     RecordKeyword,
 )
 
-__all__ = []
+__all__ = [
+    "OIL",
+    "GAS",
+    "WATER",
+    "DISGAS",
+    "VAPOIL",
+    "FIELD",
+    "METRIC",
+    "LAB",
+    "NOSIM",
+    "UNIFIN",
+    "UNIFOUT",
+    "TITLE",
+    "START",
+    "TABDIMS",
+    "WELLDIMS",
+    "EQLDIMS",
+    "REGDIMS",
+]
 
 
 OIL = FlagKeyword("OIL")
