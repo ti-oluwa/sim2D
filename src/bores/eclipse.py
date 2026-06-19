@@ -105,17 +105,19 @@ class DataFile:
         self,
         source: _TextOrPath,
         *,
-        keywords: typing.Optional[typing.Sequence[KeyWord]] = None,
+        keywords: typing.Optional[typing.Sequence[KeyWord[typing.Any]]] = None,
         expand: bool = False,
     ) -> None:
         text = self._load(source, expand=expand)
         self._text = self._clean(text)
+        self._keywords = {}
+        self._cache = {}
+        
         all_keywords = list(self.DEFAULT_KEYWORDS)
         if keywords:
             all_keywords.extend(keywords)
-
-        self._keywords = {keyword.name.upper(): keyword for keyword in all_keywords}
-        self._cache = {}
+        self.add_keywords(*all_keywords)
+        
 
     def _load(self, source: _TextOrPath, expand: bool = False) -> str: ...
 
@@ -143,3 +145,8 @@ class DataFile:
         if use_cache:
             self._cache[key] = value
         return value
+
+    def add_keywords(self, *keywords: KeyWord[typing.Any]) -> None:
+        if not keywords:
+            return
+        self._keywords.update({keyword.name.upper(): keyword for keyword in keywords})
