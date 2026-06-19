@@ -76,8 +76,8 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
             )
 
         # Eclipse stores pillars in Fortran order (i fastest, then j).
-        # reshape(nx+1, ny+1, 6, order='F') → shape (nx+1, ny+1, 6), i-fastest.
-        # transpose(1, 0, 2) → (ny+1, nx+1, 6) C-order.
+        # reshape(nx+1, ny+1, 6, order='F') -> shape (nx+1, ny+1, 6), i-fastest.
+        # transpose(1, 0, 2) -> (ny+1, nx+1, 6) C-order.
         return (
             np.array(tokens, dtype=np.float64)
             .reshape(dims.nx + 1, dims.ny + 1, 6, order="F")
@@ -114,8 +114,8 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
                 f"{dims.nx}x{dims.ny}x{dims.nz} grid; got {len(tokens)}."
             )
         # Eclipse stores ZCORN in Fortran order: (nx*2) fastest, then ny*2, nz*2.
-        # reshape(nx*2, ny*2, nz*2, order='F') → i-fastest in memory.
-        # transpose(2, 1, 0) → (nz*2, ny*2, nx*2) C-order.
+        # reshape(nx*2, ny*2, nz*2, order='F') -> i-fastest in memory.
+        # transpose(2, 1, 0) -> (nz*2, ny*2, nx*2) C-order.
         return (
             np.array(tokens, dtype=np.float64)
             .reshape(dims.nx * 2, dims.ny * 2, dims.nz * 2, order="F")

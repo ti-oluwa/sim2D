@@ -17,22 +17,13 @@ __all__ = ["DataFile"]
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
 
-DEFAULT_KEYWORDS: typing.Set[Keyword[typing.Any]] = set()
+DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset()
 
 
 class DataFile:
     """
     A parsed Eclipse deck: comment-stripped, `INCLUDE`-resolved text plus a
     registry of `bores.deck.keywords.base.Keyword` objects, exposed through `get`.
-
-    Grid dimensions (`SPECGRID` or `DIMENS`) are resolved once, eagerly,
-    at construction time, because every
-    `bores.deck.keywords.array.GridArrayKeyword` and the
-    corner-point keywords (`COORD`, `ZCORN`) need them to know expected
-    array lengths and to resolve `BOX` operator scopes.
-
-    Parsed keyword values are cached; use `use_cache=False` to force
-    re-parsing (mainly useful in tests).
 
     **Usage**:
 

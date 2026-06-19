@@ -586,7 +586,7 @@ def _compute_corner_point_geometry(
         for local_idx, local_face in enumerate(_HEXAHEDRON_FACES_ZDOWN):
             fvi = [vtk_verts[v] for v in local_face]
 
-            # Skip degenerate faces (repeated vertices → zero area)
+            # Skip degenerate faces (repeated vertices -> zero area)
             if len(set(fvi)) < len(fvi):
                 n_degenerate += 1
                 continue
@@ -667,7 +667,7 @@ def _resolve_fault_face_indices(
     For each fault record, iterates over the declared IJK range and
     face direction to identify the structured cell pair
     `(cell_a, cell_b)` on either side of the fault plane.  Those pairs
-    are mapped to face indices using a cell-pair → face-index lookup
+    are mapped to face indices using a cell-pair -> face-index lookup
     table built from `face_cell_indices`.
 
     Faces that cannot be resolved (e.g. one or both cells are inactive,
@@ -682,7 +682,7 @@ def _resolve_fault_face_indices(
     :param nx: Structured grid dimension in x.
     :param ny: Structured grid dimension in y.
     :param nz: Structured grid dimension in z.
-    :returns: Dict mapping fault name → 1-D int32 array of face indices.
+    :returns: Dict mapping fault name -> 1-D int32 array of face indices.
     """
     # Build: structured (k, j, i) -> unstructured cell index
     kji_to_cell: typing.Dict[typing.Tuple[int, int, int], int] = {}
@@ -710,9 +710,9 @@ def _resolve_fault_face_indices(
 
         # Convert FAULTS direction to the offset of the neighbour cell
         # relative to the owner cell.
-        # I / I-  → neighbour is at i±1, same j, k
-        # J / J-  → neighbour is at j±1, same i, k
-        # K / K-  → neighbour is at k±1, same i, j
+        # I / I-  -> neighbour is at i±1, same j, k
+        # J / J-  -> neighbour is at j±1, same i, k
+        # K / K-  -> neighbour is at k±1, same i, j
         if face_direction in ("I", "I-"):
             di, dj, dk = 1, 0, 0
         elif face_direction in ("J", "J-"):

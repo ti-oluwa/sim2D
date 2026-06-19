@@ -1,6 +1,6 @@
 """
 Base implementation for Eclipse keyword parsers, and concrete implementations
-for various keyword patterns.
+for various common keyword patterns.
 """
 
 import abc
@@ -13,9 +13,9 @@ import numpy.typing as npt
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.operators import (
-    BoxOperation,
-    apply_box_operation,
-    resolve_box_operations,
+    Operation,
+    apply_operation,
+    resolve_operations,
 )
 from bores.typing import FloatArray, OneDimension
 
@@ -29,7 +29,6 @@ __all__ = [
     "DateKeyword",
     "DatesKeyword",
     "PVTTableKeyword",
-    "TStepKeyword",
 ]
 
 T = typing.TypeVar("T")
@@ -359,8 +358,8 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                         f"got {len(tokens)}."
                     )
             else:  # kind == "operate"
-                operation: BoxOperation = payload  # type: ignore[assignment]
-                apply_box_operation(
+                operation: Operation = payload  # type: ignore[assignment]
+                apply_operation(
                     array,
                     operation,
                     dims,
@@ -377,7 +376,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         """
         Build the ordered `(order, kind, payload)` events affecting this
         keyword: `("assign", tokens)` for each of its own explicit
-        data-block records, interleaved with `("operate", BoxOperation)`
+        data-block records, interleaved with `("operate", Operation)`
         for every operator record that targets it.
 
         Both event kinds share one `order` namespace — a
@@ -403,7 +402,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 raw_tokens = clean_tokens
             events.append(((record.start, 0), "assign", raw_tokens))
 
-        for op in resolve_box_operations(deck, dims):
+        for op in resolve_operations(deck, dims):
             if op.target == self.name:
                 events.append((op.order, "operate", op))
 
@@ -717,7 +716,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
                 continue
 
             if len(tokens) == 1:
-                # Single numeric token → primary-key introducer.
+                # Single numeric token -> primary-key introducer.
                 try:
                     current_pk_value = float(tokens[0])
                 except ValueError:
@@ -725,7 +724,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
                     pass
                 continue
 
-            # Multiple tokens → a data row.  Prepend the primary-key column.
+            # Multiple tokens -> a data row.  Prepend the primary-key column.
             row = self._row_from_tokens(tokens)
             if current_pk_value is not None:
                 row[pk_col_name] = current_pk_value
@@ -736,48 +735,3 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
             tables.append(current_table)
 
         return tables
-
-
-class TStepKeyword(Keyword[typing.List[float]]):
-    """
-    The `TSTEP` keyword: a flat list of time-step sizes terminated by
-    `/`.
-
-    `N*value` repeat syntax is already expanded by
-    `bores.deck.core.tokenise`, so `30*30` correctly yields
-    thirty entries of `30.0`.
-
-    Multiple `TSTEP` blocks in the same deck are concatenated in file
-    order, consistent with Eclipse semantics.
-
-    `parse` returns a `List[float]`, or `None` when the keyword
-    is absent.
-
-    Example deck fragment:
-
-        TSTEP
-         30 30 30 90 /
-    """
-
-    def __init__(self) -> None:
-        super().__init__("TSTEP")
-
-    def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
-    ) -> typing.Optional[typing.List[float]]:
-        records = deck.records_for(self.name)
-        if not records:
-            return None
-
-        steps: typing.List[float] = []
-        for record in records:
-            tokens = tokenise(record.body)
-            for tok in tokens:
-                try:
-                    steps.append(float(tok))
-                except ValueError as exc:
-                    raise DeckParseError(
-                        f"TSTEP: non-numeric time-step value {tok!r}: {exc}"
-                    ) from exc
-
-        return steps or None

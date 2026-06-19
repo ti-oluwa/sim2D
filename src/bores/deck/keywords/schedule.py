@@ -39,13 +39,8 @@ file order alongside the `DATES`/`TSTEP` timeline.
 
 import typing
 
-from bores.deck.core import DeckParseError
-from bores.deck.keywords.base import (
-    DatesKeyword,
-    Field,
-    RepeatedRecordKeyword,
-    TStepKeyword,
-)
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.keywords.base import DatesKeyword, Field, Keyword, RepeatedRecordKeyword
 
 __all__ = [
     "DATES",
@@ -74,13 +69,56 @@ See `bores.deck.keywords.base.DatesKeyword`. `parse` returns a
 `List[datetime.date]`, or `None` if absent.
 """
 
+
+class TStepKeyword(Keyword[typing.List[float]]):
+    """
+    The `TSTEP` keyword: a flat list of time-step sizes terminated by
+    `/`.
+
+    `N*value` repeat syntax is already expanded by
+    `bores.deck.core.tokenise`, so `30*30` correctly yields
+    thirty entries of `30.0`.
+
+    Multiple `TSTEP` blocks in the same deck are concatenated in file
+    order, consistent with Eclipse semantics.
+
+    `parse` returns a `List[float]`, or `None` when the keyword
+    is absent.
+
+    Example deck fragment:
+
+        TSTEP
+         30 30 30 90 /
+    """
+
+    def __init__(self) -> None:
+        super().__init__("TSTEP")
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[typing.List[float]]:
+        records = deck.records_for(self.name)
+        if not records:
+            return None
+
+        steps: typing.List[float] = []
+        for record in records:
+            tokens = tokenise(record.body)
+            for token in tokens:
+                try:
+                    steps.append(float(token))
+                except ValueError as exc:
+                    raise DeckParseError(
+                        f"TSTEP: non-numeric time-step value {token!r}: {exc}"
+                    ) from exc
+
+        return steps or None
+
+
 TSTEP = TStepKeyword()
 """
 `TSTEP  dt1 dt2 ... /` - advance simulated time by one or more explicit
 step sizes (in the deck's declared time unit, days for FIELD/METRIC).
-
-See `bores.deck.keywords.base.TStepKeyword`. `parse` returns a
-`List[float]`, or `None` if absent.
 """
 
 WELSPECS = RepeatedRecordKeyword(
@@ -254,9 +292,7 @@ class WelOpenKeyword(RepeatedRecordKeyword):
     that location (or layer range `k1`-`k2` at column `(i, j)`).
     """
 
-    _VALID_STATUSES: typing.FrozenSet[str] = frozenset(
-        {"OPEN", "SHUT", "STOP", "AUTO"}
-    )
+    _VALID_STATUSES: typing.FrozenSet[str] = frozenset({"OPEN", "SHUT", "STOP", "AUTO"})
 
     def __init__(self) -> None:
         super().__init__(

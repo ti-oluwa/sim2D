@@ -25,7 +25,7 @@ class GridDimensions(typing.NamedTuple):
     Structured grid extent, as declared by `SPECGRID` (or `DIMENS`).
 
     Needed by every per-cell array keyword (for expected length / reshape)
-    and by `BOX` / operator resolution (for IJK → flat index mapping).
+    and by `BOX` / operator resolution (for IJK -> flat index mapping).
     """
 
     nx: int

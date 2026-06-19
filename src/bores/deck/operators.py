@@ -14,9 +14,9 @@ from bores.deck.core import Deck, GridDimensions, tokenise
 from bores.typing import FloatArray, OneDimension
 
 __all__ = [
-    "BoxOperation",
-    "resolve_box_operations",
-    "apply_box_operation",
+    "Operation",
+    "resolve_operations",
+    "apply_operation",
     "OPERATOR_CONTROL_KEYWORDS",
 ]
 
@@ -36,7 +36,7 @@ per-cell data; never matched as a plain
 """
 
 
-class BoxOperation(typing.NamedTuple):
+class Operation(typing.NamedTuple):
     """One resolved operator instruction (`EQUALS` / `ADD` / etc.)."""
 
     op: str
@@ -89,12 +89,12 @@ def _clamp_box(
     return i1, i2, j1, j2, k1, k2
 
 
-def resolve_box_operations(
+def resolve_operations(
     deck: Deck, dims: GridDimensions
-) -> typing.List[BoxOperation]:
+) -> typing.List[Operation]:
     """
     Walk every `BOX` / `ENDBOX` / operator record in deck order and
-    resolve each operator record to a concrete `BoxOperation`.
+    resolve each operator record to a concrete `Operation`.
 
     `BOX` updates the active box for all subsequent operator records until
     `ENDBOX` resets it to the full grid extent.  The active box is
@@ -108,7 +108,7 @@ def resolve_box_operations(
     """
     default_box = _default_box(dims)
     current_box = default_box
-    operations: typing.List[BoxOperation] = []
+    operations: typing.List[Operation] = []
 
     for record in deck.records:
         if record.keyword == _BOX_KEYWORD:
@@ -147,7 +147,7 @@ def _parse_operator_records(
     op: str,
     box: typing.Tuple[int, int, int, int, int, int],
     dims: GridDimensions,
-) -> typing.Iterator[BoxOperation]:
+) -> typing.Iterator[Operation]:
     """
     Parse the (possibly multi-record) body of a single operator block.
 
@@ -162,7 +162,7 @@ def _parse_operator_records(
     :param op: Operator name.
     :param box: Ambient box active at this point in the deck.
     :param dims: Grid dimensions, used to clamp per-record box overrides.
-    :yields: One `BoxOperation` per record line (`order` field is
+    :yields: One `Operation` per record line (`order` field is
         a placeholder `(0, 0)` — the caller replaces it).
     """
     for line in body.split("/"):
@@ -211,7 +211,7 @@ def _parse_operator_records(
             except ValueError:
                 pass  # fall back to ambient box
 
-        yield BoxOperation(
+        yield Operation(
             op=op,
             target=target,
             value=value,
@@ -221,21 +221,21 @@ def _parse_operator_records(
         )
 
 
-def apply_box_operation(
+def apply_operation(
     array: FloatArray[OneDimension],
-    operation: BoxOperation,
+    operation: Operation,
     dims: GridDimensions,
     resolve_source: typing.Callable[[str], typing.Optional[FloatArray[OneDimension]]],
 ) -> None:
     """
-    Apply one resolved `BoxOperation` to `array` in place, over its box.
+    Apply one resolved `Operation` to `array` in place, over its box.
 
     :param array: Flat `(n_cells,)` array for the operation's target
         keyword (already validated to belong to that keyword).
     :param operation: The resolved operation to apply.
-    :param dims: Grid extent (for IJK → flat index mapping).
+    :param dims: Grid extent (for IJK -> flat index mapping).
     :param resolve_source: Callback returning the current array for a given
-        keyword name, used by `COPY` to fetch the source array.  May
+        keyword name, used by `COPY` to fetch the source array. May
         return `None` if the source keyword has no data yet.
     """
     i1, i2, j1, j2, k1, k2 = operation.box

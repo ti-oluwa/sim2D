@@ -57,7 +57,7 @@ class ValidationIssue:
         tag = "[CORRECTED] " if self.corrected else ""
         base = f"[{self.severity.value}] {self.check}: {tag}{self.message}"
         if self.detail:
-            base += f"\n  → {self.detail}"
+            base += f"\n  -> {self.detail}"
         return base
 
 
