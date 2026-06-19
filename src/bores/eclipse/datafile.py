@@ -1,23 +1,7 @@
-"""
-Top-level entry point for parsing Eclipse / GRDECL keyword decks.
-
-Usage:
-
-```python
-from bores.eclipse import DataFile
-from bores.eclipse.keywords import Poro, PermX, Faults
-
-df = DataFile("path/to/model.DATA")
-poro = df.get("PORO")    # ndarray (n_cells,) or None
-faults = df.get("FAULTS")  # List[Dict] or None
-
-# With extra keywords not in the default set:
-df2 = DataFile(text, keywords=[MyCustomKeyword()])
-val = df2.get("MYCUSTOM")
-```
-"""
+"""Top-level entry point for parsing Eclipse / GRDECL keyword decks."""
 
 import typing
+from collections.abc import Collection
 
 from bores.eclipse.core import (
     Deck,
@@ -27,39 +11,13 @@ from bores.eclipse.core import (
     strip_comments,
 )
 from bores.eclipse.keywords.base import Keyword
-from bores.eclipse.keywords.geometry import (
-    Coord,
-    Dimens,
-    GridUnit,
-    MapAxes,
-    MapUnits,
-    Pinch,
-    SpecGrid,
-    ZCorn,
-)
-from bores.eclipse.keywords.petrophysics import (
-    ActNum,
-    Dx,
-    Dy,
-    Dz,
-    MultX,
-    MultXMinus,
-    MultY,
-    MultYMinus,
-    MultZ,
-    MultZMinus,
-    PermX,
-    PermY,
-    PermZ,
-    Poro,
-    Tops,
-)
-from bores.eclipse.keywords.structure import NNC, Faults, MultFLT
 
 __all__ = ["DataFile"]
 
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
+
+DEFAULT_KEYWORDS: typing.Set[Keyword[typing.Any]] = set()
 
 
 class DataFile:
@@ -79,22 +37,21 @@ class DataFile:
     **Usage**:
 
     ```python
-    from bores.eclipse import DataFile
-    from bores.eclipse.keywords import Poro, PermX, Faults
+    from bores.eclipse import DataFile, DEFAULT_KEYWORDS
 
     df = DataFile("path/to/model.DATA")
     poro = df.get("PORO")    # ndarray (n_cells,) or None
     faults = df.get("FAULTS")  # List[Dict] or None
 
     # With extra keywords not in the default set:
-    df2 = DataFile(text, keywords=[MyCustomKeyword()])
+    df2 = DataFile(text, keywords=DEFAULT_KEYWORDS | [MyCustomKeyword()])
     val = df2.get("MYCUSTOM")
     ```
 
     **Adding a new keyword**:
 
     ```python
-    from bores.eclipse.keywords import GridArrayKeyword
+    from bores.eclipse.keywords.base import GridArrayKeyword
 
     df.add_keywords(GridArrayKeyword("MYARRAY"))
     val = df.get("MYARRAY")
@@ -104,43 +61,7 @@ class DataFile:
     ```python
     df = DataFile(source, keywords=[GridArrayKeyword("MYARRAY")])
     ```
-
     """
-
-    DEFAULT_KEYWORDS: typing.ClassVar[typing.List[Keyword[typing.Any]]] = [
-        # Dimension
-        SpecGrid(),
-        Dimens(),
-        # Geometry
-        MapAxes(),
-        GridUnit(),
-        MapUnits(),
-        Pinch(),
-        Coord(),
-        ZCorn(),
-        # Geometry arrays
-        Tops(),
-        Dx(),
-        Dy(),
-        Dz(),
-        ActNum(),
-        # Structure
-        Faults(),
-        MultFLT(),
-        NNC(),
-        # Transmissibility multipliers
-        MultX(),
-        MultXMinus(),
-        MultY(),
-        MultYMinus(),
-        MultZ(),
-        MultZMinus(),
-        # Petrophysics (common subset; callers can add more)
-        Poro(),
-        PermX(),
-        PermY(),
-        PermZ(),
-    ]
 
     __slots__ = ("_deck", "_keywords", "_cache", "dimensions")
 
@@ -148,20 +69,17 @@ class DataFile:
         self,
         source: _TextOrPath,
         *,
-        keywords: typing.Optional[typing.Sequence[Keyword[typing.Any]]] = None,
+        keywords: Collection[Keyword[typing.Any]] = DEFAULT_KEYWORDS,
         encoding: str = "ascii",
     ) -> None:
         """
         :param source: A file path, raw deck text `str`, or raw deck
-            `bytes`.  Filesystem paths and `Path` objects are read from
+            `bytes`. Filesystem paths and `Path` objects are read from
             disk; `INCLUDE` directives are resolved relative to the source
-            file's directory.  Raw text input drops `INCLUDE` directives
-            with a warning.
-        :param keywords: Additional `bores.eclipse.keywords.base.Keyword`
-            instances to register *in addition to* `DEFAULT_KEYWORDS`.
-            Keywords with the same name override the default.
-        :param encoding: Text encoding for file/bytes input (default
-            `"ascii"`).
+            file's directory. Raw text input drops `INCLUDE` directives with a warning.
+        :param keywords: Supported `bores.eclipse.keywords.base.Keyword`
+            instances. Only supported keywords can be read from the file.
+        :param encoding: Text encoding for file/bytes input (default `"ascii"`).
         :raises DeckParseError: If a file cannot be read.
         """
         text = resolve_source(source, encoding=encoding)
@@ -169,11 +87,8 @@ class DataFile:
         self._deck = Deck(clean_text)
 
         self._keywords: typing.Dict[str, Keyword[typing.Any]] = {
-            kw.name: kw for kw in self.DEFAULT_KEYWORDS
+            kw.name: kw for kw in keywords
         }
-        if keywords:
-            self._keywords.update({kw.name: kw for kw in keywords})
-
         self._cache: typing.Dict[str, typing.Any] = {}
         self.dimensions: typing.Optional[GridDimensions] = self._resolve_dimensions()
 
@@ -225,37 +140,43 @@ class DataFile:
         return self._deck.has(name.upper())
 
     def get(
-        self, name: str, /, *, use_cache: bool = True
+        self, k: typing.Union[str, Keyword[typing.Any]], /, *, use_cache: bool = False
     ) -> typing.Optional[typing.Any]:
         """
-        Parse and return the value of keyword `name`.
+        Parse and return the value of keyword `k`.
 
-        :param name: Keyword name, case-insensitive.
+        :param k: Keyword `k`, case-insensitive or a `Keyword` object (never cached if `Keyword` object).
         :param use_cache: Whether to read/write the per-`DataFile`
             value cache. Set `False` to force re-parsing (mainly for testing).
         :returns: The keyword's parsed value, or `None` if it is absent
             from the deck or not registered.
         """
-        key = name.upper()
+        if isinstance(k, Keyword):
+            return k.parse(self._deck, self.dimensions)
+
+        key = k.upper()
         if key not in self._keywords:
             return None
-        
+
         if use_cache and key in self._cache:
             return self._cache[key]
-        
+
         value = self._keywords[key].parse(self._deck, self.dimensions)
         if use_cache:
             self._cache[key] = value
         return value
 
-    def get_many(
-        self, *names: str, use_cache: bool = True
+    def gets(
+        self, *ks: typing.Union[str, Keyword[typing.Any]], use_cache: bool = False
     ) -> typing.Dict[str, typing.Optional[typing.Any]]:
         """
         Convenience batch form of `get`.
 
-        :param names: Keyword names to retrieve.
+        :param ks: Keyword ks to retrieve.
         :param use_cache: Passed through to `get`.
         :returns: `{name: value}` dict in the order requested.
         """
-        return {name: self.get(name, use_cache=use_cache) for name in names}
+        return {
+            k.name if isinstance(k, Keyword) else k: self.get(k, use_cache=use_cache)
+            for k in ks
+        }

@@ -228,8 +228,7 @@ def apply_box_operation(
     resolve_source: typing.Callable[[str], typing.Optional[FloatArray[OneDimension]]],
 ) -> None:
     """
-    Apply one resolved `BoxOperation` to `array` in place, over
-    its box.
+    Apply one resolved `BoxOperation` to `array` in place, over its box.
 
     :param array: Flat `(n_cells,)` array for the operation's target
         keyword (already validated to belong to that keyword).

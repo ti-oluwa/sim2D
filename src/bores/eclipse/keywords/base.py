@@ -4,6 +4,7 @@ for various keyword patterns.
 """
 
 import abc
+import datetime
 import typing
 import warnings
 
@@ -23,7 +24,12 @@ __all__ = [
     "Field",
     "RecordKeyword",
     "RepeatedRecordKeyword",
-    "GridArrayKeyword"
+    "GridArrayKeyword",
+    "FlagKeyword",
+    "DateKeyword",
+    "DatesKeyword",
+    "PVTTableKeyword",
+    "TStepKeyword",
 ]
 
 T = typing.TypeVar("T")
@@ -92,6 +98,9 @@ class Keyword(typing.Generic[T], abc.ABC):
         """Return whether this keyword occurs anywhere in `deck`."""
         return deck.has(self.name)
 
+    def __hash__(self) -> int:
+        return hash(self.name)
+
 
 def _parse_tokens_into_dict(
     keyword_name: str,
@@ -138,7 +147,7 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
     (`SPECGRID`, `MAPAXES`, `GRIDUNIT`, `PINCH`).
 
     Subclasses declare `fields: Sequence[Field]` describing each
-    positional token; :meth:`parse` returns a `dict` keyed by field name.
+    positional token; `parse` returns a `dict` keyed by field name.
     Trailing optional fields (`required=False`) fall back to their
     `default` when the deck record has fewer tokens than declared fields.
     """
@@ -400,3 +409,376 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         events.sort(key=lambda e: e[0])
         return events
+
+
+_MONTH_MAP: typing.Dict[str, int] = {
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
+}
+
+
+def _parse_eclipse_date(
+    tokens: typing.Sequence[str], keyword_name: str
+) -> datetime.date:
+    """
+    Parse a three-token Eclipse date `[day, month, year]` into a
+    :class:`datetime.date`.
+
+    Eclipse month tokens may be bare (`JAN`) or quoted (`'JAN'`);
+    quoting is already stripped by `bores.eclipse.core.tokenise`.
+
+    :param tokens: At least three string tokens: day, month abbreviation, year.
+    :param keyword_name: Keyword name for error messages.
+    :returns: Parsed date.
+    :raises DeckParseError: If the tokens cannot be parsed as a valid date.
+    """
+    if len(tokens) < 3:
+        raise DeckParseError(
+            f"{keyword_name}: expected 3 tokens for a date (DAY MON YEAR); "
+            f"got {len(tokens)}: {list(tokens)!r}."
+        )
+    try:
+        day = int(tokens[0])
+    except ValueError as exc:
+        raise DeckParseError(
+            f"{keyword_name}: day token {tokens[0]!r} is not an integer."
+        ) from exc
+
+    month_str = tokens[1].upper()
+    month = _MONTH_MAP.get(month_str)
+    if month is None:
+        raise DeckParseError(
+            f"{keyword_name}: unrecognised month abbreviation {tokens[1]!r}. "
+            f"Expected one of {sorted(_MONTH_MAP)}."
+        )
+
+    try:
+        year = int(tokens[2])
+    except ValueError as exc:
+        raise DeckParseError(
+            f"{keyword_name}: year token {tokens[2]!r} is not an integer."
+        ) from exc
+
+    try:
+        return datetime.date(year, month, day)
+    except ValueError as exc:
+        raise DeckParseError(
+            f"{keyword_name}: invalid date {day}/{month}/{year}: {exc}"
+        ) from exc
+
+
+class FlagKeyword(Keyword[bool]):
+    """
+    A bare presence-only switch keyword that carries no data section.
+
+    Examples: `OIL`, `GAS`, `WATER`, `DISGAS`, `VAPOIL`,
+    `FIELD`, `METRIC`, `LAB`, `NOSIM`, `UNIFIN`, `UNIFOUT`.
+
+    `parse` returns `True` when the keyword appears anywhere in
+    the deck, `False` otherwise.  It never returns `None` so callers
+    can always do a truthiness test.
+    """
+
+    def parse(self, deck: Deck, dims: typing.Optional[GridDimensions]) -> bool:
+        """
+        :returns: `True` if the keyword is present in the deck,
+            `False` if absent.
+        """
+        return deck.has(self.name)
+
+
+class DateKeyword(Keyword[datetime.date]):
+    """
+    A keyword whose single record is an Eclipse-format date
+    `D MON YYYY /`.
+
+    Used for `START`.
+
+    `parse` returns a :class:`datetime.date`, or `None` when the
+    keyword is absent.
+    """
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[datetime.date]:
+        record = deck.first_record_for(self.name)
+        if record is None:
+            return None
+        tokens = tokenise(record.body)
+        return _parse_eclipse_date(tokens, self.name)
+
+
+class DatesKeyword(Keyword[typing.List[datetime.date]]):
+    """
+    The `DATES` keyword: a sequence of one or more `/`-terminated
+    date entries inside one `DATES … /` block, each of the form
+    `D MON YYYY /`.
+
+    Multiple `DATES` blocks in the same deck are concatenated in file
+    order and returned as a single flat list.
+
+    `parse` returns a list of :class:`datetime.date` objects, or
+    `None` when the keyword is absent.
+
+    Example deck fragment::
+
+        DATES
+         1 JAN 2020 /
+         1 FEB 2020 /
+        /
+    """
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[typing.List[datetime.date]]:
+        records = deck.records_for(self.name)
+        if not records:
+            return None
+
+        dates: typing.List[datetime.date] = []
+        for record in records:
+            for segment in record.body.split("/"):
+                tokens = tokenise(segment)
+                if not tokens:
+                    continue
+                dates.append(_parse_eclipse_date(tokens, self.name))
+
+        return dates or None
+
+
+PVTRow = typing.Dict[str, typing.Any]
+"""One row of a PVT/saturation table: a `{column_name: value}` dict."""
+
+PVTTable = typing.List[PVTRow]
+"""One saturation/PVT table: a list of row dicts in ascending primary-key order."""
+
+
+class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
+    """
+    A keyword whose body contains one or more tabulated data blocks,
+    each terminated by `/`.  Multiple keyword occurrences (e.g. one per
+    PVT region) are collected in order.
+
+    This covers two sub-patterns:
+
+    **Simple (immiscible) tables** — every `/`-terminated segment is one
+    complete row; all rows in a block share the same column layout.
+    Examples: `SWOF`, `SGOF`, `PVDG`, `PVDO`, `SWFN`, `SGFN`,
+    `SOF2`, `SOF3`, `ROCK`, `DENSITY`, `PVTW`.
+
+    **Miscible (saturated/under-saturated) tables** — a single primary-key
+    value on its own `/`-separated segment introduces a new "inner table",
+    and subsequent segments are rows belonging to that inner table until the
+    next primary-key segment or a double `//` terminates the table.
+    Examples: `PVTO`, `PVTG`.
+
+    :param name: Keyword name.
+    :param columns: Column descriptors for each field in a data row.
+    :param primary_key: If not `None`, this column name is the
+        "outer" key used in miscible (bracketed) PVT tables such as
+        `PVTO` / `PVTG`.  When `None`, the table is flat (immiscible
+        / simple-tabular).
+    :param table_terminator: The string that separates tables within one
+        keyword block (default `"/"` — i.e. every block is one table).
+        Pass `"//"` for the double-slash convention used by some keywords.
+
+    The parsed value is `List[List[Dict]]` — a list of tables (one per
+    keyword occurrence / PVT region), each table being a list of row dicts.
+    For miscible tables the `primary_key` field is duplicated into every
+    inner-table row for convenience.
+    """
+
+    __slots__ = ("columns", "primary_key")
+
+    def __init__(
+        self,
+        name: str,
+        columns: typing.Sequence[Field],
+        *,
+        primary_key: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(name)
+        self.columns: typing.List[Field] = list(columns)
+        self.primary_key = primary_key
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[typing.List[PVTTable]]:
+        records = deck.records_for(self.name)
+        if not records:
+            return None
+
+        all_tables: typing.List[PVTTable] = []
+        for record in records:
+            if self.primary_key is not None:
+                tables = self._parse_miscible(record.body)
+            else:
+                tables = [self._parse_flat(record.body)]
+            all_tables.extend(tables)
+
+        return all_tables or None
+
+    def _row_from_tokens(self, tokens: typing.Sequence[str]) -> PVTRow:
+        """
+        Convert a token list to a row dict using `self.columns`.
+
+        Trailing optional columns that are absent from `tokens` fall back
+        to their declared `default` values.  The Eclipse `1*` default
+        designator is treated as absent (falls back to `default`).
+        """
+        row: PVTRow = {}
+        for idx, col in enumerate(self.columns):
+            if idx < len(tokens):
+                raw = tokens[idx]
+                if raw == "1*":
+                    # Eclipse default designator — use the column default.
+                    if col.required:
+                        raise DeckParseError(
+                            f"{self.name}: required column {col.name!r} "
+                            "has a default designator ('1*') but no default value."
+                        )
+                    row[col.name] = col.default
+                else:
+                    try:
+                        row[col.name] = col.type(raw)
+                    except ValueError as exc:
+                        if col.required:
+                            raise DeckParseError(
+                                f"{self.name}: column {col.name!r} got invalid "
+                                f"value {raw!r}: {exc}"
+                            ) from exc
+                        row[col.name] = col.default
+            elif col.required:
+                raise DeckParseError(
+                    f"{self.name}: missing required column {col.name!r} "
+                    f"(got {len(tokens)} token(s), need at least {idx + 1})."
+                )
+            else:
+                row[col.name] = col.default
+        return row
+
+    def _parse_flat(self, body: str) -> PVTTable:
+        """
+        Parse a flat (immiscible/simple) table body: every `/`-delimited
+        segment is one row.
+        """
+        table: PVTTable = []
+        for segment in body.split("/"):
+            tokens = tokenise(segment)
+            if not tokens:
+                continue
+            table.append(self._row_from_tokens(tokens))
+        return table
+
+    def _parse_miscible(self, body: str) -> typing.List[PVTTable]:
+        """
+        Parse a miscible (PVTO/PVTG-style) keyword body.
+
+        The convention is:
+        - A segment with exactly one token that is a number acts as a
+          primary-key introducer (e.g. Rs value for PVTO).
+        - Subsequent segments (until the next single-token segment or an
+          empty segment that follows a full table) are inner rows.
+
+        Each primary-key value starts a new inner table; one keyword
+        occurrence can contain multiple inner tables separated by blank `/`
+        lines.  The function returns a **list of tables** (one per
+        outer-key group, concatenated across all `//`-separated blocks).
+        """
+        tables: typing.List[PVTTable] = []
+        current_table: PVTTable = []
+        current_pk_value: typing.Optional[float] = None
+        pk_col_name = self.primary_key
+        assert pk_col_name is not None  # guarded by caller
+
+        segments = body.split("/")
+        i = 0
+        while i < len(segments):
+            seg = segments[i]
+            tokens = tokenise(seg)
+            i += 1
+
+            if not tokens:
+                # An empty segment signals the end of the current inner
+                # table group.  If we have accumulated rows, save the table.
+                if current_table:
+                    tables.append(current_table)
+                    current_table = []
+                    current_pk_value = None
+                continue
+
+            if len(tokens) == 1:
+                # Single numeric token → primary-key introducer.
+                try:
+                    current_pk_value = float(tokens[0])
+                except ValueError:
+                    # Shouldn't happen in well-formed decks, but be lenient.
+                    pass
+                continue
+
+            # Multiple tokens → a data row.  Prepend the primary-key column.
+            row = self._row_from_tokens(tokens)
+            if current_pk_value is not None:
+                row[pk_col_name] = current_pk_value
+            current_table.append(row)
+
+        # Flush any remaining rows.
+        if current_table:
+            tables.append(current_table)
+
+        return tables
+
+
+class TStepKeyword(Keyword[typing.List[float]]):
+    """
+    The `TSTEP` keyword: a flat list of time-step sizes terminated by
+    `/`.
+
+    `N*value` repeat syntax is already expanded by
+    `bores.eclipse.core.tokenise`, so `30*30` correctly yields
+    thirty entries of `30.0`.
+
+    Multiple `TSTEP` blocks in the same deck are concatenated in file
+    order, consistent with Eclipse semantics.
+
+    `parse` returns a `List[float]`, or `None` when the keyword
+    is absent.
+
+    Example deck fragment:
+
+        TSTEP
+         30 30 30 90 /
+    """
+
+    def __init__(self) -> None:
+        super().__init__("TSTEP")
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[typing.List[float]]:
+        records = deck.records_for(self.name)
+        if not records:
+            return None
+
+        steps: typing.List[float] = []
+        for record in records:
+            tokens = tokenise(record.body)
+            for tok in tokens:
+                try:
+                    steps.append(float(tok))
+                except ValueError as exc:
+                    raise DeckParseError(
+                        f"TSTEP: non-numeric time-step value {tok!r}: {exc}"
+                    ) from exc
+
+        return steps or None
