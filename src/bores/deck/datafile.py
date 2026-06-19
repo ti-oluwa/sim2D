@@ -3,14 +3,14 @@
 import typing
 from collections.abc import Collection
 
-from bores.eclipse.core import (
+from bores.deck.core import (
     Deck,
     GridDimensions,
     _TextOrPath,
     resolve_source,
     strip_comments,
 )
-from bores.eclipse.keywords.base import Keyword
+from bores.deck.keywords.base import Keyword
 
 __all__ = ["DataFile"]
 
@@ -23,11 +23,11 @@ DEFAULT_KEYWORDS: typing.Set[Keyword[typing.Any]] = set()
 class DataFile:
     """
     A parsed Eclipse deck: comment-stripped, `INCLUDE`-resolved text plus a
-    registry of `bores.eclipse.keywords.base.Keyword` objects, exposed through `get`.
+    registry of `bores.deck.keywords.base.Keyword` objects, exposed through `get`.
 
     Grid dimensions (`SPECGRID` or `DIMENS`) are resolved once, eagerly,
     at construction time, because every
-    `bores.eclipse.keywords.array.GridArrayKeyword` and the
+    `bores.deck.keywords.array.GridArrayKeyword` and the
     corner-point keywords (`COORD`, `ZCORN`) need them to know expected
     array lengths and to resolve `BOX` operator scopes.
 
@@ -37,7 +37,7 @@ class DataFile:
     **Usage**:
 
     ```python
-    from bores.eclipse import DataFile, DEFAULT_KEYWORDS
+    from bores.deck import DataFile, DEFAULT_KEYWORDS
 
     df = DataFile("path/to/model.DATA")
     poro = df.get("PORO")    # ndarray (n_cells,) or None
@@ -51,7 +51,7 @@ class DataFile:
     **Adding a new keyword**:
 
     ```python
-    from bores.eclipse.keywords.base import GridArrayKeyword
+    from bores.deck.keywords.base import GridArrayKeyword
 
     df.add_keywords(GridArrayKeyword("MYARRAY"))
     val = df.get("MYARRAY")
@@ -77,7 +77,7 @@ class DataFile:
             `bytes`. Filesystem paths and `Path` objects are read from
             disk; `INCLUDE` directives are resolved relative to the source
             file's directory. Raw text input drops `INCLUDE` directives with a warning.
-        :param keywords: Supported `bores.eclipse.keywords.base.Keyword`
+        :param keywords: Supported `bores.deck.keywords.base.Keyword`
             instances. Only supported keywords can be read from the file.
         :param encoding: Text encoding for file/bytes input (default `"ascii"`).
         :raises DeckParseError: If a file cannot be read.
@@ -96,7 +96,7 @@ class DataFile:
         """
         Resolve grid extent from `SPECGRID` (preferred) or `DIMENS`.
 
-        :returns: A `bores.eclipse.core.GridDimensions`, or `None`
+        :returns: A `bores.deck.core.GridDimensions`, or `None`
             if neither keyword is present (decks consisting only of e.g.
             PVT / relperm tables).
         """
@@ -119,7 +119,7 @@ class DataFile:
 
     @property
     def deck(self) -> Deck:
-        """The underlying scanned `bores.eclipse.core.Deck`."""
+        """The underlying scanned `bores.deck.core.Deck`."""
         return self._deck
 
     def add_keywords(self, *keywords: Keyword[typing.Any]) -> None:
@@ -128,7 +128,7 @@ class DataFile:
 
         Clears any cached value for a keyword name that is being replaced.
 
-        :param keywords: One or more `bores.eclipse.keywords.base.Keyword`
+        :param keywords: One or more `bores.deck.keywords.base.Keyword`
             instances.
         """
         for keyword in keywords:

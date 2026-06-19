@@ -412,7 +412,7 @@ gas_oil_table = bores.TwoPhaseRelPermTable(
 relperm_table = bores.ThreePhaseRelPermTable(
     oil_water_table=oil_water_table,
     gas_oil_table=gas_oil_table,
-    mixing_rule=bores.eclipse_rule,
+    mixing_rule=bores.deck_rule,
 )
 ```
 

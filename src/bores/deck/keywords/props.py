@@ -29,7 +29,7 @@ and relative permeability / capillary pressure curves.
 
 import numpy as np
 
-from bores.eclipse.keywords.base import Field, PVTTableKeyword
+from bores.deck.keywords.base import Field, PVTTableKeyword
 
 __all__ = []
 

@@ -224,10 +224,10 @@ class Record(typing.NamedTuple):
     """
 
 
-# A keyword name: a bare uppercase token, 1-8 characters (Eclipse's own
+# A keyword name is a bare uppercase token, 1-8 characters (Eclipse's own
 # limit), optionally ending in `-` (`MULTX-`, `MULTY-`, `MULTZ-`),
 # standing alone on its own line (only whitespace or end-of-line after it).
-# The underscore in `[A-Z0-9_]` is intentional: some simulator extensions
+# The underscore in `[A-Z0-9_]` is intentional because some simulator extensions
 # use keywords like `COORD_V`.
 _KEYWORD_LINE_RE = re.compile(
     r"^[ \t]*(?P<keyword>[A-Z][A-Z0-9_]{0,7}-?)[ \t]*\r?$",

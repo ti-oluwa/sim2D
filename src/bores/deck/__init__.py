@@ -10,7 +10,7 @@ operator resolution.
 **Usage Example**:
 
 ```python
-from bores.eclipse import DataFile
+from bores.deck import DataFile
 
 df = DataFile("model.DATA")
 poro  = df.get("PORO")   # ndarray (n_cells,) or None
@@ -18,7 +18,7 @@ coord = df.get("COORD")  # ndarray (ny+1, nx+1, 6) or None
 ```
 """
 
-from bores.eclipse.core import *  # noqa
-from bores.eclipse.datafile import DataFile  # noqa
-from bores.eclipse.keywords import *  # noqa
-from bores.eclipse.operators import *  # noqa
+from bores.deck.core import *  # noqa
+from bores.deck.datafile import DataFile  # noqa
+from bores.deck.keywords import *  # noqa
+from bores.deck.operators import *  # noqa

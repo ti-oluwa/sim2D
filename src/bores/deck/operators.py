@@ -10,7 +10,7 @@ import warnings
 
 import numpy as np
 
-from bores.eclipse.core import Deck, GridDimensions, tokenise
+from bores.deck.core import Deck, GridDimensions, tokenise
 from bores.typing import FloatArray, OneDimension
 
 __all__ = [
@@ -32,7 +32,7 @@ OPERATOR_CONTROL_KEYWORDS: typing.FrozenSet[str] = (
 """
 Keywords that scope or drive operators rather than holding their own
 per-cell data; never matched as a plain
-`bores.eclipse.keywords.array.GridArrayKeyword` value.
+`bores.deck.keywords.array.GridArrayKeyword` value.
 """
 
 
@@ -61,7 +61,7 @@ class BoxOperation(typing.NamedTuple):
     `(record_start, line_index)` sort key.
 
     `record_start` is the character offset of the operator keyword's own
-    `bores.eclipse.core.Record` in the source text (same offset space
+    `bores.deck.core.Record` in the source text (same offset space
     used by data-block assign events), and `line_index` breaks ties between
     multiple operation lines within the same operator block.
     """
@@ -101,7 +101,7 @@ def resolve_box_operations(
     deck-order state, independent of which keyword each operator record
     targets.
 
-    :param deck: Pre-scanned `bores.eclipse.core.Deck`.
+    :param deck: Pre-scanned `bores.deck.core.Deck`.
     :param dims: Grid extent, needed to clamp/resolve box bounds and the
         default (whole-grid) box.
     :returns: Resolved operations in file order (by `order`).

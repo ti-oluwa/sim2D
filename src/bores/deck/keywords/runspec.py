@@ -8,8 +8,8 @@ table-sizing hints, well/group dimensioning, and the simulation start date.
 
 import typing
 
-from bores.eclipse.core import Deck, GridDimensions
-from bores.eclipse.keywords.base import (
+from bores.deck.core import Deck, GridDimensions
+from bores.deck.keywords.base import (
     DateKeyword,
     Field,
     FlagKeyword,

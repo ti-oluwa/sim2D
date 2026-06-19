@@ -8,8 +8,9 @@ import typing
 
 import numpy as np
 
-from bores.eclipse.core import Deck, DeckParseError, GridDimensions, tokenise
-from bores.eclipse.keywords.base import (
+from bores.deck import FlagKeyword
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.keywords.base import (
     Field,
     GridArrayKeyword,
     Keyword,
@@ -44,7 +45,7 @@ DIMENS = RecordKeyword(
 """`DIMENS NX NY NZ /` - structured grid dimensions (non-corner-point)."""
 
 
-class Coord(Keyword[FloatArray[ThreeDimensions]]):
+class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
     """
     `COORD` - corner-point pillar array.
 
@@ -84,7 +85,7 @@ class Coord(Keyword[FloatArray[ThreeDimensions]]):
         )
 
 
-class ZCorn(Keyword[FloatArray[ThreeDimensions]]):
+class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
     """
     `ZCORN` - corner-point depth array.
 
@@ -122,10 +123,10 @@ class ZCorn(Keyword[FloatArray[ThreeDimensions]]):
         )
 
 
-COORD = Coord()
+COORD = CoordKeyword()
 """`COORD` - corner-point pillar array."""
 
-ZCORN = ZCorn()
+ZCORN = ZCornKeyword()
 """`ZCORN` - corner-point depth array."""
 
 MAPAXES = RecordKeyword(
@@ -162,6 +163,29 @@ GRIDUNIT = RecordKeyword(
 MAPUNITS = RecordKeyword("MAPUNITS", fields=[Field("unit", str)])
 """`MAPUNITS 'UNIT' /` - map coordinate unit declaration."""
 
+
+MAPUNIT = RecordKeyword("MAPUNIT", fields=[Field("unit", str)])
+"""
+`MAPUNIT 'UNIT' /` - map coordinate unit declaration.
+ 
+Note:
+    Some Eclipse documentation and decks use `MAPUNIT` (singular);
+    others use `MAPUNITS`. Both spellings are registered as separate
+    `Keyword` objects with identical shape (`grid.MAPUNITS` already
+    exists) so either form found in a deck parses correctly; only one
+    will ever be present in a well-formed deck.
+"""
+
+PINCHOUT = FlagKeyword("PINCHOUT")
+"""
+`PINCHOUT` - enable pinchout transmissibility across inactive cells
+sandwiched between two active cells in the same column.
+ 
+Bare/nullary keyword (no data section). `parse` returns `True` if
+present in the deck, `False` otherwise.
+"""
+
+
 PINCH = RecordKeyword(
     "PINCH",
     fields=[
@@ -184,7 +208,7 @@ TOPS = GridArrayKeyword("TOPS", dtype=np.float64, default_value=0.0)
 non-uniform decks).
 
 In practice Eclipse accepts either `nx * ny` values (applying the same
-top to every layer) or `nx * ny * nz` values.  The array length
+top to every layer) or `nx * ny * nz` values. The array length
 reported by `.GridArrayKeyword.parse` matches `n_cells`;
 callers should slice `[:nx*ny]` to get the top-layer tops.
 """
@@ -197,6 +221,88 @@ DY = GridArrayKeyword("DY", dtype=np.float64, default_value=0.0)
 
 DZ = GridArrayKeyword("DZ", dtype=np.float64, default_value=0.0)
 """`DZ` - cell size in the z direction (one value per cell)."""
+
+
+class VectorDimsKeyword(Keyword[typing.List[float]]):
+    """
+    Shared implementation for `DXV` / `DYV` / `DZV`: a flat list of
+    per-column or per-layer cell sizes along one structured axis, given
+    once rather than once-per-cell.
+
+    Eclipse expects exactly `nx` (`DXV`), `ny` (`DYV`), or `nz` (`DZV`)
+    values; every cell in that row/column/layer shares the corresponding
+    entry. This is a non-uniform-Cartesian-grid shorthand for `DX` /
+    `DY` / `DZ`, used instead of (never alongside) the full per-cell
+    array keyword for the same axis.
+
+    :param name: Keyword name (`"DXV"`, `"DYV"`, or `"DZV"`).
+    :param axis_extent: Callable extracting the expected length (`nx`,
+        `ny`, or `nz`) from `GridDimensions`.
+    """
+
+    __slots__ = ("_axis_extent",)
+
+    def __init__(
+        self,
+        name: str,
+        axis_extent: typing.Callable[[GridDimensions], int],
+    ) -> None:
+        super().__init__(name)
+        self._axis_extent = axis_extent
+
+    def parse(
+        self, deck: Deck, dims: typing.Optional[GridDimensions]
+    ) -> typing.Optional[typing.List[float]]:
+        if dims is None:
+            raise DeckParseError(
+                f"Cannot parse {self.name!r} without resolved grid "
+                "dimensions (SPECGRID/DIMENS not found)."
+            )
+
+        record = deck.first_record_for(self.name)
+        if record is None:
+            return None
+
+        tokens = tokenise(record.body)
+        expected = self._axis_extent(dims)
+        try:
+            values = [float(tok) for tok in tokens]
+        except ValueError as exc:
+            raise DeckParseError(
+                f"{self.name} contains a non-numeric value: {exc}"
+            ) from exc
+
+        if len(values) != expected:
+            raise DeckParseError(
+                f"{self.name} expected {expected} value(s); got {len(values)}."
+            )
+        return values
+
+
+DXV = VectorDimsKeyword("DXV", axis_extent=lambda dims: dims.nx)
+"""
+`DXV` - x-direction cell sizes for a non-uniform Cartesian grid, one
+value per column (`nx` values total).
+ 
+Used instead of the full per-cell `DX` array when every cell in a given
+i-column shares the same x-extent. `parse` returns a length-`nx`
+`List[float]`, or `None` if the keyword is absent.
+ 
+:raises DeckParseError: If grid dimensions are unresolved, or the
+    token count doesn't match `nx`.
+"""
+
+DYV = VectorDimsKeyword("DYV", axis_extent=lambda dims: dims.ny)
+"""
+`DYV` - y-direction cell sizes for a non-uniform Cartesian grid, one
+value per row (`ny` values total). See `DXV`.
+"""
+
+DZV = VectorDimsKeyword("DZV", axis_extent=lambda dims: dims.nz)
+"""
+`DZV` - z-direction cell sizes for a non-uniform Cartesian grid, one
+value per layer (`nz` values total). See `DXV`.
+"""
 
 ACTNUM = GridArrayKeyword("ACTNUM", dtype=np.int32, default_value=1)
 """
@@ -266,7 +372,7 @@ PERMZ = GridArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
-class Faults(RepeatedRecordKeyword):
+class FaultsKeyword(RepeatedRecordKeyword):
     """
     `FAULTS 'NAME' I1 I2 J1 J2 K1 K2 FACE / ... /` - named fault planes.
 
@@ -310,7 +416,7 @@ class Faults(RepeatedRecordKeyword):
         return result
 
 
-class MultFLT(RepeatedRecordKeyword):
+class MultFLTKeyword(RepeatedRecordKeyword):
     """
     `MULTFLT 'NAME' MULTIPLIER / ... /`
     - per-fault transmissibility multiplier.
@@ -343,7 +449,7 @@ class MultFLT(RepeatedRecordKeyword):
         return list(by_name.values())
 
 
-FAULTS = Faults()
+FAULTS = FaultsKeyword()
 """
 `FAULTS 'NAME' I1 I2 J1 J2 K1 K2 FACE / ... /` - named fault planes.
 
@@ -352,7 +458,7 @@ file order.  Indices `I1`/`I2`/`J1`/`J2`/`K1`/`K2` are
 *1-based* Eclipse IJK indices, passed through unchanged to the caller.
 """
 
-MULFLT = MultFLT()
+MULFLT = MultFLTKeyword()
 """
 `MULTFLT 'NAME' MULTIPLIER / ... /` - per-fault transmissibility multiplier.
 
@@ -374,11 +480,10 @@ NNC = RepeatedRecordKeyword(
     ],
 )
 """
-`NNC I1 J1 K1 I2 J2 K2 T / ... /`
-- explicit non-neighbour connections.
+`NNC I1 J1 K1 I2 J2 K2 T / ... /` - explicit non-neighbour connections.
 
 Indices `I1/J1/K1` and `I2/J2/K2` are *1-based* Eclipse IJK
-structured cell indices.  `T` is the transmissibility value in the
+structured cell indices. `T` is the transmissibility value in the
 grid's declared unit system.
 
 Multiple `NNC` keyword blocks in the same deck are concatenated.

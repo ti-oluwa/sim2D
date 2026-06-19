@@ -5,17 +5,14 @@ GRDECL is the ASCII keyword-based format used by Eclipse, ResInsight, and
 most other reservoir simulators to describe corner-point pillar grids.
 
 This module delegates all keyword parsing to
-`bores.eclipse.DataFile`; it owns only the grid-assembly logic that
+`bores.deck.DataFile`; it owns only the grid-assembly logic that
 turns parsed keyword values into a `bores.grids.base.Grid`.
 
 **Supported keywords (read)**:
 
 `SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDUNIT`,
-`TOPS`, `DX`, `DY`, `DZ`,
-`MAPAXES`, `MAPUNITS`,
-`PINCH`, `PINCHOUT`,
-`NNC`,
-`FAULTS`, `MULTFLT`,
+`TOPS`, `DX`, `DY`, `DZ`, `MAPAXES`, `MAPUNITS`,
+`PINCH`, `PINCHOUT`, `NNC`, `FAULTS`, `MULTFLT`,
 `MULTX`, `MULTY`, `MULTZ`, `MULTX-`, `MULTY-`, `MULTZ-`.
 
 **Supported keywords (write)**:
@@ -34,9 +31,8 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.eclipse import DataFile
-from bores.eclipse.core import DeckParseError
-from bores.eclipse.keywords.petrophysics import Dx, Dy, Dz, Tops
+from bores.deck.core import DeckParseError
+from bores.deck.datafile import DataFile
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
 from bores.grids.factories.cartesian import make_cartesian_grid
@@ -390,7 +386,7 @@ def _assemble_grid(
 ) -> Grid:
     """
     Assemble a `bores.grids.base.Grid` from a parsed
-    `bores.eclipse.DataFile`.
+    `bores.deck.DataFile`.
 
     Dispatches to `_assemble_corner_point` or
     `_assemble_cartesian` based on which geometry keywords are

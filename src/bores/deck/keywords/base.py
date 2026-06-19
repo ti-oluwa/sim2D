@@ -11,8 +11,8 @@ import warnings
 import numpy as np
 import numpy.typing as npt
 
-from bores.eclipse.core import Deck, DeckParseError, GridDimensions, tokenise
-from bores.eclipse.operators import (
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.operators import (
     BoxOperation,
     apply_box_operation,
     resolve_box_operations,
@@ -60,15 +60,15 @@ class Keyword(typing.Generic[T], abc.ABC):
     Base class for a single supported Eclipse keyword.
 
     A `Keyword` is pure parsing / shape logic: given the
-    `bores.eclipse.core.Record`(s) that belong to it (already located by
-    `bores.eclipse.core.Deck`) plus the deck's resolved grid dimensions,
+    `bores.deck.core.Record`(s) that belong to it (already located by
+    `bores.deck.core.Deck`) plus the deck's resolved grid dimensions,
     produce the keyword's Python value.
 
     Each concrete subclass only has to declare *shape*: field names/types
     for record keywords, expected array length for grid-array keywords, or
     nothing extra for nullary keywords. All cross-cutting deck mechanics
     (comments, includes, repeats, operators, boxing, caching) live in
-    `bores.eclipse.datafile.DataFile` and are shared by every
+    `bores.deck.datafile.DataFile` and are shared by every
     keyword for free.
     """
 
@@ -225,7 +225,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
     target for `BOX` / `EQUALS` / `ADD` / `MULTIPLY` / `COPY` /
     `MAXVALUE` / `MINVALUE` operator records anywhere in the deck.
     Operator resolution is shared across all instances via
-    `bores.eclipse.datafile.DataFile`; no individual keyword
+    `bores.deck.datafile.DataFile`; no individual keyword
     subclass needs to implement it.
 
     If the keyword itself never appears as a standalone data block but *is*
@@ -431,11 +431,10 @@ def _parse_eclipse_date(
     tokens: typing.Sequence[str], keyword_name: str
 ) -> datetime.date:
     """
-    Parse a three-token Eclipse date `[day, month, year]` into a
-    :class:`datetime.date`.
+    Parse a three-token Eclipse date `[day, month, year]` into a `datetime.date`.
 
     Eclipse month tokens may be bare (`JAN`) or quoted (`'JAN'`);
-    quoting is already stripped by `bores.eclipse.core.tokenise`.
+    quoting is already stripped by `bores.deck.core.tokenise`.
 
     :param tokens: At least three string tokens: day, month abbreviation, year.
     :param keyword_name: Keyword name for error messages.
@@ -504,7 +503,7 @@ class DateKeyword(Keyword[datetime.date]):
 
     Used for `START`.
 
-    `parse` returns a :class:`datetime.date`, or `None` when the
+    `parse` returns  `datetime.date`, or `None` when the
     keyword is absent.
     """
 
@@ -527,7 +526,7 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
     Multiple `DATES` blocks in the same deck are concatenated in file
     order and returned as a single flat list.
 
-    `parse` returns a list of :class:`datetime.date` objects, or
+    `parse` returns a list o `datetime.date` objects, or
     `None` when the keyword is absent.
 
     Example deck fragment::
@@ -745,7 +744,7 @@ class TStepKeyword(Keyword[typing.List[float]]):
     `/`.
 
     `N*value` repeat syntax is already expanded by
-    `bores.eclipse.core.tokenise`, so `30*30` correctly yields
+    `bores.deck.core.tokenise`, so `30*30` correctly yields
     thirty entries of `30.0`.
 
     Multiple `TSTEP` blocks in the same deck are concatenated in file
