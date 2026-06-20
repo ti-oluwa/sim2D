@@ -42,16 +42,16 @@ __all__ = [
     "MULTX",
     "MULTY",
     "MULTZ",
-    "MULTX_MINUX",
-    "MULTY_MINUX",
-    "MULTZ_MINUX",
+    "MULTX_MINUS",
+    "MULTY_MINUS",
+    "MULTZ_MINUS",
+    "FAULTS",
+    "MULTFLT",
+    "NNC",
     "PORO",
     "PERMX",
     "PERMY",
     "PERMZ",
-    "FAULTS",
-    "MULTFLT",
-    "NNC",
     "PORV",
     "NTG",
 ]
@@ -383,19 +383,19 @@ MULTZ = GridArrayKeyword("MULTZ", is_multiplier=True)
 of each cell.
 """
 
-MULTX_MINUX = GridArrayKeyword("MULTX-", is_multiplier=True)
+MULTX_MINUS = GridArrayKeyword("MULTX-", is_multiplier=True)
 """
 `MULTX-` - transmissibility multiplier for the negative-x face
 of each cell.
 """
 
-MULTY_MINUX = GridArrayKeyword("MULTY-", is_multiplier=True)
+MULTY_MINUS = GridArrayKeyword("MULTY-", is_multiplier=True)
 """
 `MULTY-` - transmissibility multiplier for the negative-y face
 of each cell.
 """
 
-MULTZ_MINUX = GridArrayKeyword("MULTZ-", is_multiplier=True)
+MULTZ_MINUS = GridArrayKeyword("MULTZ-", is_multiplier=True)
 """
 `MULTZ-` - transmissibility multiplier for the negative-z face
 of each cell.

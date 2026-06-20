@@ -4,10 +4,6 @@ GRDECL text-format reader and writer.
 GRDECL is the ASCII keyword-based format used by Eclipse, ResInsight, and
 most other reservoir simulators to describe corner-point pillar grids.
 
-This module delegates all keyword parsing to
-`bores.deck.DataFile`; it owns only the grid-assembly logic that
-turns parsed keyword values into a `bores.grids.base.Grid`.
-
 **Supported keywords (read)**:
 
 `SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDUNIT`,

@@ -281,8 +281,8 @@ def make_corner_point_grid(
         face_vertex_indices,
         face_vertex_offsets,
         face_cell_indices,
-        connection_types_arr,
-        geom_nnc_pairs,
+        connection_types,
+        geometric_nnc_pairs,
         active_cells,  # shape (n_active, 3) — (k, j, i) for fault resolution
     ) = _compute_corner_point_geometry(
         coord=coord_arr,
@@ -295,10 +295,10 @@ def make_corner_point_grid(
     n_active_cells = len(active_cells)
 
     # cell_statuses: all stored cells are active
-    cell_statuses_arr = np.full(n_active_cells, int(CellStatus.ACTIVE), dtype=np.int8)
+    cell_statuses = np.full(n_active_cells, int(CellStatus.ACTIVE), dtype=np.int8)
 
     # Merge geometry-detected NNCs with caller-supplied NNCs
-    pair_parts = [p for p in (geom_nnc_pairs, nnc_cell_pairs) if p is not None]
+    pair_parts = [p for p in (geometric_nnc_pairs, nnc_cell_pairs) if p is not None]
     if pair_parts:
         merged_nnc_pairs = (
             np.vstack(pair_parts).astype(np.int32)
@@ -309,10 +309,17 @@ def make_corner_point_grid(
         # only the caller-supplied NNCs may have them.
         # Align: geometric NNCs get NaN (unknown T), caller NNCs get their T.
         if nnc_transmissibilities is not None:
-            n_geom = len(geom_nnc_pairs) if geom_nnc_pairs is not None else 0
-            geom_trans = np.full(n_geom, np.nan, dtype=np.float64)
+            n_geometric = (
+                len(geometric_nnc_pairs) if geometric_nnc_pairs is not None else 0
+            )
+            geometric_transmissibilities = np.full(
+                n_geometric, np.nan, dtype=np.float64
+            )
             merged_nnc_transmissibilities = np.concatenate(
-                [geom_trans, np.asarray(nnc_transmissibilities, dtype=np.float64)]
+                [
+                    geometric_transmissibilities,
+                    np.asarray(nnc_transmissibilities, dtype=np.float64),
+                ]
             )
         else:
             merged_nnc_transmissibilities = None
@@ -334,9 +341,9 @@ def make_corner_point_grid(
             ny=ny,
             nz=nz,
         )
-        # Tag fault faces in connection_types_arr
-        for face_idx_arr in resolved_fault_face_indices.values():
-            connection_types_arr[face_idx_arr] = int(ConnectionType.FAULT)
+        # Tag fault faces in connection_types
+        for face_indices in resolved_fault_face_indices.values():
+            connection_types[face_indices] = int(ConnectionType.FAULT)
 
     return Grid(
         vertex_coordinates=np.asarray(vertex_coordinates, dtype=np.float64),
@@ -345,8 +352,8 @@ def make_corner_point_grid(
         face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
-        cell_statuses=cell_statuses_arr,
-        connection_types=connection_types_arr,
+        cell_statuses=cell_statuses,
+        connection_types=connection_types,
         nnc_cell_pairs=merged_nnc_pairs,
         nnc_transmissibilities=merged_nnc_transmissibilities,
         fault_face_indices=resolved_fault_face_indices,
@@ -388,7 +395,7 @@ def _interpolate_pillar_point(
         xyz[1] = pillar_top[1]
         xyz[2] = z
         return xyz
-    
+
     t = (z - pillar_top[2]) / dz
     xyz[0] = pillar_top[0] + t * (pillar_bottom[0] - pillar_top[0])
     xyz[1] = pillar_top[1] + t * (pillar_bottom[1] - pillar_top[1])
@@ -623,31 +630,31 @@ def _compute_corner_point_geometry(
         )
 
     # Flatten face registry to CSR arrays + build connection_types
-    flat_fvi: typing.List[int] = []
+    flat_face_vertex_indices: typing.List[int] = []
     face_vertex_offsets: typing.List[int] = [0]
     face_cell_pairs: typing.List[typing.Tuple[int, int]] = []
-    connection_type_list: typing.List[int] = []
+    connection_types: typing.List[int] = []
 
     for key, record in face_registry.items():
-        flat_fvi.extend(record.face_vertex_indices)
-        face_vertex_offsets.append(len(flat_fvi))
+        flat_face_vertex_indices.extend(record.face_vertex_indices)
+        face_vertex_offsets.append(len(flat_face_vertex_indices))
         face_cell_pairs.append((record.owner_cell_index, record.neighbour_cell_index))
         if key in nnc_face_keys:
-            connection_type_list.append(int(ConnectionType.PINCHOUT))
+            connection_types.append(int(ConnectionType.PINCHOUT))
         elif record.neighbour_cell_index < 0:
-            connection_type_list.append(int(ConnectionType.BOUNDARY))
+            connection_types.append(int(ConnectionType.BOUNDARY))
         else:
-            connection_type_list.append(int(ConnectionType.INTERIOR))
+            connection_types.append(int(ConnectionType.INTERIOR))
 
     nnc_array: typing.Optional[npt.NDArray[np.int32]] = (
         np.asarray(nnc_pairs, dtype=np.int32).reshape(-1, 2) if nnc_pairs else None
     )
     return (
         vertex_coordinates,
-        np.asarray(flat_fvi, dtype=np.int32),
+        np.asarray(flat_face_vertex_indices, dtype=np.int32),
         np.asarray(face_vertex_offsets, dtype=np.int32),
         np.asarray(face_cell_pairs, dtype=np.int32),
-        np.asarray(connection_type_list, dtype=np.int8),
+        np.asarray(connection_types, dtype=np.int8),
         nnc_array,
         active_cells,
     )
@@ -847,7 +854,7 @@ def _fill_zcorn(
     Parallel over `k` (layer index); each layer writes to a disjoint
     `[2k:2k+2, :, :]` slice of `zcorn` so there are no data races.
 
-    ZCORN indexing (Eclipse convention)::
+    ZCORN indexing (Eclipse convention):
 
         zcorn[2k,   2j,   2i  ] ... [2k,   2j+1, 2i+1] = top    Z of (i,j,k)
         zcorn[2k+1, 2j,   2i  ] ... [2k+1, 2j+1, 2i+1] = bottom Z of (i,j,k)

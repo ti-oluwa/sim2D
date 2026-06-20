@@ -1283,7 +1283,9 @@ class Grid:
         return np.asarray(raw_indices, dtype=self.index_dtype)
 
     def compute_pore_volume(
-        self, porosity: NumberOrArray[OneDimension]
+        self,
+        porosity: NumberOrArray[OneDimension],
+        net_to_gross: NumberOrArray[OneDimension],
     ) -> FloatArray[OneDimension]:
         """
         Compute the pore volume for each cell given a porosity field.
@@ -1293,7 +1295,7 @@ class Grid:
         :returns: Pore volumes in the same units³ as `cell_volumes`,
             broadcast against `porosity`.
         """
-        return porosity * self.cell_volumes
+        return porosity * net_to_gross * self.cell_volumes
 
     def validate_geometry(self) -> None:
         """
