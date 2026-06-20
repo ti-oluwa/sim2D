@@ -3,32 +3,13 @@ Eclipse `BOX` / `ENDBOX` / `EQUALS` / `ADD` / `MULTIPLY` /
 `COPY` / `MAXVALUE` / `MINVALUE` operator resolution.
 
 Operators in Eclipse allow bulk modification of per-cell arrays without
-re-stating the full array.  They work in file order: every
+re-stating the full array. They work in file order: every
 `EQUALS`/`ADD`/`MULTIPLY`/`COPY`/`MAXVALUE`/`MINVALUE`
 record targets a named keyword array and is applied to a sub-grid box.
 The active box is set by the most recent `BOX` record in file order
 (or reset to the full grid by `ENDBOX`); individual operator records
 may also carry an inline box override as six trailing integers.
-
-**Public API**:
-
-- `Operation` - named tuple describing one resolved operator
-  instruction, including its target keyword, scalar operand or source
-  keyword, active box, and file-order sort key.
-- `resolve_operations(deck, dims)` - walk all operator records in a
-  scanned `Deck` and return a sorted list of `Operation` objects.
-- `apply_operation(array, operation, dims, resolve_source)` - apply
-  one `Operation` to a flat `(n_cells,)` array in place.
-- `OPERATOR_CONTROL_KEYWORDS` - frozenset of keyword names consumed by
-  this module; used by `GridArrayKeyword` to skip operator keywords
-  when looking for its own data blocks.
-
-This module is concerned only with *applying* operators to per-cell
-arrays.  Operator resolution is invoked by
-`bores.deck.keywords.base.GridArrayKeyword._timeline` and is shared
-across all array keywords automatically.
 """
-
 import typing
 import warnings
 
@@ -113,9 +94,7 @@ def _clamp_box(
     return i1, i2, j1, j2, k1, k2
 
 
-def resolve_operations(
-    deck: Deck, dims: GridDimensions
-) -> typing.List[Operation]:
+def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operation]:
     """
     Walk every `BOX` / `ENDBOX` / operator record in deck order and
     resolve each operator record to a concrete `Operation`.

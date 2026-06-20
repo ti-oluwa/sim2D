@@ -127,6 +127,7 @@ from bores.deck.keywords.summary import (
     WTHP,
     WWPR,
 )
+from bores.deck.operators import Operation, resolve_operations
 
 __all__ = ["DataFile"]
 
@@ -289,7 +290,7 @@ class DataFile:
     ```
     """
 
-    __slots__ = ("_deck", "_keywords", "_cache", "dimensions")
+    __slots__ = ("_deck", "_keywords", "_cache", "_operations", "dimensions")
 
     def __init__(
         self,
@@ -317,6 +318,11 @@ class DataFile:
         }
         self._cache: typing.Dict[str, typing.Any] = {}
         self.dimensions: typing.Optional[GridDimensions] = self._resolve_dimensions()
+        self._operations: typing.Optional[typing.List[Operation]] = (
+            resolve_operations(self._deck, self.dimensions)
+            if self.dimensions is not None
+            else None
+        )
 
     def _resolve_dimensions(self) -> typing.Optional[GridDimensions]:
         """
@@ -378,7 +384,11 @@ class DataFile:
             from the deck or not registered.
         """
         if isinstance(k, Keyword):
-            return k.parse(self._deck, self.dimensions)
+            return k.parse(
+                self._deck,
+                self.dimensions,
+                operations=self._operations,
+            )
 
         key = k.upper()
         if key not in self._keywords:
@@ -387,7 +397,11 @@ class DataFile:
         if use_cache and key in self._cache:
             return self._cache[key]
 
-        value = self._keywords[key].parse(self._deck, self.dimensions)
+        value = self._keywords[key].parse(
+            self._deck,
+            self.dimensions,
+            operations=self._operations,
+        )
         if use_cache:
             self._cache[key] = value
         return value

@@ -17,6 +17,7 @@ from bores.deck.keywords.base import (
     RecordKeyword,
     RepeatedRecordKeyword,
 )
+from bores.deck.operators import Operation
 from bores.typing import FloatArray, ThreeDimensions
 
 __all__ = [
@@ -92,7 +93,11 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         super().__init__("COORD")
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
             raise DeckParseError("COORD requires grid dimensions (SPECGRID/DIMENS).")
@@ -131,7 +136,11 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         super().__init__("ZCORN")
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
             raise DeckParseError("ZCORN requires grid dimensions (SPECGRID/DIMENS).")
@@ -285,7 +294,11 @@ class VectorDimsKeyword(Keyword[typing.List[float]]):
         self._axis_extent = axis_extent
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[float]]:
         if dims is None:
             raise DeckParseError(
@@ -470,7 +483,11 @@ class MultFLTKeyword(RepeatedRecordKeyword):
         )
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
         records = super().parse(deck, dims)
         if records is None:

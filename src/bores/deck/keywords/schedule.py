@@ -36,11 +36,11 @@ file order alongside the `DATES`/`TSTEP` timeline.
 - `WECON` - well economic limits (auto-shut-in thresholds).
 - `WTEST` - automatic well re-opening / testing schedule.
 """
-
 import typing
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.keywords.base import DatesKeyword, Field, Keyword, RepeatedRecordKeyword
+from bores.deck.operators import Operation
 
 __all__ = [
     "DATES",
@@ -95,7 +95,11 @@ class TStepKeyword(Keyword[typing.List[float]]):
         super().__init__("TSTEP")
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[float]]:
         records = deck.records_for(self.name)
         if not records:

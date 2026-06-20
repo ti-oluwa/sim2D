@@ -27,6 +27,7 @@ float64 arrays):
 - `RESTART` - resumes from a previously written restart file instead
   of explicit initial conditions.
 """
+
 import typing
 
 import numpy as np
@@ -38,6 +39,7 @@ from bores.deck.keywords.base import (
     Keyword,
     RepeatedRecordKeyword,
 )
+from bores.deck.operators import Operation
 
 __all__ = [
     "SWAT",
@@ -145,7 +147,11 @@ class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
         super().__init__("RESTART")
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         record = deck.first_record_for(self.name)
         if record is None:

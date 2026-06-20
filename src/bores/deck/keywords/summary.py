@@ -34,6 +34,7 @@ import typing
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.keywords.base import Keyword
+from bores.deck.operators import Operation
 
 __all__ = [
     "FOPR",
@@ -74,7 +75,11 @@ class SummaryVectorKeyword(Keyword[typing.List[str]]):
     """
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[str]]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -150,7 +155,11 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
     """
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Optional[int]]]:
         record = deck.first_record_for(self.name)
         if record is None:

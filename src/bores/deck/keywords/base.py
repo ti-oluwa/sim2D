@@ -12,11 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
-from bores.deck.operators import (
-    Operation,
-    apply_operation,
-    resolve_operations,
-)
+from bores.deck.operators import Operation, apply_operation, resolve_operations
 from bores.typing import FloatArray, OneDimension
 
 __all__ = [
@@ -78,7 +74,11 @@ class Keyword(typing.Generic[T], abc.ABC):
 
     @abc.abstractmethod
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[T]:
         """
         Parse this keyword's value out of `deck`.
@@ -158,7 +158,11 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
         self.fields = list(fields)
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -194,7 +198,11 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Any]]]):
         self.fields = list(fields)
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
         records = deck.records_for(self.name)
         if not records:
@@ -261,7 +269,11 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         self.is_multiplier = is_multiplier
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[FloatArray[OneDimension]]:
         """
         Parse and return the resolved per-cell array.
@@ -279,13 +291,19 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 f"Cannot parse grid array keyword {self.name!r} without "
                 "resolved grid dimensions (SPECGRID/DIMENS not found)."
             )
-        return self._resolve(deck, dims, stop_before_order=None)
+        return self._resolve(
+            deck,
+            dims,
+            operations=operations,
+            stop_before_order=None,
+        )
 
     def _resolve(
         self,
         deck: Deck,
         dims: GridDimensions,
         *,
+        operations: typing.Optional[typing.List[Operation]] = None,
         stop_before_order: typing.Optional[typing.Tuple[int, int]],
     ) -> typing.Optional[FloatArray[OneDimension]]:
         """
@@ -307,7 +325,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         :returns: The resolved array, or `None` if this keyword has no
             data block and no operator ever targets it.
         """
-        events = self._timeline(deck, dims)
+        events = self._timeline(deck, dims, operations=operations)
         if stop_before_order is not None:
             events = [e for e in events if e[0] < stop_before_order]
         if not events:
@@ -316,7 +334,10 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         array = np.full(dims.n_cells, self.default_value, dtype=np.float64)
 
         def _resolve_source_at(
-            keyword_name: str, as_of_order: typing.Tuple[int, int]
+            keyword_name: str,
+            as_of_order: typing.Tuple[int, int],
+            *,
+            operations: typing.Optional[typing.List[Operation]] = None,
         ) -> typing.Optional[FloatArray[OneDimension]]:
             # Guess the default_value for arbitrary source keywords:
             # multiplier-style arrays default to 1.0, property arrays to 0.0.
@@ -324,7 +345,9 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             # but this heuristic is correct for all standard Eclipse arrays.
             default = 1.0 if keyword_name.startswith("MULT") else 0.0
             probe = GridArrayKeyword(keyword_name, default_value=default)
-            return probe._resolve(deck, dims, stop_before_order=as_of_order)
+            return probe._resolve(
+                deck, dims, operations=operations, stop_before_order=as_of_order
+            )
 
         for order, kind, payload in events:
             if kind == "assign":
@@ -364,14 +387,18 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                     operation,
                     dims,
                     resolve_source=lambda name, _order=order: _resolve_source_at(
-                        name, _order
+                        name, _order, operations=operations
                     ),
                 )
 
         return array.astype(self.dtype, copy=False)  # type: ignore[return-value]
 
     def _timeline(
-        self, deck: Deck, dims: GridDimensions
+        self,
+        deck: Deck,
+        dims: GridDimensions,
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]]:
         """
         Build the ordered `(order, kind, payload)` events affecting this
@@ -402,9 +429,12 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 raw_tokens = clean_tokens
             events.append(((record.start, 0), "assign", raw_tokens))
 
-        for op in resolve_operations(deck, dims):
-            if op.target == self.name:
-                events.append((op.order, "operate", op))
+        if operations is None:
+            operations = resolve_operations(deck, dims)
+
+        for operation in operations:
+            if operation.target == self.name:
+                events.append((operation.order, "operate", operation))
 
         events.sort(key=lambda e: e[0])
         return events
@@ -487,7 +517,13 @@ class FlagKeyword(Keyword[bool]):
     can always do a truthiness test.
     """
 
-    def parse(self, deck: Deck, dims: typing.Optional[GridDimensions]) -> bool:
+    def parse(
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
+    ) -> bool:
         """
         :returns: `True` if the keyword is present in the deck,
             `False` if absent.
@@ -502,12 +538,16 @@ class DateKeyword(Keyword[datetime.date]):
 
     Used for `START`.
 
-    `parse` returns  `datetime.date`, or `None` when the
+    `parse` returns `datetime.date`, or `None` when the
     keyword is absent.
     """
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[datetime.date]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -528,7 +568,7 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
     `parse` returns a list o `datetime.date` objects, or
     `None` when the keyword is absent.
 
-    Example deck fragment::
+    Example deck fragment:
 
         DATES
          1 JAN 2020 /
@@ -537,7 +577,11 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
     """
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[datetime.date]]:
         records = deck.records_for(self.name)
         if not records:
@@ -564,7 +608,7 @@ PVTTable = typing.List[PVTRow]
 class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
     """
     A keyword whose body contains one or more tabulated data blocks,
-    each terminated by `/`.  Multiple keyword occurrences (e.g. one per
+    each terminated by `/`. Multiple keyword occurrences (e.g. one per
     PVT region) are collected in order.
 
     This covers two sub-patterns:
@@ -584,7 +628,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
     :param columns: Column descriptors for each field in a data row.
     :param primary_key: If not `None`, this column name is the
         "outer" key used in miscible (bracketed) PVT tables such as
-        `PVTO` / `PVTG`.  When `None`, the table is flat (immiscible
+        `PVTO` / `PVTG`. When `None`, the table is flat (immiscible
         / simple-tabular).
     :param table_terminator: The string that separates tables within one
         keyword block (default `"/"` — i.e. every block is one table).
@@ -610,7 +654,11 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
         self.primary_key = primary_key
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[typing.List[PVTTable]]:
         records = deck.records_for(self.name)
         if not records:
@@ -708,7 +756,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
 
             if not tokens:
                 # An empty segment signals the end of the current inner
-                # table group.  If we have accumulated rows, save the table.
+                # table group. If we have accumulated rows, save the table.
                 if current_table:
                     tables.append(current_table)
                     current_table = []
@@ -724,7 +772,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
                     pass
                 continue
 
-            # Multiple tokens -> a data row.  Prepend the primary-key column.
+            # Multiple tokens -> a data row. Prepend the primary-key column.
             row = self._row_from_tokens(tokens)
             if current_pk_value is not None:
                 row[pk_col_name] = current_pk_value

@@ -16,6 +16,7 @@ from bores.deck.keywords.base import (
     Keyword,
     RecordKeyword,
 )
+from bores.deck.operators import Operation
 
 __all__ = [
     "OIL",
@@ -141,7 +142,11 @@ class TitleKeyword(Keyword[str]):
         super().__init__("TITLE")
 
     def parse(
-        self, deck: Deck, dims: typing.Optional[GridDimensions]
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
     ) -> typing.Optional[str]:
         record = deck.first_record_for(self.name)
         if record is None:

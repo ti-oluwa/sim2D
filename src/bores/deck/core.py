@@ -261,7 +261,7 @@ class Deck:
         this edge case only arises with truncated or hand-written files.
     """
 
-    __slots__ = ("text", "records")
+    __slots__ = ("text", "records", "_hash")
 
     def __init__(self, text: str) -> None:
         """
@@ -270,6 +270,7 @@ class Deck:
         """
         self.text = text
         self.records: typing.List[Record] = self._scan(text)
+        self._hash: typing.Optional[int] = None
 
     @staticmethod
     def _scan(text: str) -> typing.List[Record]:
@@ -338,3 +339,9 @@ class Deck:
         """Return whether `keyword` occurs anywhere in the deck."""
         upper = keyword.upper()
         return any(r.keyword == upper for r in self.records)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            # Record objects should be hashable as they are tuples of hashable fields
+            self._hash = hash((self.text, tuple(self.records)))
+        return self._hash
