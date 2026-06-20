@@ -89,16 +89,16 @@ PVTW = PVTTableKeyword(
     ],
 )
 """
-    `PVTW  P_REF  BW  CW  MU_W  CV /` - water PVT table (one record per PVT region).
+`PVTW  P_REF  BW  CW  MU_W  CV /` - water PVT table (one record per PVT region).
 
-    Columns:
+Columns:
 
-    - `p_ref`        - reference pressure (psi / bar).
-    - `bw`           - water formation volume factor at `p_ref` (rb/stb / rm³/sm³).
-    - `cw`           - water compressibility (1/psi / 1/bar).
-    - `viscosity`    - water viscosity at `p_ref` (cP).
-    - `cv`           - water viscosibility (1/psi / 1/bar), optional (default 0).
-    """
+- `p_ref`        - reference pressure (psi / bar).
+- `bw`           - water formation volume factor at `p_ref` (rb/stb / rm³/sm³).
+- `cw`           - water compressibility (1/psi / 1/bar).
+- `viscosity`    - water viscosity at `p_ref` (cP).
+- `cv`           - water viscosibility (1/psi / 1/bar), optional (default 0).
+"""
 
 
 PVDO = PVTTableKeyword(

@@ -3,7 +3,7 @@ import numpy as np
 from bores.grids.io.grdecl import load_grdecl
 from bores.grids.utils import as_pyvista_grid
 
-grid = load_grdecl("dome.grdecl", encoding="utf-8")
+grid = load_grdecl("Norne.GRDECL", encoding="utf-8")
 print(f"cells   : {grid.n_cells}")  # 3*3*2 - 1 = 17
 print(f"faces   : {grid.n_faces}")
 print(f"volumes : {grid.cell_volumes}")

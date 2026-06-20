@@ -197,3 +197,31 @@ def assemble_grid(
         unit_system=unit_system,
         metadata=metadata,
     )
+
+
+class FaultRecord(typing.NamedTuple):
+    """
+    One record from the GRDECL `FAULTS` keyword.
+
+    Each record declares a named fault plane over a rectangular IJK range
+    and a face direction.
+
+    :param name: Fault name (case-sensitive as written in the GRDECL file).
+    :param i1: 1-based start index in the I (x) direction (inclusive).
+    :param i2: 1-based end index in the I direction (inclusive).
+    :param j1: 1-based start index in the J (y) direction (inclusive).
+    :param j2: 1-based end index in the J direction (inclusive).
+    :param k1: 1-based start index in the K (z) direction (inclusive).
+    :param k2: 1-based end index in the K direction (inclusive).
+    :param face_direction: Eclipse face direction string, one of
+        `'I'`, `'I-'`, `'J'`, `'J-'`, `'K'`, `'K-'`.
+    """
+
+    name: str
+    i1: int
+    i2: int
+    j1: int
+    j2: int
+    k1: int
+    k2: int
+    face_direction: str

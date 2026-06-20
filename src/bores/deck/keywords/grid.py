@@ -279,8 +279,8 @@ class VectorDimsKeyword(Keyword[typing.List[float]]):
     array keyword for the same axis.
 
     :param name: Keyword name (`"DXV"`, `"DYV"`, or `"DZV"`).
-    :param axis_extent: Callable extracting the expected length (`nx`,
-        `ny`, or `nz`) from `GridDimensions`.
+    :param axis_extent: Callable extracting the expected length
+        (`nx`, `ny`, or `nz`) from `GridDimensions`.
     """
 
     __slots__ = ("_axis_extent",)
@@ -355,7 +355,7 @@ ACTNUM = GridArrayKeyword("ACTNUM", dtype=np.int32, default_value=1)
 """
 `ACTNUM` - active-cell mask.
 
-Values are `1` (active) or `0` (inactive).  Stored as int32.
+Values are `1` (active) or `0` (inactive). Stored as int32.
 Default is `1` (all cells active) when the keyword is absent.
 
 Note:

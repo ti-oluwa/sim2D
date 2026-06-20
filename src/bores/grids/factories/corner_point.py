@@ -37,21 +37,16 @@ and MULTFLT multipliers are stored directly on the returned `Grid`.
 
 import typing
 import warnings
-from dataclasses import dataclass
 
 import numba
 import numpy as np
 import numpy.typing as npt
 
 from bores.errors import GridExportError, InvalidGridError, ValidationError
-from bores.grids.base import (
-    CellStatus,
-    ConnectionType,
-    FaceStatus,
-    Grid,
-)
+from bores.grids.base import CellStatus, ConnectionType, Grid
 from bores.grids.factories.base import (
     FaceKey,
+    FaultRecord,
     VertexCoordinates,
     _FaceRecord,
 )
@@ -64,7 +59,7 @@ from bores.typing import (
     UnitSystem,
 )
 
-__all__ = ["make_corner_point_grid", "FaultRecord"]
+__all__ = ["make_corner_point_grid"]
 
 
 CoordArray: typing.TypeAlias = FloatArray[ThreeDimensions]
@@ -114,35 +109,6 @@ _FACE_DIR_TO_LOCAL: typing.Dict[str, int] = {
 }
 
 
-@dataclass(frozen=True)
-class FaultRecord:
-    """
-    One record from the GRDECL `FAULTS` keyword.
-
-    Each record declares a named fault plane over a rectangular IJK range
-    and a face direction.
-
-    :param name: Fault name (case-sensitive as written in the GRDECL file).
-    :param i1: 1-based start index in the I (x) direction (inclusive).
-    :param i2: 1-based end index in the I direction (inclusive).
-    :param j1: 1-based start index in the J (y) direction (inclusive).
-    :param j2: 1-based end index in the J direction (inclusive).
-    :param k1: 1-based start index in the K (z) direction (inclusive).
-    :param k2: 1-based end index in the K direction (inclusive).
-    :param face_direction: Eclipse face direction string, one of
-        `'I'`, `'I-'`, `'J'`, `'J-'`, `'K'`, `'K-'`.
-    """
-
-    name: str
-    i1: int
-    i2: int
-    j1: int
-    j2: int
-    k1: int
-    k2: int
-    face_direction: str
-
-
 def make_corner_point_grid(
     *,
     coord: CoordArray,
@@ -184,8 +150,7 @@ def make_corner_point_grid(
     Corner-point grids define cell geometry via pillar lines (COORD) and
     corner depths (ZCORN). Each cell is bounded by 4 pillars and has 8
     corner points obtained by intersecting depth planes with the pillars.
-    This is the standard representation for GRDECL / ECLIPSE / ResInsight
-    files.
+    This is the standard representation for GRDECL / ECLIPSE / ResInsight files.
 
     :param coord: Shape `(NY+1, NX+1, 6)` pillar array. Each entry
         contains `[x_top, y_top, z_top, x_bot, y_bot, z_bottom]` defining
@@ -236,10 +201,10 @@ def make_corner_point_grid(
 
     if coord_arr.ndim != 3 or coord_arr.shape[2] != 6:
         raise ValidationError(
-            f"coord must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}."
+            f"`coord` must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}."
         )
     if zcorn_arr.ndim != 3:
-        raise ValidationError(f"zcorn must be a 3-D array; got ndim={zcorn_arr.ndim}.")
+        raise ValidationError(f"`zcorn` must be a 3-D array; got ndim={zcorn_arr.ndim}.")
 
     ny_plus1, nx_plus1 = coord_arr.shape[:2]
     nx = nx_plus1 - 1
@@ -248,7 +213,7 @@ def make_corner_point_grid(
 
     if zcorn_arr.shape != (nz * 2, ny * 2, nx * 2):
         raise ValidationError(
-            f"zcorn shape {zcorn_arr.shape!r} is inconsistent with "
+            f"`zcorn` shape {zcorn_arr.shape!r} is inconsistent with "
             f"coord-derived grid dimensions ({nx} x {ny} x {nz})."
         )
 
@@ -270,8 +235,8 @@ def make_corner_point_grid(
     if nnc_cell_pairs is not None and nnc_transmissibilities is not None:
         if len(nnc_cell_pairs) != len(nnc_transmissibilities):
             raise ValidationError(
-                f"nnc_cell_pairs has {len(nnc_cell_pairs)} rows but "
-                f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries; "
+                f"`nnc_cell_pairs` has {len(nnc_cell_pairs)} rows but "
+                f"`nnc_transmissibilities` has {len(nnc_transmissibilities)} entries; "
                 "they must have the same length."
             )
 

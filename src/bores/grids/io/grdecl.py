@@ -6,15 +6,22 @@ most other reservoir simulators to describe corner-point pillar grids.
 
 **Supported keywords (read)**:
 
-`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDUNIT`,
-`TOPS`, `DX`, `DY`, `DZ`, `MAPAXES`, `MAPUNITS`,
+`SPECGRID`, `DIMENS`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDUNIT`,
+`TOPS`, `DX`, `DY`, `DZ`, `DXV`, `DYV`, `DZV`,
+`MAPAXES`, `MAPUNITS`, `MAPUNIT`,
 `PINCH`, `PINCHOUT`, `NNC`, `FAULTS`, `MULTFLT`,
 `MULTX`, `MULTY`, `MULTZ`, `MULTX-`, `MULTY-`, `MULTZ-`.
 
 **Supported keywords (write)**:
 
-`SPECGRID`, `COORD`, `ZCORN`, `ACTNUM` (corner-point grids);
-`SPECGRID`, `TOPS`, `DX`, `DY`, `DZ`, `ACTNUM` (Cartesian grids).
+`SPECGRID`, `GRIDUNIT`, `MAPAXES`, `MAPUNITS`,
+`COORD`, `ZCORN`, `ACTNUM` (corner-point grids);
+`SPECGRID`, `GRIDUNIT`, `MAPAXES`, `MAPUNITS`,
+`TOPS`, `DXV`, `DYV`, `DZV`, `ACTNUM` (Cartesian grids).
+
+Both grid types also emit (when present on the grid):
+`MULTX`, `MULTY`, `MULTZ`, `MULTX-`, `MULTY-`, `MULTZ-`,
+`FAULTS`, `MULTFLT`, `NNC`, `PINCH`.
 """
 
 import re
@@ -69,6 +76,20 @@ _BARE_UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
     "METRIC": UnitSystem.METRIC,
     "LAB": UnitSystem.LAB,
     "SI": UnitSystem.SI,
+}
+
+_US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
+    UnitSystem.FIELD: "FEET",
+    UnitSystem.METRIC: "METRES",
+    UnitSystem.LAB: "CM",
+    UnitSystem.SI: "METRES",
+}
+
+_US_TO_MAPUNITS: typing.Dict[UnitSystem, str] = {
+    UnitSystem.FIELD: "FEET",
+    UnitSystem.METRIC: "METRES",
+    UnitSystem.LAB: "CM",
+    UnitSystem.SI: "METRES",
 }
 
 
@@ -157,8 +178,7 @@ class MapAxes:
 
 def _build_map_axes(data_file: DataFile) -> typing.Optional[MapAxes]:
     """
-    Construct a `MapAxes` from parsed `MAPAXES` / `MAPUNITS`
-    keyword dicts.
+    Construct a `MapAxes` from parsed `MAPAXES` / `MAPUNITS` keyword dicts.
 
     Eclipse `MAPAXES` field order:
     `(Y-axis X, Y-axis Y, origin X, origin Y, X-axis X, X-axis Y)`.
@@ -170,12 +190,12 @@ def _build_map_axes(data_file: DataFile) -> typing.Optional[MapAxes]:
     if mapaxes is None:
         return None
 
-    mapunits = data_file.get("MAPUNITS")
+    # Honour both MAPUNITS and MAPUNIT (the latter is an Eclipse alias).
+    mapunits = data_file.get("MAPUNITS") or data_file.get("MAPUNIT")
     map_unit_str = str(mapunits.get("unit", "")).strip().upper() if mapunits else ""
     map_unit = _UNITS_MAP.get(map_unit_str, UnitSystem.FIELD)
 
     return MapAxes(
-        # Eclipse ordering: Y-axis point first, then origin, then X-axis point
         origin=np.array([mapaxes["origin_x"], mapaxes["origin_y"]], dtype=np.float64),
         map_x_axis_point=np.array(
             [mapaxes["x_axis_x"], mapaxes["x_axis_y"]], dtype=np.float64
@@ -227,7 +247,7 @@ def _build_nnc_arrays(
                     f"grid bounds ({nx}x{ny}x{nz})."
                 )
 
-        # Eclipse flat index: i fastest (i-1) + (j-1)*nx + (k-1)*nx*ny
+        # Eclipse flat index: i fastest → (i-1) + (j-1)*nx + (k-1)*nx*ny
         c1 = (i1 - 1) + (j1 - 1) * nx + (k1 - 1) * nx * ny
         c2 = (i2 - 1) + (j2 - 1) * nx + (k2 - 1) * nx * ny
         pairs.append((c1, c2))
@@ -242,9 +262,7 @@ def _build_nnc_arrays(
     )
 
 
-def _build_fault_records(
-    data_file: DataFile,
-) -> typing.List[FaultRecord]:
+def _build_fault_records(data_file: DataFile) -> typing.List[FaultRecord]:
     """
     Convert parsed `FAULTS` keyword records to `FaultRecord` objects.
 
@@ -270,7 +288,9 @@ def _build_fault_records(
     ]
 
 
-def _build_multflt(data_file: DataFile) -> typing.Optional[typing.Dict[str, float]]:
+def _build_multflt(
+    data_file: DataFile,
+) -> typing.Optional[typing.Dict[str, float]]:
     """
     Convert parsed `MULTFLT` records to a `{name: multiplier}` dict.
 
@@ -281,6 +301,64 @@ def _build_multflt(data_file: DataFile) -> typing.Optional[typing.Dict[str, floa
     if not multflt_records:
         return None
     return {rec["name"]: rec["multiplier"] for rec in multflt_records}
+
+
+def _resolve_vector_spacing(
+    data_file: DataFile,
+    vector_key: str,
+    per_cell_key: str,
+    count: int,
+    axis: str,
+    nz: int,
+    ny: int,
+    nx: int,
+) -> typing.Optional[npt.NDArray[np.float64]]:
+    """
+    Try to obtain a 1-D spacing vector for one axis.
+
+    Resolution order:
+
+    1. `DXV` / `DYV` / `DZV` - single-valued vectors of length
+       `nx`, `ny`, `nz` respectively, already 1-D in the deck.
+    2. `DX` / `DY` / `DZ` - per-cell arrays of length
+       `nx*ny*nz`.  Reshaped to `(nz, ny, nx)` and the first
+       row / column / layer is extracted.
+    3. Returns `None` if neither keyword is present.
+
+    :param data_file: Parsed deck.
+    :param vector_key: Vector keyword name (`"DXV"`, `"DYV"`, `"DZV"`).
+    :param per_cell_key: Per-cell keyword name (`"DX"`, `"DY"`, `"DZ"`).
+    :param count: Expected length of the vector (`nx`, `ny`, or `nz`).
+    :param axis: Axis label for error messages (`"x"`, `"y"`, `"z"`).
+    :param nz: Grid depth count.
+    :param ny: Grid lateral count (y).
+    :param nx: Grid lateral count (x).
+    :returns: 1-D float64 spacing array or `None`.
+    :raises GridImportError: If the vector keyword has the wrong length.
+    """
+    # Prefer the vector form (DXV / DYV / DZV).
+    vec = data_file.get(vector_key)
+    if vec is not None:
+        arr = np.asarray(vec, dtype=np.float64).ravel()
+        if len(arr) != count:
+            raise GridImportError(
+                f"{vector_key} has {len(arr)} values but expected {count} "
+                f"(grid has n{axis}={count})."
+            )
+        return arr
+
+    # Fall back to the per-cell array.
+    per_cell = data_file.get(per_cell_key)
+    if per_cell is None:
+        return None
+
+    flat = np.asarray(per_cell, dtype=np.float64).ravel()
+    reshaped = flat.reshape(nz, ny, nx)
+    if axis == "x":
+        return reshaped[0, 0, :]  # varies in x; take first y-row, first z-layer
+    if axis == "y":
+        return reshaped[0, :, 0]  # varies in y
+    return reshaped[:, 0, 0]  # varies in z
 
 
 def load_grdecl(
@@ -295,31 +373,33 @@ def load_grdecl(
     string, or bytes.
 
     Automatically detects whether `source` is a filesystem path or raw
-    GRDECL text / bytes.  Recursively resolves `INCLUDE` directives when
+    GRDECL text / bytes. Recursively resolves `INCLUDE` directives when
     loading from a file path.
 
     Parsed keyword coverage:
 
-    - Grid dimensions: `SPECGRID`
-    - Geometry:        `COORD`, `ZCORN`, `TOPS`, `DX`, `DY`, `DZ`
-    - Activity:        `ACTNUM`
-    - Units:           `GRIDUNIT`, `FIELD`, `METRIC`, `LAB`, `SI`
-    - Map CRS:         `MAPAXES`, `MAPUNITS`
-    - Pinchouts:       `PINCH`, `PINCHOUT`
-    - Connections:     `NNC` (with transmissibilities)
-    - Faults:          `FAULTS`, `MULTFLT`
-    - Multipliers:     `MULTX`, `MULTY`, `MULTZ` and `-` variants
+    * Grid dimensions:   `SPECGRID`, `DIMENS`
+    * Geometry:          `COORD`, `ZCORN`, `TOPS`, `DX`, `DY`,
+                         `DZ`, `DXV`, `DYV`, `DZV`
+    * Activity:          `ACTNUM`
+    * Units:             `GRIDUNIT`, `FIELD`, `METRIC`, `LAB`, `SI`
+    * Map CRS:           `MAPAXES`, `MAPUNITS`, `MAPUNIT`
+    * Pinchouts:         `PINCH`, `PINCHOUT`
+    * Connections:       `NNC` (with transmissibilities)
+    * Faults:            `FAULTS`, `MULTFLT`
+    * Multipliers:       `MULTX`, `MULTY`, `MULTZ` and `-` variants
 
     :param source: One of:
 
-        - `pathlib.Path` - path to a `.grdecl` file.
-        - `str` - filesystem path *or* raw GRDECL text content.
-        - `bytes` - raw GRDECL content encoded as `encoding`.
+        * `pathlib.Path` - path to a `.grdecl` file.
+        * `str` - filesystem path *or* raw GRDECL text content.
+        * `bytes` - raw GRDECL content encoded as `encoding`.
 
     :param encoding: Text encoding used when decoding `bytes` / file
         input (default `"ascii"`).
-    :param unit_system: If provided, the returned `bores.grids.base.Grid`
-        is converted to this unit system after loading.
+    :param unit_system: If provided, the returned
+        `bores.grids.base.Grid` is converted to this unit system
+        after loading.
     :param metadata: Optional extra key/value pairs merged into the
         `Grid.metadata` dict.
     :returns: A fully initialised `bores.grids.base.Grid`.
@@ -344,19 +424,25 @@ def dump_grdecl(
     """
     Serialise a `bores.grids.base.Grid` to GRDECL text format.
 
-    Note:
-        GRDECL is a corner-point format. Only grids that originated from
-        `load_grdecl` are supported for export.
+    Emits all keywords that can be reconstructed from the grid object.
+    The full set that may appear in the output is:
+
+    `SPECGRID`, `GRIDUNIT`, `MAPAXES`, `MAPUNITS`,
+    `COORD` / `ZCORN` (corner-point) or `TOPS` / `DXV` / `DYV` /
+    `DZV` (Cartesian), `ACTNUM`, `MULTX`, `MULTY`, `MULTZ`,
+    `MULTX-`, `MULTY-`, `MULTZ-`, `FAULTS`, `MULTFLT`,
+    `NNC`, `PINCH`.
 
     :param grid: The grid to serialise.
     :param destination: One of:
 
-        - `pathlib.Path` or `str` path - write to file, return `None`.
-        - `None` - return the GRDECL text as a `str`.
+        * `pathlib.Path` or `str` path - write to file, return `None`.
+        * `None` - return the GRDECL text as a `str`.
 
     :param actnum: Optional shape `(n_cells,)` integer array of
-        active-cell flags (1 = active, 0 = inactive).  If `None`, all
-        cells are written as active.
+        active-cell flags (1 = active, 0 = inactive).  If `None`, the
+        value stored in `grid.metadata["actnum"]` is used; if that is
+        also absent, all cells are written as active.
     :param encoding: Encoding used when writing to a file (default
         `"ascii"`).
     :returns: GRDECL text as a `str` when `destination` is `None`;
@@ -381,12 +467,7 @@ def _assemble_grid(
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
-    Assemble a `bores.grids.base.Grid` from a parsed
-    `bores.deck.DataFile`.
-
-    Dispatches to `_assemble_corner_point` or
-    `_assemble_cartesian` based on which geometry keywords are
-    present.
+    Assemble a `bores.grids.base.Grid` from a parsed `bores.deck.DataFile`.
 
     :param data_file: Parsed deck with grid dimensions resolved.
     :param metadata: Optional extra metadata for the returned grid.
@@ -396,7 +477,7 @@ def _assemble_grid(
     """
     if data_file.dimensions is None:
         raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
-    
+
     dims = data_file.dimensions
     nx, ny, nz = dims.nx, dims.ny, dims.nz
 
@@ -405,7 +486,6 @@ def _assemble_grid(
 
     pinch_rec = data_file.get("PINCH")
     pinch = pinch_rec["thickness"] if pinch_rec is not None else None
-    # Also honour bare PINCHOUT keyword (no data).
     if pinch is None and data_file.has("PINCHOUT"):
         pinch = 1e-6
 
@@ -419,7 +499,7 @@ def _assemble_grid(
     )
 
     has_coord = data_file.has("COORD")
-    has_tops = data_file.has("TOPS")
+    has_tops = data_file.has("TOPS") or data_file.has("DX") or data_file.has("DXV")
 
     try:
         if has_coord:
@@ -434,7 +514,7 @@ def _assemble_grid(
         ) from exc
 
     raise GridImportError(
-        "GRDECL file contains neither COORD (corner-point) nor TOPS "
+        "GRDECL file contains neither COORD (corner-point) nor TOPS / DX / DXV "
         "(Cartesian) geometry keywords."
     )
 
@@ -468,8 +548,6 @@ def _assemble_corner_point(
     if zcorn is None:
         raise GridImportError("GRDECL file is missing the required ZCORN keyword.")
 
-    # ACTNUM: DataFile returns flat (n_cells,) in Eclipse order (i-fastest).
-    # `make_corner_point_grid` expects shape (nz, ny, nx) C-order.
     actnum_flat = data_file.get("ACTNUM")
     if actnum_flat is not None:
         actnum = actnum_flat.astype(np.int32, copy=False).reshape(nz, ny, nx)
@@ -512,59 +590,72 @@ def _assemble_cartesian(
 ) -> Grid:
     """
     Build a Cartesian `bores.grids.base.Grid` from `TOPS` /
-    `DX` / `DY` / `DZ` keywords.
+    `DX` / `DY` / `DZ` (per-cell) or `DXV` / `DYV` / `DZV`
+    (vector) keywords.
 
-    Spacing: prefers `DXV` / `DYV` / `DZV` vector forms if present
-    (not in the default keyword registry - add them if needed); otherwise
-    reads per-cell `DX` / `DY` / `DZ` and extracts a 1-D slice.
+    Vector forms (`DXV` / `DYV` / `DZV`) are preferred when present
+    and specify spacing directly as 1-D arrays of length `nx`, `ny`,
+    and `nz`.  Per-cell forms are reshaped and sliced to 1-D.
+
+    Also reads `FAULTS`, `MULTFLT`, `NNC`, and all six `MULT*`
+    arrays, passing them on to :func:`make_cartesian_grid`.
 
     :param data_file: Parsed deck.
     :param nx: Grid extent in x.
     :param ny: Grid extent in y.
     :param nz: Grid extent in z.
     :param unit_system: Detected unit system.
-    :param meta: Metadata dict (augmented in-place and passed to factory).
+    :param meta: Metadata dict passed to the factory.
     :returns: Fully initialised `bores.grids.base.Grid`.
     :raises GridImportError: If required keywords are missing or malformed.
     """
-
-    def _require(name: str) -> npt.NDArray[np.float64]:
-        arr = data_file.get(name)
-        if arr is None:
-            raise GridImportError(
-                f"Cartesian GRDECL grid is missing required keyword {name!r}."
+    # Z origin from TOPS
+    tops_flat = data_file.get("TOPS")
+    if tops_flat is not None:
+        tops_flat = np.asarray(tops_flat, dtype=np.float64)
+        n_columns = nx * ny
+        tops_col = tops_flat[:n_columns]
+        z_top = float(tops_col.min())
+        if tops_col.max() - tops_col.min() > 1.0:
+            warnings.warn(
+                "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
+                "uses a flat top surface at the minimum TOPS value.  Geometry may be "
+                "approximate for dipping grids.",
+                stacklevel=6,
             )
-        return arr
+    else:
+        z_top = 0.0
 
-    tops_flat = _require("TOPS")
-    # TOPS may have nx*ny or nx*ny*nz values.  Use the first nx*ny as the
-    # top-layer depths; warn if they vary significantly.
-    n_columns = nx * ny
-    tops_col = tops_flat[:n_columns]
-    z_top = float(tops_col.min())
-    if tops_col.max() - tops_col.min() > 1.0:
-        warnings.warn(
-            "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
-            "uses a flat top surface at the minimum TOPS value.  Geometry may be "
-            "approximate for dipping grids.",
-            stacklevel=6,
+    # Spacing vectors
+    dx_1d = _resolve_vector_spacing(data_file, "DXV", "DX", nx, "x", nz, ny, nx)
+    dy_1d = _resolve_vector_spacing(data_file, "DYV", "DY", ny, "y", nz, ny, nx)
+    dz_1d = _resolve_vector_spacing(data_file, "DZV", "DZ", nz, "z", nz, ny, nx)
+
+    if dx_1d is None:
+        raise GridImportError(
+            "Cartesian GRDECL grid is missing required spacing keyword DX or DXV."
         )
-
-    dx_flat = _require("DX")
-    dy_flat = _require("DY")
-    dz_flat = _require("DZ")
-
-    # Extract representative 1-D spacing vectors.
-    # Eclipse stores per-cell arrays in Fortran order (i fastest).
-    # Reshape to (nz, ny, nx) C-order and pick first row/column/layer.
-    dx_1d = dx_flat.reshape(nz, ny, nx)[0, 0, :]  # varies in x
-    dy_1d = dy_flat.reshape(nz, ny, nx)[0, :, 0]  # varies in y
-    dz_1d = dz_flat.reshape(nz, ny, nx)[:, 0, 0]  # varies in z
+    if dy_1d is None:
+        raise GridImportError(
+            "Cartesian GRDECL grid is missing required spacing keyword DY or DYV."
+        )
+    if dz_1d is None:
+        raise GridImportError(
+            "Cartesian GRDECL grid is missing required spacing keyword DZ or DZV."
+        )
 
     actnum_flat = data_file.get("ACTNUM")
     meta["source_format"] = "grdecl_cartesian"
     if actnum_flat is not None:
         meta["actnum"] = actnum_flat.astype(np.int32).reshape(nz, ny, nx)
+
+    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(data_file, nx, ny, nz)
+    fault_records = _build_fault_records(data_file)
+    multflt = _build_multflt(data_file)
+
+    # Store pinch in metadata so dump_grdecl can re-emit it.
+    if meta.get("pinch") is not None:
+        meta["pinch"] = meta["pinch"]
 
     return make_cartesian_grid(
         nx=nx,
@@ -576,6 +667,16 @@ def _assemble_cartesian(
         origin=(0.0, 0.0, z_top),
         unit_system=unit_system,
         metadata=meta,
+        fault_records=fault_records,
+        fault_transmissibility_multipliers=multflt,
+        nnc_cell_pairs=nnc_pairs,
+        nnc_transmissibilities=nnc_transmissibilities,
+        positive_x_transmissibility_multipliers=data_file.get("MULTX"),
+        negative_x_transmissibility_multipliers=data_file.get("MULTX-"),
+        positive_y_transmissibility_multipliers=data_file.get("MULTY"),
+        negative_y_transmissibility_multipliers=data_file.get("MULTY-"),
+        positive_z_transmissibility_multipliers=data_file.get("MULTZ"),
+        negative_z_transmissibility_multipliers=data_file.get("MULTZ-"),
     )
 
 
@@ -602,108 +703,40 @@ def _build_grdecl_text(
     return _build_grdecl_corner_point_text(grid, actnum=actnum)
 
 
-def _build_grdecl_cartesian_text(
-    grid: Grid,
-    *,
-    actnum: typing.Optional[ActNumArray] = None,
-) -> str:
-    meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
-    nx = meta.get("nx")
-    ny = meta.get("ny")
-    nz = meta.get("nz")
-
-    if nx is None or ny is None or nz is None:
-        nx, ny, nz = 1, 1, grid.n_cells
-
-    n_cells = nx * ny * nz
-    if n_cells != grid.n_cells:
-        raise GridExportError(
-            f"Stored dimensions ({nx}x{ny}x{nz}={n_cells}) do not match "
-            f"grid.n_cells={grid.n_cells}."
-        )
-
-    lines: typing.List[str] = []
+def _emit_specgrid(lines: typing.List[str], nx: int, ny: int, nz: int) -> None:
+    """Append a `SPECGRID` block."""
     lines.append("SPECGRID")
     lines.append(f"  {nx}  {ny}  {nz}  1  F /")
     lines.append("")
 
-    _emit_gridunit(lines, grid.unit_system)
 
-    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
-    if map_axes is not None:
-        _emit_mapaxes(lines, map_axes)
-
-    # TOPS
-    top_layer_indices = [i + j * nx for j in range(ny) for i in range(nx)]
-    tops_vals = grid.cell_min_xyz[top_layer_indices, 2]
-    lines.append("TOPS")
-    for i in range(0, len(tops_vals), 6):
-        chunk = tops_vals[i : i + 6]
-        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
-    lines.append("/")
+def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
+    """Append a `GRIDUNIT` block."""
+    unit_str = _US_TO_GRIDUNIT.get(unit_system, "FEET")
+    lines.append("GRIDUNIT")
+    lines.append(f"  '{unit_str}  ' '        ' /")
     lines.append("")
 
-    # DX / DY / DZ
-    for axis_name, col_idx in [("DX", 0), ("DY", 1), ("DZ", 2)]:
-        extents = grid.cell_max_xyz[:, col_idx] - grid.cell_min_xyz[:, col_idx]
-        # Reshape to (nz, ny, nx) then transpose to Fortran order (nx, ny, nz)
-        flat = extents.reshape(nz, ny, nx).transpose(2, 1, 0).ravel(order="F")
-        lines.append(axis_name)
-        for i in range(0, len(flat), 6):
-            chunk = flat[i : i + 6]
-            lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
-        lines.append("/")
-        lines.append("")
 
-    if actnum is not None:
-        _emit_actnum(lines, actnum, grid.n_cells, nx, ny, nz)
+def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
+    """Append `MAPUNITS` and `MAPAXES` blocks."""
+    # Eclipse order for MAPAXES: Y-axis point, origin, X-axis point
+    my = map_axes.map_y_axis_point
+    o = map_axes.origin
+    mx = map_axes.map_x_axis_point
 
-    _emit_mult_arrays(lines, grid, nx, ny, nz)
-    return "\n".join(lines)
-
-
-def _build_grdecl_corner_point_text(
-    grid: Grid,
-    *,
-    actnum: typing.Optional[ActNumArray] = None,
-) -> str:
-    coord, zcorn, nx, ny, nz = rederive_corner_point_arrays(grid)
-    meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
-
-    lines: typing.List[str] = []
-    lines.append("SPECGRID")
-    lines.append(f"  {nx}  {ny}  {nz}  1  F /")
+    unit_str = _US_TO_MAPUNITS.get(map_axes.unit_system, "FEET")
+    lines.append("MAPUNITS")
+    lines.append(f"  '{unit_str}' /")
     lines.append("")
 
-    _emit_gridunit(lines, grid.unit_system)
-
-    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
-    if map_axes is not None:
-        _emit_mapaxes(lines, map_axes)
-
-    # COORD - Eclipse Fortran order: i (pillar) fastest
-    lines.append("COORD")
-    flat_coord = coord.transpose(1, 0, 2).reshape(-1, 6)
-    for row in flat_coord:
-        x1, y1, z1, x2, y2, z2 = row
-        lines.append(f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}")
-    lines.append("/")
+    lines.append("MAPAXES")
+    lines.append(
+        f"  {my[0]:.6f}  {my[1]:.6f}"
+        f"  {o[0]:.6f}  {o[1]:.6f}"
+        f"  {mx[0]:.6f}  {mx[1]:.6f}  /"
+    )
     lines.append("")
-
-    # ZCORN - Eclipse Fortran order: x fastest, z slowest
-    lines.append("ZCORN")
-    flat_zcorn = zcorn.transpose(2, 1, 0).ravel(order="F")
-    for i in range(0, len(flat_zcorn), 6):
-        chunk = flat_zcorn[i : i + 6]
-        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
-    lines.append("/")
-
-    effective_actnum = actnum if actnum is not None else meta.get("actnum")
-    if effective_actnum is not None:
-        _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
-
-    _emit_mult_arrays(lines, grid, nx, ny, nz)
-    return "\n".join(lines)
 
 
 def _emit_actnum(
@@ -714,7 +747,7 @@ def _emit_actnum(
     ny: int,
     nz: int,
 ) -> None:
-    """Append an `ACTNUM` block in Eclipse Fortran order to `lines`."""
+    """Append an `ACTNUM` block in Eclipse Fortran order (i fastest)."""
     actnum_arr = np.asarray(actnum, dtype=np.int32)
     if len(actnum_arr) != n_cells:
         raise GridExportError(
@@ -729,35 +762,6 @@ def _emit_actnum(
     lines.append("/")
 
 
-def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
-    """Append a `MAPAXES` block to `lines`."""
-    # Eclipse order: Y-axis point, origin, X-axis point
-    my = map_axes.map_y_axis_point
-    o = map_axes.origin
-    mx = map_axes.map_x_axis_point
-    lines.append("MAPAXES")
-    lines.append(
-        f"  {my[0]:.6f}  {my[1]:.6f}"
-        f"  {o[0]:.6f}  {o[1]:.6f}"
-        f"  {mx[0]:.6f}  {mx[1]:.6f}  /"
-    )
-    lines.append("")
-
-
-def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
-    """Append a `GRIDUNIT` block to `lines`."""
-    _US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
-        UnitSystem.FIELD: "FEET",
-        UnitSystem.METRIC: "METRES",
-        UnitSystem.LAB: "CM",
-        UnitSystem.SI: "METRES",
-    }
-    unit_str = _US_TO_GRIDUNIT.get(unit_system, "FEET")
-    lines.append("GRIDUNIT")
-    lines.append(f"  '{unit_str}  ' '        ' /")
-    lines.append("")
-
-
 def _emit_mult_array(
     lines: typing.List[str],
     keyword: str,
@@ -766,10 +770,15 @@ def _emit_mult_array(
     ny: int,
     nz: int,
 ) -> None:
-    """Append a `MULT*` array block in Eclipse Fortran order."""
+    """Append a `MULT*` array block in Eclipse Fortran order (i fastest)."""
     lines.append("")
     lines.append(keyword)
-    flat = arr.reshape(nz, ny, nx).transpose(2, 1, 0).ravel(order="F")
+    flat = (
+        np.asarray(arr, dtype=np.float64)
+        .reshape(nz, ny, nx)
+        .transpose(2, 1, 0)
+        .ravel(order="F")
+    )
     for i in range(0, len(flat), 6):
         chunk = flat[i : i + 6]
         lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
@@ -795,3 +804,320 @@ def _emit_mult_arrays(
     for kw, arr in pairs:
         if arr is not None:
             _emit_mult_array(lines, kw, arr, nx, ny, nz)
+
+
+def _emit_faults(
+    lines: typing.List[str],
+    grid: Grid,
+    nx: int,
+    ny: int,
+    nz: int,
+) -> None:
+    """
+    Emit a `FAULTS` block by converting the unstructured face indices stored
+    in `grid.fault_face_indices` back to structured IJK records.
+
+    Each face in a Cartesian or corner-point grid has exactly two adjacent
+    cells.  The cell flat indices are converted to 1-based IJK coordinates
+    using the cell ordering `cell_idx = i + j*nx + k*nx*ny`.  The face
+    direction is inferred from which coordinate differs between the two cells.
+
+    Faces that cannot be cleanly resolved (e.g. boundary faces with
+    `neighbour == -1`) are skipped with a warning.
+
+    :param lines: Output text lines list (mutated in-place).
+    :param grid: Source grid with `fault_face_indices` populated.
+    :param nx: Grid dimension in x.
+    :param ny: Grid dimension in y.
+    :param nz: Grid dimension in z.
+    """
+    if not grid.fault_face_indices:
+        return
+
+    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+        """Convert 0-based flat cell index to 1-based (i, j, k)."""
+        i = flat % nx
+        j = (flat // nx) % ny
+        k = flat // (nx * ny)
+        return i + 1, j + 1, k + 1
+
+    lines.append("")
+    lines.append("FAULTS")
+
+    for fault_name, face_indices in sorted(grid.fault_face_indices.items()):
+        for face_idx in face_indices:
+            owner = int(grid.face_cell_indices[face_idx, 0])
+            neighbour = int(grid.face_cell_indices[face_idx, 1])
+            if owner < 0 or neighbour < 0:
+                continue  # boundary face - skip
+
+            oi, oj, ok = _flat_to_ijk(owner)
+            ni, nj, nk = _flat_to_ijk(neighbour)
+
+            # Determine face direction from which IJK coordinate differs.
+            if ni != oi:
+                face_dir = "I" if ni > oi else "I-"
+                # Normalise: always record from the lower-index cell.
+                if ni < oi:
+                    oi, oj, ok = ni, nj, nk
+            elif nj != oj:
+                face_dir = "J" if nj > oj else "J-"
+                if nj < oj:
+                    oi, oj, ok = ni, nj, nk
+            elif nk != ok:
+                face_dir = "K" if nk > ok else "K-"
+                if nk < ok:
+                    oi, oj, ok = ni, nj, nk
+            else:
+                warnings.warn(
+                    f"Fault {fault_name!r}: face {face_idx} connects cells with "
+                    f"identical IJK ({oi},{oj},{ok}) - cannot determine direction. "
+                    f"Skipping.",
+                    stacklevel=4,
+                )
+                continue
+
+            lines.append(
+                f"  '{fault_name}'  {oi}  {oi}  {oj}  {oj}  {ok}  {ok}  '{face_dir}'  /"
+            )
+
+    lines.append("/")
+    lines.append("")
+
+
+def _emit_multflt(
+    lines: typing.List[str],
+    grid: Grid,
+) -> None:
+    """Append a `MULTFLT` block from `grid.fault_transmissibility_multipliers`."""
+    if not grid.fault_transmissibility_multipliers:
+        return
+    lines.append("")
+    lines.append("MULTFLT")
+    for name, mult in sorted(grid.fault_transmissibility_multipliers.items()):
+        lines.append(f"  '{name}'  {mult:.6f}  /")
+    lines.append("/")
+    lines.append("")
+
+
+def _emit_nnc(
+    lines: typing.List[str],
+    grid: Grid,
+    nx: int,
+    ny: int,
+    nz: int,
+) -> None:
+    """
+    Emit a `NNC` block from `grid.nnc_cell_pairs` /
+    `grid.nnc_transmissibilities`.
+
+    Flat cell indices are converted to 1-based `(I, J, K)` using the
+    Eclipse ordering `cell_idx = (i-1) + (j-1)*nx + (k-1)*nx*ny`.
+    NNCs without a stored transmissibility (stored as `NaN`) are emitted
+    with a placeholder value of `0.0` and a comment.
+
+    :param lines: Output text lines list.
+    :param grid: Source grid.
+    :param nx: Grid dimension in x.
+    :param ny: Grid dimension in y.
+    :param nz: Grid dimension in z.
+    """
+    if grid.nnc_cell_pairs is None or len(grid.nnc_cell_pairs) == 0:
+        return
+
+    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+        i = flat % nx + 1
+        j = (flat // nx) % ny + 1
+        k = flat // (nx * ny) + 1
+        return i, j, k
+
+    has_t = grid.nnc_transmissibilities is not None and len(
+        grid.nnc_transmissibilities
+    ) == len(grid.nnc_cell_pairs)
+
+    lines.append("")
+    lines.append("NNC")
+    for idx, (c1, c2) in enumerate(grid.nnc_cell_pairs):
+        i1, j1, k1 = _flat_to_ijk(int(c1))
+        i2, j2, k2 = _flat_to_ijk(int(c2))
+        if has_t:
+            t = float(grid.nnc_transmissibilities[idx])  # type: ignore
+            t_str = f"{t:.6e}" if not np.isnan(t) else "0.0 -- T unknown"
+        else:
+            t_str = "0.0 -- T unknown"
+        lines.append(f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {t_str}  /")
+    lines.append("/")
+    lines.append("")
+
+
+def _emit_pinch(
+    lines: typing.List[str],
+    meta: typing.Mapping[str, typing.Any],
+) -> None:
+    """
+    Emit a `PINCH` block when the pinch tolerance is stored in metadata.
+
+    :param lines: Output text lines list.
+    :param meta: Grid metadata mapping; reads `meta["pinch"]`.
+    """
+    pinch = meta.get("pinch")
+    if pinch is None:
+        return
+    lines.append("")
+    lines.append("PINCH")
+    lines.append(f"  {float(pinch):.6g}  /")
+    lines.append("")
+
+
+def _build_grdecl_cartesian_text(
+    grid: Grid,
+    *,
+    actnum: typing.Optional[ActNumArray] = None,
+) -> str:
+    """
+    Build a GRDECL text representation for a Cartesian grid.
+
+    Emits (in order): `SPECGRID`, `GRIDUNIT`, `MAPAXES` (if present),
+    `TOPS`, `DXV`, `DYV`, `DZV`, `ACTNUM` (if present),
+    `MULTX` / `MULTY` / `MULTZ` / `-` variants (if present),
+    `FAULTS` (if present), `MULTFLT` (if present),
+    `NNC` (if present), `PINCH` (if present).
+
+    :param grid: Cartesian grid with `source_format = "grdecl_cartesian"`
+        in metadata.
+    :param actnum: Optional active-cell mask; falls back to
+        `grid.metadata["actnum"]`.
+    :returns: GRDECL text string.
+    """
+    meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
+    nx = meta.get("nx")
+    ny = meta.get("ny")
+    nz = meta.get("nz")
+
+    if nx is None or ny is None or nz is None:
+        nx, ny, nz = 1, 1, grid.n_cells
+
+    n_cells = nx * ny * nz
+    if n_cells != grid.n_cells:
+        raise GridExportError(
+            f"Stored dimensions ({nx}x{ny}x{nz}={n_cells}) do not match "
+            f"grid.n_cells={grid.n_cells}."
+        )
+
+    lines: typing.List[str] = []
+
+    _emit_specgrid(lines, nx, ny, nz)
+    _emit_gridunit(lines, grid.unit_system)
+
+    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    if map_axes is not None:
+        _emit_mapaxes(lines, map_axes)
+
+    # TOPS - use the top-layer cell minimum z values.
+    # Order: i fastest (Eclipse Fortran / C with transposed axes).
+    top_layer_indices = [i + j * nx for j in range(ny) for i in range(nx)]
+    tops_vals = grid.cell_min_xyz[top_layer_indices, 2]
+    lines.append("TOPS")
+    for i in range(0, len(tops_vals), 6):
+        chunk = tops_vals[i : i + 6]
+        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+    lines.append("/")
+    lines.append("")
+
+    # DXV / DYV / DZV - one representative value per cell count.
+    # We extract from cell bounding boxes: first j=0, k=0 row for DXV; etc.
+    dx_vals = grid.cell_max_xyz[:nx, 0] - grid.cell_min_xyz[:nx, 0]
+    lines.append("DXV")
+    lines.append("  " + "  ".join(f"{v:.6f}" for v in dx_vals))
+    lines.append("/")
+    lines.append("")
+
+    # DYV: cells at i=0, k=0 → indices 0, nx, 2*nx, …
+    dy_indices = np.arange(ny) * nx
+    dy_vals = grid.cell_max_xyz[dy_indices, 1] - grid.cell_min_xyz[dy_indices, 1]
+    lines.append("DYV")
+    lines.append("  " + "  ".join(f"{v:.6f}" for v in dy_vals))
+    lines.append("/")
+    lines.append("")
+
+    # DZV: cells at i=0, j=0, k=0..nz-1 → indices 0, nx*ny, 2*nx*ny, …
+    dz_indices = np.arange(nz) * nx * ny
+    dz_vals = grid.cell_max_xyz[dz_indices, 2] - grid.cell_min_xyz[dz_indices, 2]
+    lines.append("DZV")
+    lines.append("  " + "  ".join(f"{v:.6f}" for v in dz_vals))
+    lines.append("/")
+    lines.append("")
+
+    effective_actnum = actnum if actnum is not None else meta.get("actnum")
+    if effective_actnum is not None:
+        _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
+
+    _emit_mult_arrays(lines, grid, nx, ny, nz)
+    _emit_faults(lines, grid, nx, ny, nz)
+    _emit_multflt(lines, grid)
+    _emit_nnc(lines, grid, nx, ny, nz)
+    _emit_pinch(lines, meta)
+
+    return "\n".join(lines)
+
+
+def _build_grdecl_corner_point_text(
+    grid: Grid,
+    *,
+    actnum: typing.Optional[ActNumArray] = None,
+) -> str:
+    """
+    Build a GRDECL text representation for a corner-point grid.
+
+    Emits (in order): `SPECGRID`, `GRIDUNIT`, `MAPAXES` (if present),
+    `COORD`, `ZCORN`, `ACTNUM` (if present),
+    `MULTX` / `MULTY` / `MULTZ` / `-` variants (if present),
+    `FAULTS` (if present), `MULTFLT` (if present),
+    `NNC` (if present), `PINCH` (if present).
+
+    :param grid: Corner-point grid with `source_format = "grdecl_corner_point"`
+        in metadata.
+    :param actnum: Optional active-cell mask.
+    :returns: GRDECL text string.
+    """
+    coord, zcorn, nx, ny, nz = rederive_corner_point_arrays(grid)
+    meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
+
+    lines: typing.List[str] = []
+
+    _emit_specgrid(lines, nx, ny, nz)
+    _emit_gridunit(lines, grid.unit_system)
+
+    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    if map_axes is not None:
+        _emit_mapaxes(lines, map_axes)
+
+    # COORD - Eclipse Fortran order: i (pillar x) fastest
+    lines.append("COORD")
+    flat_coord = coord.transpose(1, 0, 2).reshape(-1, 6)
+    for row in flat_coord:
+        x1, y1, z1, x2, y2, z2 = row
+        lines.append(f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}")
+    lines.append("/")
+    lines.append("")
+
+    # ZCORN - Eclipse Fortran order: x fastest, z slowest
+    lines.append("ZCORN")
+    flat_zcorn = zcorn.transpose(2, 1, 0).ravel(order="F")
+    for i in range(0, len(flat_zcorn), 6):
+        chunk = flat_zcorn[i : i + 6]
+        lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))
+    lines.append("/")
+    lines.append("")
+
+    effective_actnum = actnum if actnum is not None else meta.get("actnum")
+    if effective_actnum is not None:
+        _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
+
+    _emit_mult_arrays(lines, grid, nx, ny, nz)
+    _emit_faults(lines, grid, nx, ny, nz)
+    _emit_multflt(lines, grid)
+    _emit_nnc(lines, grid, nx, ny, nz)
+    _emit_pinch(lines, meta)
+
+    return "\n".join(lines)

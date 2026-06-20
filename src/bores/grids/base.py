@@ -959,8 +959,8 @@ class Grid:
         if invalid_volume_mask.any():
             bad_cells = np.where(invalid_volume_mask)[0].tolist()
             raise InvalidVolumeError(
-                f"Cells {bad_cells[:10]}{'...' if len(bad_cells) > 10 else ''} "
-                f"have non-positive computed volumes.  Check face winding order "
+                f"Cells {bad_cells[:20]}{'...' if len(bad_cells) > 20 else ''} "
+                f"have non-positive computed volumes. Check face winding order "
                 f"(vertices must be CCW from the owner-cell side)."
             )
         object.__setattr__(self, "cell_volumes", cell_volumes)
