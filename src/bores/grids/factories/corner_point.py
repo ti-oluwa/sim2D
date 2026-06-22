@@ -1,8 +1,7 @@
 """
 Corner-point (pillar) grid factory.
 
-Builds a `bores.grids.base.Grid` from ECLIPSE-style COORD / ZCORN / ACTNUM
-arrays as produced by `bores.grids.io.grdecl`.
+Builds a `bores.grids.base.Grid` from ECLIPSE-style COORD / ZCORN / ACTNUM arrays.
 
 **Coordinate convention**: z-axis positive downward (reservoir depth).
 
@@ -28,11 +27,11 @@ is at or below `pinch_tolerance`. For such cells:
 
 Named faults passed in as `fault_records` (a sequence of
 `FaultRecord` objects parsed from the GRDECL `FAULTS` keyword) are
-resolved to face indices after the unstructured grid is built.  Each
-`FaultRecord` specifies an IJK range and a face direction.  The factory
+resolved to face indices after the unstructured grid is built. Each
+`FaultRecord` specifies an IJK range and a face direction. The factory
 maps the structured cell pairs implied by that range to unstructured face
-indices via a reverse cell-index lookup table.  Resolved fault face arrays
-and MULTFLT multipliers are stored directly on the returned `Grid`.
+indices via a reverse cell-index lookup table. Resolved fault face arrays
+and `MULTFLT` multipliers are stored directly on the returned `Grid`.
 """
 
 import typing
@@ -72,24 +71,13 @@ ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
 """Corner-point ACTNUM array, shape `(NZ, NY, NX)`; 1 = active, 0 = inactive."""
 
 
-########################################################################
-# Hexahedron face table for z-positive-downward reservoir convention.
-#
-# VTK vertex layout after vtk_to_corner remapping:
-#   vtk[0] = (x0, y0, z_top)    vtk[1] = (x1, y0, z_top)
-#   vtk[2] = (x1, y1, z_top)    vtk[3] = (x0, y1, z_top)
-#   vtk[4] = (x0, y0, z_bottom) vtk[5] = (x1, y0, z_bottom)
-#   vtk[6] = (x1, y1, z_bottom) vtk[7] = (x0, y1, z_bottom)
-#
-# Winding is CCW from outside (outward-normal convention).
-########################################################################
 _HEXAHEDRON_FACES_ZDOWN: typing.List[typing.List[int]] = [
-    [0, 1, 2, 3],  # top    (z_top,    shallower) — outward normal = -z
-    [4, 7, 6, 5],  # bottom (z_bottom, deeper)    — outward normal = +z
-    [0, 1, 5, 4],  # -y face (near, y=y0)         — outward normal = -y
-    [3, 7, 6, 2],  # +y face (far,  y=y1)         — outward normal = +y
-    [0, 4, 7, 3],  # -x face (left, x=x0)         — outward normal = -x
-    [1, 2, 6, 5],  # +x face (right,x=x1)         — outward normal = +x
+    [0, 3, 2, 1],  # top    — outward normal = -z (upward)
+    [4, 5, 6, 7],  # bottom — outward normal = +z (downward)
+    [0, 1, 5, 4],  # -y face
+    [3, 7, 6, 2],  # +y face
+    [0, 4, 7, 3],  # -x face
+    [1, 2, 6, 5],  # +x face
 ]
 
 # Local face indices for the top and bottom faces in _HEXAHEDRON_FACES_ZDOWN.
@@ -204,7 +192,9 @@ def make_corner_point_grid(
             f"`coord` must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}."
         )
     if zcorn_arr.ndim != 3:
-        raise ValidationError(f"`zcorn` must be a 3-D array; got ndim={zcorn_arr.ndim}.")
+        raise ValidationError(
+            f"`zcorn` must be a 3-D array; got ndim={zcorn_arr.ndim}."
+        )
 
     ny_plus1, nx_plus1 = coord_arr.shape[:2]
     nx = nx_plus1 - 1
@@ -249,6 +239,8 @@ def make_corner_point_grid(
         connection_types,
         geometric_nnc_pairs,
         active_cells,  # shape (n_active, 3) — (k, j, i) for fault resolution
+        hex_volumes,
+        hex_centroids,
     ) = _compute_corner_point_geometry(
         coord=coord_arr,
         zcorn=zcorn_arr,
@@ -294,17 +286,13 @@ def make_corner_point_grid(
 
     # Fault face resolution
     resolved_fault_face_indices: typing.Optional[
-        typing.Dict[str, npt.NDArray[np.int32]]
+        typing.Dict[str, IntArray[OneDimension]]
     ] = None
-
     if fault_records:
         resolved_fault_face_indices = _resolve_fault_face_indices(
             fault_records=fault_records,
             active_cells=active_cells,
             face_cell_indices=face_cell_indices,
-            nx=nx,
-            ny=ny,
-            nz=nz,
         )
         # Tag fault faces in connection_types
         for face_indices in resolved_fault_face_indices.values():
@@ -315,6 +303,8 @@ def make_corner_point_grid(
         face_vertex_indices=face_vertex_indices,
         face_vertex_offsets=face_vertex_offsets,
         face_cell_indices=face_cell_indices,
+        cell_volumes=hex_volumes,
+        cell_centroids=hex_centroids,
         unit_system=unit_system,
         metadata=metadata,
         cell_statuses=cell_statuses,
@@ -481,12 +471,14 @@ def _compute_corner_point_geometry(
     pinch_tolerance: float = 0.0,
 ) -> typing.Tuple[
     VertexCoordinates,  # vertex_coordinates
-    npt.NDArray[np.int32],  # face_vertex_indices  (flat CSR)
-    npt.NDArray[np.int32],  # face_vertex_offsets  (CSR offsets)
-    npt.NDArray[np.int32],  # face_cell_indices    (n_faces, 2)
-    npt.NDArray[np.int8],  # connection_types     (n_faces,)
-    typing.Optional[npt.NDArray[np.int32]],  # nnc_cell_pairs (n_nnc, 2)
-    npt.NDArray[np.int32],  # active_cells  (n_active, 3) k,j,i
+    IntArray[OneDimension],  # face_vertex_indices  (flat CSR)
+    IntArray[OneDimension],  # face_vertex_offsets  (CSR offsets)
+    IntArray[TwoDimensions],  # face_cell_indices    (n_faces, 2)
+    IntArray[OneDimension],  # connection_types     (n_faces,)
+    typing.Optional[IntArray[TwoDimensions]],  # nnc_cell_pairs (n_nnc, 2)
+    IntArray[TwoDimensions],  # active_cells  (n_active, 3) k,j,i
+    FloatArray[OneDimension],
+    FloatArray[TwoDimensions],
 ]:
     """
     Compute 3-D corner coordinates and build face arrays for a corner-point grid.
@@ -614,6 +606,19 @@ def _compute_corner_point_geometry(
     nnc_array: typing.Optional[npt.NDArray[np.int32]] = (
         np.asarray(nnc_pairs, dtype=np.int32).reshape(-1, 2) if nnc_pairs else None
     )
+    # Compute cell volumes and centroids via 5-tet decomposition.
+    # This is independent of face winding, robust for distorted/inverted cells.
+    vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
+    vtk_corner_indices = np.empty((n_active, 8), dtype=np.int32)
+    for cell_idx in range(n_active):
+        for v in range(8):
+            vtk_corner_indices[cell_idx, v] = int(
+                corner_global[cell_idx, vtk_to_corner[v]]
+            )
+
+    hex_volumes, hex_centroids = _compute_hex_volumes_and_centroids(
+        vtk_corner_indices, vertex_coordinates
+    )
     return (
         vertex_coordinates,
         np.asarray(flat_face_vertex_indices, dtype=np.int32),
@@ -622,17 +627,16 @@ def _compute_corner_point_geometry(
         np.asarray(connection_types, dtype=np.int8),
         nnc_array,
         active_cells,
+        hex_volumes,
+        hex_centroids,
     )
 
 
 def _resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
-    active_cells: npt.NDArray[np.int32],
-    face_cell_indices: npt.NDArray[np.int32],
-    nx: int,
-    ny: int,
-    nz: int,
-) -> typing.Dict[str, npt.NDArray[np.int32]]:
+    active_cells: IntArray[TwoDimensions],
+    face_cell_indices: IntArray[TwoDimensions],
+) -> typing.Dict[str, IntArray[OneDimension]]:
     """
     Resolve `FaultRecord` IJK ranges to unstructured face index arrays.
 
@@ -651,9 +655,6 @@ def _resolve_fault_face_indices(
         active cell, indexed 0 .. n_active-1.
     :param face_cell_indices: Shape `(n_faces, 2)` — owner/neighbour
         pairs in the unstructured grid.
-    :param nx: Structured grid dimension in x.
-    :param ny: Structured grid dimension in y.
-    :param nz: Structured grid dimension in z.
     :returns: Dict mapping fault name -> 1-D int32 array of face indices.
     """
     # Build: structured (k, j, i) -> unstructured cell index
@@ -845,6 +846,119 @@ def _fill_zcorn(
                 zcorn[2 * k + 1, 2 * j, 2 * i + 1] = z_bottom
                 zcorn[2 * k + 1, 2 * j + 1, 2 * i] = z_bottom
                 zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1] = z_bottom
+
+
+@numba.njit(parallel=True, cache=True)
+def _compute_hex_volumes_and_centroids(
+    vtk_corner_indices: npt.NDArray[np.int32],
+    vertex_coordinates: FloatArray[TwoDimensions],
+) -> typing.Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """
+    Compute hexahedral cell volumes and centroids via 5-tetrahedron decomposition.
+
+    Operates directly on the 8 corner vertices in VTK hexahedron order:
+
+        0=(x0,y0,zt)  1=(x1,y0,zt)  2=(x1,y1,zt)  3=(x0,y1,zt)
+        4=(x0,y0,zb)  5=(x1,y0,zb)  6=(x1,y1,zb)  7=(x0,y1,zb)
+
+    The decomposition into 5 non-overlapping tetrahedra:
+
+        T0: vertices [0,1,3,4]
+        T1: vertices [1,4,5,6]
+        T2: vertices [1,3,4,6]
+        T3: vertices [1,2,3,6]
+        T4: vertices [3,4,6,7]
+
+    Each tet volume uses the absolute value of the scalar triple product,
+    making this robust against distorted cells, non-monotone pillar depths,
+    and geometrically inverted cells that appear in real reservoir grids.
+
+    :param vtk_corner_indices: Shape `(n_cells, 8)` global vertex indices
+        per cell in VTK hexahedron ordering.
+    :param vertex_coordinates: Shape `(n_verts, 3)` world coordinates.
+    :returns: `(cell_volumes, cell_centroids)` of shapes `(n_cells,)`
+        and `(n_cells, 3)`.
+    """
+    n_cells = vtk_corner_indices.shape[0]
+    cell_volumes = np.zeros(n_cells, dtype=np.float64)
+    cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
+
+    for cell_idx in numba.prange(n_cells):  # type: ignore
+        total_vol = 0.0
+        wcx = 0.0
+        wcy = 0.0
+        wcz = 0.0
+
+        for t in range(5):
+            if t == 0:
+                l0, l1, l2, l3 = 0, 1, 3, 4
+            elif t == 1:
+                l0, l1, l2, l3 = 1, 4, 5, 6
+            elif t == 2:
+                l0, l1, l2, l3 = 1, 3, 4, 6
+            elif t == 3:
+                l0, l1, l2, l3 = 1, 2, 3, 6
+            else:
+                l0, l1, l2, l3 = 3, 4, 6, 7
+
+            g0 = vtk_corner_indices[cell_idx, l0]
+            g1 = vtk_corner_indices[cell_idx, l1]
+            g2 = vtk_corner_indices[cell_idx, l2]
+            g3 = vtk_corner_indices[cell_idx, l3]
+
+            x0 = vertex_coordinates[g0, 0]
+            y0 = vertex_coordinates[g0, 1]
+            z0 = vertex_coordinates[g0, 2]
+
+            ax = vertex_coordinates[g1, 0] - x0
+            ay = vertex_coordinates[g1, 1] - y0
+            az = vertex_coordinates[g1, 2] - z0
+
+            bx = vertex_coordinates[g2, 0] - x0
+            by = vertex_coordinates[g2, 1] - y0
+            bz = vertex_coordinates[g2, 2] - z0
+
+            cx = vertex_coordinates[g3, 0] - x0
+            cy = vertex_coordinates[g3, 1] - y0
+            cz = vertex_coordinates[g3, 2] - z0
+
+            # |a · (b × c)| / 6
+            cross_x = by * cz - bz * cy
+            cross_y = bz * cx - bx * cz
+            cross_z = bx * cy - by * cx
+            tet_vol = abs(ax * cross_x + ay * cross_y + az * cross_z) / 6.0
+
+            tet_cx = (
+                x0
+                + vertex_coordinates[g1, 0]
+                + vertex_coordinates[g2, 0]
+                + vertex_coordinates[g3, 0]
+            ) * 0.25
+            tet_cy = (
+                y0
+                + vertex_coordinates[g1, 1]
+                + vertex_coordinates[g2, 1]
+                + vertex_coordinates[g3, 1]
+            ) * 0.25
+            tet_cz = (
+                z0
+                + vertex_coordinates[g1, 2]
+                + vertex_coordinates[g2, 2]
+                + vertex_coordinates[g3, 2]
+            ) * 0.25
+
+            total_vol += tet_vol
+            wcx += tet_vol * tet_cx
+            wcy += tet_vol * tet_cy
+            wcz += tet_vol * tet_cz
+
+        cell_volumes[cell_idx] = total_vol
+        if total_vol > 0.0:
+            cell_centroids[cell_idx, 0] = wcx / total_vol
+            cell_centroids[cell_idx, 1] = wcy / total_vol
+            cell_centroids[cell_idx, 2] = wcz / total_vol
+
+    return cell_volumes, cell_centroids
 
 
 def rederive_corner_point_arrays(

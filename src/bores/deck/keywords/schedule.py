@@ -36,6 +36,7 @@ file order alongside the `DATES`/`TSTEP` timeline.
 - `WECON` - well economic limits (auto-shut-in thresholds).
 - `WTEST` - automatic well re-opening / testing schedule.
 """
+
 import typing
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
@@ -125,7 +126,7 @@ TSTEP = TStepKeyword()
 step sizes (in the deck's declared time unit, days for FIELD/METRIC).
 """
 
-WELSPECS = RepeatedRecordKeyword(
+WELSPECS = RepeatedRecordKeyword[typing.Union[str, float]](
     "WELSPECS",
     fields=[
         Field("well", str),
@@ -167,7 +168,7 @@ Fields:
   `AVG`).
 """
 
-COMPDAT = RepeatedRecordKeyword(
+COMPDAT = RepeatedRecordKeyword[typing.Union[str, float]](
     "COMPDAT",
     fields=[
         Field("well", str),
@@ -215,7 +216,7 @@ Fields:
 - `perm_thickness_mult` - additional permeability-thickness multiplier.
 """
 
-WCONPROD = RepeatedRecordKeyword(
+WCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
     "WCONPROD",
     fields=[
         Field("well", str),
@@ -251,7 +252,7 @@ Fields:
   THP-to-BHP conversion (`0` = none assigned).
 """
 
-WCONINJE = RepeatedRecordKeyword(
+WCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
     "WCONINJE",
     fields=[
         Field("well", str),
@@ -285,48 +286,21 @@ Fields:
   (`0` = none assigned).
 """
 
-
-class WelOpenKeyword(RepeatedRecordKeyword):
-    """
-    `WELOPEN 'WELL' STATUS [I J K1 K2] ... / ... /`
-    - open, shut, or stop a well, or one of its connections.
-
-    When `i`/`j`/`k1`/`k2` are all absent (or `0`), the action applies to
-    the whole well; when given, it applies only to the connection(s) at
-    that location (or layer range `k1`-`k2` at column `(i, j)`).
-    """
-
-    _VALID_STATUSES: typing.FrozenSet[str] = frozenset({"OPEN", "SHUT", "STOP", "AUTO"})
-
-    def __init__(self) -> None:
-        super().__init__(
-            "WELOPEN",
-            fields=[
-                Field("well", str),
-                Field("status", str),
-                Field("i", int, required=False, default=0),
-                Field("j", int, required=False, default=0),
-                Field("k1", int, required=False, default=0),
-                Field("k2", int, required=False, default=0),
-            ],
-        )
-
-    def _parse_tokens(
-        self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Any]:
-        result = super()._parse_tokens(tokens)
-        status = str(result["status"]).upper()
-        if status not in self._VALID_STATUSES:
-            raise DeckParseError(
-                f"WELOPEN record for {result.get('well')!r}: unrecognised "
-                f"status {status!r}. Valid values: "
-                f"{sorted(self._VALID_STATUSES)}."
-            )
-        result["status"] = status
-        return result
-
-
-WELOPEN = WelOpenKeyword()
+WELOPEN = RepeatedRecordKeyword[typing.Union[str, int]](
+    "WELOPEN",
+    fields=[
+        Field("well", str),
+        Field(
+            "status",
+            lambda v: str(v).upper(),
+            options={"OPEN", "SHUT", "STOP", "AUTO"},
+        ),
+        Field("i", int, required=False, default=0),
+        Field("j", int, required=False, default=0),
+        Field("k1", int, required=False, default=0),
+        Field("k2", int, required=False, default=0),
+    ],
+)
 """
 `WELOPEN 'WELL' STATUS [I J K1 K2] ... / ... /`
 - open, shut, or stop a well, or one of its connections.
@@ -338,9 +312,13 @@ Fields:
 - `i` / `j` / `k1` / `k2` - optional connection location/layer range to
   restrict the action to a single connection (or range of layers) rather
   than the whole well; all default to `0`, meaning "whole well".
+
+When `i`/`j`/`k1`/`k2` are all absent (or `0`), the action applies to
+the whole well; when given, it applies only to the connection(s) at
+that location (or layer range `k1`-`k2` at column `(i, j)`).
 """
 
-WELTARG = RepeatedRecordKeyword(
+WELTARG = RepeatedRecordKeyword[typing.Union[str, float]](
     "WELTARG",
     fields=[
         Field("well", str),
@@ -360,7 +338,7 @@ Fields:
 - `value`        - new value for that target.
 """
 
-WPIMULT = RepeatedRecordKeyword(
+WPIMULT = RepeatedRecordKeyword[typing.Union[str, float]](
     "WPIMULT",
     fields=[
         Field("well", str),
@@ -383,7 +361,7 @@ Fields:
   "every connection on this well".
 """
 
-GRUPTREE = RepeatedRecordKeyword(
+GRUPTREE = RepeatedRecordKeyword[str](
     "GRUPTREE",
     fields=[
         Field("child", str),
@@ -404,7 +382,7 @@ Fields:
 - `parent` - parent group name (`'FIELD'` for top-level groups).
 """
 
-GCONPROD = RepeatedRecordKeyword(
+GCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
     "GCONPROD",
     fields=[
         Field("group", str),
@@ -431,7 +409,7 @@ Fields:
   exceed its share of the group target (`NONE`, `RATE`, `CON`, ...).
 """
 
-GCONINJE = RepeatedRecordKeyword(
+GCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
     "GCONINJE",
     fields=[
         Field("group", str),
@@ -457,7 +435,7 @@ Fields:
   for the group.
 """
 
-WECON = RepeatedRecordKeyword(
+WECON = RepeatedRecordKeyword[typing.Union[str, float]](
     "WECON",
     fields=[
         Field("well", str),
@@ -490,7 +468,7 @@ Fields:
   simulation run (`YES` or `NO`).
 """
 
-WTEST = RepeatedRecordKeyword(
+WTEST = RepeatedRecordKeyword[typing.Union[str, float]](
     "WTEST",
     fields=[
         Field("well", str),

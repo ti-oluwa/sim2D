@@ -167,9 +167,9 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
 
         tokens = tokenise(record.body)
         result: typing.Dict[str, typing.Optional[int]] = {}
-        for tok in tokens:
-            if "=" in tok:
-                mnemonic, _, raw_value = tok.partition("=")
+        for token in tokens:
+            if "=" in token:
+                mnemonic, _, raw_value = token.partition("=")
                 try:
                     result[mnemonic.upper()] = int(raw_value)
                 except ValueError as exc:
@@ -178,7 +178,7 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
                         f"level {raw_value!r}: {exc}"
                     ) from exc
             else:
-                result[tok.upper()] = None
+                result[token.upper()] = None
         return result
 
 

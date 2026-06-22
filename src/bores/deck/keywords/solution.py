@@ -74,7 +74,7 @@ RV = GridArrayKeyword("RV", dtype=np.float64, default_value=0.0)
 """`RV` - initial vaporised oil-gas ratio (stb/scf in FIELD)."""
 
 
-EQUIL = RepeatedRecordKeyword(
+EQUIL = RepeatedRecordKeyword[float](
     "EQUIL",
     fields=[
         Field("datum_depth", float),

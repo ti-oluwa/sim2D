@@ -1,7 +1,8 @@
 """Entry point for parsing Eclipse / GRDECL decks."""
-
 import typing
 from collections.abc import Collection
+
+from typing_extensions import TypeVar
 
 from bores.deck.core import (
     Deck,
@@ -131,6 +132,7 @@ from bores.deck.operators import Operation, resolve_operations
 
 __all__ = ["DataFile"]
 
+T = TypeVar("T")
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
 
@@ -370,6 +372,12 @@ class DataFile:
     def has(self, name: str) -> bool:
         """Return whether `name` occurs anywhere in the deck."""
         return self._deck.has(name.upper())
+
+    @typing.overload
+    def get(self, k: Keyword[T], /, *, use_cache: bool = ...) -> typing.Optional[T]: ...
+
+    @typing.overload
+    def get(self, k: str, /, *, use_cache: bool = ...) -> typing.Optional[typing.Any]: ...
 
     def get(
         self, k: typing.Union[str, Keyword[typing.Any]], /, *, use_cache: bool = False

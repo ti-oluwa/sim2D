@@ -142,6 +142,7 @@ def as_pyvista_grid(
     pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
 
     # Attach built-in geometric arrays
+    assert grid.cell_volumes is not None
     pv_grid.cell_data["cell_volume"] = grid.cell_volumes
     pv_grid.cell_data["cell_depth"] = grid.cell_center_depths
     pv_grid.cell_data["cell_thickness"] = grid.cell_thickness
@@ -245,13 +246,21 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
 
     factor = _get_length_conversion_factor(grid.unit_system, to)
     # Rescale vertex coordinates only.
-    # All other geometry is derived and will be recomputed in __attrs_post_init__.
-    new_vertex_coordinates = grid.vertex_coordinates * factor
+    # All other geometry is derived and will be recomputed on Grid initialization.
+    vertex_coordinates = grid.vertex_coordinates * factor
+    cell_volumes = (
+        (grid.cell_volumes * (factor**3) if grid.cell_volumes is not None else None),
+    )
+    cell_centroids = (
+        (grid.cell_centroids * factor if grid.cell_centroids is not None else None),
+    )
     return Grid(
-        vertex_coordinates=new_vertex_coordinates,
+        vertex_coordinates=vertex_coordinates,
         face_vertex_indices=grid.face_vertex_indices,
         face_vertex_offsets=grid.face_vertex_offsets,
         face_cell_indices=grid.face_cell_indices,
+        cell_volumes=cell_volumes,  # type: ignore
+        cell_centroids=cell_centroids,  # type: ignore
         unit_system=to,
         index_dtype=grid.index_dtype,
         floating_dtype=grid.floating_dtype,

@@ -152,9 +152,9 @@ class TitleKeyword(Keyword[str]):
         if record is None:
             return None
         # The body is everything after the keyword name up to the scanner's
-        # first '/'.  For TITLE there is no '/' — the scanner will treat it
+        # first '/'. For `TITLE` there is no '/' so the scanner will treat it
         # as a bare keyword with an empty body when the next keyword follows
-        # immediately.  Either way, strip surrounding whitespace.
+        # immediately. Either way, strip surrounding whitespace.
         return record.body.strip()
 
 
@@ -184,7 +184,7 @@ Example:
         1 JAN 2020 /
 """
 
-TABDIMS = RecordKeyword(
+TABDIMS = RecordKeyword[int](
     "TABDIMS",
     fields=[
         Field("ntsfun", int, required=False, default=1),
@@ -213,7 +213,7 @@ Fields:
 - `nrpvt`  - max number of Rs/Rv nodes in a live-oil / wet-gas table.
 """
 
-WELLDIMS = RecordKeyword(
+WELLDIMS = RecordKeyword[int](
     "WELLDIMS",
     fields=[
         Field("nwmaxz", int, required=False, default=1),
@@ -236,7 +236,7 @@ Fields:
 - `nwgmax` - maximum number of wells in any one group.
 """
 
-EQLDIMS = RecordKeyword(
+EQLDIMS = RecordKeyword[int](
     "EQLDIMS",
     fields=[
         Field("ntequl", int, required=False, default=1),
@@ -261,7 +261,7 @@ Fields:
 - `nstrvd` - maximum number of depth nodes in saturation-depth tables.
 """
 
-REGDIMS = RecordKeyword(
+REGDIMS = RecordKeyword[int](
     "REGDIMS",
     fields=[
         Field("ntfip", int, required=False, default=1),

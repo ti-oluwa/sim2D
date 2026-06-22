@@ -57,7 +57,7 @@ __all__ = [
 ]
 
 
-SPECGRID = RecordKeyword(
+SPECGRID = RecordKeyword[typing.Union[str, int]](
     "SPECGRID",
     fields=[
         Field("nx", int),
@@ -172,7 +172,7 @@ COORD = CoordKeyword()
 ZCORN = ZCornKeyword()
 """`ZCORN` - corner-point depth array."""
 
-MAPAXES = RecordKeyword(
+MAPAXES = RecordKeyword[float](
     "MAPAXES",
     fields=[
         Field("y_axis_x", float),
@@ -203,11 +203,11 @@ GRIDUNIT = RecordKeyword(
 )
 """`GRIDUNIT 'UNIT' ['TYPE'] /` - geometry length unit declaration."""
 
-MAPUNITS = RecordKeyword("MAPUNITS", fields=[Field("unit", str)])
+MAPUNITS = RecordKeyword[str]("MAPUNITS", fields=[Field("unit", str)])
 """`MAPUNITS 'UNIT' /` - map coordinate unit declaration."""
 
 
-MAPUNIT = RecordKeyword("MAPUNIT", fields=[Field("unit", str)])
+MAPUNIT = RecordKeyword[str]("MAPUNIT", fields=[Field("unit", str)])
 """
 `MAPUNIT 'UNIT' /` - map coordinate unit declaration.
  
@@ -229,7 +229,7 @@ present in the deck, `False` otherwise.
 """
 
 
-PINCH = RecordKeyword(
+PINCH = RecordKeyword[typing.Union[str, float]](
     "PINCH",
     fields=[
         Field("thickness", float, required=False, default=1e-6),
@@ -419,7 +419,7 @@ PERMZ = GridArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
-class FaultsKeyword(RepeatedRecordKeyword):
+class FaultsKeyword(RepeatedRecordKeyword[typing.Union[int, str]]):
     """
     `FAULTS 'NAME' I1 I2 J1 J2 K1 K2 FACE / ... /` - named fault planes.
 
@@ -463,7 +463,7 @@ class FaultsKeyword(RepeatedRecordKeyword):
         return result
 
 
-class MultFLTKeyword(RepeatedRecordKeyword):
+class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[float, str]]):
     """
     `MULTFLT 'NAME' MULTIPLIER / ... /`
     - per-fault transmissibility multiplier.
@@ -494,9 +494,11 @@ class MultFLTKeyword(RepeatedRecordKeyword):
             return None
 
         # Last value for each fault name wins.
-        by_name: typing.Dict[str, typing.Dict[str, typing.Any]] = {}
-        for rec in records:
-            by_name[rec["name"]] = rec
+        by_name: typing.Dict[typing.Hashable, typing.Dict[str, typing.Any]] = {}
+        for record in records:
+            if record is None:
+                continue
+            by_name[record["name"]] = record
         return list(by_name.values())
 
 

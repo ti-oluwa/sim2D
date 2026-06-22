@@ -7,13 +7,15 @@ import abc
 import datetime
 import typing
 import warnings
+from collections.abc import Collection
 
+import attrs
 import numpy as np
 import numpy.typing as npt
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.operators import Operation, apply_operation, resolve_operations
-from bores.typing import FloatArray, OneDimension
+from bores.typing import FloatArray, Number, OneDimension
 
 __all__ = [
     "Keyword",
@@ -30,14 +32,15 @@ __all__ = [
 T = typing.TypeVar("T")
 
 
-class Field(typing.NamedTuple):
+@attrs.define(slots=True, frozen=True)
+class Field(typing.Generic[T]):
     """
     One positional field in a `RecordKeyword` or
     `RepeatedRecordKeyword` layout.
 
     :param name: Field name (used as key in the returned `dict`).
     :param type: Callable that converts the raw token string to the field
-        value (e.g. `int`, `float`, `str`).
+        value (e.g. `int`, `float`, `str`, or a function/validator).
     :param required: Whether this field must be present.  Trailing optional
         fields fall back to `default` when the record has fewer tokens.
     :param default: Default value when the field is absent and
@@ -45,9 +48,41 @@ class Field(typing.NamedTuple):
     """
 
     name: str
-    type: typing.Callable[[str], typing.Any]
+    type: typing.Callable[[str], T]
     required: bool = True
-    default: typing.Any = None
+    default: typing.Optional[T] = None
+    options: typing.Optional[Collection[T]] = None
+
+    def __attrs_post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("Field name required. `name` can not be empty.")
+
+        options = frozenset(self.options) if self.options else None
+        if options and self.default is not None and self.default not in options:
+            raise ValueError(
+                f"Invalid default value for {self.name!r} - {self.default!r}. "
+                f"Default should be one of {', '.join([str(option) for option in options])}"
+            )
+        object.__setattr__(self, "options", options)
+
+    def parse(self, raw: str, keyword_name: str) -> typing.Optional[T]:
+        default = False
+        try:
+            value = self.type(raw)
+        except ValueError as exc:
+            if self.required:
+                raise DeckParseError(
+                    f"{keyword_name} record: {self.name!r} got invalid value {raw!r}: {exc}"
+                ) from exc
+            value = self.default
+            default = True
+
+        if self.options and not default and value not in self.options:
+            raise DeckParseError(
+                f"{keyword_name} record: {self.name!r} got unrecognised value {raw!r}. "
+                f"Value should be one of {', '.join([str(option) for option in self.options])}"
+            )
+        return value
 
 
 class Keyword(typing.Generic[T], abc.ABC):
@@ -101,11 +136,11 @@ class Keyword(typing.Generic[T], abc.ABC):
         return hash(self.name)
 
 
-def _parse_tokens_into_dict(
+def _parse_tokens(
     keyword_name: str,
-    fields: typing.Sequence[Field],
+    fields: typing.Sequence[Field[T]],
     tokens: typing.Sequence[str],
-) -> typing.Dict[str, typing.Any]:
+) -> typing.Dict[str, typing.Optional[T]]:
     """
     Convert a flat token sequence to a `{field_name: value}` dict
     according to `fields`.
@@ -117,22 +152,14 @@ def _parse_tokens_into_dict(
     :raises DeckParseError: If a required field is missing or has an
         invalid value.
     """
-    result: typing.Dict[str, typing.Any] = {}
+    result: typing.Dict[str, typing.Optional[T]] = {}
     for idx, field in enumerate(fields):
         if idx < len(tokens):
             raw = tokens[idx]
-            try:
-                result[field.name] = field.type(raw)
-            except ValueError as exc:
-                if field.required:
-                    raise DeckParseError(
-                        f"{keyword_name}: field {field.name!r} got invalid "
-                        f"value {raw!r}: {exc}"
-                    ) from exc
-                result[field.name] = field.default
+            result[field.name] = field.parse(raw, keyword_name)
         elif field.required:
             raise DeckParseError(
-                f"{keyword_name}: missing required field {field.name!r} "
+                f"{keyword_name} record: missing required field {field.name!r} "
                 f"(got {len(tokens)} token(s), expected at least {idx + 1})."
             )
         else:
@@ -140,7 +167,7 @@ def _parse_tokens_into_dict(
     return result
 
 
-class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
+class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
     """
     A keyword holding exactly one fixed-layout record of mixed-type fields
     (`SPECGRID`, `MAPAXES`, `GRIDUNIT`, `PINCH`).
@@ -153,7 +180,7 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
 
     __slots__ = ("fields",)
 
-    def __init__(self, name: str, fields: typing.Sequence[Field]) -> None:
+    def __init__(self, name: str, fields: typing.Sequence[Field[T]]) -> None:
         super().__init__(name)
         self.fields = list(fields)
 
@@ -163,7 +190,7 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
-    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    ) -> typing.Optional[typing.Dict[str, typing.Optional[T]]]:
         record = deck.first_record_for(self.name)
         if record is None:
             return None
@@ -172,11 +199,11 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Any]]):
 
     def _parse_tokens(
         self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Any]:
-        return _parse_tokens_into_dict(self.name, self.fields, tokens)
+    ) -> typing.Dict[str, typing.Optional[T]]:
+        return _parse_tokens(self.name, self.fields, tokens)
 
 
-class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Any]]]):
+class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional[T]]]]):
     """
     A keyword whose body holds zero or more individually `/`-terminated
     records sharing one field layout (`FAULTS`, `MULTFLT`, `NNC`).
@@ -193,7 +220,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Any]]]):
 
     __slots__ = ("fields",)
 
-    def __init__(self, name: str, fields: typing.Sequence[Field]) -> None:
+    def __init__(self, name: str, fields: typing.Sequence[Field[T]]) -> None:
         super().__init__(name)
         self.fields = list(fields)
 
@@ -203,12 +230,12 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Any]]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
-    ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
+    ) -> typing.Optional[typing.List[typing.Dict[str, typing.Optional[T]]]]:
         records = deck.records_for(self.name)
         if not records:
             return None
 
-        results: typing.List[typing.Dict[str, typing.Any]] = []
+        results: typing.List[typing.Dict[str, typing.Optional[T]]] = []
         for record in records:
             for line in record.body.split("/"):
                 tokens = tokenise(line)
@@ -219,8 +246,8 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Any]]]):
 
     def _parse_tokens(
         self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Any]:
-        return _parse_tokens_into_dict(self.name, self.fields, tokens)
+    ) -> typing.Dict[str, typing.Optional[T]]:
+        return _parse_tokens(self.name, self.fields, tokens)
 
 
 class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
@@ -456,9 +483,7 @@ _MONTH_MAP: typing.Dict[str, int] = {
 }
 
 
-def _parse_eclipse_date(
-    tokens: typing.Sequence[str], keyword_name: str
-) -> datetime.date:
+def _parse_date(tokens: typing.Sequence[str], keyword_name: str) -> datetime.date:
     """
     Parse a three-token Eclipse date `[day, month, year]` into a `datetime.date`.
 
@@ -553,7 +578,7 @@ class DateKeyword(Keyword[datetime.date]):
         if record is None:
             return None
         tokens = tokenise(record.body)
-        return _parse_eclipse_date(tokens, self.name)
+        return _parse_date(tokens, self.name)
 
 
 class DatesKeyword(Keyword[typing.List[datetime.date]]):
@@ -593,19 +618,19 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
                 tokens = tokenise(segment)
                 if not tokens:
                     continue
-                dates.append(_parse_eclipse_date(tokens, self.name))
+                dates.append(_parse_date(tokens, self.name))
 
         return dates or None
 
 
-PVTRow = typing.Dict[str, typing.Any]
+PVTRow = typing.Dict[str, T]
 """One row of a PVT/saturation table: a `{column_name: value}` dict."""
 
-PVTTable = typing.List[PVTRow]
+PVTTable = typing.List[PVTRow[T]]
 """One saturation/PVT table: a list of row dicts in ascending primary-key order."""
 
 
-class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
+class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
     """
     A keyword whose body contains one or more tabulated data blocks,
     each terminated by `/`. Multiple keyword occurrences (e.g. one per
@@ -645,7 +670,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
     def __init__(
         self,
         name: str,
-        columns: typing.Sequence[Field],
+        columns: typing.Sequence[Field[Number]],
         *,
         primary_key: typing.Optional[str] = None,
     ) -> None:
@@ -659,7 +684,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
-    ) -> typing.Optional[typing.List[PVTTable]]:
+    ) -> typing.Optional[typing.List[PVTTable[Number]]]:
         records = deck.records_for(self.name)
         if not records:
             return None
@@ -674,7 +699,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
 
         return all_tables or None
 
-    def _row_from_tokens(self, tokens: typing.Sequence[str]) -> PVTRow:
+    def _row_from_tokens(self, tokens: typing.Sequence[str]) -> PVTRow[Number]:
         """
         Convert a token list to a row dict using `self.columns`.
 
@@ -713,7 +738,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
                 row[col.name] = col.default
         return row
 
-    def _parse_flat(self, body: str) -> PVTTable:
+    def _parse_flat(self, body: str) -> PVTTable[Number]:
         """
         Parse a flat (immiscible/simple) table body: every `/`-delimited
         segment is one row.
@@ -726,7 +751,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
             table.append(self._row_from_tokens(tokens))
         return table
 
-    def _parse_miscible(self, body: str) -> typing.List[PVTTable]:
+    def _parse_miscible(self, body: str) -> typing.List[PVTTable[Number]]:
         """
         Parse a miscible (PVTO/PVTG-style) keyword body.
 
@@ -738,7 +763,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable]]):
 
         Each primary-key value starts a new inner table; one keyword
         occurrence can contain multiple inner tables separated by blank `/`
-        lines.  The function returns a **list of tables** (one per
+        lines. The function returns a **list of tables** (one per
         outer-key group, concatenated across all `//`-separated blocks).
         """
         tables: typing.List[PVTTable] = []

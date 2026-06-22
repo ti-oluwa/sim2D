@@ -491,8 +491,26 @@ class Grid:
     closed faults or zero-transmissibility connections.
     """
 
-    # NNC (non-neighbour connections)
+    # Optional factory-supplied cell geometry (bypasses divergence theorem)
+    cell_volumes: typing.Optional[FloatArray[OneDimension]] = attrs.field(default=None)
+    """
+    Shape `(n_cells,)` pre-computed cell volumes from the factory.
 
+    When provided, the divergence-theorem volume computation is skipped.
+    Used by the corner-point factory which computes volumes via direct
+    5-tet decomposition of the 8 hex corners — robust against distorted
+    cells, non-planar faces, and inverted pillars.
+    """
+
+    cell_centroids: typing.Optional[FloatArray[TwoDimensions]] = attrs.field(
+        default=None
+    )
+    """
+    Shape `(n_cells, 3)` pre-computed cell centroids from the factory.
+    Must be provided together with `cell_volumes`.
+    """
+
+    # NNC (non-neighbour connections)
     nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = attrs.field(default=None)
     """
     Shape `(n_nnc, 2)` - non-neighbour connection (NNC) cell index pairs.
@@ -523,7 +541,6 @@ class Grid:
     """
 
     # Fault classification
-
     fault_face_indices: typing.Optional[typing.Mapping[str, IntArray[OneDimension]]] = (
         attrs.field(default=None)
     )
@@ -553,7 +570,6 @@ class Grid:
     """
 
     # Directional transmissibility multipliers (MULTX / MULTY / MULTZ and their - variants)
-
     positive_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
@@ -645,7 +661,7 @@ class Grid:
     interior_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Indices of all interior faces (both owner and neighbour cells >= 0)."""
 
-    # Derived geometry (computed in __attrs_post_init__)
+    # Derived geometry
 
     face_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - (x, y, z) centroid of each face polygon."""
@@ -657,18 +673,6 @@ class Grid:
     """
     Shape `(n_faces, 3)` - unit outward normal from the owner cell for
     each face.
-    """
-
-    cell_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
-    """
-    Shape `(n_cells, 3)` - volume-weighted (x, y, z) centroid of each
-    cell.
-    """
-
-    cell_volumes: FloatArray[OneDimension] = attrs.field(init=False)
-    """
-    Shape `(n_cells,)` - bulk geometric volume of each cell in grid
-    units³.
     """
 
     cell_min_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
@@ -725,8 +729,6 @@ class Grid:
     only.
     """
 
-    # Construction
-
     def __attrs_post_init__(self) -> None:
         """
         Validate inputs and compute all derived topology and geometry.
@@ -758,10 +760,8 @@ class Grid:
         """
         Validate primary input arrays for shape and internal consistency.
 
-        :raises InvalidPointArrayError: If `vertex_coordinates` is not
-            `(N, 3)`.
-        :raises InvalidFaceConnectivityError: If face connectivity arrays are
-            malformed.
+        :raises InvalidPointArrayError: If `vertex_coordinates` is not `(N, 3)`.
+        :raises InvalidFaceConnectivityError: If face connectivity arrays are malformed.
         """
         if self.vertex_coordinates.ndim != 2 or self.vertex_coordinates.shape[1] != 3:
             raise InvalidPointArrayError(
@@ -777,6 +777,7 @@ class Grid:
             raise InvalidFaceConnectivityError(
                 "`face_vertex_offsets` must be a 1-D array starting at 0."
             )
+
         expected_n_faces = self.face_cell_indices.shape[0]
         if self.face_vertex_offsets.shape[0] != expected_n_faces + 1:
             raise InvalidFaceConnectivityError(
@@ -788,6 +789,7 @@ class Grid:
                 f"face_vertex_offsets[-1] = {self.face_vertex_offsets[-1]} does not "
                 f"match len(face_vertex_indices) = {len(self.face_vertex_indices)}."
             )
+
         max_valid_vertex = self.vertex_coordinates.shape[0] - 1
         if self.face_vertex_indices.size > 0:
             if int(self.face_vertex_indices.max()) > max_valid_vertex:
@@ -796,6 +798,7 @@ class Grid:
                     f"{int(self.face_vertex_indices.max())} which exceeds "
                     f"the maximum valid index {max_valid_vertex}."
                 )
+
         min_cell_index = int(self.face_cell_indices.min())
         if min_cell_index < -1:
             raise InvalidFaceConnectivityError(
@@ -867,7 +870,7 @@ class Grid:
         Build CSR cell-to-face adjacency lists from `face_cell_indices`.
 
         Each cell accumulates the indices of every face that touches it (as
-        either owner or neighbour).  Results are stored in `cell_face_indices`
+        either owner or neighbour). Results are stored in `cell_face_indices`
         and `cell_face_offsets`.
         """
         n_cells = int(self.face_cell_indices.max()) + 1
@@ -901,7 +904,7 @@ class Grid:
         Build CSR cell-to-neighbour adjacency lists from `face_cell_indices`.
 
         Two cells are neighbours if they share an interior face (i.e. both
-        owner and neighbour indices >= 0).  Boundary faces do not contribute
+        owner and neighbour indices >= 0). Boundary faces do not contribute
         neighbours.  Results are stored in `cell_neighbor_indices` and
         `cell_neighbor_offsets`.
         """
@@ -947,6 +950,10 @@ class Grid:
 
         :raises InvalidVolumeError: If any cell has a non-positive volume.
         """
+        if self.cell_volumes is not None and self.cell_centroids is not None:
+            # Factory provided pre-computed geometry
+            return
+
         n_cells = int(self.face_cell_indices.max()) + 1
         cell_volumes, cell_centroids = _compute_cell_volumes_and_centroids(
             face_cell_indices=self.face_cell_indices,
@@ -1008,17 +1015,20 @@ class Grid:
         object.__setattr__(self, "cell_length_z", delta[:, 2])
         object.__setattr__(self, "cell_thickness", delta[:, 2])
 
+        assert self.cell_centroids is not None
         depths = self.cell_centroids[:, 2].copy()
         object.__setattr__(self, "cell_center_depths", depths)
         object.__setattr__(self, "cell_center_elevations", -depths)
 
     def _build_spatial_index(self) -> None:
         """Construct a KD-tree on cell centroids for fast nearest-cell queries."""
+        assert self.cell_centroids is not None
         object.__setattr__(self, "_spatial_index", cKDTree(self.cell_centroids))
 
     @property
     def n_cells(self) -> int:
         """Total number of cells in the grid."""
+        assert self.cell_centroids is not None
         return self.cell_centroids.shape[0]
 
     @property
@@ -1199,6 +1209,7 @@ class Grid:
             raise CellNotFoundError(
                 f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
             )
+
         face_indices = self.get_cell_face_indices(cell_index)
         for face_idx in face_indices:
             owner = int(self.face_cell_indices[face_idx, 0])
@@ -1222,6 +1233,7 @@ class Grid:
             raise ValidationError(
                 "No fault data available on this grid (fault_face_indices is None)."
             )
+
         if fault_name not in self.fault_face_indices:
             available = sorted(self.fault_face_indices.keys())
             raise KeyError(
@@ -1242,6 +1254,7 @@ class Grid:
             raise ValidationError(
                 "No fault transmissibility multipliers available on this grid."
             )
+
         if fault_name not in self.fault_transmissibility_multipliers:
             available = sorted(self.fault_transmissibility_multipliers.keys())
             raise KeyError(
@@ -1295,6 +1308,7 @@ class Grid:
         :returns: Pore volumes in the same units³ as `cell_volumes`,
             broadcast against `porosity`.
         """
+        assert self.cell_volumes is not None
         return porosity * net_to_gross * self.cell_volumes
 
     def validate_geometry(self) -> None:
@@ -1309,6 +1323,7 @@ class Grid:
         :raises InvalidNormalVectorError: If any face normal deviates from
             unit length by more than a loose tolerance.
         """
+        assert self.cell_volumes is not None
         if (self.cell_volumes <= 0.0).any():
             bad = np.where(self.cell_volumes <= 0.0)[0]
             raise InvalidVolumeError(
@@ -1319,6 +1334,7 @@ class Grid:
             raise InvalidFaceAreaError(
                 f"{len(bad)} face(s) have negative area: {bad[:5].tolist()}..."
             )
+
         normal_magnitudes = np.linalg.norm(self.face_unit_normals, axis=1)
         active_mask = self.face_areas > _GEOMETRY_TOLERANCE
         if active_mask.any():
