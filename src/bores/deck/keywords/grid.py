@@ -84,8 +84,8 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
     """
     `COORD` - corner-point pillar array.
 
-    :returns: Shape `(ny+1, nx+1, 6)` float64 array in C order (i.e.
-        j-index outermost, pillar-coordinate innermost).  Each pillar stores
+    :returns: Shape `(nx+1, ny+1, 6)` float64 array in C order (i.e.
+        i-index outermost, pillar-coordinate innermost). Each pillar stores
         `[x_top, y_top, z_top, x_bot, y_bot, z_bot]`.
     """
 
@@ -114,13 +114,10 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
                 f"grid; got {len(tokens)}."
             )
 
-        # Eclipse stores pillars in Fortran order (i fastest, then j).
-        # reshape(nx+1, ny+1, 6, order='F') -> shape (nx+1, ny+1, 6), i-fastest.
-        # transpose(1, 0, 2) -> (ny+1, nx+1, 6) C-order.
         return (
             np.array(tokens, dtype=np.float64)
-            .reshape(dims.nx + 1, dims.ny + 1, 6, order="F")
-            .transpose(1, 0, 2)
+            .reshape(dims.ny + 1, dims.nx + 1, 6)  # C-order: i fastest -> coord[j, i]
+            .transpose(1, 0, 2)  # We transpose to match or indexing style -> coord[i, j] 
         )
 
 
@@ -128,8 +125,8 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
     """
     `ZCORN` - corner-point depth array.
 
-    :returns: Shape `(nz*2, ny*2, nx*2)` float64 array in C order
-        (k-index outermost, i-index innermost within each layer pair).
+    :returns: Shape `(nx*2, ny*2, nz*2)` float64 array in C order
+        (i-index outermost, j-index innermost within each layer pair).
     """
 
     def __init__(self) -> None:
@@ -157,11 +154,11 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
                 f"{dims.nx}x{dims.ny}x{dims.nz} grid; got {len(tokens)}."
             )
         # Eclipse stores ZCORN in Fortran order: (nx*2) fastest, then ny*2, nz*2.
-        # reshape(nx*2, ny*2, nz*2, order='F') -> i-fastest in memory.
-        # transpose(2, 1, 0) -> (nz*2, ny*2, nx*2) C-order.
+        # reshape(nz*2, ny*2, nx*2, order='F') -> i-fastest in memory. Access is zcorn[k, j, i]
+        # transpose(2, 1, 0) -> (nx*2, ny*2, nz*2) C-order. Access is zcorn[i, j, k]
         return (
             np.array(tokens, dtype=np.float64)
-            .reshape(dims.nx * 2, dims.ny * 2, dims.nz * 2, order="F")
+            .reshape(dims.nz * 2, dims.ny * 2, dims.nx * 2, order="F")
             .transpose(2, 1, 0)
         )
 

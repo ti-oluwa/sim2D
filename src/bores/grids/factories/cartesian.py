@@ -151,7 +151,7 @@ def make_cartesian_grid(
 
     # Resolve FAULTS IJK records to Cartesian face indices.
     resolved_fault_face_indices: typing.Optional[
-        typing.Dict[str, npt.NDArray[np.int32]]
+        typing.Dict[str, IntArray[OneDimension]]
     ] = None
     if fault_records:
         resolved_fault_face_indices = _resolve_fault_face_indices(
@@ -205,7 +205,7 @@ def _resolve_fault_face_indices(
     nz: int,
     n_x_faces: int,
     n_y_faces: int,
-) -> typing.Dict[str, npt.NDArray[np.int32]]:
+) -> typing.Dict[str, IntArray[OneDimension]]:
     """
     Resolve `FaultRecord` IJK ranges to Cartesian face index arrays using
     closed-form index arithmetic.
@@ -339,9 +339,9 @@ def _resolve_spacing(
     dy: NumberOrArray[OneDimension],
     dz: NumberOrArray[OneDimension],
 ) -> typing.Tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
+    FloatArray[OneDimension],
+    FloatArray[OneDimension],
+    FloatArray[OneDimension],
 ]:
     """
     Resolve scalar or array spacing arguments into 1-D float64 arrays.
@@ -360,7 +360,7 @@ def _resolve_spacing(
         value: NumberOrArray[OneDimension],
         count: typing.Optional[int],
         axis: str,
-    ) -> npt.NDArray[np.float64]:
+    ) -> FloatArray[OneDimension]:
         arr = np.atleast_1d(np.asarray(value, dtype=np.float64)).ravel()
         if arr.size == 1:
             if count is None:
@@ -421,9 +421,9 @@ def _build_vertex_coordinates(
 def _build_face_arrays(
     nx: int, ny: int, nz: int
 ) -> typing.Tuple[
-    npt.NDArray[np.int32],
-    npt.NDArray[np.int32],
-    npt.NDArray[np.int32],
+    IntArray[OneDimension],
+    IntArray[OneDimension],
+    IntArray[TwoDimensions],
 ]:
     """
     Build face connectivity arrays for a structured Cartesian grid.

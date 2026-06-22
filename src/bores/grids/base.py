@@ -987,6 +987,16 @@ class Grid:
             n_cells=n_cells,
             dtype=self.floating_dtype,
         )
+
+        # Cells with no faces (fully suppressed pinchouts) retain the sentinel
+        # values (+inf / -inf) from the kernel. Fall back to the pre-computed
+        # centroid so at least their position is meaningful.
+        if self.cell_centroids is not None:
+            no_face_mask = ~np.isfinite(cell_min).all(axis=1)
+            if no_face_mask.any():
+                cell_min[no_face_mask] = self.cell_centroids[no_face_mask]
+                cell_max[no_face_mask] = self.cell_centroids[no_face_mask]
+
         bounding_box = (
             float(cell_min[:, 0].min()),
             float(cell_max[:, 0].max()),

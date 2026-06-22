@@ -239,8 +239,8 @@ def make_corner_point_grid(
         connection_types,
         geometric_nnc_pairs,
         active_cells,  # shape (n_active, 3) — (k, j, i) for fault resolution
-        hex_volumes,
-        hex_centroids,
+        cell_volumes,
+        cell_dimension_centroids,
     ) = _compute_corner_point_geometry(
         coord=coord_arr,
         zcorn=zcorn_arr,
@@ -250,7 +250,6 @@ def make_corner_point_grid(
     )
 
     n_active_cells = len(active_cells)
-
     # cell_statuses: all stored cells are active
     cell_statuses = np.full(n_active_cells, int(CellStatus.ACTIVE), dtype=np.int8)
 
@@ -303,8 +302,8 @@ def make_corner_point_grid(
         face_vertex_indices=face_vertex_indices,
         face_vertex_offsets=face_vertex_offsets,
         face_cell_indices=face_cell_indices,
-        cell_volumes=hex_volumes,
-        cell_centroids=hex_centroids,
+        cell_volumes=cell_volumes,
+        cell_centroids=cell_dimension_centroids,
         unit_system=unit_system,
         metadata=metadata,
         cell_statuses=cell_statuses,
@@ -352,6 +351,7 @@ def _interpolate_pillar_point(
         return xyz
 
     t = (z - pillar_top[2]) / dz
+    t = max(0.0, min(1.0, t))  # clamp so we never extrapolate beyond pillar ends
     xyz[0] = pillar_top[0] + t * (pillar_bottom[0] - pillar_top[0])
     xyz[1] = pillar_top[1] + t * (pillar_bottom[1] - pillar_top[1])
     xyz[2] = z
@@ -455,6 +455,7 @@ def _is_cell_pinched(
         return True
     if pinch_tolerance <= 0.0:
         return False
+
     total_dz = 0.0
     for k in range(4):
         z_top = vertex_coordinates[vtk_vertices[k], 2]
@@ -548,10 +549,10 @@ def _compute_corner_point_geometry(
             n_pinched += 1
 
         for local_idx, local_face in enumerate(_HEXAHEDRON_FACES_ZDOWN):
-            fvi = [vtk_verts[v] for v in local_face]
+            face_vertex_indices = [vtk_verts[v] for v in local_face]
 
             # Skip degenerate faces (repeated vertices -> zero area)
-            if len(set(fvi)) < len(fvi):
+            if len(set(face_vertex_indices)) < len(face_vertex_indices):
                 n_degenerate += 1
                 continue
 
@@ -560,11 +561,11 @@ def _compute_corner_point_geometry(
             if pinched and local_idx in (_TOP_FACE_LOCAL, _BOTTOM_FACE_LOCAL):
                 continue
 
-            key: FaceKey = tuple(sorted(fvi))
+            key: FaceKey = tuple(sorted(face_vertex_indices))
             if key not in face_registry:
                 face_registry[key] = _FaceRecord(
                     owner_cell_index=cell_idx,
-                    face_vertex_indices=fvi,
+                    face_vertex_indices=face_vertex_indices,
                 )
             elif face_registry[key].neighbour_cell_index == -1:
                 face_registry[key].neighbour_cell_index = cell_idx
@@ -616,7 +617,7 @@ def _compute_corner_point_geometry(
                 corner_global[cell_idx, vtk_to_corner[v]]
             )
 
-    hex_volumes, hex_centroids = _compute_hex_volumes_and_centroids(
+    cell_volumes, cell_dimension_centroids = _compute_hex_volumes_and_centroids(
         vtk_corner_indices, vertex_coordinates
     )
     return (
@@ -627,8 +628,8 @@ def _compute_corner_point_geometry(
         np.asarray(connection_types, dtype=np.int8),
         nnc_array,
         active_cells,
-        hex_volumes,
-        hex_centroids,
+        cell_volumes,
+        cell_dimension_centroids,
     )
 
 
@@ -884,7 +885,7 @@ def _compute_hex_volumes_and_centroids(
     cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
 
     for cell_idx in numba.prange(n_cells):  # type: ignore
-        total_vol = 0.0
+        total_volume = 0.0
         wcx = 0.0
         wcy = 0.0
         wcz = 0.0
@@ -926,37 +927,37 @@ def _compute_hex_volumes_and_centroids(
             cross_x = by * cz - bz * cy
             cross_y = bz * cx - bx * cz
             cross_z = bx * cy - by * cx
-            tet_vol = abs(ax * cross_x + ay * cross_y + az * cross_z) / 6.0
+            tetraherdon_volume = abs(ax * cross_x + ay * cross_y + az * cross_z) / 6.0
 
-            tet_cx = (
+            tetrahedron_cx = (
                 x0
                 + vertex_coordinates[g1, 0]
                 + vertex_coordinates[g2, 0]
                 + vertex_coordinates[g3, 0]
             ) * 0.25
-            tet_cy = (
+            tetrahedron_cy = (
                 y0
                 + vertex_coordinates[g1, 1]
                 + vertex_coordinates[g2, 1]
                 + vertex_coordinates[g3, 1]
             ) * 0.25
-            tet_cz = (
+            tetrahedron_cz = (
                 z0
                 + vertex_coordinates[g1, 2]
                 + vertex_coordinates[g2, 2]
                 + vertex_coordinates[g3, 2]
             ) * 0.25
 
-            total_vol += tet_vol
-            wcx += tet_vol * tet_cx
-            wcy += tet_vol * tet_cy
-            wcz += tet_vol * tet_cz
+            total_volume += tetraherdon_volume
+            wcx += tetraherdon_volume * tetrahedron_cx
+            wcy += tetraherdon_volume * tetrahedron_cy
+            wcz += tetraherdon_volume * tetrahedron_cz
 
-        cell_volumes[cell_idx] = total_vol
-        if total_vol > 0.0:
-            cell_centroids[cell_idx, 0] = wcx / total_vol
-            cell_centroids[cell_idx, 1] = wcy / total_vol
-            cell_centroids[cell_idx, 2] = wcz / total_vol
+        cell_volumes[cell_idx] = total_volume
+        if total_volume > 0.0:
+            cell_centroids[cell_idx, 0] = wcx / total_volume
+            cell_centroids[cell_idx, 1] = wcy / total_volume
+            cell_centroids[cell_idx, 2] = wcz / total_volume
 
     return cell_volumes, cell_centroids
 

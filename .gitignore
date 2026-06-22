@@ -23,5 +23,4 @@ videos/
 *.gif
 *.png
 .cache
-miscible.md
-Norne.GRDECL
+data/

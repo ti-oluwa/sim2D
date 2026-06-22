@@ -148,10 +148,19 @@ class MapAxes:
 
     def _compute_rotation_matrix(self) -> FloatArray[TwoDimensions]:
         origin = self.origin
-        x_dir = self.map_x_axis_point - origin
-        x_dir = x_dir / np.linalg.norm(x_dir)
-        y_dir = self.map_y_axis_point - origin
-        y_dir = y_dir / np.linalg.norm(y_dir)
+        x_vec = self.map_x_axis_point - origin
+        y_vec = self.map_y_axis_point - origin
+        x_norm = np.linalg.norm(x_vec)
+        y_norm = np.linalg.norm(y_vec)
+        if x_norm < 1e-14 or y_norm < 1e-14:
+            warnings.warn(
+                "MAPAXES has a degenerate (zero-length) axis vector. "
+                "The map coordinate rotation will be skipped.",
+                stacklevel=3,
+            )
+            return np.eye(2, dtype=np.float64)
+        x_dir = x_vec / x_norm
+        y_dir = y_vec / y_norm
         return np.array(
             [[x_dir[0], y_dir[0]], [x_dir[1], y_dir[1]]],
             dtype=np.float64,

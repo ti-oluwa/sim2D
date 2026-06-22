@@ -12,61 +12,118 @@ __all__ = ["as_pyvista_grid", "convert"]
 
 
 @numba.njit(parallel=True, cache=True)
-def _build_pyvista_arrays(
-    cell_min_xyz: np.ndarray,
-    cell_max_xyz: np.ndarray,
-    all_points: np.ndarray,
-    flat_cells: np.ndarray,
-    n_vertices_per_cell: int,
-):
-    n_cells = cell_min_xyz.shape[0]
+def _count_cell_entries(
+    cell_face_offsets: np.ndarray,
+    cell_face_indices: np.ndarray,
+    face_vertex_offsets: np.ndarray,
+) -> np.ndarray:
+    """
+    Count the flat-buffer entries each cell contributes to the VTK polyhedron
+    face stream (type 42).
+
+    VTK polyhedron per-cell layout:
+
+        [total_count, n_faces, nv_f0, v0, v1, …, nv_f1, v0, …]
+
+    So the entry count for a cell with *F* faces of vertex counts
+    *V0, V1, …, V_{F-1}* is:
+
+        1  (total_count)
+      + 1  (n_faces)
+      + F  (one nv_fi per face)
+      + ΣVi  (all vertex indices)
+
+    Cells with 0 faces (fully suppressed pinchouts) get count 0 and are
+    excluded from the output buffer.
+
+    :param cell_face_offsets: CSR offsets array, length `n_cells + 1`.
+    :param cell_face_indices: CSR face-index data array.
+    :param face_vertex_offsets: CSR offsets into vertex indices, length
+        `n_faces + 1`.
+    :returns: Shape `(n_cells,)` int64 entry-count array.
+    """
+    n_cells = cell_face_offsets.shape[0] - 1
+    counts = np.zeros(n_cells, dtype=np.int64)
+
     for cell_idx in numba.prange(n_cells):  # type: ignore
-        low_x = cell_min_xyz[cell_idx, 0]
-        low_y = cell_min_xyz[cell_idx, 1]
-        low_z = cell_min_xyz[cell_idx, 2]
+        face_start = cell_face_offsets[cell_idx]
+        face_end = cell_face_offsets[cell_idx + 1]
+        n_faces = face_end - face_start
+        if n_faces == 0:
+            continue
+        n_verts_total = np.int64(0)
+        for face_idx_local in range(face_start, face_end):
+            face_idx = cell_face_indices[face_idx_local]
+            n_verts_total += (
+                face_vertex_offsets[face_idx + 1] - face_vertex_offsets[face_idx]
+            )
+        # 1 (total_count) + 1 (n_faces) + n_faces (per-face counts) + n_verts_total
+        counts[cell_idx] = np.int64(2) + np.int64(n_faces) + n_verts_total
 
-        high_x = cell_max_xyz[cell_idx, 0]
-        high_y = cell_max_xyz[cell_idx, 1]
-        high_z = cell_max_xyz[cell_idx, 2]
+    return counts
 
-        base = cell_idx * n_vertices_per_cell
 
-        all_points[base + 0, 0] = low_x
-        all_points[base + 0, 1] = low_y
-        all_points[base + 0, 2] = low_z
+@numba.njit(parallel=True, cache=True)
+def _fill_cell_entries(
+    cell_face_offsets: np.ndarray,
+    cell_face_indices: np.ndarray,
+    face_vertex_offsets: np.ndarray,
+    face_vertex_indices: np.ndarray,
+    cell_starts: np.ndarray,
+    out: np.ndarray,
+) -> None:
+    """
+    Fill the pre-allocated VTK polyhedron face-stream buffer in parallel.
 
-        all_points[base + 1, 0] = high_x
-        all_points[base + 1, 1] = low_y
-        all_points[base + 1, 2] = low_z
+    Each cell owns the slice `out[cell_starts[cell_idx] : cell_starts[cell_idx] + count[cell_idx]]`
+    and writes to it independently.
 
-        all_points[base + 2, 0] = high_x
-        all_points[base + 2, 1] = high_y
-        all_points[base + 2, 2] = low_z
+    Per-cell output layout:
 
-        all_points[base + 3, 0] = low_x
-        all_points[base + 3, 1] = high_y
-        all_points[base + 3, 2] = low_z
+        out[cell_starts[cell_idx]]     = total_count   (entries that follow)
+        out[cell_starts[cell_idx] + 1] = n_faces
+        then for each face face_idx:
+            out[position]   = n_verts_fi
+            out[position+1 … position+n_verts_fi] = global vertex indices
 
-        all_points[base + 4, 0] = low_x
-        all_points[base + 4, 1] = low_y
-        all_points[base + 4, 2] = high_z
+    :param cell_face_offsets: CSR offsets, length `n_cells + 1`.
+    :param cell_face_indices: CSR face-index data.
+    :param face_vertex_offsets: CSR offsets into vertex data, length `n_faces + 1`.
+    :param face_vertex_indices: Flat vertex index data.
+    :param cell_starts: Start position in `out` for each cell, derived
+        from the exclusive prefix sum of `_count_cell_entries`.
+        Cells with count 0 are skipped (their start value is arbitrary).
+    :param out: Pre-allocated int64 output buffer of length
+        `sum(_count_cell_entries(…))`.
+    """
+    n_cells = cell_face_offsets.shape[0] - 1
 
-        all_points[base + 5, 0] = high_x
-        all_points[base + 5, 1] = low_y
-        all_points[base + 5, 2] = high_z
+    for cell_idx in numba.prange(n_cells):  # type: ignore
+        face_start = cell_face_offsets[cell_idx]
+        face_end = cell_face_offsets[cell_idx + 1]
+        n_faces = face_end - face_start
+        if n_faces == 0:
+            continue
 
-        all_points[base + 6, 0] = high_x
-        all_points[base + 6, 1] = high_y
-        all_points[base + 6, 2] = high_z
+        position = cell_starts[cell_idx]
+        total_count_pos = position  # filled last
+        position += 1
+        out[position] = n_faces
+        position += 1
 
-        all_points[base + 7, 0] = low_x
-        all_points[base + 7, 1] = high_y
-        all_points[base + 7, 2] = high_z
+        for face_idx_local in range(face_start, face_end):
+            face_idx = cell_face_indices[face_idx_local]
+            vertex_start = face_vertex_offsets[face_idx]
+            vertex_end = face_vertex_offsets[face_idx + 1]
+            n_verts = vertex_end - vertex_start
+            out[position] = n_verts
+            position += 1
+            for vi in range(vertex_start, vertex_end):
+                out[position] = face_vertex_indices[vi]
+                position += 1
 
-        flat_offset = cell_idx * 9
-        flat_cells[flat_offset] = 8
-        for i in range(8):
-            flat_cells[flat_offset + 1 + i] = base + i
+        # total_count = everything written after the leading integer
+        out[total_count_pos] = position - total_count_pos - np.int64(1)
 
 
 def as_pyvista_grid(
@@ -77,34 +134,53 @@ def as_pyvista_grid(
     """
     Convert a `bores.grids.base.Grid` to a `pyvista.UnstructuredGrid`.
 
-    Each grid cell is represented by a single VTK hexahedron whose 8
-    vertices are the corners of the cell's axis-aligned bounding box
-    (`cell_min_xyz` / `cell_max_xyz`). This is exact for axis-aligned
-    Cartesian grids and a bounding-box approximation for Voronoi / polyhedral
-    cells.
+    Each grid cell is represented as a **VTK polyhedron (type 42)** built
+    from the cell's actual face and vertex geometry. This is geometrically
+    exact for all grid types; corner-point, Voronoi, Cartesian, and general
+    polyhedral.
+
+    Pinched-out cells (cells whose faces were all suppressed during
+    corner-point construction) have no VTK representation and are silently
+    omitted from the output mesh. Their data is also omitted from any
+    attached cell-data arrays so that array lengths always match the number
+    of rendered cells. The cells remain present in the source `Grid`
+    object so that physics code is unaffected.
+
+
+    **`MapAxes`**:
+
+    When `grid.metadata["map_axes"]` is present the grid's vertex
+    coordinates are rotated into map space before being passed to PyVista.
+    The rotation is applied to the shared `vertex_coordinates` array (a
+    copy), so the source `Grid` is not mutated.
 
     :param grid: Source `bores.grids.base.Grid`.
-    :param cell_data: Optional mapping of field name to a shape `(n_cells,)`
-        or `(n_cells, k)` NumPy array.  Each entry is attached as a
-        PyVista cell-data array so it can be visualised with
-        `pv_grid.plot(scalars="pressure")`.
-    :returns: A `pyvista.UnstructuredGrid` instance ready for rendering or further processing.
-    :raises UnsupportedGridFormatError: If `pyvista` is not installed.
-    :raises ValueError: If a `cell_data` array has a length inconsistent
-        with `grid.n_cells`.
+    :param cell_data: Optional mapping of scalar field name to a shape
+        `(n_cells,)` NumPy array. Each entry is attached as a PyVista
+        cell-data array and can be visualised with
+        `pv_grid.plot(scalars="pressure")`. Arrays must have length
+        `grid.n_cells`; they are automatically filtered to the valid
+        (non-pinched) cells before attachment.
+    :returns: A `pyvista.UnstructuredGrid` ready for rendering or
+        further PyVista processing.
+    :raises ImportError: If `pyvista` is not installed.
+    :raises ValueError: If a `cell_data` array has length != `grid.n_cells`.
 
-    **Example**:
-
-    ``python
+    Example:
+    ```python
     from bores.grids.utils import as_pyvista_grid
+    import pyvista as pv
 
     pv_grid = as_pyvista_grid(grid, cell_data={"pressure": pressure})
-    pv_grid.plot(scalars="pressure", show_edges=True)
-    ``
+
+    pl = pv.Plotter()
+    pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
+    pl.set_scale(zscale=-1)   # flip z: depth increases downward
+    pl.show()
+    ```
     """
     try:
         import pyvista as pv  # type: ignore[import-untyped]
-
     except ImportError as exc:
         raise ImportError(
             "The 'pyvista' library is required for PyVista conversion. "
@@ -112,40 +188,59 @@ def as_pyvista_grid(
         ) from exc
 
     n_cells = grid.n_cells
-    n_vertices_per_cell = 8  # VTK_HEXAHEDRON = 12
 
-    # Build one hex per grid cell from bounding-box corners
-    # PyVista flat cell array layout: [n_pts, p0, p1, ..., p7,  n_pts, ...]
-    all_points = np.empty((n_cells * n_vertices_per_cell, 3), dtype=np.float64)
-    flat_cells = np.empty(n_cells * (n_vertices_per_cell + 1), dtype=np.int64)
+    # Vertex coordinates (copy so we can rotate in-place)
+    all_points = grid.vertex_coordinates.copy()
 
-    _build_pyvista_arrays(
-        cell_min_xyz=grid.cell_min_xyz,
-        cell_max_xyz=grid.cell_max_xyz,
-        all_points=all_points,
-        flat_cells=flat_cells,
-        n_vertices_per_cell=n_vertices_per_cell,
-    )
-
-    # Apply MapAxes rotation when available
+    # Apply MapAxes rotation when present.
+    # Rotates only XY; Z (depth) is unchanged.
     meta = getattr(grid, "metadata", {}) or {}
     map_axes = meta.get("map_axes", None)
     if map_axes is not None:
         map_axes = map_axes.convert(grid.unit_system)
-        # rotation_matrix is (2,2): maps local XY -> map XY
-        # all_points[:, :2] has shape (N, 2); rotate in-place
-        xy_local = all_points[:, :2] - map_axes.origin  # translate to map origin
-        xy_map = xy_local @ map_axes.rotation_matrix.T  # (N,2) @ (2,2) = (N,2)
-        all_points[:, :2] = xy_map + map_axes.origin
+        rotation_matrix = map_axes.rotation_matrix
+        if np.all(np.isfinite(rotation_matrix)):
+            all_points[:, :2] = all_points[:, :2] @ rotation_matrix.T
 
-    cell_types = np.full(n_cells, 12, dtype=np.uint8)  # VTK_HEXAHEDRON = 12
+    # Build VTK polyhedron face stream
+    # Step 1: count entries per cell (parallel)
+    counts = _count_cell_entries(
+        grid.cell_face_offsets.astype(np.int64),
+        grid.cell_face_indices.astype(np.int64),
+        grid.face_vertex_offsets.astype(np.int64),
+    )
+
+    # valid_cell_mask: cells that will appear in the PyVista mesh
+    valid_cell_mask = counts > 0
+
+    # Step 2: exclusive prefix sum -> start positions for each cell
+    cell_starts = np.zeros(n_cells, dtype=np.int64)
+    cell_starts[valid_cell_mask] = np.concatenate(
+        [[0], np.cumsum(counts[valid_cell_mask])[:-1]]
+    )
+    total_entries = int(counts.sum())
+
+    # Step 3: fill buffer (parallel, no locks)
+    flat_cells = np.empty(total_entries, dtype=np.int64)
+    _fill_cell_entries(
+        grid.cell_face_offsets.astype(np.int64),
+        grid.cell_face_indices.astype(np.int64),
+        grid.face_vertex_offsets.astype(np.int64),
+        grid.face_vertex_indices.astype(np.int64),
+        cell_starts,
+        flat_cells,
+    )
+
+    # Assemble PyVista `UnstructuredGrid`
+    n_valid = int(valid_cell_mask.sum())
+    cell_types = np.full(n_valid, 42, dtype=np.uint8)  # VTK_POLYHEDRON = 42
     pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
 
-    # Attach built-in geometric arrays
+    # Attach built-in geometric arrays (filtered to valid cells)
     assert grid.cell_volumes is not None
-    pv_grid.cell_data["cell_volume"] = grid.cell_volumes
-    pv_grid.cell_data["cell_depth"] = grid.cell_center_depths
-    pv_grid.cell_data["cell_thickness"] = grid.cell_thickness
+    pv_grid.cell_data["cell_volume"] = grid.cell_volumes[valid_cell_mask]
+    pv_grid.cell_data["cell_depth"] = grid.cell_center_depths[valid_cell_mask]
+    pv_grid.cell_data["cell_thickness"] = grid.cell_thickness[valid_cell_mask]
 
     # Attach caller-supplied arrays
     if cell_data:
@@ -156,7 +251,8 @@ def as_pyvista_grid(
                     f"cell_data[{name!r}] has {arr.shape[0]} entries "
                     f"but grid has {n_cells} cells."
                 )
-            pv_grid.cell_data[name] = arr
+            pv_grid.cell_data[name] = arr[valid_cell_mask]
+
     return pv_grid
 
 
@@ -199,7 +295,7 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
 
     **Supported conversions** (any combination of FIELD ↔ METRIC ↔ LAB ↔ SI):
 
-    ```md
+    ``md
     =========  =======  =========
     From       To       Length
     =========  =======  =========
@@ -213,7 +309,7 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
     LAB        FIELD    0.032808
     SI         METRIC   1.0
     =========  =======  =========
-    ```
+    ``
 
     :param grid: Source grid. Must have a valid `unit_system` tag.
     :param to: Target `bores.typing.UnitSystem`.
@@ -223,7 +319,7 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
 
     Example:
 
-    ```python
+    ``python
     from bores.grids.factories.cartesian import make_cartesian_grid
     from bores.grids.utils import convert
     from bores.typing import UnitSystem
@@ -239,7 +335,7 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
     grid_m = convert(grid_ft, to=UnitSystem.METRIC)
     assert grid_m.unit_system == UnitSystem.METRIC
     # cell volume should now be ≈ 100 * 100 * 5 = 50,000 m³
-    ```
+    ``
     """
     if grid.unit_system == to:
         return grid
@@ -249,18 +345,18 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
     # All other geometry is derived and will be recomputed on Grid initialization.
     vertex_coordinates = grid.vertex_coordinates * factor
     cell_volumes = (
-        (grid.cell_volumes * (factor**3) if grid.cell_volumes is not None else None),
+        grid.cell_volumes * (factor**3) if grid.cell_volumes is not None else None
     )
     cell_centroids = (
-        (grid.cell_centroids * factor if grid.cell_centroids is not None else None),
+        grid.cell_centroids * factor if grid.cell_centroids is not None else None
     )
     return Grid(
         vertex_coordinates=vertex_coordinates,
         face_vertex_indices=grid.face_vertex_indices,
         face_vertex_offsets=grid.face_vertex_offsets,
         face_cell_indices=grid.face_cell_indices,
-        cell_volumes=cell_volumes,  # type: ignore
-        cell_centroids=cell_centroids,  # type: ignore
+        cell_volumes=cell_volumes,
+        cell_centroids=cell_centroids,
         unit_system=to,
         index_dtype=grid.index_dtype,
         floating_dtype=grid.floating_dtype,
