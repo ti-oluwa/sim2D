@@ -1101,18 +1101,20 @@ def _build_grdecl_corner_point_text(
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
 
-    # COORD - Eclipse Fortran order: i (pillar x) fastest
+    # COORD (ny + 1, nx + 1, 6)
+    # Already in Eclipse COORD order, so we flatten and write as is
     lines.append("COORD")
-    flat_coord = coord.transpose(1, 0, 2).reshape(-1, 6)
+    flat_coord = coord.reshape(-1, 6)
     for row in flat_coord:
         x1, y1, z1, x2, y2, z2 = row
         lines.append(f"  {x1:.6f}  {y1:.6f}  {z1:.6f}  {x2:.6f}  {y2:.6f}  {z2:.6f}")
     lines.append("/")
     lines.append("")
 
-    # ZCORN - Eclipse Fortran order: x fastest, z slowest
+    # ZCORN (nz*2, ny*2, nx*2)
+    # We flatten the 3D array; x vary fastest, and z slowest just as Eclipse writes it
     lines.append("ZCORN")
-    flat_zcorn = zcorn.transpose(2, 1, 0).ravel(order="F")
+    flat_zcorn = zcorn.ravel()
     for i in range(0, len(flat_zcorn), 6):
         chunk = flat_zcorn[i : i + 6]
         lines.append("  " + "  ".join(f"{v:.6f}" for v in chunk))

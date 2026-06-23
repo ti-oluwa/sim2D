@@ -360,7 +360,7 @@ def _interpolate_pillar_point(
 
 @numba.njit(parallel=True, cache=True)
 def _compute_active_cell_corner_coordinates(
-    active_cells: np.ndarray,
+    active_cells: IntArray[TwoDimensions],
     coord: CoordArray,
     zcorn: ZCornArray,
 ) -> FloatArray[ThreeDimensions]:
@@ -429,6 +429,7 @@ def _compute_active_cell_corner_coordinates(
     return corners
 
 
+@numba.njit(cache=True)
 def _is_cell_pinched(
     vtk_vertices: typing.List[int],
     vertex_coordinates: VertexCoordinates,
@@ -1019,7 +1020,7 @@ def rederive_corner_point_arrays(
     pillar_x = np.zeros((ny + 1, nx + 1), dtype=np.float64)
     pillar_y = np.zeros((ny + 1, nx + 1), dtype=np.float64)
     pillar_z_top = np.full((ny + 1, nx + 1), np.inf, dtype=np.float64)
-    pillar_z_bot = np.full((ny + 1, nx + 1), -np.inf, dtype=np.float64)
+    pillar_z_bottom = np.full((ny + 1, nx + 1), -np.inf, dtype=np.float64)
     pillar_count = np.zeros((ny + 1, nx + 1), dtype=np.int32)
 
     _accumulate_pillars(
@@ -1031,7 +1032,7 @@ def rederive_corner_point_arrays(
         pillar_x,
         pillar_y,
         pillar_z_top,
-        pillar_z_bot,
+        pillar_z_bottom,
         pillar_count,
     )
     nonzero = pillar_count > 0
@@ -1044,9 +1045,8 @@ def rederive_corner_point_arrays(
     coord[:, :, 2] = pillar_z_top
     coord[:, :, 3] = pillar_x
     coord[:, :, 4] = pillar_y
-    coord[:, :, 5] = pillar_z_bot
+    coord[:, :, 5] = pillar_z_bottom
 
     zcorn = np.empty((nz * 2, ny * 2, nx * 2), dtype=np.float64)
     _fill_zcorn(grid.cell_min_xyz, grid.cell_max_xyz, nx, ny, nz, zcorn)
-
     return coord, zcorn, nx, ny, nz

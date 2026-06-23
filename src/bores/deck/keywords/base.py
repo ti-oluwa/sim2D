@@ -269,7 +269,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
     on top.
     """
 
-    __slots__ = ("dtype", "default_value", "is_multiplier")
+    __slots__ = ("dtype", "default_value", "is_multiplier", "column_shape")
 
     def __init__(
         self,
@@ -278,6 +278,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         dtype: npt.DTypeLike = np.float64,
         default_value: float = 0.0,
         is_multiplier: bool = False,
+        column_shape: typing.Optional[typing.Tuple[str, ...]] = None,
     ) -> None:
         """
         :param name: Keyword name (e.g. `"PORO"`).
@@ -289,11 +290,46 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             `default_value` to `1.0` (the multiplicative identity)
             regardless of what was passed for `default_value`.  Use for
             `MULTX`, `MULTY`, `MULTZ`, and their `-` variants.
+        :param column_shape: Optional tuple of dimension-name strings declaring
+            a valid "short form" token count for this keyword.  Each string
+            must be one of `"nx"`, `"ny"`, `"nz"`.  When the token count
+            equals the product of the named dimensions, the parsed values are
+            broadcast (tiled) along the remaining axes to fill `n_cells`.
+
+            Example - `TOPS` accepts either `nx*ny` column tops or a full
+            `nx*ny*nz` per-cell array:
+
+            ```python
+            TOPS = GridArrayKeyword("TOPS", column_shape=("nx", "ny"))
+            ```
+
+            Supported broadcast patterns (axes not listed in `column_shape`
+            are tiled):
+
+            ```md
+            ======================  ========================  =====================
+            `column_shape`          Short-form token count    Broadcast direction
+            ======================  ========================  =====================
+            `("nx", "ny")`          `nx * ny`                 repeated `nz` times
+            `("nx", "nz")`          `nx * nz`                 repeated `ny` times
+            `("ny", "nz")`          `ny * nz`                 repeated `nx` times
+            `("nx",)`               `nx`                      repeated `ny*nz` times
+            `("ny",)`               `ny`                      repeated `nx*nz` times
+            `("nz",)`               `nz`                      repeated `nx*ny` times
+            ======================  ========================  =====================
+            ```
+
         """
         super().__init__(name)
         self.dtype = np.dtype(dtype)
         self.default_value = 1.0 if is_multiplier else default_value
         self.is_multiplier = is_multiplier
+
+        if column_shape and len(column_shape) > 3:
+            raise ValueError(f"Invalid size for `column_shape`: {column_shape!r}")
+        self.column_shape = (
+            [col.lower() for col in column_shape] if column_shape else None
+        )
 
     def parse(
         self,
@@ -402,11 +438,32 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                         raise DeckParseError(
                             f"{self.name} contains a non-numeric value: {exc}"
                         ) from exc
+
                 else:
-                    raise DeckParseError(
-                        f"{self.name} expected 1 or {dims.n_cells} value(s); "
-                        f"got {len(tokens)}."
-                    )
+                    # Try `column_shape` broadcast if declared
+                    broadcast_ok = False
+                    if self.column_shape is not None:
+                        short_count = self._short_form_count(dims)
+                        if len(tokens) == short_count:
+                            try:
+                                array[:] = self._broadcast_short_form(
+                                    np.array(tokens, dtype=np.float64), dims
+                                )
+                                broadcast_ok = True
+                            except ValueError as exc:
+                                raise DeckParseError(
+                                    f"{self.name} contains a non-numeric value: {exc}"
+                                ) from exc
+                    if not broadcast_ok:
+                        expected_desc = f"1 or {dims.n_cells}"
+                        if self.column_shape is not None:
+                            short_count = self._short_form_count(dims)
+                            expected_desc += f" or {short_count} (short form: {' * '.join(self.column_shape)})"
+                        raise DeckParseError(
+                            f"{self.name} expected {expected_desc} value(s); "
+                            f"got {len(tokens)}."
+                        )
+
             else:  # kind == "operate"
                 operation: Operation = payload  # type: ignore[assignment]
                 apply_operation(
@@ -419,6 +476,59 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 )
 
         return array.astype(self.dtype, copy=False)  # type: ignore[return-value]
+
+    def _short_form_count(self, dims: GridDimensions) -> int:
+        """
+        Return the number of tokens accepted in the short (column) form.
+
+        :param dims: Resolved grid dimensions.
+        :returns: Product of the dimensions named in `self.column_shape`.
+        """
+        assert self.column_shape is not None
+        dim_map = {"nx": dims.nx, "ny": dims.ny, "nz": dims.nz}
+        result = 1
+        for axis in self.column_shape:
+            result *= dim_map[axis]
+        return result
+
+    def _broadcast_short_form(
+        self,
+        short_array: npt.NDArray[np.float64],
+        dims: GridDimensions,
+    ) -> npt.NDArray[np.float64]:
+        """
+        Broadcast a short-form array to full `n_cells` length.
+
+        The short array covers the axes in `self.column_shape` in Eclipse
+        flat order (i fastest). The missing axes are tiled so that the
+        result is in standard Eclipse flat order `i + j*nx + k*nx*ny`.
+
+        :param short_array: 1-D float64 array of length `_short_form_count(dims)`.
+        :param dims: Resolved grid dimensions.
+        :returns: 1-D float64 array of length `n_cells`.
+        """
+        assert self.column_shape is not None
+        dim_map = {"nx": dims.nx, "ny": dims.ny, "nz": dims.nz}
+
+        # Reshape short array into its natural (i,j,k) sub-space
+        shape_present = tuple(dim_map[ax] for ax in self.column_shape)
+        arr = short_array.reshape(shape_present, order="F")  # i fastest
+
+        # Expand missing axes by inserting new dimensions and tiling
+        # We build the full (nx, ny, nz) array then ravel in Fortran order
+        full = np.empty((dims.nx, dims.ny, dims.nz), dtype=np.float64)
+
+        # Map axis names to indices in the full (nx,ny,nz) array
+        axis_indices = {"nx": 0, "ny": 1, "nz": 2}
+
+        # Reshape arr to align with full array dimensions
+        # Insert size-1 dims for missing axes, then broadcast
+        target_shape = [1, 1, 1]
+        for local_i, ax in enumerate(self.column_shape):
+            target_shape[axis_indices[ax]] = dim_map[ax]
+        arr_expanded = arr.reshape(target_shape)
+        full[:] = np.broadcast_to(arr_expanded, (dims.nx, dims.ny, dims.nz))
+        return full.ravel(order="F")  # Eclipse flat order: i fastest
 
     def _timeline(
         self,
