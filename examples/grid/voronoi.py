@@ -1,10 +1,7 @@
 """
-voronoi_example.py
-==================
 Complex multi-layer 2-D extruded Voronoi (PEBI) grid example for bores.
 
-Grid description
-----------------
+**Grid description**
 - 93 seed points arranged as:
     * 1  centre cell (well location)
     * 12 inner ring  at r = 150 m  (wellbore refinement)
@@ -17,12 +14,6 @@ Grid description
     Layer 3: 25 m  — main pay zone
     Layer 4: 20 m  — lower reservoir
     Layer 5: 40 m  — aquifer
-
-Run
----
-    uv run python voronoi_example.py
-    # or
-    python voronoi_example.py
 """
 
 import numpy as np
@@ -31,8 +22,7 @@ import pyvista as pv
 from bores.grids.factories.voronoi import make_voronoi_grid
 from bores.grids.utils import as_pyvista_grid
 
-# ── Seed geometry ─────────────────────────────────────────────────────────────
-
+# Seed geometry
 rng = np.random.default_rng(42)
 
 
@@ -47,26 +37,16 @@ seeds_inner = _ring(12, 150.0)  # wellbore refinement
 seeds_mid = _ring(24, 450.0)  # near-well region
 seeds_outer = _ring(36, 900.0)  # reservoir flank
 seeds_rand = rng.uniform(-950, 950, (20, 2))  # background scatter
+seeds_2d = np.vstack([seeds_centre, seeds_inner, seeds_mid, seeds_outer, seeds_rand])
 
-seeds_2d = np.vstack(
-    [
-        seeds_centre,
-        seeds_inner,
-        seeds_mid,
-        seeds_outer,
-        seeds_rand,
-    ]
-)
-
-# ── Layer definition ──────────────────────────────────────────────────────────
-
+# Layer definition
 z_top = 2100.0  # top of cap rock (m depth, positive down)
 layer_thicknesses = np.array([8.0, 15.0, 25.0, 20.0, 40.0])
 layer_names = ["Cap rock", "Upper reservoir", "Main pay", "Lower reservoir", "Aquifer"]
 
 bounding_box = (-1000.0, 1000.0, -1000.0, 1000.0)
 
-# ── Build grid ────────────────────────────────────────────────────────────────
+# Build grid
 
 print("Building Voronoi grid …")
 grid = make_voronoi_grid(
@@ -83,15 +63,14 @@ print(f"  bbox     : {grid.bounding_box}")
 
 n_layers = len(layer_thicknesses)
 n_cols = grid.n_cells // n_layers
-print(f"  columns  : {n_cols}  ×  {n_layers} layers  = {grid.n_cells} cells")
+print(f"  columns  : {n_cols}  x  {n_layers} layers  = {grid.n_cells} cells")
 
-# ── Synthetic property fields ─────────────────────────────────────────────────
+# Synthetic property fields
 
 assert grid.cell_centroids is not None
 cx = grid.cell_centroids[:, 0]
 cy = grid.cell_centroids[:, 1]
 cz = grid.cell_centroids[:, 2]
-
 r = np.sqrt(cx**2 + cy**2)  # radial distance from well
 
 # Porosity: higher in main pay (layer 3), radially symmetric with scatter
@@ -117,7 +96,7 @@ hydrostatic = 200.0 + 0.1 * cz  # bar  (approx 0.1 bar/m)
 drawdown = -5.0 * np.exp(-r / 200.0)  # bar  (depletion near well)
 pressure = hydrostatic + drawdown + 0.5 * rng.standard_normal(grid.n_cells)
 
-# ── PyVista visualisation ─────────────────────────────────────────────────────
+# PyVista visualisation
 
 print("\nConverting to PyVista …")
 pv_grid = as_pyvista_grid(
@@ -130,8 +109,8 @@ pv_grid = as_pyvista_grid(
     },
 )
 
-# ── Plot 1: porosity coloured by layer, z-exaggerated ─────────────────────────
-pl = pv.Plotter(shape=(1, 2), window_size=(1600, 700))
+# Plot 1: porosity coloured by layer, z-exaggerated
+pl = pv.Plotter(shape=(1, 2), window_size=(1600, 700))  # type: ignore
 
 pl.subplot(0, 0)
 pl.add_text("Voronoi PEBI Grid — Porosity", font_size=10)
@@ -143,8 +122,8 @@ pl.add_mesh(
     edge_color="lightgrey",
     clim=[0.0, 0.40],
 )
-pl.set_scale(zscale=-5)  # flip z and exaggerate depth
-pl.view_isometric()
+pl.set_scale(zscale=-5)  # flip z and exaggerate depth # type: ignore
+pl.view_isometric()  # type: ignore
 
 pl.subplot(0, 1)
 pl.add_text("Voronoi PEBI Grid — Pressure (bar)", font_size=10)
@@ -152,16 +131,16 @@ pl.add_mesh(
     pv_grid,
     scalars="pressure_bar",
     cmap="RdYlGn_r",
-    show_edges=False,
+    show_edges=True,
 )
-pl.set_scale(zscale=-5)
-pl.view_isometric()
+pl.set_scale(zscale=-5)  # type: ignore
+pl.view_isometric()  # type: ignore
 
 print("Rendering …  (close window to exit)")
 pl.show()
 
-# ── Summary stats ─────────────────────────────────────────────────────────────
-print("\n── Property summary ──")
+# Summary stats
+print("\n── Property summary")
 print(f"  Porosity   : {poro.mean():.3f}  ±  {poro.std():.3f}")
 print(
     f"  Perm (mD)  : {perm.mean():.1f}  ±  {perm.std():.1f}  "

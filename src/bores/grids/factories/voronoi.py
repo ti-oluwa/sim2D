@@ -11,7 +11,7 @@ from typing_extensions import TypeAlias
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import FaceVertexIndices, build_csr_face_arrays
-from bores.typing import FloatArray, OneDimension, TwoDimensions, UnitSystem
+from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
 
 __all__ = ["make_voronoi_grid"]
 
@@ -46,6 +46,26 @@ def make_voronoi_grid(
     layer_thicknesses: typing.Union[float, npt.ArrayLike] = 1.0,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
+    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    positive_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
 ) -> Grid:
     """
     Build a Voronoi (PEBI) grid from seed points.
@@ -128,34 +148,60 @@ def make_voronoi_grid(
     n_dims = seeds.shape[1]
     if n_dims == 2:
         bounding_box = typing.cast(BoundingBox2D, bounding_box)
-        return _make_2d_extruded_voronoi_grid(
+        (
+            vertex_coordinates,
+            face_vertex_indices,
+            face_vertex_offsets,
+            face_cell_indices,
+        ) = _make_2d_voronoi_grid(
             seeds=seeds,
             bounding_box=_resolve_2d_bounding_box(seeds, bounding_box),
-            z_top=float(z_top),
+            z_top=z_top,
             layer_thicknesses=_resolve_layer_thicknesses(layer_thicknesses),
-            unit_system=unit_system,
-            metadata=metadata,
+        )
+    else:
+        bounding_box = typing.cast(BoundingBox3D, bounding_box)
+        (
+            vertex_coordinates,
+            face_vertex_indices,
+            face_vertex_offsets,
+            face_cell_indices,
+        ) = _make_3d_voronoi_grid(
+            seeds=seeds,
+            bounding_box=_resolve_3d_bounding_box(seeds, bounding_box),
         )
 
-    bounding_box = typing.cast(BoundingBox3D, bounding_box)
-    return _make_3d_voronoi_grid(
-        seeds=seeds,
-        bounding_box=_resolve_3d_bounding_box(seeds, bounding_box),
+    return Grid(
+        vertex_coordinates=vertex_coordinates,
+        face_vertex_indices=face_vertex_indices,
+        face_vertex_offsets=face_vertex_offsets,
+        face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
+        nnc_cell_pairs=nnc_cell_pairs,
+        nnc_transmissibilities=nnc_transmissibilities,
+        positive_x_transmissibility_multipliers=positive_x_transmissibility_multipliers,
+        negative_x_transmissibility_multipliers=negative_x_transmissibility_multipliers,
+        positive_y_transmissibility_multipliers=positive_y_transmissibility_multipliers,
+        negative_y_transmissibility_multipliers=negative_y_transmissibility_multipliers,
+        positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
+        negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
     )
 
 
-def _make_2d_extruded_voronoi_grid(
+def _make_2d_voronoi_grid(
     seeds: SeedCoordinates2D,
     bounding_box: BoundingBox2D,
     z_top: float,
     layer_thicknesses: LayerThicknessArray,
-    unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-) -> Grid:
+) -> typing.Tuple[
+    FloatArray[TwoDimensions],
+    IntArray[OneDimension],
+    IntArray[OneDimension],
+    IntArray[TwoDimensions],
+]:
     """
-    Build a 2-D Voronoi grid extruded through one or more depth layers.
+    Build a 2-D Voronoi grid **extruded** through one or more depth layers.
 
     Each 2-D Voronoi cell column is extruded into `n_layers` prism cells
     stacked downward from `z_top`. Interior vertical faces are shared
@@ -167,7 +213,9 @@ def _make_2d_extruded_voronoi_grid(
     :param z_top: Depth of the top node of the first layer.
     :param layer_thicknesses: Shape `(n_layers,)` positive thickness per layer.
     :param metadata: Optional metadata dictionary.
-    :returns: A fully initialised `bores.grids.base.Grid`.
+    :returns: Tuple `(vertex_coordinates, face_vertex_indices,
+        face_vertex_offsets, face_cell_indices)` ready to be passed to
+        `bores.grids.base.Grid`.
     """
     n_seeds = len(seeds)
     n_layers = len(layer_thicknesses)
@@ -260,7 +308,8 @@ def _make_2d_extruded_voronoi_grid(
             vertex_coordinates_3d[row, 2] = z_nodes[level]
 
     def _global_vert(voronoi_vert_idx: int, z_level: int) -> int:
-        """Map a 2-D Voronoi vertex index and depth level to a global 3-D index.
+        """
+        Map a 2-D Voronoi vertex index and depth level to a global 3-D index.
 
         :param voronoi_vert_idx: Index into `voronoi.vertices`.
         :param z_level: Depth level index in `[0, n_layers]`.
@@ -362,26 +411,17 @@ def _make_2d_extruded_voronoi_grid(
             per_cell_face_vertex_lists[cell_idx].append(top_face)
             per_cell_face_vertex_lists[cell_idx].append(bottom_face)
 
-    # Assemble and return Grid
-    _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(vertex_coordinates_3d, per_cell_face_vertex_lists)
-    )
-    return Grid(
-        vertex_coordinates=vertex_coordinates_3d,
-        face_vertex_indices=face_vertex_indices,
-        face_vertex_offsets=face_vertex_offsets,
-        face_cell_indices=face_cell_indices,
-        unit_system=unit_system,
-        metadata=metadata,
-    )
+    return build_csr_face_arrays(vertex_coordinates_3d, per_cell_face_vertex_lists)
 
 
 def _make_3d_voronoi_grid(
-    seeds: SeedCoordinates3D,
-    bounding_box: BoundingBox3D,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    unit_system: UnitSystem = UnitSystem.FIELD,
-) -> Grid:
+    seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
+) -> typing.Tuple[
+    FloatArray[TwoDimensions],
+    IntArray[OneDimension],
+    IntArray[OneDimension],
+    IntArray[TwoDimensions],
+]:
     """
     Build a 3-D native polyhedral Voronoi grid.
 
@@ -393,7 +433,9 @@ def _make_3d_voronoi_grid(
     :param seeds: Shape `(n_seeds, 3)` 3-D seed array.
     :param bounding_box: `(x_min, x_max, y_min, y_max, z_min, z_max)`.
     :param metadata: Optional metadata dictionary.
-    :returns: A fully initialised `bores.grids.base.Grid`.
+    :returns: Tuple `(vertex_coordinates, face_vertex_indices,
+        face_vertex_offsets, face_cell_indices)` ready to be passed to
+        `bores.grids.base.Grid`.
     """
     n_seeds = len(seeds)
 
@@ -461,20 +503,10 @@ def _make_3d_voronoi_grid(
             f"This may indicate seeds are coplanar, collinear, or outside the bounding box."
         )
 
-    # Assemble and return Grid
-    _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(voronoi.vertices, per_cell_face_vertex_lists)
-    )
-    return Grid(
-        vertex_coordinates=voronoi.vertices,
-        face_vertex_indices=face_vertex_indices,
-        face_vertex_offsets=face_vertex_offsets,
-        face_cell_indices=face_cell_indices,
-        unit_system=unit_system,
-        metadata=metadata,
-    )
+    return build_csr_face_arrays(voronoi.vertices, per_cell_face_vertex_lists)
 
 
+@numba.njit(cache=True)
 def _build_2d_mirror_seeds(
     seeds: SeedCoordinates2D, bounding_box: BoundingBox2D
 ) -> npt.NDArray[np.float64]:
@@ -500,6 +532,7 @@ def _build_2d_mirror_seeds(
     return mirrors
 
 
+@numba.njit(cache=True)
 def _build_3d_mirror_seeds(
     seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
 ) -> FloatArray[TwoDimensions]:
@@ -550,6 +583,7 @@ def _orient_face_vertices(
     return list(reversed(vert_index_list))
 
 
+@numba.njit(cache=True)
 def _compute_newell_normal(
     verts: FloatArray[TwoDimensions],
 ) -> FloatArray[OneDimension]:
@@ -591,21 +625,6 @@ def _signed_area_2d(
     return 0.5 * float(
         (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
     )
-
-
-def _find_vertex_index(
-    vertices: FloatArray[TwoDimensions],
-    target: FloatArray[OneDimension],
-) -> int:
-    """
-    Find the index of `target` in `vertices` by nearest-neighbour search.
-
-    :param vertices: Shape `(n_verts, 2)` array of candidate coordinates.
-    :param target: Shape `(2,)` target coordinate.
-    :returns: Index of the nearest vertex in `vertices`.
-    """
-    dists = np.sum((vertices - target) ** 2, axis=1)
-    return int(np.argmin(dists))
 
 
 def _compute_depth_nodes(

@@ -110,14 +110,14 @@ def _detect_unit_system(data_file: DataFile) -> UnitSystem:
     gridunit = data_file.get("GRIDUNIT")
     if gridunit is not None:
         unit_str = str(gridunit.get("unit", "")).strip().upper()
-        us = _UNITS_MAP.get(unit_str)
-        if us is not None:
-            return us
+        unit_system = _UNITS_MAP.get(unit_str)
+        if unit_system is not None:
+            return unit_system
 
     deck_text = data_file.deck.text
-    for keyword, us in _BARE_UNIT_KEYWORDS.items():
+    for keyword, unit_system in _BARE_UNIT_KEYWORDS.items():
         if re.search(r"(?<!\w)" + keyword + r"(?!\w)", deck_text, re.IGNORECASE):
-            return us
+            return unit_system
 
     return UnitSystem.FIELD
 
@@ -628,7 +628,7 @@ def _assemble_cartesian(
         if tops_col.max() - tops_col.min() > 1.0:
             warnings.warn(
                 "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
-                "uses a flat top surface at the minimum TOPS value.  Geometry may be "
+                "uses a flat top surface at the minimum TOPS value. Geometry may be "
                 "approximate for dipping grids.",
                 stacklevel=6,
             )

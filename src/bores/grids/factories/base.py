@@ -6,7 +6,7 @@ from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
 from bores.grids.base import Grid
-from bores.typing import FloatArray, TwoDimensions, UnitSystem
+from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
 
 VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
@@ -108,10 +108,10 @@ def build_csr_face_arrays(
     vertex_coordinates: VertexCoordinates,
     per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexIndices]],
 ) -> typing.Tuple[
-    FloatArray,
-    npt.NDArray[np.int32],
-    npt.NDArray[np.int32],
-    npt.NDArray[np.int32],
+    FloatArray[TwoDimensions],
+    IntArray[OneDimension],
+    IntArray[OneDimension],
+    IntArray[TwoDimensions],
 ]:
     """
     Deduplicate faces across cells and build CSR face arrays.
@@ -125,7 +125,7 @@ def build_csr_face_arrays(
     :param per_cell_face_vertex_lists: Outer list indexed by cell index;
         each element is a list of face vertex lists for that cell.
     :returns: Tuple `(vertex_coordinates, face_vertex_indices,
-        face_vertex_offsets, face_cell_indices)` ready to pass to
+        face_vertex_offsets, face_cell_indices)` ready to be passed to
         `bores.grids.base.Grid`.
     :raises InvalidFaceConnectivityError: If any face is shared by more
         than two cells.

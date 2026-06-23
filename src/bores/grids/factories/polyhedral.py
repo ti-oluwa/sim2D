@@ -12,7 +12,7 @@ from bores.grids.factories.base import (
     VertexCoordinates,
     build_csr_face_arrays,
 )
-from bores.typing import UnitSystem
+from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
 
 __all__ = ["make_polyhedral_grid"]
 
@@ -24,6 +24,26 @@ def make_polyhedral_grid(
     custom_cell_faces: typing.Optional[typing.Dict[str, ElementFaces]] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
+    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    positive_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_x_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_y_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    positive_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
+    negative_z_transmissibility_multipliers: typing.Optional[
+        FloatArray[OneDimension]
+    ] = None,
 ) -> Grid:
     """
     Factory for general mixed-element polyhedral meshes.
@@ -91,23 +111,21 @@ def make_polyhedral_grid(
 
     all_per_cell_faces: typing.List[typing.List[FaceVertexIndices]] = []
 
-    for block_index, block in enumerate(cell_blocks):
-        cell_type_name = _resolve_cell_type_name(
-            block, combined_face_table, block_index
-        )
+    for block_idx, block in enumerate(cell_blocks):
+        cell_type_name = _resolve_cell_type_name(block, combined_face_table, block_idx)
         face_table = combined_face_table[cell_type_name]
         connectivity = np.asarray(block["connectivity"], dtype=np.int32)
 
         if connectivity.ndim != 2:
             raise ValidationError(
-                f"Block {block_index}: connectivity must be 2-D; "
+                f"Block {block_idx}: connectivity must be 2-D; "
                 f"got ndim={connectivity.ndim}."
             )
 
         expected_n_verts = max(max(face) for face in face_table) + 1
         if connectivity.shape[1] < expected_n_verts:
             raise ValidationError(
-                f"Block {block_index} (type '{cell_type_name}'): "
+                f"Block {block_idx} (type '{cell_type_name}'): "
                 f"connectivity has {connectivity.shape[1]} vertices per cell but "
                 f"face table requires at least {expected_n_verts}."
             )
@@ -122,7 +140,7 @@ def make_polyhedral_grid(
     if not all_per_cell_faces:
         raise ValidationError("No cells found across all provided cell blocks.")
 
-    _, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
+    points, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
         build_csr_face_arrays(points, all_per_cell_faces)
     )
     return Grid(
@@ -132,13 +150,21 @@ def make_polyhedral_grid(
         face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
+        nnc_cell_pairs=nnc_cell_pairs,
+        nnc_transmissibilities=nnc_transmissibilities,
+        positive_x_transmissibility_multipliers=positive_x_transmissibility_multipliers,
+        negative_x_transmissibility_multipliers=negative_x_transmissibility_multipliers,
+        positive_y_transmissibility_multipliers=positive_y_transmissibility_multipliers,
+        negative_y_transmissibility_multipliers=negative_y_transmissibility_multipliers,
+        positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
+        negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
     )
 
 
 def _resolve_cell_type_name(
     block: typing.Dict[str, typing.Any],
     combined_face_table: typing.Dict[str, ElementFaces],
-    block_index: int,
+    block_idx: int,
 ) -> str:
     """
     Resolve a cell block's element type to a string name.
@@ -148,7 +174,7 @@ def _resolve_cell_type_name(
 
     :param block: Cell block dictionary from the caller.
     :param combined_face_table: Merged face table (built-in + custom).
-    :param block_index: Index of this block (for error messages).
+    :param block_idx: Index of this block (for error messages).
     :returns: Resolved element type name string.
     :raises ValidationError: If neither key is present or the type is
         unrecognised.
@@ -157,7 +183,7 @@ def _resolve_cell_type_name(
         name = block["cell_type"]
         if name not in combined_face_table:
             raise ValidationError(
-                f"Block {block_index}: unrecognised cell_type '{name}'. "
+                f"Block {block_idx}: unrecognised cell_type '{name}'. "
                 f"Known types: {sorted(combined_face_table.keys())}."
             )
         return name
@@ -165,18 +191,18 @@ def _resolve_cell_type_name(
         vtk_code = int(block["vtk_type"])
         if vtk_code not in VTK_CELL_TYPE_NAMES:
             raise ValidationError(
-                f"Block {block_index}: unrecognised vtk_type {vtk_code}. "
+                f"Block {block_idx}: unrecognised vtk_type {vtk_code}. "
                 f"Supported codes: {sorted(VTK_CELL_TYPE_NAMES.keys())}."
             )
         name = VTK_CELL_TYPE_NAMES[vtk_code]
         if name not in combined_face_table:
             raise ValidationError(
-                f"Block {block_index}: VTK type {vtk_code} maps to '{name}' "
+                f"Block {block_idx}: VTK type {vtk_code} maps to '{name}' "
                 f"but no face table is defined for it."
             )
         return name
 
     raise ValidationError(
-        f"Block {block_index} must contain either 'cell_type' (str) "
+        f"Block {block_idx} must contain either 'cell_type' (str) "
         f"or 'vtk_type' (int). Got keys: {list(block.keys())}."
     )

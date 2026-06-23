@@ -191,7 +191,7 @@ The parsed dict uses those field names verbatim so callers can decide
 how to assemble their own `MapAxes` object.
 """
 
-GRIDUNIT = RecordKeyword(
+GRIDUNIT = RecordKeyword[str](
     "GRIDUNIT",
     fields=[
         Field("unit", str),
@@ -421,50 +421,6 @@ PERMZ = GridArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
-class FaultsKeyword(RepeatedRecordKeyword[typing.Union[int, str]]):
-    """
-    `FAULTS 'NAME' I1 I2 J1 J2 K1 K2 FACE / ... /` - named fault planes.
-
-    Multiple `FAULTS` keyword blocks in the same deck are concatenated in
-    file order.  Indices `I1`/`I2`/`J1`/`J2`/`K1`/`K2` are
-    *1-based* Eclipse IJK indices, passed through unchanged to the caller.
-
-    :raises DeckParseError: If `FACE` is not one of `I`, `I-`, `J`,
-        `J-`, `K`, `K-`.
-    """
-
-    _VALID_FACES: typing.FrozenSet[str] = frozenset({"I", "I-", "J", "J-", "K", "K-"})
-
-    def __init__(self) -> None:
-        super().__init__(
-            "FAULTS",
-            fields=[
-                Field("name", str),
-                Field("i1", int),
-                Field("i2", int),
-                Field("j1", int),
-                Field("j2", int),
-                Field("k1", int),
-                Field("k2", int),
-                Field("face", str),
-            ],
-        )
-
-    def _parse_tokens(
-        self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Any]:
-        result = super()._parse_tokens(tokens)
-        face = str(result["face"]).upper()
-        if face not in self._VALID_FACES:
-            raise DeckParseError(
-                f"FAULTS record for {result.get('name')!r}: unrecognised "
-                f"face direction {face!r}.  "
-                f"Valid values: {sorted(self._VALID_FACES)}."
-            )
-        result["face"] = face
-        return result
-
-
 class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[float, str]]):
     """
     `MULTFLT 'NAME' MULTIPLIER / ... /`
@@ -504,13 +460,32 @@ class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[float, str]]):
         return list(by_name.values())
 
 
-FAULTS = FaultsKeyword()
+FAULTS = RepeatedRecordKeyword[typing.Union[int, str]](
+    "FAULTS",
+    fields=[
+        Field("name", str),
+        Field("i1", int),
+        Field("i2", int),
+        Field("j1", int),
+        Field("j2", int),
+        Field("k1", int),
+        Field("k2", int),
+        Field(
+            "face",
+            lambda v: str(v).removesuffix("+").upper(),
+            options={"X", "X-", "Y", "Y-", "Z", "Z-"},
+        ),
+    ],
+)
 """
 `FAULTS 'NAME' I1 I2 J1 J2 K1 K2 FACE / ... /` - named fault planes.
 
 Multiple `FAULTS` keyword blocks in the same deck are concatenated in
 file order.  Indices `I1`/`I2`/`J1`/`J2`/`K1`/`K2` are
 *1-based* Eclipse IJK indices, passed through unchanged to the caller.
+
+:raises DeckParseError: If `FACE` is not one of `X`, `X-`, `Y`,
+    `Y-`, `Z`, `Z-`.
 """
 
 MULTFLT = MultFLTKeyword()
@@ -522,7 +497,7 @@ across one or more `MULTFLT` blocks, the *last* value wins.
 `parse` enforces this automatically.
 """
 
-NNC = RepeatedRecordKeyword(
+NNC = RepeatedRecordKeyword[float](
     "NNC",
     fields=[
         Field("i1", int),

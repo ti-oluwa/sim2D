@@ -5,10 +5,6 @@ Builds a `bores.grids.base.Grid` from ECLIPSE-style COORD / ZCORN / ACTNUM array
 
 **Coordinate convention**: z-axis positive downward (reservoir depth).
 
-**Face winding**: vertices are wound counter-clockwise when viewed from the
-**owner** cell (`face_cell_indices[:, 0]`), so the Newell normal points
-from owner toward neighbour (outward for the owner).
-
 **Pinchout handling**:
 
 A cell is considered pinched out when its average pillar-to-pillar thickness
@@ -88,12 +84,12 @@ _BOTTOM_FACE_LOCAL: int = 1
 # Used for fault face resolution.
 # Face direction -> local face index in _HEXAHEDRON_FACES_ZDOWN.
 _FACE_DIR_TO_LOCAL: typing.Dict[str, int] = {
-    "I": 5,  # +x face between cell(i,j,k) and cell(i+1,j,k)
-    "I-": 4,  # -x face (same physical face, opposite direction)
-    "J": 3,  # +y face between cell(i,j,k) and cell(i,j+1,k)
-    "J-": 2,  # -y face
-    "K": 1,  # +z (bottom) face between cell(i,j,k) and cell(i,j,k+1)
-    "K-": 0,  # -z (top) face
+    "X": 5,  # +x face between cell(i,j,k) and cell(i+1,j,k)
+    "X-": 4,  # -x face (same physical face, opposite direction)
+    "Y": 3,  # +y face between cell(i,j,k) and cell(i,j+1,k)
+    "Y-": 2,  # -y face
+    "Z": 1,  # +z (bottom) face between cell(i,j,k) and cell(i,j,k+1)
+    "Z-": 0,  # -z (top) face
 }
 
 
@@ -298,7 +294,7 @@ def make_corner_point_grid(
             connection_types[face_indices] = int(ConnectionType.FAULT)
 
     return Grid(
-        vertex_coordinates=np.asarray(vertex_coordinates, dtype=np.float64),
+        vertex_coordinates=vertex_coordinates,
         face_vertex_indices=face_vertex_indices,
         face_vertex_offsets=face_vertex_offsets,
         face_cell_indices=face_cell_indices,
@@ -677,7 +673,7 @@ def _resolve_fault_face_indices(
         face_direction = record.face_direction.upper()
         if face_direction not in _FACE_DIR_TO_LOCAL:
             warnings.warn(
-                f"Fault {record.name!r}: unrecognised face direction {record.face_direction!r}. "
+                f"Fault {record.name!r}: unrecognised face direction {record.face_direction}. "
                 f"Valid directions: {sorted(_FACE_DIR_TO_LOCAL)}. Skipping.",
                 stacklevel=4,
             )
@@ -685,14 +681,14 @@ def _resolve_fault_face_indices(
 
         # Convert FAULTS direction to the offset of the neighbour cell
         # relative to the owner cell.
-        # I / I-  -> neighbour is at i±1, same j, k
-        # J / J-  -> neighbour is at j±1, same i, k
-        # K / K-  -> neighbour is at k±1, same i, j
-        if face_direction in ("I", "I-"):
+        # X / X-  -> neighbour is at i±1, same j, k
+        # Y / Y-  -> neighbour is at j±1, same i, k
+        # Z / Z-  -> neighbour is at k±1, same i, j
+        if face_direction in ("X", "X-"):
             di, dj, dk = 1, 0, 0
-        elif face_direction in ("J", "J-"):
+        elif face_direction in ("Z", "Z-"):
             di, dj, dk = 0, 1, 0
-        else:  # K, K-
+        else:  # Z, Z-
             di, dj, dk = 0, 0, 1
 
         face_indices: typing.List[int] = []

@@ -1,31 +1,24 @@
 """
-cartesian_example.py
-====================
 Loads and visualises the complex Cartesian GRDECL test grid.
 
-Grid description (complex_cartesian.grdecl)
---------------------------------------------
-- 20 × 15 × 8  =  2 400 cells  (2 112 active, 88 %)
+**Grid description**:
+
+- 20 x 15 x 8  =  2 400 cells  (2 112 active, 88 %)
 - Variable cell spacing:
-    DX: 80–200 m  (tighter near fault flanks)
-    DY: 100–160 m (symmetric, wider in centre)
-    DZ: 5–30 m    (thin cap + aquifer, thick reservoir)
+    DX: 80-200 m  (tighter near fault flanks)
+    DY: 100-160 m (symmetric, wider in centre)
+    DZ: 5-30 m    (thin cap + aquifer, thick reservoir)
 - Dipping dome structure with regional tilt (TOPS array)
 - Geological features:
-    * N-S fault zone (i=9–10 inactive, transmissibility via NNCs)
+    * N-S fault zone (i=9-10 inactive, transmissibility via NNCs)
     * Cap rock seal  (MULTZ = 0.001 on layer 1)
-    * Near-fault MULTX reduction (0.05 on columns 7–8 and 11–12)
-    * Channel-flow MULTY enhancement (1.5 along j=6–8, reservoir layers)
+    * Near-fault MULTX reduction (0.05 on columns 7-8 and 11-12)
+    * Channel-flow MULTY enhancement (1.5 along j=6-8, reservoir layers)
     * 55 cross-fault NNCs connecting i=8 to i=11
     * PINCH tolerance 1e-3 m
 - Keywords: SPECGRID, GRIDUNIT, MAPAXES, MAPUNITS, TOPS, DXV, DYV, DZV,
             ACTNUM, MULTX, MULTY, MULTZ, FAULTS, MULTFLT, NNC, PINCH
 
-Run
----
-    uv run python cartesian_example.py
-    # or
-    python cartesian_example.py
 """
 
 import pathlib
@@ -36,9 +29,8 @@ import pyvista as pv
 from bores.grids.io.grdecl import load_grdecl
 from bores.grids.utils import as_pyvista_grid
 
-# ── Load ──────────────────────────────────────────────────────────────────────
-
-grdecl_path =  pathlib.Path("data/cartesian.grdecl")
+# Load
+grdecl_path = pathlib.Path("data/cartesian.grdecl")
 
 print(f"Loading {grdecl_path.name} …")
 grid = load_grdecl(grdecl_path, encoding="ascii")
@@ -54,11 +46,10 @@ print(f"  has_mult     : {grid.has_transmissibility_multipliers}")
 
 if grid.fault_face_indices:
     for name, idxs in grid.fault_face_indices.items():
-        mult = (grid.fault_transmissibility_multipliers or {}).get(name, "–")
+        mult = (grid.fault_transmissibility_multipliers or {}).get(name, "-")
         print(f"  fault '{name}': {len(idxs)} faces, MULTFLT={mult}")
 
-# ── Synthetic property fields ─────────────────────────────────────────────────
-
+# Synthetic property fields
 rng = np.random.default_rng(13)
 n = grid.n_cells
 
@@ -100,8 +91,7 @@ if grid.fault_face_indices:
                 if ci >= 0:
                     fault_flag[ci] = 1.0
 
-# ── Convert to PyVista ────────────────────────────────────────────────────────
-
+# Convert to PyVista grid
 print("\nConverting to PyVista …")
 pv_grid = as_pyvista_grid(
     grid,
@@ -114,9 +104,8 @@ pv_grid = as_pyvista_grid(
     },
 )
 
-# ── Plot: 2×2 panel ───────────────────────────────────────────────────────────
-
-pl = pv.Plotter(shape=(2, 2), window_size=(1600, 1000))
+# Plot: 2×2 panel
+pl = pv.Plotter(shape=(2, 2), window_size=(1600, 1000))  # type: ignore
 
 panel_cfg = [
     (0, 0, "porosity", "viridis", "Porosity", (0.0, 0.38)),
@@ -124,28 +113,27 @@ panel_cfg = [
     (1, 0, "water_sat", "Blues", "Water Saturation", (0.1, 1.0)),
     (1, 1, "pressure_bar", "RdYlGn_r", "Pressure (bar)", None),
 ]
-
 for row, col, scalar, cmap, title, clim in panel_cfg:
     pl.subplot(row, col)
     pl.add_text(f"Cartesian Grid — {title}", font_size=9)
     kwargs = dict(
         scalars=scalar,
         cmap=cmap,
-        show_edges=(scalar == "porosity"),
+        show_edges=True,
         edge_color="lightgrey",
     )
     if clim:
-        kwargs["clim"] = clim
-    pl.add_mesh(pv_grid, **kwargs)
-    pl.set_scale(zscale=-3)  # flip z (depth down → screen up) and exaggerate
-    pl.view_isometric()
+        kwargs["clim"] = clim  # type: ignore
+    pl.add_mesh(pv_grid, **kwargs)  # type: ignore
+    # flip z (depth down → screen up) and exaggerate
+    pl.set_scale(zscale=-3)  # type: ignore
+    pl.view_isometric()  # type: ignore
 
 print("Rendering …  (close window to exit)")
 pl.show()
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-
-print("\n── Property summary ──")
+# Summary
+print("\n── Property summary")
 print(f"  Porosity   : {poro.mean():.3f}  ±  {poro.std():.3f}")
 print(
     f"  Perm (mD)  : {perm.mean():.1f}  "

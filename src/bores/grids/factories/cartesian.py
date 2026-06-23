@@ -166,7 +166,7 @@ def make_cartesian_grid(
             connection_types[face_indices] = int(ConnectionType.FAULT)
 
     return Grid(
-        vertex_coordinates=np.asarray(vertex_coordinates, dtype=np.float64),
+        vertex_coordinates=vertex_coordinates.astype(np.float64, copy=False),
         face_vertex_indices=face_vertex_indices,
         face_vertex_offsets=face_vertex_offsets,
         face_cell_indices=face_cell_indices,
@@ -174,12 +174,12 @@ def make_cartesian_grid(
         metadata=metadata,
         connection_types=connection_types,
         nnc_cell_pairs=(
-            np.asarray(nnc_cell_pairs, dtype=np.int32)
+            nnc_cell_pairs.astype(np.int32, copy=False)
             if nnc_cell_pairs is not None
             else None
         ),
         nnc_transmissibilities=(
-            np.asarray(nnc_transmissibilities, dtype=np.float64)
+            nnc_transmissibilities.astype(np.float64, copy=False)
             if nnc_transmissibilities is not None
             else None
         ),
@@ -196,6 +196,9 @@ def make_cartesian_grid(
         positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
         negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
     )
+
+
+_VALID_FACE_DIRS = frozenset({"X", "X-", "Y", "Y-", "Z", "Z-"})
 
 
 def _resolve_fault_face_indices(
@@ -231,8 +234,8 @@ def _resolve_fault_face_indices(
       Interior Z face between `cell(i, j, k)` and `cell(i, j, k+1)`
       sits at `k_plane = k + 1`.
 
-    Eclipse `I-` / `J-` / `K-` directions resolve to the same physical
-    face as `I` / `J` / `K` respectively (same shared face, opposite
+    Eclipse `X-` / `Y-` / `Z-` directions resolve to the same physical
+    face as `X` / `Y` / `Z` respectively (same shared face, opposite
     normal direction).
 
     :param fault_records: Sequence of
@@ -244,7 +247,6 @@ def _resolve_fault_face_indices(
     :param n_y_faces: Total number of Y-normal faces `nx*(ny+1)*nz`.
     :returns: `{fault_name: int32 face index array}` mapping.
     """
-    _VALID_FACE_DIRS = frozenset({"I", "I-", "J", "J-", "K", "K-"})
     result: typing.Dict[str, typing.List[int]] = {}
 
     for record in fault_records:
@@ -267,7 +269,7 @@ def _resolve_fault_face_indices(
                 for i in range(record.i1 - 1, record.i2):
                     face_idx: typing.Optional[int] = None
 
-                    if face_dir in ("I", "I-"):
+                    if face_dir in ("X", "X-"):
                         # Face between cell(i, j, k) and cell(i+1, j, k).
                         # Plane index = i + 1; must be in [1, nx-1] for interior.
                         i_plane = i + 1
@@ -277,7 +279,7 @@ def _resolve_fault_face_indices(
                             n_missed += 1
                             continue
 
-                    elif face_dir in ("J", "J-"):
+                    elif face_dir in ("Y", "Y-"):
                         # Face between cell(i, j, k) and cell(i, j+1, k).
                         j_plane = j + 1
                         if 0 <= i < nx and 0 <= j < ny - 1 and 0 <= k < nz:
@@ -286,7 +288,7 @@ def _resolve_fault_face_indices(
                             n_missed += 1
                             continue
 
-                    else:  # K, K-
+                    else:  # Z, Z-
                         # Face between cell(i, j, k) and cell(i, j, k+1).
                         k_plane = k + 1
                         if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz - 1:
