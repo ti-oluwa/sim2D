@@ -34,7 +34,7 @@ def make_cartesian_grid(
     fault_transmissibility_multipliers: typing.Optional[
         typing.Mapping[str, float]
     ] = None,
-    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
+    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
@@ -98,10 +98,10 @@ def make_cartesian_grid(
     :param fault_transmissibility_multipliers: Mapping `{name: multiplier}`
         from the GRDECL `MULTFLT` keyword. Stored verbatim on the
         returned `Grid`.
-    :param nnc_cell_pairs: Shape `(n_nnc, 2)` int32 array of 0-based
+    :param nnc_cell_indices: Shape `(n_nnc, 2)` int32 array of 0-based
         cell index pairs for explicit NNCs from the GRDECL `NNC` keyword.
     :param nnc_transmissibilities: Shape `(n_nnc,)` float64 array of
-        transmissibilities corresponding to `nnc_cell_pairs`.
+        transmissibilities corresponding to `nnc_cell_indices`.
     :param positive_x_transmissibility_multipliers: Shape `(n_cells,)`
         per-cell MULTX values. `None` if not supplied.
     :param negative_x_transmissibility_multipliers: Shape `(n_cells,)`
@@ -123,10 +123,10 @@ def make_cartesian_grid(
     ny = len(dy_arr)
     nz = len(dz_arr)
 
-    if nnc_cell_pairs is not None and nnc_transmissibilities is not None:
-        if len(nnc_cell_pairs) != len(nnc_transmissibilities):
+    if nnc_cell_indices is not None and nnc_transmissibilities is not None:
+        if len(nnc_cell_indices) != len(nnc_transmissibilities):
             raise ValidationError(
-                f"nnc_cell_pairs has {len(nnc_cell_pairs)} rows but "
+                f"nnc_cell_indices has {len(nnc_cell_indices)} rows but "
                 f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries; "
                 "they must have the same length."
             )
@@ -173,9 +173,9 @@ def make_cartesian_grid(
         unit_system=unit_system,
         metadata=metadata,
         connection_types=connection_types,
-        nnc_cell_pairs=(
-            nnc_cell_pairs.astype(np.int32, copy=False)
-            if nnc_cell_pairs is not None
+        nnc_cell_indices=(
+            nnc_cell_indices.astype(np.int32, copy=False)
+            if nnc_cell_indices is not None
             else None
         ),
         nnc_transmissibilities=(

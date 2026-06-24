@@ -1,5 +1,4 @@
 """Face-based unstructured polyhedral grid implementation for reservoir simulation."""
-
 import enum
 import typing
 
@@ -18,6 +17,7 @@ from bores.errors import (
     InvalidVolumeError,
     ValidationError,
 )
+from bores.serialization import Serializable
 from bores.typing import (
     FloatArray,
     IntArray,
@@ -53,7 +53,7 @@ class ConnectionType(enum.IntEnum):
         geometric sense - typically across a pinched-out layer or an
         explicit NNC declared in the input file.  These connections are
         stored both as faces (when a surviving lateral face bridges the
-        pinch) and as explicit NNC pairs in `Grid.nnc_cell_pairs`.
+        pinch) and as explicit NNC pairs in `Grid.nnc_cell_indices`.
 
     `PINCHOUT`
         A face whose existence is due to a pinched-out layer being collapsed.
@@ -356,7 +356,7 @@ def _compute_cell_bounding_boxes(
 
 
 @attrs.define(frozen=True, slots=True, kw_only=True)
-class Grid:
+class Grid(Serializable):
     """
     Immutable face-based unstructured polyhedral grid.
 
@@ -377,7 +377,7 @@ class Grid:
 
     Connections that cannot be expressed as a shared face - typically across
     pinched-out layers or declared via the GRDECL `NNC` keyword - are
-    stored explicitly in `nnc_cell_pairs` and `nnc_transmissibilities`.
+    stored explicitly in `nnc_cell_indices` and `nnc_transmissibilities`.
     The surviving lateral face that bridges a pinch is additionally present
     in the face arrays and tagged `ConnectionType.PINCHOUT`.
 
@@ -399,8 +399,6 @@ class Grid:
     `InvalidVolumeError`
         If any cell ends up with a non-positive volume after construction.
     """
-
-    # Mandatory primary inputs
 
     vertex_coordinates: FloatArray[TwoDimensions]
     """
@@ -431,8 +429,8 @@ class Grid:
     Shape `(n_faces, 2)` - `(owner_cell_index, neighbour_cell_index)`
     per face.
 
-    Boundary faces have `neighbour_cell_index == -1`.  Interior faces have
-    both indices >= 0.  The owner cell is the one from whose perspective the
+    Boundary faces have `neighbour_cell_index == -1`. Interior faces have
+    both indices >= 0. The owner cell is the one from whose perspective the
     face vertices are wound counter-clockwise.
     """
 
@@ -464,7 +462,7 @@ class Grid:
     Shape `(n_cells,)` - per-cell `CellStatus` flags.
 
     When `None` on construction, auto-populated to all
-    `CellStatus.ACTIVE`.  Factories that honour ACTNUM should populate
+    `CellStatus.ACTIVE`. Factories that honour ACTNUM should populate
     this explicitly; note that inactive cells are typically excluded from the
     grid entirely (they are not stored as cells), so this array will almost
     always be all-active for a fully constructed grid.
@@ -478,7 +476,7 @@ class Grid:
 
     When `None` on construction, auto-populated from topology:
     `BOUNDARY` for faces with `neighbour == -1`, `INTERIOR` for all
-    others.  Factories that know about faults or pinchouts should pass an
+    others. Factories that know about faults or pinchouts should pass an
     explicit array.
     """
 
@@ -487,7 +485,7 @@ class Grid:
     Shape `(n_faces,)` - per-face `FaceStatus` flags.
 
     When `None` on construction, auto-populated to all
-    `FaceStatus.ACTIVE`.  Set faces to `FaceStatus.INACTIVE` to model
+    `FaceStatus.ACTIVE`. Set faces to `FaceStatus.INACTIVE` to model
     closed faults or zero-transmissibility connections.
     """
 
@@ -511,7 +509,7 @@ class Grid:
     """
 
     # NNC (non-neighbour connections)
-    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = attrs.field(default=None)
+    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = attrs.field(default=None)
     """
     Shape `(n_nnc, 2)` - non-neighbour connection (NNC) cell index pairs.
 
@@ -533,7 +531,7 @@ class Grid:
     )
     """
     Shape `(n_nnc,)` - transmissibility for each NNC pair in
-    `nnc_cell_pairs`.
+    `nnc_cell_indices`.
 
     Units follow the grid's declared `unit_system` (e.g. md·ft/cP in
     FIELD, md·m/cP in METRIC). `None` when transmissibilities were not
@@ -548,8 +546,8 @@ class Grid:
     Mapping from fault name to a 1-D array of face indices belonging to that
     fault.
 
-    Populated from the GRDECL `FAULTS` keyword when present.  `None`
-    when no fault definitions were parsed.  The face indices reference the
+    Populated from the GRDECL `FAULTS` keyword when present. `None`
+    when no fault definitions were parsed. The face indices reference the
     same ordering as `face_cell_indices`.
     """
 
@@ -559,23 +557,25 @@ class Grid:
     """
     Mapping from fault name to its transmissibility multiplier.
 
-    Populated from the GRDECL `MULTFLT` keyword.  A multiplier of 0.0
+    Populated from the GRDECL `MULTFLT` keyword. A multiplier of 0.0
     closes the fault entirely; 1.0 leaves it fully open; values in between
-    reduce flow proportionally.  `None` when no `MULTFLT` data was
+    reduce flow proportionally. `None` when no `MULTFLT` data was
     parsed.
 
-    To obtain the effective transmissibility for a named fault face::
+    To obtain the effective transmissibility for a named fault face:
 
-        T_effective = T_geometric * fault_transmissibility_multipliers[fault_name]
+    ```
+    T_effective = T_geometric * fault_transmissibility_multipliers[fault_name]
+    ```
     """
 
-    # Directional transmissibility multipliers (MULTX / MULTY / MULTZ and their - variants)
+    # Directional transmissibility multipliers (`MULTX` / `MULTY` / `MULTZ` and their `-` variants)
     positive_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-x** face of each cell (GRDECL ``MULTX`` keyword).
+    the **positive-x** face of each cell (GRDECL `MULTX` keyword).
 
     The effective inter-cell transmissibility between cell *i* and its
     +x neighbour *i+1* is scaled by
@@ -588,10 +588,10 @@ class Grid:
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-x** face of each cell (GRDECL ``MULTX-`` keyword).
+    the **negative-x** face of each cell (GRDECL `MULTX-` keyword).
 
     Combined with `positive_x_transmissibility_multipliers` on the adjacent cell to give the
-    face multiplier in the x-direction.  `None` when not supplied.
+    face multiplier in the x-direction. `None` when not supplied.
     """
 
     positive_y_transmissibility_multipliers: typing.Optional[
@@ -599,7 +599,7 @@ class Grid:
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-y** face (GRDECL ``MULTY``).  `None` when not supplied.
+    the **positive-y** face (GRDECL `MULTY`).  `None` when not supplied.
     """
 
     negative_y_transmissibility_multipliers: typing.Optional[
@@ -607,7 +607,7 @@ class Grid:
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-y** face (GRDECL ``MULTY-``).  `None` when not supplied.
+    the **negative-y** face (GRDECL `MULTY-`). `None` when not supplied.
     """
 
     positive_z_transmissibility_multipliers: typing.Optional[
@@ -615,7 +615,7 @@ class Grid:
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-z** face (GRDECL ``MULTZ``).  `None` when not supplied.
+    the **positive-z** face (GRDECL `MULTZ`).  `None` when not supplied.
     """
 
     negative_z_transmissibility_multipliers: typing.Optional[
@@ -623,11 +623,10 @@ class Grid:
     ] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-z** face (GRDECL ``MULTZ-``).  `None` when not supplied.
+    the **negative-z** face (GRDECL `MULTZ-`). `None` when not supplied.
     """
 
     # Derived topology
-
     cell_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """
     Flat CSR data array: concatenated face index lists for all cells.
@@ -659,10 +658,9 @@ class Grid:
     """Indices of all boundary faces (`neighbour_cell_index == -1`)."""
 
     interior_face_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """Indices of all interior faces (both owner and neighbour cells >= 0)."""
+    """Indices of all interior faces (both owner and neighbour cell indices >= 0)."""
 
     # Derived geometry
-
     face_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - (x, y, z) centroid of each face polygon."""
 
@@ -713,14 +711,12 @@ class Grid:
 
     cell_center_depths: FloatArray[OneDimension] = attrs.field(init=False)
     """
-    Shape `(n_cells,)` - depth of each cell centroid (positive downward =
-    centroid z).
+    Shape `(n_cells,)` - depth of each cell centroid (positive downward = centroid z).
     """
 
     cell_center_elevations: FloatArray[OneDimension] = attrs.field(init=False)
     """
-    Shape `(n_cells,)` - elevation of each cell centroid (positive upward =
-    -depth).
+    Shape `(n_cells,)` - elevation of each cell centroid (positive upward = -depth).
     """
 
     _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
@@ -1066,11 +1062,11 @@ class Grid:
         """
         Number of non-neighbour connections (NNCs).
 
-        Returns 0 when `nnc_cell_pairs` is `None`.
+        Returns 0 when `nnc_cell_indices` is `None`.
         """
-        if self.nnc_cell_pairs is None:
+        if self.nnc_cell_indices is None:
             return 0
-        return self.nnc_cell_pairs.shape[0]
+        return self.nnc_cell_indices.shape[0]
 
     @property
     def n_faults(self) -> int:

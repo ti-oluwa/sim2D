@@ -171,34 +171,6 @@ def build_csr_face_arrays(
     )
 
 
-def assemble_grid(
-    vertex_coordinates: VertexCoordinates,
-    face_vertex_indices: npt.NDArray[np.int32],
-    face_vertex_offsets: npt.NDArray[np.int32],
-    face_cell_indices: npt.NDArray[np.int32],
-    unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-) -> Grid:
-    """
-    Construct a `bores.grids.base.Grid` from pre-built CSR arrays.
-
-    :param vertex_coordinates: Shape `(n_vertices, 3)` float64 array.
-    :param face_vertex_indices: Flat CSR vertex indices data.
-    :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
-    :param face_cell_indices: Shape `(n_faces, 2)` owner/neighbour array.
-    :param metadata: Optional free-form metadata dictionary.
-    :returns: A fully initialised `bores.grids.base.Grid`.
-    """
-    return Grid(
-        vertex_coordinates=np.asarray(vertex_coordinates, dtype=np.float64),
-        face_vertex_indices=face_vertex_indices,
-        face_vertex_offsets=face_vertex_offsets,
-        face_cell_indices=face_cell_indices,
-        unit_system=unit_system,
-        metadata=metadata,
-    )
-
-
 class FaultRecord(typing.NamedTuple):
     """
     One record from the GRDECL `FAULTS` keyword.
@@ -214,7 +186,7 @@ class FaultRecord(typing.NamedTuple):
     :param k1: 1-based start index in the K (z) direction (inclusive).
     :param k2: 1-based end index in the K direction (inclusive).
     :param face_direction: Eclipse face direction string, one of
-        `'I'`, `'I-'`, `'J'`, `'J-'`, `'K'`, `'K-'`.
+        `'X'`, `'X-'`, `'Y'`, `'Y-'`, `'Z'`, `'Z-'`.
     """
 
     name: str

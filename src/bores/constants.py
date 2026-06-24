@@ -5,13 +5,23 @@ import typing
 from contextvars import ContextVar
 
 import attrs
-from typing_extensions import Self
+from typing_extensions import Self, TypedDict
 
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
+from bores.typing import UnitSystem
 
-__all__ = ["Constant", "Constants", "ConstantsContext", "c", "get_constant"]
+__all__ = [
+    "Constant",
+    "Constants",
+    "ConstantsContext",
+    "c",
+    "get_constant",
+    "get_conversion_factors",
+    "build_unit_conversion_table",
+    "UNIT_CONVERSION_TABLE",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +291,11 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "PSI_TO_BAR": Constant(
         value=0.0689476, description="Conversion factor from psi to bar", unit="bar/psi"
+    ),
+    "ATM_TO_PASCAL": Constant(
+        value=101325.0,
+        description="Conversion factor from atm to Pascals",
+        unit="atm/Pa",
     ),
     # Temperature Conversions
     "RANKINE_TO_KELVIN": Constant(
@@ -1024,3 +1039,318 @@ def get_constant(name: str) -> typing.Optional[Constant]:
     :return: `Constant` object or None if not found
     """
     return c._constants.get_constant(name)
+
+
+class UnitConversionFactors(TypedDict):
+    pressure: float
+    """Pressure conversion factor."""
+
+    length: float
+    """Length conversion factor."""
+
+    density: float
+    """Density conversion factor."""
+
+    viscosity: float
+    """Dynamic viscosity conversion factor."""
+
+    permeability: float
+    """Permeability conversion factor."""
+
+    compressibility: float
+    """Compressibility conversion factor."""
+
+    liquid_fvf: float
+    """Liquid formation volume factor conversion factor."""
+
+    gaseous_fvf: float
+    """Gas formation volume factor conversion factor."""
+
+    gor: float
+    """Gas-oil ratio conversion factor."""
+
+    temperature_scale: float
+    """Multiplicative temperature conversion factor."""
+
+    temperature_offset: float
+    """Additive temperature conversion offset."""
+
+
+UnitConversionTable = typing.Dict[
+    typing.Tuple[UnitSystem, UnitSystem], UnitConversionFactors
+]
+"""Mapping of unit system pairs `(from, target)` to unit conversion factors"""
+
+
+def _inverse(x: float) -> float:
+    return 1.0 / x
+
+
+def build_unit_conversion_table(
+    constants: typing.Optional[Constants] = None,
+) -> UnitConversionTable:
+    """
+    Build a unit conversion table from the bores constants registry.
+
+    All numeric values come from `c.*` so
+    they stay in sync with any application-level constant overrides.
+    """
+    con = constants or c
+    psi_to_bar = con.PSI_TO_BAR  # 0.0689476
+    psi_to_pa = con.PSI_TO_PASCAL  # 6894.757
+    atm_to_pa = con.ATM_TO_PASCAL  # 101325.0
+    ft_to_m = con.FT_TO_METERS  # 0.3048
+    m_to_ft = con.METERS_TO_FT  # 3.28084
+    lbm_ft3_to_kg_m3 = con.POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER  # 16.0185
+
+    cp_to_pas = con.CENTIPOISE_TO_PASCAL_SECONDS  # 0.001
+    md_to_m2 = con.MILLIDARCY_TO_SQUARE_METER  # 9.869233e-16
+    scf_stb_to_sm3_sm3 = con.SCF_PER_STB_TO_CUBIC_METER_PER_CUBIC_METER  # ~0.17811
+
+    # Common and derived intermediate factors
+    bar_to_pa = psi_to_bar / psi_to_pa
+    psi_to_atm = psi_to_pa / atm_to_pa
+    bar_to_atm = bar_to_pa / atm_to_pa
+    cm_to_m = 0.01  # Common; no need to check constants objects
+    m_to_cm = 100.0
+    ft_to_cm = ft_to_m * m_to_cm
+    kg_m3_to_g_cm3 = 1e-3
+    lbm_ft3_to_g_cm3 = lbm_ft3_to_kg_m3 * kg_m3_to_g_cm3
+
+    table: UnitConversionTable = {
+        # FIELD -> *
+        (UnitSystem.FIELD, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=psi_to_bar,
+            length=ft_to_m,
+            density=lbm_ft3_to_kg_m3,
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=_inverse(psi_to_bar),
+            liquid_fvf=1.0,
+            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gor=scf_stb_to_sm3_sm3,
+            temperature_scale=5.0 / 9.0,
+            temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+        ),
+        (UnitSystem.FIELD, UnitSystem.SI): UnitConversionFactors(
+            pressure=psi_to_pa,
+            length=ft_to_m,
+            density=lbm_ft3_to_kg_m3,
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(psi_to_pa),
+            liquid_fvf=1.0,
+            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gor=scf_stb_to_sm3_sm3,
+            temperature_scale=5.0 / 9.0,
+            temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
+        ),
+        (UnitSystem.FIELD, UnitSystem.LAB): UnitConversionFactors(
+            pressure=psi_to_atm,
+            length=ft_to_cm,
+            density=lbm_ft3_to_g_cm3,
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=_inverse(psi_to_atm),
+            liquid_fvf=1.0,
+            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gor=scf_stb_to_sm3_sm3,
+            temperature_scale=5.0 / 9.0,
+            temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+        ),
+        # METRIC -> *
+        (UnitSystem.METRIC, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_bar),
+            length=m_to_ft,
+            density=_inverse(lbm_ft3_to_kg_m3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=psi_to_bar,
+            liquid_fvf=1.0,
+            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gor=_inverse(scf_stb_to_sm3_sm3),
+            temperature_scale=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
+        ),
+        (UnitSystem.METRIC, UnitSystem.SI): UnitConversionFactors(
+            pressure=bar_to_pa,
+            length=1.0,
+            density=1.0,
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(bar_to_pa),
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=273.15,  # °C -> K
+        ),
+        (UnitSystem.METRIC, UnitSystem.LAB): UnitConversionFactors(
+            pressure=bar_to_atm,
+            length=m_to_cm,
+            density=kg_m3_to_g_cm3,
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=_inverse(bar_to_atm),
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=0.0,  # °C -> °C
+        ),
+        # SI -> *
+        (UnitSystem.SI, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_pa),
+            length=m_to_ft,
+            density=_inverse(lbm_ft3_to_kg_m3),
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=psi_to_pa,
+            liquid_fvf=1.0,
+            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gor=_inverse(scf_stb_to_sm3_sm3),
+            temperature_scale=9.0 / 5.0,
+            temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
+        ),
+        (UnitSystem.SI, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=_inverse(bar_to_pa),
+            length=1.0,
+            density=1.0,
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=bar_to_pa,
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=-273.15,  # K -> °C
+        ),
+        (UnitSystem.SI, UnitSystem.LAB): UnitConversionFactors(
+            pressure=_inverse(atm_to_pa),
+            length=m_to_cm,
+            density=kg_m3_to_g_cm3,
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=atm_to_pa,
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=-273.15,  # K -> °C
+        ),
+        # LAB -> *
+        (UnitSystem.LAB, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_atm),
+            length=cm_to_m * m_to_ft,
+            density=_inverse(lbm_ft3_to_g_cm3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=psi_to_atm,
+            liquid_fvf=1.0,
+            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gor=_inverse(scf_stb_to_sm3_sm3),
+            temperature_scale=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
+        ),
+        (UnitSystem.LAB, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=_inverse(bar_to_atm),
+            length=cm_to_m,
+            density=_inverse(kg_m3_to_g_cm3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=bar_to_atm,
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=0.0,  # °C -> °C
+        ),
+        (UnitSystem.LAB, UnitSystem.SI): UnitConversionFactors(
+            pressure=atm_to_pa,
+            length=cm_to_m,
+            density=_inverse(kg_m3_to_g_cm3),
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(atm_to_pa),
+            liquid_fvf=1.0,
+            gaseous_fvf=1.0,
+            gor=1.0,
+            temperature_scale=1.0,
+            temperature_offset=273.15,  # °C -> K
+        ),
+    }
+    return table
+
+
+IDENTITY_FACTORS = UnitConversionFactors(
+    pressure=1.0,
+    length=1.0,
+    density=1.0,
+    viscosity=1.0,
+    permeability=1.0,
+    compressibility=1.0,
+    liquid_fvf=1.0,
+    gaseous_fvf=1.0,
+    gor=1.0,
+    temperature_scale=1.0,
+    temperature_offset=0.0,
+)
+"""Identity unit conversion factors. All factors = 1."""
+
+UNIT_CONVERSION_TABLE = build_unit_conversion_table()
+"""Default unit conversion table"""
+
+
+def get_conversion_factors(
+    from_system: UnitSystem,
+    to_system: UnitSystem,
+    /,
+    *,
+    table: typing.Optional[UnitConversionTable] = None,
+) -> UnitConversionFactors:
+    """
+    Return a dictionary of scalar conversion factors for every physical
+    dimension used by the property classes in this module.
+
+    Each value converts a quantity expressed in `from_system` to
+    `to_system` by **multiplication**, except temperature which uses an
+    affine map stored as two keys:
+
+    - "temperature_scale"  - multiplicative factor.
+    - "temperature_offset" - additive delta (in target units) applied
+    *after* scaling: T_to = T_from * scale + offset.
+
+    **Quantity keys**:
+
+    ```
+    "pressure"         psi / bar / atm / Pa
+    "length"           ft / m / cm / m
+    "density"          lbm/ft³ / kg/m³ / g/cm³ / kg/m³
+    "viscosity"        cP / cP / cP / Pa·s
+    "permeability"     mD / mD / mD / m²
+    "compressibility"  1/psi / 1/bar / 1/atm / 1/Pa
+    "liquid_fvf"       bbl/STB -> m³/sm³ / scc/scc (ratio, usually 1.0)
+    "gaseous_fvf"      ft³/scf -> m³/sm³ / scc/scc
+    "gor"              scf/STB -> sm³/sm³ / scc/scc
+    "mass"             lbm / kg / g / kg  (not stored; derived as
+                        density_factor x length_factor³ by callers)
+    "temperature_scale" / "temperature_offset" - see above.
+    ```
+
+    :param from_system: Source `UnitSystem`.
+    :param to_system:   Target `UnitSystem`.
+    :returns: Conversion-factor dictionary.
+    :raises KeyError: If the (from_system, to_system) pair is not defined.
+    """
+    if from_system == to_system:
+        return IDENTITY_FACTORS
+
+    table = table or build_unit_conversion_table()
+    key = (from_system, to_system)
+    if key not in table:
+        pairs = [f"{a.value} -> {b.value}" for a, b in table]
+        raise KeyError(
+            f"No unit conversion defined from {from_system.value!r} "
+            f"to {to_system.value!r}. Supported pairs: {pairs}."
+        )
+    return table[key]

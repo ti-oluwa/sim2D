@@ -11,7 +11,7 @@ A cell is considered pinched out when its average pillar-to-pillar thickness
 is at or below `pinch_tolerance`. For such cells:
 
 - Their top and bottom faces are suppressed so that the cells immediately
-  above and below can share those face keys directly — forming a
+  above and below can share those face keys directly - forming a
   non-neighbour connection (NNC) across the collapsed layer.
 - The surviving lateral face that bridges the pinch is tagged
   `ConnectionType.PINCHOUT`.
@@ -68,8 +68,8 @@ ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
 
 
 _HEXAHEDRON_FACES_ZDOWN: typing.List[typing.List[int]] = [
-    [0, 3, 2, 1],  # top    — outward normal = -z (upward)
-    [4, 5, 6, 7],  # bottom — outward normal = +z (downward)
+    [0, 3, 2, 1],  # top    - outward normal = -z (upward)
+    [4, 5, 6, 7],  # bottom - outward normal = +z (downward)
     [0, 1, 5, 4],  # -y face
     [3, 7, 6, 2],  # +y face
     [0, 4, 7, 3],  # -x face
@@ -102,7 +102,7 @@ def make_corner_point_grid(
     pinch_tolerance: typing.Optional[float] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
+    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
@@ -141,8 +141,7 @@ def make_corner_point_grid(
         the top and bottom anchor points of a pillar.
     :param zcorn: Shape `(NZ*2, NY*2, NX*2)` depth array. For each
         cell `(i, j, k)` the 8 corner z-values are at indices
-        `[2k:2k+2, 2j:2j+2, 2i:2i+2]` in `[top/bot, near/far,
-        left/right]` order.
+        `[2k:2k+2, 2j:2j+2, 2i:2i+2]` in `[top/bot, near/far, left/right]` order.
     :param actnum: Shape `(NZ, NY, NX)` integer mask (1 = active,
         0 = inactive). If `None`, all cells are treated as active.
     :param vertex_tolerance: Two corner points closer than this distance
@@ -155,12 +154,12 @@ def make_corner_point_grid(
     :param unit_system: Declared unit system for all coordinate arrays.
     :param metadata: Optional free-form metadata dictionary attached to the
         returned `Grid`.
-    :param nnc_cell_pairs: Shape `(n_nnc, 2)` int32 array of 0-based
+    :param nnc_cell_indices: Shape `(n_nnc, 2)` int32 array of 0-based
         cell index pairs for explicit NNCs from the GRDECL `NNC` keyword.
         These are merged with any pinchout-detected NNCs from geometry.
     :param nnc_transmissibilities: Shape `(n_nnc,)` float64 array of
-        transmissibilities corresponding to `nnc_cell_pairs`.  Must have
-        the same length as `nnc_cell_pairs` if provided.
+        transmissibilities corresponding to `nnc_cell_indices`.  Must have
+        the same length as `nnc_cell_indices` if provided.
     :param fault_records: Sequence of `FaultRecord` objects parsed from
         the GRDECL `FAULTS` keyword. The factory resolves each record to
         a set of unstructured face indices and tags them
@@ -218,10 +217,10 @@ def make_corner_point_grid(
         pinch_tolerance = float((metadata or {}).get("pinch", None) or 0.0)
 
     # Validate NNC transmissibility length consistency up front
-    if nnc_cell_pairs is not None and nnc_transmissibilities is not None:
-        if len(nnc_cell_pairs) != len(nnc_transmissibilities):
+    if nnc_cell_indices is not None and nnc_transmissibilities is not None:
+        if len(nnc_cell_indices) != len(nnc_transmissibilities):
             raise ValidationError(
-                f"`nnc_cell_pairs` has {len(nnc_cell_pairs)} rows but "
+                f"`nnc_cell_indices` has {len(nnc_cell_indices)} rows but "
                 f"`nnc_transmissibilities` has {len(nnc_transmissibilities)} entries; "
                 "they must have the same length."
             )
@@ -234,7 +233,7 @@ def make_corner_point_grid(
         face_cell_indices,
         connection_types,
         geometric_nnc_pairs,
-        active_cells,  # shape (n_active, 3) — (k, j, i) for fault resolution
+        active_cells,  # shape (n_active, 3) - (k, j, i) for fault resolution
         cell_volumes,
         cell_dimension_centroids,
     ) = _compute_corner_point_geometry(
@@ -250,7 +249,7 @@ def make_corner_point_grid(
     cell_statuses = np.full(n_active_cells, int(CellStatus.ACTIVE), dtype=np.int8)
 
     # Merge geometry-detected NNCs with caller-supplied NNCs
-    pair_parts = [p for p in (geometric_nnc_pairs, nnc_cell_pairs) if p is not None]
+    pair_parts = [p for p in (geometric_nnc_pairs, nnc_cell_indices) if p is not None]
     if pair_parts:
         merged_nnc_pairs = (
             np.vstack(pair_parts).astype(np.int32)
@@ -304,7 +303,7 @@ def make_corner_point_grid(
         metadata=metadata,
         cell_statuses=cell_statuses,
         connection_types=connection_types,
-        nnc_cell_pairs=merged_nnc_pairs,
+        nnc_cell_indices=merged_nnc_pairs,
         nnc_transmissibilities=merged_nnc_transmissibilities,
         fault_face_indices=resolved_fault_face_indices,
         fault_transmissibility_multipliers=(
@@ -333,10 +332,10 @@ def _interpolate_pillar_point(
     The pillar is a straight line from `pillar_top` to `pillar_bottom`.
     Interpolation is linear in z.
 
-    :param pillar_top: Shape `(3,)` — `[x, y, z]` of pillar top.
-    :param pillar_bottom: Shape `(3,)` — `[x, y, z]` of pillar bottom.
+    :param pillar_top: Shape `(3,)` - `[x, y, z]` of pillar top.
+    :param pillar_bottom: Shape `(3,)` - `[x, y, z]` of pillar bottom.
     :param z: Target depth.
-    :returns: Shape `(3,)` — `[x, y, z]` on the pillar at depth `z`.
+    :returns: Shape `(3,)` - `[x, y, z]` on the pillar at depth `z`.
     """
     xyz = np.empty(3, dtype=np.float64)
     dz = pillar_bottom[2] - pillar_top[2]
@@ -380,7 +379,7 @@ def _compute_active_cell_corner_coordinates(
     ===  =================  =========================
     ```
 
-    :param active_cells: Shape `(n_active, 3)` — `(k, j, i)` indices.
+    :param active_cells: Shape `(n_active, 3)` - `(k, j, i)` indices.
     :param coord: Shape `(NY+1, NX+1, 6)` pillar array.
     :param zcorn: Shape `(NZ*2, NY*2, NX*2)` depth array.
     :returns: Shape `(n_active, 8, 3)` corner coordinate array.
@@ -473,7 +472,7 @@ def _compute_corner_point_geometry(
     IntArray[OneDimension],  # face_vertex_offsets  (CSR offsets)
     IntArray[TwoDimensions],  # face_cell_indices    (n_faces, 2)
     IntArray[OneDimension],  # connection_types     (n_faces,)
-    typing.Optional[IntArray[TwoDimensions]],  # nnc_cell_pairs (n_nnc, 2)
+    typing.Optional[IntArray[TwoDimensions]],  # nnc_cell_indices (n_nnc, 2)
     IntArray[TwoDimensions],  # active_cells  (n_active, 3) k,j,i
     FloatArray[OneDimension],
     FloatArray[TwoDimensions],
@@ -498,7 +497,7 @@ def _compute_corner_point_geometry(
     :param actnum: Shape `(NZ, NY, NX)` active cell mask.
     :param vertex_tolerance: Vertex merge distance.
     :param pinch_tolerance: Average thickness threshold for pinch detection.
-    :returns: 7-tuple — see return type annotation.
+    :returns: 7-tuple - see return type annotation.
     :raises InvalidGridError: If no active cells are found.
     """
     active_cells = np.argwhere(actnum > 0).astype(np.int32)
@@ -648,9 +647,9 @@ def _resolve_fault_face_indices(
     skipped with a warning.
 
     :param fault_records: Sequence of `FaultRecord` objects.
-    :param active_cells: Shape `(n_active, 3)` — `(k, j, i)` for each
+    :param active_cells: Shape `(n_active, 3)` - `(k, j, i)` for each
         active cell, indexed 0 .. n_active-1.
-    :param face_cell_indices: Shape `(n_faces, 2)` — owner/neighbour
+    :param face_cell_indices: Shape `(n_faces, 2)` - owner/neighbour
         pairs in the unstructured grid.
     :returns: Dict mapping fault name -> 1-D int32 array of face indices.
     """

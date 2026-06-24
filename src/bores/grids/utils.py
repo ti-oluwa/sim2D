@@ -364,7 +364,7 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
         cell_statuses=grid.cell_statuses,
         connection_types=grid.connection_types,
         face_statuses=grid.face_statuses,
-        nnc_cell_pairs=grid.nnc_cell_pairs,
+        nnc_cell_indices=grid.nnc_cell_indices,
         nnc_transmissibilities=grid.nnc_transmissibilities,
         fault_face_indices=grid.fault_face_indices,
         fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,

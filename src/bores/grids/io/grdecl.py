@@ -576,7 +576,7 @@ def _assemble_corner_point(
         actnum=actnum,
         unit_system=unit_system,
         metadata=meta,
-        nnc_cell_pairs=nnc_pairs,
+        nnc_cell_indices=nnc_pairs,
         nnc_transmissibilities=nnc_transmissibilities,
         fault_records=fault_records,
         fault_transmissibility_multipliers=multflt,
@@ -678,7 +678,7 @@ def _assemble_cartesian(
         metadata=meta,
         fault_records=fault_records,
         fault_transmissibility_multipliers=multflt,
-        nnc_cell_pairs=nnc_pairs,
+        nnc_cell_indices=nnc_pairs,
         nnc_transmissibilities=nnc_transmissibilities,
         positive_x_transmissibility_multipliers=data_file.get("MULTX"),
         negative_x_transmissibility_multipliers=data_file.get("MULTX-"),
@@ -917,7 +917,7 @@ def _emit_nnc(
     nz: int,
 ) -> None:
     """
-    Emit a `NNC` block from `grid.nnc_cell_pairs` /
+    Emit a `NNC` block from `grid.nnc_cell_indices` /
     `grid.nnc_transmissibilities`.
 
     Flat cell indices are converted to 1-based `(I, J, K)` using the
@@ -931,7 +931,7 @@ def _emit_nnc(
     :param ny: Grid dimension in y.
     :param nz: Grid dimension in z.
     """
-    if grid.nnc_cell_pairs is None or len(grid.nnc_cell_pairs) == 0:
+    if grid.nnc_cell_indices is None or len(grid.nnc_cell_indices) == 0:
         return
 
     def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
@@ -942,11 +942,11 @@ def _emit_nnc(
 
     has_t = grid.nnc_transmissibilities is not None and len(
         grid.nnc_transmissibilities
-    ) == len(grid.nnc_cell_pairs)
+    ) == len(grid.nnc_cell_indices)
 
     lines.append("")
     lines.append("NNC")
-    for idx, (c1, c2) in enumerate(grid.nnc_cell_pairs):
+    for idx, (c1, c2) in enumerate(grid.nnc_cell_indices):
         i1, j1, k1 = _flat_to_ijk(int(c1))
         i2, j2, k2 = _flat_to_ijk(int(c2))
         if has_t:

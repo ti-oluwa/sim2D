@@ -84,6 +84,13 @@ NumberOrArray: TypeAlias = typing.Union[
 ]
 
 
+CellArray: typing.TypeAlias = FloatArray[OneDimension]
+"""Shape (n_cells,) per-cell floating array."""
+
+BooleanCellArray: typing.TypeAlias = BooleanArray[OneDimension]
+"""Shape (n_cells,) per-cell boolean array."""
+
+
 ThreeDimensionalGrid = NDimensionalGrid[ThreeDimensions]
 """3D grid type for simulation data, represented as a 3D NumPy array of floats"""
 TwoDimensionalGrid = NDimensionalGrid[TwoDimensions]

@@ -46,7 +46,7 @@ def make_voronoi_grid(
     layer_thicknesses: typing.Union[float, npt.ArrayLike] = 1.0,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    nnc_cell_pairs: typing.Optional[IntArray[TwoDimensions]] = None,
+    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
@@ -178,7 +178,7 @@ def make_voronoi_grid(
         face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
-        nnc_cell_pairs=nnc_cell_pairs,
+        nnc_cell_indices=nnc_cell_indices,
         nnc_transmissibilities=nnc_transmissibilities,
         positive_x_transmissibility_multipliers=positive_x_transmissibility_multipliers,
         negative_x_transmissibility_multipliers=negative_x_transmissibility_multipliers,
