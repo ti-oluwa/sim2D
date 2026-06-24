@@ -159,9 +159,11 @@ def tokenise(text: str) -> typing.List[str]:
 
     Examples:
 
-        "100*0"        -> ["0"] * 100
-        "3*1.5"        -> ["1.5", "1.5", "1.5"]
-        "'MY FAULT' 1" -> ["MY FAULT", "1"]
+    ```md
+    "100*0"        -> ["0"] * 100
+    "3*1.5"        -> ["1.5", "1.5", "1.5"]
+    "MY FAULT 1" -> ["MY FAULT", "1"]
+    ```
 
     Note:
         A bare `"N*"` (empty value) expands to `N` empty strings.

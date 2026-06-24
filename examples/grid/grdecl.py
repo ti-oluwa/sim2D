@@ -6,7 +6,7 @@ from bores.grids.utils import as_pyvista_grid
 from bores.typing import UnitSystem
 
 grid = load_grdecl(
-    source="data/Norne.grdecl",
+    source="data/Johansen.grdecl",
     encoding="utf-8",
     unit_system=UnitSystem.FIELD,
 )

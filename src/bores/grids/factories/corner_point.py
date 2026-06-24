@@ -606,7 +606,6 @@ def _compute_corner_point_geometry(
     )
     # Compute cell volumes and centroids via 5-tet decomposition.
     # This is independent of face winding, robust for distorted/inverted cells.
-    vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
     vtk_corner_indices = np.empty((n_active, 8), dtype=np.int32)
     for cell_idx in range(n_active):
         for v in range(8):
@@ -686,7 +685,7 @@ def _resolve_fault_face_indices(
         # Z / Z-  -> neighbour is at k±1, same i, j
         if face_direction in ("X", "X-"):
             di, dj, dk = 1, 0, 0
-        elif face_direction in ("Z", "Z-"):
+        elif face_direction in ("Y", "Y-"):
             di, dj, dk = 0, 1, 0
         else:  # Z, Z-
             di, dj, dk = 0, 0, 1
