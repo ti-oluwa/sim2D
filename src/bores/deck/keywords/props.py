@@ -161,7 +161,7 @@ PVCO = PVTTableKeyword(
 """
 `PVCO` - compressible-oil PVT shorthand table (single-row format).
 
-Alternative to `PVTO` for oil above bubble point.  One record per
+Alternative to `PVTO` for oil above bubble point. One record per
 PVT region.
 
 Columns:
@@ -247,7 +247,7 @@ ROCKTAB = PVTTableKeyword(
 `ROCKTAB` - tabulated pore-volume multiplier vs. pressure.
 
 Used when rock compaction cannot be described by a single
-compressibility value.  Each table (one per rock region) contains rows:
+compressibility value. Each table (one per rock region) contains rows:
 
 - `pressure`  - pressure (psi / bar).
 - `pv_mult`   - pore-volume multiplier at that pressure (dimensionless).
@@ -298,7 +298,6 @@ Each table (one per saturation region) contains rows:
 Rows must be in ascending `sg` order.
 """
 
-
 SWFN = PVTTableKeyword(
     "SWFN",
     columns=[
@@ -319,7 +318,6 @@ Each table contains rows:
 Used alongside `SOF2` or `SOF3` in the second saturation-function
 family (as opposed to the `SWOF`/`SGOF` first family).
 """
-
 
 SGFN = PVTTableKeyword(
     "SGFN",
