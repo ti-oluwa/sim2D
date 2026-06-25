@@ -30,6 +30,7 @@ from bores.models.properties import (
 from bores.models.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,
+    get_face_transmissibility_map,
 )
 from bores.serialization import Serializable
 from bores.typing import CellArray, UnitSystem
@@ -147,6 +148,7 @@ class BlackOilModel(
         Matches `grid.unit_system` by construction.
         """
         self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
+        self._face_transmissibility_map: typing.Optional[typing.Dict[int, float]] = None
 
     @staticmethod
     def _validate_rock(rock: RockProperties, n_cells: int) -> None:
@@ -339,7 +341,7 @@ class BlackOilModel(
     @property
     def transmissibilities(self) -> ConnectionTransmissibilities:
         """
-        TPFA face transmissibilities, computed on first access and
+        TPFA connection transmissibilities, computed on first access and
         then cached for subsequent access.
 
         Returns a `ConnectionTransmissibilities` named tuple with:
@@ -359,6 +361,14 @@ class BlackOilModel(
             )
         return self._transmissibilities
 
+    @property
+    def face_transmissibility_map(self) -> typing.Dict[int, float]:
+        if self._face_transmissibility_map is None:
+            self._face_transmissibility_map = get_face_transmissibility_map(
+                self.grid, self.transmissibilities
+            )
+        return self._face_transmissibility_map
+
     def invalidate_transmissibilities(self) -> None:
         """
         Clear the cached transmissibilities.
@@ -368,6 +378,7 @@ class BlackOilModel(
         `transmissibilities` triggers a fresh computation.
         """
         self._transmissibilities = None
+        self._face_transmissibility_map = None
 
     def evolve_state(self, new_state: ReservoirState) -> Self:
         """
@@ -469,29 +480,18 @@ class BlackOilModel(
 
     def get_transmissibility_for_face(self, face_index: int) -> float:
         """
-        Return the transmissibility (or half-T for boundary) of a single face.
-
-        Searches interior faces first, then boundary faces.
+        Return the transmissibility (or half-transmissibility for boundary) of a single face.
 
         :param face_index: Index into `grid.face_cell_indices`.
         :returns: Transmissibility in grid units (mD·ft in FIELD etc.).
         :raises KeyError: If `face_index` is not a valid face.
         """
-        T = self.transmissibilities
-        interior_map = {int(g): i for i, g in enumerate(T.interior_index_map)}
-        position = interior_map.get(face_index)
-        if position is not None:
-            return float(T.interior[position])
-
-        boundary_map = {int(g): j for j, g in enumerate(T.boundary_index_map)}
-        position = boundary_map.get(face_index)
-        if position is not None:
-            return float(T.boundary[position])
-
-        raise KeyError(
-            f"Face {face_index} was not found in either the interior "
-            f"or boundary face index maps of this grid."
-        )
+        t = self.face_transmissibility_map.get(face_index)
+        if t is None:
+            raise KeyError(
+                f"Face {face_index} not found in interior or boundary faces of this grid."
+            )
+        return t
 
     def summary(self) -> typing.Dict[str, typing.Any]:
         """
@@ -539,7 +539,7 @@ class BlackOilModel(
             f"n_faces={self.n_faces}, "
             f"n_interior={self.n_interior_faces}, "
             f"n_boundary={self.n_boundary_faces}, "
-            f"n_nnc={self.n_boundary_faces}, "
+            f"n_nnc={self.n_nnc}, "
             f"unit_system={self.unit_system.value!r}, "
             f"has_hysteresis={self.hysteresis is not None}"
             f")"

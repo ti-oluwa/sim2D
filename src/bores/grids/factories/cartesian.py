@@ -116,7 +116,7 @@ def make_cartesian_grid(
     ).astype(np.int8)
 
     fault_face_indices: typing.Optional[typing.Dict[str, IntArray[OneDimension]]] = None
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
+    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
     if fault_records:
         fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
             fault_records=fault_records,
@@ -149,8 +149,11 @@ def make_cartesian_grid(
         ]
     ] = []
 
+    fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
     if fault_nnc_pairs:
-        fault_pairs = np.asarray(fault_nnc_pairs, dtype=np.int32).reshape(-1, 2)
+        fault_pairs = np.asarray(
+            [(a, b) for a, b, _ in fault_nnc_pairs], dtype=np.int32
+        ).reshape(-1, 2)
         fault_nnc_connection_types = np.full(
             len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
         )
@@ -160,6 +163,9 @@ def make_cartesian_grid(
         all_nnc_parts.append(
             (fault_pairs, fault_nnc_connection_types, fault_nnc_transmissibilities)
         )
+        fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
+        for local_idx, (_, _, name) in enumerate(fault_nnc_pairs):
+            fault_nnc_indices.setdefault(name, []).append(fault_nnc_offset + local_idx)
 
     if nnc_cell_indices is not None and len(nnc_cell_indices) > 0:
         user_nnc_pairs = np.asarray(nnc_cell_indices, dtype=np.int32)
@@ -178,6 +184,9 @@ def make_cartesian_grid(
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
     merged_nnc_transmissibilities: typing.Optional[npt.NDArray[np.float64]] = None
+    merged_nnc_fault_indices: typing.Optional[
+        typing.Dict[str, IntArray[OneDimension]]
+    ] = None
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
@@ -190,6 +199,11 @@ def make_cartesian_grid(
             if np.any(np.isfinite(merged_transmissibilities))
             else None
         )
+        if fault_nnc_pairs:
+            merged_nnc_fault_indices = {
+                name: np.asarray(idxs, dtype=np.int32)
+                for name, idxs in fault_nnc_indices.items()
+            }
 
     return Grid(
         vertex_coordinates=vertex_coordinates.astype(np.float64, copy=False),
@@ -202,6 +216,7 @@ def make_cartesian_grid(
         nnc_cell_indices=merged_nnc_pairs,
         nnc_connection_types=merged_nnc_connection_types,
         nnc_transmissibilities=merged_nnc_transmissibilities,
+        nnc_fault_indices=merged_nnc_fault_indices,
         fault_face_indices=fault_face_indices,
         fault_transmissibility_multipliers=(
             dict(fault_transmissibility_multipliers)
@@ -229,7 +244,7 @@ def _resolve_fault_face_indices(
     n_y_faces: int,
 ) -> typing.Tuple[
     typing.Dict[str, IntArray[OneDimension]],
-    typing.List[typing.Tuple[int, int]],
+    typing.List[typing.Tuple[int, int, str]],
 ]:
     """
     Resolve `FaultRecord` IJK ranges to Cartesian face index arrays.
@@ -258,7 +273,7 @@ def _resolve_fault_face_indices(
     cell_stride_k = nx * ny
 
     result: typing.Dict[str, typing.List[int]] = {}
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
+    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
 
     for record in fault_records:
         face_dir = record.face_direction.upper()
@@ -317,7 +332,7 @@ def _resolve_fault_face_indices(
                             if 0 <= nb_i < nx:
                                 cell_a = i + j * cell_stride_j + k * cell_stride_k
                                 cell_b = nb_i + j * cell_stride_j + k * cell_stride_k
-                                fault_nnc_pairs.append((cell_a, cell_b))
+                                fault_nnc_pairs.append((cell_a, cell_b, record.name))
                         elif (
                             face_dir in ("Y", "Y-")
                             and 0 <= i < nx
@@ -328,7 +343,7 @@ def _resolve_fault_face_indices(
                             if 0 <= nb_j < ny:
                                 cell_a = i + j * cell_stride_j + k * cell_stride_k
                                 cell_b = i + nb_j * cell_stride_j + k * cell_stride_k
-                                fault_nnc_pairs.append((cell_a, cell_b))
+                                fault_nnc_pairs.append((cell_a, cell_b, record.name))
                         elif (
                             face_dir in ("Z", "Z-")
                             and 0 <= i < nx
@@ -339,7 +354,7 @@ def _resolve_fault_face_indices(
                             if 0 <= nb_k < nz:
                                 cell_a = i + j * cell_stride_j + k * cell_stride_k
                                 cell_b = i + j * cell_stride_j + nb_k * cell_stride_k
-                                fault_nnc_pairs.append((cell_a, cell_b))
+                                fault_nnc_pairs.append((cell_a, cell_b, record.name))
                         continue
 
                     face_indices.append(face_idx)

@@ -37,7 +37,7 @@ from typing_extensions import Self
 from bores.deck.core import DeckParseError
 from bores.deck.datafile import DataFile
 from bores.errors import GridExportError, GridImportError
-from bores.grids.base import Grid
+from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.cartesian import make_cartesian_grid
 from bores.grids.factories.corner_point import (
     ActNumArray,
@@ -815,36 +815,45 @@ def _emit_mult_arrays(
             _emit_mult_array(lines, kw, arr, nx, ny, nz)
 
 
-def _emit_faults(
-    lines: typing.List[str],
-    grid: Grid,
-    nx: int,
-    ny: int,
-    nz: int,
-) -> None:
+def _emit_faults(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
     """
-    Emit a `FAULTS` block by converting the unstructured face indices stored
-    in `grid.fault_face_indices` back to structured IJK records.
+    Append a `FAULTS` block to `lines` covering all named faults on the grid.
 
-    Each face in a Cartesian or corner-point grid has exactly two adjacent
-    cells.  The cell flat indices are converted to 1-based IJK coordinates
-    using the cell ordering `cell_idx = i + j*nx + k*nx*ny`.  The face
-    direction is inferred from which coordinate differs between the two cells.
+    Named faults can manifest in two ways on the grid and both are handled here:
 
-    Faces that cannot be cleanly resolved (e.g. boundary faces with
-    `neighbour == -1`) are skipped with a warning.
+    - **Face-based faults** (`grid.fault_face_indices`): cell pairs that share
+      a geometric face. The face index is looked up in `grid.face_cell_indices`
+      to recover the two adjacent cells, which are then converted to 1-based IJK
+      and compared to infer the face direction.
 
-    :param lines: Output text lines list (mutated in-place).
-    :param grid: Source grid with `fault_face_indices` populated.
+    - **NNC-based faults** (`grid.nnc_fault_indices`): cell pairs from the
+      original `FAULTS` records that had no shared geometric face (e.g. across
+      a pinched-out layer) and were instead stored as `FAULT_NNC` connections.
+      Their cell indices are read directly from `grid.nnc_cell_indices` and
+      converted to IJK in the same way.
+
+    A fault that appears in both maps (some faces resolved geometrically, others
+    as NNCs) will have records emitted from both passes under the same fault name,
+    which is correct Eclipse behaviour.
+
+    Faces or NNC pairs whose IJK coordinates are identical in all three directions
+    (degenerate connections) are skipped with a warning.
+
+    Does nothing if both `grid.fault_face_indices` and `grid.nnc_fault_indices`
+    are absent or empty.
+
+    :param lines: Output text lines list, mutated in-place.
+    :param grid: Source grid.
     :param nx: Grid dimension in x.
     :param ny: Grid dimension in y.
     :param nz: Grid dimension in z.
     """
-    if not grid.fault_face_indices:
+    has_face_faults = bool(grid.fault_face_indices)
+    has_nnc_faults = bool(grid.nnc_fault_indices)
+    if not has_face_faults and not has_nnc_faults:
         return
 
     def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
-        """Convert 0-based flat cell index to 1-based (i, j, k)."""
         i = flat % nx
         j = (flat // nx) % ny
         k = flat // (nx * ny)
@@ -853,42 +862,77 @@ def _emit_faults(
     lines.append("")
     lines.append("FAULTS")
 
-    for fault_name, face_indices in sorted(grid.fault_face_indices.items()):
-        for face_idx in face_indices:
-            owner = int(grid.face_cell_indices[face_idx, 0])
-            neighbour = int(grid.face_cell_indices[face_idx, 1])
-            if owner < 0 or neighbour < 0:
-                continue  # boundary face - skip
+    # Face-based faults (unchanged from before)
+    if has_face_faults:
+        for fault_name, face_indices in sorted(grid.fault_face_indices.items()):  # type: ignore
+            for face_idx in face_indices:
+                owner = int(grid.face_cell_indices[face_idx, 0])
+                neighbour = int(grid.face_cell_indices[face_idx, 1])
+                if owner < 0 or neighbour < 0:
+                    continue
 
-            oi, oj, ok = _flat_to_ijk(owner)
-            ni, nj, nk = _flat_to_ijk(neighbour)
+                oi, oj, ok = _flat_to_ijk(owner)
+                ni, nj, nk = _flat_to_ijk(neighbour)
 
-            # Determine face direction from which IJK coordinate differs.
-            if ni != oi:
-                face_dir = "I" if ni > oi else "I-"
-                # Normalise: always record from the lower-index cell.
-                if ni < oi:
-                    oi, oj, ok = ni, nj, nk
-            elif nj != oj:
-                face_dir = "J" if nj > oj else "J-"
-                if nj < oj:
-                    oi, oj, ok = ni, nj, nk
-            elif nk != ok:
-                face_dir = "K" if nk > ok else "K-"
-                if nk < ok:
-                    oi, oj, ok = ni, nj, nk
-            else:
-                warnings.warn(
-                    f"Fault {fault_name!r}: face {face_idx} connects cells with "
-                    f"identical IJK ({oi},{oj},{ok}) - cannot determine direction. "
-                    f"Skipping.",
-                    stacklevel=4,
+                if ni != oi:
+                    face_dir = "I" if ni > oi else "I-"
+                    if ni < oi:
+                        oi, oj, ok = ni, nj, nk
+                elif nj != oj:
+                    face_dir = "J" if nj > oj else "J-"
+                    if nj < oj:
+                        oi, oj, ok = ni, nj, nk
+                elif nk != ok:
+                    face_dir = "K" if nk > ok else "K-"
+                    if nk < ok:
+                        oi, oj, ok = ni, nj, nk
+                else:
+                    warnings.warn(
+                        f"Fault {fault_name!r}: face {face_idx} connects cells with "
+                        f"identical IJK ({oi},{oj},{ok}) - cannot determine direction. "
+                        f"Skipping.",
+                        stacklevel=4,
+                    )
+                    continue
+
+                lines.append(
+                    f"  '{fault_name}'  {oi}  {oi}  {oj}  {oj}  {ok}  {ok}  '{face_dir}'  /"
                 )
-                continue
 
-            lines.append(
-                f"  '{fault_name}'  {oi}  {oi}  {oj}  {oj}  {ok}  {ok}  '{face_dir}'  /"
-            )
+    # Fault NNCs (cell pairs that had no shared geometric face)
+    if has_nnc_faults:
+        assert grid.nnc_cell_indices is not None
+        for fault_name, nnc_indices in sorted(grid.nnc_fault_indices.items()):  # type: ignore
+            for nnc_idx in nnc_indices:
+                c1 = int(grid.nnc_cell_indices[nnc_idx, 0])
+                c2 = int(grid.nnc_cell_indices[nnc_idx, 1])
+                oi, oj, ok = _flat_to_ijk(c1)
+                ni, nj, nk = _flat_to_ijk(c2)
+
+                if ni != oi:
+                    face_dir = "I" if ni > oi else "I-"
+                    if ni < oi:
+                        oi, oj, ok = ni, nj, nk
+                elif nj != oj:
+                    face_dir = "J" if nj > oj else "J-"
+                    if nj < oj:
+                        oi, oj, ok = ni, nj, nk
+                elif nk != ok:
+                    face_dir = "K" if nk > ok else "K-"
+                    if nk < ok:
+                        oi, oj, ok = ni, nj, nk
+                else:
+                    warnings.warn(
+                        f"Fault {fault_name!r}: NNC {nnc_idx} connects cells with "
+                        f"identical IJK ({oi},{oj},{ok}) - cannot determine direction. "
+                        f"Skipping.",
+                        stacklevel=4,
+                    )
+                    continue
+
+                lines.append(
+                    f"  '{fault_name}'  {oi}  {oi}  {oj}  {oj}  {ok}  {ok}  '{face_dir}'  /"
+                )
 
     lines.append("/")
     lines.append("")
@@ -909,30 +953,23 @@ def _emit_multflt(
     lines.append("")
 
 
-def _emit_nnc(
-    lines: typing.List[str],
-    grid: Grid,
-    nx: int,
-    ny: int,
-    nz: int,
-) -> None:
+def _emit_nnc(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
     """
-    Emit a `NNC` block from `grid.nnc_cell_indices` /
-    `grid.nnc_transmissibilities`.
+    Emit a `NNC` block containing only explicitly user-defined NNCs
+    (`ConnectionType.USER_NNC`).
 
-    Flat cell indices are converted to 1-based `(I, J, K)` using the
-    Eclipse ordering `cell_idx = (i-1) + (j-1)*nx + (k-1)*nx*ny`.
-    NNCs without a stored transmissibility (stored as `NaN`) are emitted
-    with a placeholder value of `0.0` and a comment.
-
-    :param lines: Output text lines list.
-    :param grid: Source grid.
-    :param nx: Grid dimension in x.
-    :param ny: Grid dimension in y.
-    :param nz: Grid dimension in z.
+    Fault-derived NNCs are emitted by `_emit_faults` via
+    `grid.nnc_fault_indices`. Pinchout NNCs are implicitly
+    reconstructed by the simulator from the `PINCH` keyword and must
+    not be listed here.
     """
-    if grid.nnc_cell_indices is None or len(grid.nnc_cell_indices) == 0:
+    if grid.nnc_cell_indices is None or grid.nnc_connection_types is None:
         return
+
+    user_type = int(ConnectionType.USER_NNC)
+    has_t = grid.nnc_transmissibilities is not None and len(
+        grid.nnc_transmissibilities
+    ) == len(grid.nnc_cell_indices)
 
     def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
         i = flat % nx + 1
@@ -940,13 +977,10 @@ def _emit_nnc(
         k = flat // (nx * ny) + 1
         return i, j, k
 
-    has_t = grid.nnc_transmissibilities is not None and len(
-        grid.nnc_transmissibilities
-    ) == len(grid.nnc_cell_indices)
-
-    lines.append("")
-    lines.append("NNC")
+    user_nnc_lines: typing.List[str] = []
     for idx, (c1, c2) in enumerate(grid.nnc_cell_indices):
+        if int(grid.nnc_connection_types[idx]) != user_type:
+            continue
         i1, j1, k1 = _flat_to_ijk(int(c1))
         i2, j2, k2 = _flat_to_ijk(int(c2))
         if has_t:
@@ -954,7 +988,14 @@ def _emit_nnc(
             t_str = f"{t:.6e}" if not np.isnan(t) else "0.0 -- T unknown"
         else:
             t_str = "0.0 -- T unknown"
-        lines.append(f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {t_str}  /")
+        user_nnc_lines.append(f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {t_str}  /")
+
+    if not user_nnc_lines:
+        return
+
+    lines.append("")
+    lines.append("NNC")
+    lines.extend(user_nnc_lines)
     lines.append("/")
     lines.append("")
 
@@ -1062,9 +1103,9 @@ def _build_grdecl_cartesian_text(
         _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
 
     _emit_mult_arrays(lines, grid, nx, ny, nz)
-    _emit_faults(lines, grid, nx, ny, nz)
+    _emit_faults(lines, grid, nx, ny)
     _emit_multflt(lines, grid)
-    _emit_nnc(lines, grid, nx, ny, nz)
+    _emit_nnc(lines, grid, nx, ny)
     _emit_pinch(lines, meta)
 
     return "\n".join(lines)
@@ -1126,9 +1167,9 @@ def _build_grdecl_corner_point_text(
         _emit_actnum(lines, effective_actnum, grid.n_cells, nx, ny, nz)
 
     _emit_mult_arrays(lines, grid, nx, ny, nz)
-    _emit_faults(lines, grid, nx, ny, nz)
+    _emit_faults(lines, grid, nx, ny)
     _emit_multflt(lines, grid)
-    _emit_nnc(lines, grid, nx, ny, nz)
+    _emit_nnc(lines, grid, nx, ny)
     _emit_pinch(lines, meta)
 
     return "\n".join(lines)

@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import NamedTuple
 
-from bores.grids.base import ConnectionType, Grid
+from bores.grids.base import Grid
 from bores.models.properties import RockProperties
 from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
 
@@ -30,19 +30,33 @@ class ConnectionTransmissibilities(NamedTuple):
         Shape `(n_nnc,)` float64 or `None` - transmissibilities for
         non-neighbour connections, in the same order as `Grid.nnc_cell_indices`.
         `None` when the grid has no NNCs.
-    interior_index_map:
-        Shape `(n_interior_faces,)` int32 - maps position *i* in `interior`
-        to the global face index in `Grid.face_cell_indices`.
-    boundary_index_map:
-        Shape `(n_boundary_faces,)` int32 - maps position *j* in `boundary`
-        to the global face index in `Grid.face_cell_indices`.
     """
 
     interior: FloatArray[OneDimension]
     boundary: FloatArray[OneDimension]
     nnc: typing.Optional[FloatArray[OneDimension]]
-    interior_index_map: IntArray[OneDimension]
-    boundary_index_map: IntArray[OneDimension]
+
+
+def get_face_transmissibility_map(
+    grid: Grid,
+    transmissibilities: ConnectionTransmissibilities,
+) -> typing.Dict[int, float]:
+    """
+    Build a {global_face_index: transmissibility} dict for single-face lookups.
+
+    Interior faces map to their full harmonic-mean T.
+    Boundary faces map to their owner half-T.
+
+    :param grid: The grid whose face indices define the mapping.
+    :param transmissibilities: Precomputed transmissibilities for that grid.
+    :returns: Dict mapping global face index to transmissibility value.
+    """
+    result: typing.Dict[int, float] = {}
+    for pos, gfi in enumerate(grid.interior_face_indices):
+        result[int(gfi)] = float(transmissibilities.interior[pos])
+    for pos, gfi in enumerate(grid.boundary_face_indices):
+        result[int(gfi)] = float(transmissibilities.boundary[pos])
+    return result
 
 
 def compute_connection_transmissibilities(
@@ -177,13 +191,11 @@ def compute_connection_transmissibilities(
         # Apply MULTFLT to fault-type NNCs only
         if (
             grid.fault_transmissibility_multipliers is not None
-            and grid.fault_face_indices is not None
+            and grid.nnc_fault_indices is not None
         ):
             nnc_transmissibilities = _apply_nnc_fault_multipliers(
                 nnc_transmissibilities=nnc_transmissibilities,
-                nnc_connection_types=np.asarray(
-                    grid.nnc_connection_types, dtype=np.int8
-                ),
+                nnc_fault_indices=grid.nnc_fault_indices,
                 fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
             )
 
@@ -207,8 +219,6 @@ def compute_connection_transmissibilities(
         interior=interior_transmissibilities.astype(dtype, copy=False),
         boundary=boundary_transmissibilities.astype(dtype, copy=False),
         nnc=nnc_transmissibilities,
-        interior_index_map=interior_face_indices.astype(np.int32, copy=False),
-        boundary_index_map=boundary_face_indices.astype(np.int32, copy=False),
     )
 
 
@@ -580,40 +590,28 @@ def _apply_fault_face_multipliers(
     return interior_transmissibilities, boundary_transmissibilities
 
 
-@numba.njit(cache=True)
 def _apply_nnc_fault_multipliers(
     nnc_transmissibilities: FloatArray[OneDimension],
-    nnc_connection_types: IntArray[OneDimension],
+    nnc_fault_indices: typing.Mapping[str, IntArray[OneDimension]],
     fault_transmissibility_multipliers: typing.Mapping[str, float],
 ) -> FloatArray[OneDimension]:
     """
-    Apply `MULTFLT` to fault-type NNCs (in-place).
+    Apply `MULTFLT` multipliers to fault NNCs using per-fault NNC index maps.
 
-    Since fault NNCs are not individually named, the global MULTFLT multiplier
-    from any fault is applied uniformly to all `ConnectionType.FAULT_NNC` NNCs.
-    This matches Eclipse behaviour where a fault NNC without an explicit name
-    picks up the aggregate fault multiplier.
+    Each named fault maps directly to the NNC positions it owns via
+    `nnc_fault_indices`, so only the correct multiplier is applied to each NNC.
+    Faults absent from `fault_transmissibility_multipliers` are skipped.
+    Pinchout and user NNCs are never present in `nnc_fault_indices` and are
+    therefore unaffected.
 
-    Pinchout and user-defined NNCs are not affected.
-
-    :param nnc_transmissibilities: Shape `(n_nnc,)`.
-    :param nnc_connection_types: Shape `(n_nnc,)` - `ConnectionType` per NNC.
-    :param fault_transmissibility_multipliers: `{name: multiplier}`.
+    :param nnc_transmissibilities: Shape `(n_nnc,)` - modified in-place.
+    :param nnc_fault_indices: `{fault_name: nnc_index_array}` from `Grid`.
+    :param fault_transmissibility_multipliers: `{fault_name: multiplier}` from MULTFLT.
     :returns: Updated `nnc_transmissibilities`.
     """
-    fault_type_val = int(ConnectionType.FAULT_NNC)
-
-    # Aggregate multiplier across all named faults (product convention)
-    aggregate_mult = 1.0
-    for mult in fault_transmissibility_multipliers.values():
-        if mult != 1.0:
-            aggregate_mult *= mult
-
-    if aggregate_mult == 1.0:
-        return nnc_transmissibilities
-
-    for idx in range(len(nnc_transmissibilities)):
-        if int(nnc_connection_types[idx]) == fault_type_val:
-            nnc_transmissibilities[idx] *= aggregate_mult
-
+    for fault_name, nnc_indices in nnc_fault_indices.items():
+        multiplier = fault_transmissibility_multipliers.get(fault_name, 1.0)
+        if multiplier == 1.0:
+            continue
+        nnc_transmissibilities[nnc_indices] *= multiplier
     return nnc_transmissibilities

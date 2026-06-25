@@ -44,33 +44,33 @@ class ConnectionType(enum.IntEnum):
 
     **Face connections**:
 
-    INTERIOR_FACE
+    `INTERIOR_FACE`
         Standard internal face shared by two active cells.
 
-    BOUNDARY_FACE
+    `BOUNDARY_FACE`
         Boundary face connecting an active cell to the exterior domain.
-        The neighbour cell index is ``-1``.
+        The neighbour cell index is `-1`.
 
-    INTERIOR_FAULT_FACE
+    `INTERIOR_FAULT_FACE`
         Internal face shared by two active cells and belonging to a named
         fault. Directional transmissibility multipliers and fault
         transmissibility multipliers may both apply.
 
-    BOUNDARY_FAULT_FACE
+    `BOUNDARY_FAULT_FACE`
         Boundary face belonging to a named fault.
 
 
     **NNC connections**:
 
-    PINCHOUT_NNC
+    `PINCHOUT_NNC`
         Non-neighbour connection generated from pinchout processing where
         flow occurs between cells that do not share a geometric face.
 
-    USER_NNC
+    `USER_NNC`
         Explicit user-defined non-neighbour connection, typically created
-        from an Eclipse ``NNC`` keyword.
+        from an Eclipse `NNC` keyword.
 
-    FAULT_NNC
+    `FAULT_NNC`
         Non-neighbour connection generated from fault juxtaposition where
         communicating cells do not share a geometric face.
     """
@@ -464,6 +464,18 @@ class Grid(Serializable):
     connections whose T must be computed.
     """
 
+    nnc_fault_indices: typing.Optional[typing.Mapping[str, IntArray[OneDimension]]] = (
+        attrs.field(default=None)
+    )
+    """
+    Mapping from fault name to 1-D array of NNC indices (positions into
+    `nnc_cell_indices`) belonging to that fault.
+
+    Mirrors `fault_face_indices` but for NNC-type connections. Populated by
+    factories when fault cell pairs have no shared geometric face.
+    `None` when no fault NNCs are present.
+    """
+
     fault_face_indices: typing.Optional[typing.Mapping[str, IntArray[OneDimension]]] = (
         attrs.field(default=None)
     )
@@ -638,6 +650,15 @@ class Grid(Serializable):
                     f"`nnc_transmissibilities` length {len(self.nnc_transmissibilities)} "
                     f"does not match `nnc_cell_indices` length {len(self.nnc_cell_indices)}."
                 )
+            if self.nnc_cell_indices is not None and self.nnc_fault_indices is not None:
+                n_nnc = len(self.nnc_cell_indices)
+                for fault_name, nnc_indices in self.nnc_fault_indices.items():
+                    if nnc_indices.max() >= n_nnc:
+                        raise InvalidFaceConnectivityError(
+                            f"`nnc_fault_indices[{fault_name!r}]` contains NNC index "
+                            f"{int(nnc_indices.max())} which exceeds max valid index "
+                            f"{n_nnc - 1}."
+                        )
 
     def _classify_faces(self) -> None:
         owner_cells = self.face_cell_indices[:, 0]
@@ -847,11 +868,13 @@ class Grid(Serializable):
 
     @property
     def n_faults(self) -> int:
-        """Number of named faults. 0 when `fault_face_indices` is `None`."""
-        n_faults = (
-            0 if self.fault_face_indices is None else len(self.fault_face_indices)
-        )
-        return n_faults
+        """Number of named faults (face-based and/or NNC-only). 0 when no fault data."""
+        names: set[str] = set()
+        if self.fault_face_indices is not None:
+            names.update(self.fault_face_indices.keys())
+        if self.nnc_fault_indices is not None:
+            names.update(self.nnc_fault_indices.keys())
+        return len(names)
 
     @property
     def has_transmissibility_multipliers(self) -> bool:
