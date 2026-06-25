@@ -256,7 +256,7 @@ def _build_nnc_arrays(
                     f"grid bounds ({nx}x{ny}x{nz})."
                 )
 
-        # Eclipse flat index: i fastest → (i-1) + (j-1)*nx + (k-1)*nx*ny
+        # Eclipse flat index: i fastest -> (i-1) + (j-1)*nx + (k-1)*nx*ny
         c1 = (i1 - 1) + (j1 - 1) * nx + (k1 - 1) * nx * ny
         c2 = (i2 - 1) + (j2 - 1) * nx + (k2 - 1) * nx * ny
         pairs.append((c1, c2))
@@ -1082,7 +1082,7 @@ def _build_grdecl_cartesian_text(
     lines.append("/")
     lines.append("")
 
-    # DYV: cells at i=0, k=0 → indices 0, nx, 2*nx, …
+    # DYV: cells at i=0, k=0 -> indices 0, nx, 2*nx, …
     dy_indices = np.arange(ny) * nx
     dy_vals = grid.cell_max_xyz[dy_indices, 1] - grid.cell_min_xyz[dy_indices, 1]
     lines.append("DYV")
@@ -1090,7 +1090,7 @@ def _build_grdecl_cartesian_text(
     lines.append("/")
     lines.append("")
 
-    # DZV: cells at i=0, j=0, k=0..nz-1 → indices 0, nx*ny, 2*nx*ny, …
+    # DZV: cells at i=0, j=0, k=0..nz-1 -> indices 0, nx*ny, 2*nx*ny, …
     dz_indices = np.arange(nz) * nx * ny
     dz_vals = grid.cell_max_xyz[dz_indices, 2] - grid.cell_min_xyz[dz_indices, 2]
     lines.append("DZV")

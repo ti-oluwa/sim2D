@@ -2,6 +2,7 @@
 
 import typing
 
+import attrs
 import numba
 import numpy as np
 
@@ -350,28 +351,10 @@ def convert(grid: Grid, *, to: UnitSystem) -> Grid:
     cell_centroids = (
         grid.cell_centroids * factor if grid.cell_centroids is not None else None
     )
-    return Grid(
+    return attrs.evolve(
+        grid,
         vertex_coordinates=vertex_coordinates,
-        face_vertex_indices=grid.face_vertex_indices,
-        face_vertex_offsets=grid.face_vertex_offsets,
-        face_cell_indices=grid.face_cell_indices,
         cell_volumes=cell_volumes,
         cell_centroids=cell_centroids,
         unit_system=to,
-        index_dtype=grid.index_dtype,
-        floating_dtype=grid.floating_dtype,
-        metadata=grid.metadata,
-        cell_statuses=grid.cell_statuses,
-        connection_types=grid.connection_types,
-        face_statuses=grid.face_statuses,
-        nnc_cell_indices=grid.nnc_cell_indices,
-        nnc_transmissibilities=grid.nnc_transmissibilities,
-        fault_face_indices=grid.fault_face_indices,
-        fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
-        positive_x_transmissibility_multipliers=grid.positive_x_transmissibility_multipliers,
-        negative_x_transmissibility_multipliers=grid.negative_x_transmissibility_multipliers,
-        positive_y_transmissibility_multipliers=grid.positive_y_transmissibility_multipliers,
-        negative_y_transmissibility_multipliers=grid.negative_y_transmissibility_multipliers,
-        positive_z_transmissibility_multipliers=grid.positive_z_transmissibility_multipliers,
-        negative_z_transmissibility_multipliers=grid.negative_z_transmissibility_multipliers,
     )

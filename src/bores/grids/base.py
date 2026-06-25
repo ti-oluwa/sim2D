@@ -349,7 +349,49 @@ def _compute_cell_bounding_boxes(
 
 
 @attrs.define(frozen=True, slots=True, kw_only=True)
-class Grid(Serializable):
+class Grid(
+    Serializable,
+    fields={
+        "vertex_coordinates": FloatArray[TwoDimensions],
+        "face_vertex_indices": IntArray[OneDimension],
+        "face_vertex_offsets": IntArray[OneDimension],
+        "face_cell_indices": IntArray[TwoDimensions],
+        "unit_system": UnitSystem,
+        "metadata": typing.Optional[typing.Mapping[str, typing.Any]],
+        "cell_volumes": typing.Optional[FloatArray[OneDimension]],
+        "cell_centroids": typing.Optional[FloatArray[TwoDimensions]],
+        "nnc_cell_indices": typing.Optional[IntArray[TwoDimensions]],
+        "nnc_transmissibilities": typing.Optional[FloatArray[OneDimension]],
+        "nnc_connection_types": typing.Optional[IntArray[OneDimension]],
+        "nnc_fault_indices": typing.Optional[
+            typing.Mapping[str, IntArray[OneDimension]]
+        ],
+        "fault_face_indices": typing.Optional[
+            typing.Mapping[str, IntArray[OneDimension]]
+        ],
+        "fault_transmissibility_multipliers": typing.Optional[
+            typing.Mapping[str, float]
+        ],
+        "positive_x_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+        "negative_x_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+        "positive_y_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+        "negative_y_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+        "positive_z_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+        "negative_z_transmissibility_multipliers": typing.Optional[
+            FloatArray[OneDimension]
+        ],
+    },
+):
     """
     Immutable face-based unstructured polyhedral grid.
 
@@ -1193,3 +1235,24 @@ class Grid(Serializable):
                     "One or more face unit normals do not have unit magnitude "
                     f"(max deviation = {deviation.max():.3e})."
                 )
+
+    def __repr__(self) -> str:
+        bb = self.bounding_box
+        fault_info = (
+            f", n_faults={self.n_faults}"
+            if (self.fault_face_indices or self.nnc_fault_indices)
+            else ""
+        )
+        nnc_info = f", n_nnc={self.n_nnc}" if self.n_nnc > 0 else ""
+        return (
+            f"{self.__class__.__name__}("
+            f"n_cells={self.n_cells}, "
+            f"n_faces={self.n_faces}, "
+            f"n_interior={self.n_interior_faces}, "
+            f"n_boundary={self.n_boundary_faces}"
+            f"{nnc_info}"
+            f"{fault_info}, "
+            f"unit_system={self.unit_system.value!r}, "
+            f"bbox=({bb[0]:.2f}..{bb[1]:.2f}, {bb[2]:.2f}..{bb[3]:.2f}, {bb[4]:.2f}..{bb[5]:.2f})"
+            f")"
+        )

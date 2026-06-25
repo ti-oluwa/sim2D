@@ -1,12 +1,10 @@
 import typing
 
 import numpy as np
-import numpy.typing as npt
 from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
-from bores.grids.base import Grid
-from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
+from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
 
 VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
@@ -197,3 +195,8 @@ class FaultRecord(typing.NamedTuple):
     k1: int
     k2: int
     face_direction: str
+
+
+VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset(
+    {"I", "I-", "J", "J-", "K", "K-"}
+)

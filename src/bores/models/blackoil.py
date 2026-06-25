@@ -544,3 +544,5 @@ class BlackOilModel(
             f"has_hysteresis={self.hysteresis is not None}"
             f")"
         )
+
+    

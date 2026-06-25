@@ -6,7 +6,11 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
-from bores.grids.factories.base import FaultRecord, VertexCoordinates
+from bores.grids.factories.base import (
+    VALID_FAULT_FACE_DIRECTIONS,
+    FaultRecord,
+    VertexCoordinates,
+)
 from bores.typing import (
     FloatArray,
     IntArray,
@@ -232,9 +236,6 @@ def make_cartesian_grid(
     )
 
 
-_VALID_FACE_DIRS = frozenset({"X", "X-", "Y", "Y-", "Z", "Z-"})
-
-
 def _resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
     nx: int,
@@ -277,11 +278,11 @@ def _resolve_fault_face_indices(
 
     for record in fault_records:
         face_dir = record.face_direction.upper()
-        if face_dir not in _VALID_FACE_DIRS:
+        if face_dir not in VALID_FAULT_FACE_DIRECTIONS:
             warnings.warn(
                 f"Fault {record.name!r}: unrecognised face direction "
                 f"{record.face_direction!r}. "
-                f"Valid: {sorted(_VALID_FACE_DIRS)}. Skipping.",
+                f"Valid: {sorted(VALID_FAULT_FACE_DIRECTIONS)}. Skipping.",
                 stacklevel=4,
             )
             continue
