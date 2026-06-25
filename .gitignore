@@ -19,8 +19,6 @@ CLAUDE.md
 site/
 benchmarks/runs
 .pytest_cache/
-videos/
 *.gif
 *.png
 .cache
-data/
