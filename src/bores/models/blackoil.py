@@ -28,8 +28,8 @@ from bores.models.properties import (
     get_conversion_factors,
 )
 from bores.models.transmissibility import (
-    FaceTransmissibilities,
-    compute_face_transmissibilities,
+    ConnectionTransmissibilities,
+    compute_connection_transmissibilities,
 )
 from bores.serialization import Serializable
 from bores.typing import CellArray, UnitSystem
@@ -146,7 +146,7 @@ class BlackOilModel(
 
         Matches `grid.unit_system` by construction.
         """
-        self._transmissibilities: typing.Optional[FaceTransmissibilities] = None
+        self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
 
     @staticmethod
     def _validate_rock(rock: RockProperties, n_cells: int) -> None:
@@ -273,6 +273,11 @@ class BlackOilModel(
         return self.grid.n_faces
 
     @property
+    def n_nnc(self) -> int:
+        """Total number of non-neighbour connections in the grid."""
+        return self.grid.n_nnc
+
+    @property
     def n_interior_faces(self) -> int:
         """Number of interior faces (shared between two active cells)."""
         return self.grid.n_interior_faces
@@ -332,12 +337,12 @@ class BlackOilModel(
         )
 
     @property
-    def transmissibilities(self) -> FaceTransmissibilities:
+    def transmissibilities(self) -> ConnectionTransmissibilities:
         """
         TPFA face transmissibilities, computed on first access and
         then cached for subsequent access.
 
-        Returns a `FaceTransmissibilities` named tuple with:
+        Returns a `ConnectionTransmissibilities` named tuple with:
 
         - `interior`      — shape `(n_interior,)` harmonic-mean T.
         - `boundary`      — shape `(n_boundary,)` owner half-T.
@@ -349,7 +354,7 @@ class BlackOilModel(
         `invalidate_transmissibilities()` first.
         """
         if self._transmissibilities is None:
-            self._transmissibilities = compute_face_transmissibilities(
+            self._transmissibilities = compute_connection_transmissibilities(
                 grid=self.grid, rock=self.rock
             )
         return self._transmissibilities
@@ -534,6 +539,7 @@ class BlackOilModel(
             f"n_faces={self.n_faces}, "
             f"n_interior={self.n_interior_faces}, "
             f"n_boundary={self.n_boundary_faces}, "
+            f"n_nnc={self.n_boundary_faces}, "
             f"unit_system={self.unit_system.value!r}, "
             f"has_hysteresis={self.hysteresis is not None}"
             f")"

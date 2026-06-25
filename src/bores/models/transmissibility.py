@@ -1,113 +1,90 @@
-"""Face transmissibilities for unstructured polyhedral grids."""
+"""Connection transmissibilities for unstructured polyhedral grids."""
 
 import typing
-import warnings
 
 import numba
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import NamedTuple
 
-from bores.grids.base import Grid
+from bores.grids.base import ConnectionType, Grid
 from bores.models.properties import RockProperties
 from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
 
-__all__ = ["FaceTransmissibilities", "compute_face_transmissibilities"]
+__all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
 
 
-class FaceTransmissibilities(NamedTuple):
+class ConnectionTransmissibilities(NamedTuple):
     """
-    Precomputed face transmissibilities for a `ReservoirModel`.
+    Precomputed transmissibilities for all connections in a `ReservoirModel`.
 
     **Attributes**:
 
     interior:
         Shape `(n_interior_faces,)` float64 - TPFA transmissibility for
-        every interior face of the grid (mD·ft in FIELD units). Indexed in
-        the same order as `interior_index_map`.
+        every interior face (mD·ft in FIELD units).
     boundary:
         Shape `(n_boundary_faces,)` float64 - half-transmissibility for
-        every boundary face. The flow solver multiplies these by the
-        appropriate boundary-condition factor: zero for no-flow (Neumann),
-        or `(P_bc - P_cell)` for constant-pressure (Dirichlet).
+        every boundary face.
     nnc:
         Shape `(n_nnc,)` float64 or `None` - transmissibilities for
-        non-neighbour connections, in the same order as
-        `Grid.nnc_cell_indices`.  `None` when the grid has no NNCs.
+        non-neighbour connections, in the same order as `Grid.nnc_cell_indices`.
+        `None` when the grid has no NNCs.
     interior_index_map:
-        Shape `(n_interior_faces,)` int32 - maps position *i* in
-        `interior` to the global face index in `Grid.face_cell_indices`.
-        Use this to scatter transmissibilities back to the full face array
-        when assembling the pressure matrix.
+        Shape `(n_interior_faces,)` int32 - maps position *i* in `interior`
+        to the global face index in `Grid.face_cell_indices`.
     boundary_index_map:
-        Shape `(n_boundary_faces,)` int32 - maps position *j* in
-        `boundary` to the global face index in `Grid.face_cell_indices`.
+        Shape `(n_boundary_faces,)` int32 - maps position *j* in `boundary`
+        to the global face index in `Grid.face_cell_indices`.
     """
 
     interior: FloatArray[OneDimension]
-    """Shape `(n_interior_faces,)` - geometric TPFA transmissibilities (mD·ft)."""
-
     boundary: FloatArray[OneDimension]
-    """Shape `(n_boundary_faces,)` - owner half-transmissibilities for boundary faces (mD·ft)."""
-
     nnc: typing.Optional[FloatArray[OneDimension]]
-    """Shape `(n_nnc,)` - NNC transmissibilities, or `None`."""
-
     interior_index_map: IntArray[OneDimension]
-    """Shape `(n_interior_faces,)` - maps interior-array index -> global face index."""
-
     boundary_index_map: IntArray[OneDimension]
-    """Shape `(n_boundary_faces,)` - maps boundary-array index -> global face index."""
 
 
-def compute_face_transmissibilities(
+def compute_connection_transmissibilities(
     grid: Grid,
     rock: RockProperties,
     *,
     net_to_gross: typing.Optional[FloatArray[OneDimension]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
-) -> FaceTransmissibilities:
+) -> ConnectionTransmissibilities:
     """
-    Compute TPFA face transmissibilities for an unstructured polyhedral grid.
+    Compute TPFA transmissibilities for all connections in an unstructured grid.
 
-    Permeability is projected onto each face normal using the anisotropic
-    Peaceman projection:
+    Permeability is projected onto each face normal:
 
     ```text
     K_proj = |nx|·Kx + |ny|·Ky + |nz|·Kz
     ```
 
-    where `(nx, ny, nz)` are the components of the face unit normal. This
-    is the standard single-point upstream permeability projection used by
-    ECLIPSE and OPM Flow.
+    **Interior / boundary faces** use the standard harmonic-mean / half-T formulas.
 
-    **Interior faces** receive the harmonic-mean transmissibility of the two
-    sharing cells (owner and neighbour).
+    **NNC transmissibilities** are resolved in priority order:
 
-    **Boundary faces** receive the owner half-transmissibility only. The
-    complementary half is supplied by the boundary condition at solve time.
+    1. If `grid.nnc_transmissibilities` contains a finite value for an NNC, that
+       value is used verbatim (caller-supplied or Eclipse-format NNC keyword).
+    2. NaN entries (geometry-detected pinchouts or unresolved fault NNCs) are
+       computed geometrically using the arithmetic-mean permeability and the
+       straight-line distance between cell centroids.
 
-    After the geometric transmissibilities are assembled, all multiplier arrays
-    present on the grid are applied in order:
+    **Multiplier application**:
 
-    1. Directional per-cell MULT arrays (MULTX, MULTX-, MULTY, MULTY-, MULTZ,
-       MULTZ-) - the face multiplier is the product of the owner's outward
-       multiplier and the neighbour's inward multiplier. For boundary faces
-       only the owner's outward multiplier is applied (no neighbour to pair
-       with).
-    2. Named fault multipliers (MULTFLT) - applied to every face belonging to
-       each named fault, whether interior or boundary.
-    3. NNC transmissibilities are taken verbatim from `grid.nnc_transmissibilities`
-       when present.
+    - Directional MULT arrays (MULTX, MULTX-, MULTY, MULTY-, MULTZ, MULTZ-) are
+      applied only to regular face-based connections (interior, boundary, and fault).
+      NNCs are not directional and are not affected.
+    - `MULTFLT` is applied to face-based fault connections *and* NNCs whose
+      type is `ConnectionType.*FAULT*`. Pinchout and user NNCs are not affected
+      by `MULTFLT`.
 
     :param grid: Fully constructed `bores.grids.base.Grid`.
-    :param rock: `RockProperties` instance holding `absolute_permeability`,
-        `net_to_gross`, and `rock_compressibility`.  The permeability arrays
-        must be shape `(n_cells,)` matching `grid.n_cells`.
-    :param net_to_gross: Optional override for the NTG array.  If `None`,
-        `rock.net_to_gross` is used. Pass an all-ones array to ignore NTG.
+    :param rock: `RockProperties` with `absolute_permeability` and `net_to_gross`.
+    :param net_to_gross: Optional override for the NTG array.
     :param dtype: NumPy floating dtype for output arrays. Defaults to `np.float64`.
-    :returns: `FaceTransmissibilities` named tuple.
+    :returns: `ConnectionTransmissibilities` named tuple.
     :raises ValueError: If permeability or NTG array lengths do not match `grid.n_cells`.
     """
     dtype = np.dtype(dtype) if dtype is not None else np.float64
@@ -124,11 +101,9 @@ def compute_face_transmissibilities(
     for name, arr in (("Kx", kx), ("Ky", ky), ("Kz", kz), ("NTG", ntg)):
         if arr.shape != (n_cells,):
             raise ValueError(
-                f"{name} array has shape {arr.shape}; expected ({n_cells},) "
-                f"to match grid.n_cells."
+                f"{name} array has shape {arr.shape}; expected ({n_cells},)."
             )
 
-    # Effective permeability = anisotropic K x NTG
     effective_kx = kx * ntg
     effective_ky = ky * ntg
     effective_kz = kz * ntg
@@ -136,7 +111,6 @@ def compute_face_transmissibilities(
     interior_face_indices = grid.interior_face_indices
     boundary_face_indices = grid.boundary_face_indices
 
-    # Compute harmonic-mean TPFA transmissibilities for all interior faces
     interior_transmissibilities = _compute_interior_tpfa_transmissibilities(
         interior_face_indices=interior_face_indices,
         face_cell_indices=grid.face_cell_indices,
@@ -150,7 +124,6 @@ def compute_face_transmissibilities(
         dtype=dtype,
     )
 
-    # Compute owner half-transmissibilities for all boundary faces
     boundary_transmissibilities = _compute_boundary_half_transmissibilities(
         boundary_face_indices=boundary_face_indices,
         face_cell_indices=grid.face_cell_indices,
@@ -164,7 +137,6 @@ def compute_face_transmissibilities(
         dtype=dtype,
     )
 
-    # Apply directional transmissibility multipliers (MULT*) when present
     if grid.has_transmissibility_multipliers:
         interior_transmissibilities, boundary_transmissibilities = (
             _apply_directional_multipliers(
@@ -183,13 +155,45 @@ def compute_face_transmissibilities(
             )
         )
 
-    # Apply named fault multipliers (MULTFLT)
+    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None
+    if grid.n_nnc > 0:
+        assert grid.nnc_cell_indices is not None
+        assert grid.nnc_connection_types is not None
+
+        nnc_transmissibilities = _resolve_nnc_transmissibilities(
+            nnc_cell_indices=np.asarray(grid.nnc_cell_indices, dtype=np.int32),
+            nnc_transmissibilities=(
+                np.asarray(grid.nnc_transmissibilities, dtype=np.float64)
+                if grid.nnc_transmissibilities is not None
+                else np.full(grid.n_nnc, np.nan, dtype=np.float64)
+            ),
+            cell_centroids=grid.cell_centroids,  # type: ignore[arg-type]
+            effective_kx=effective_kx,
+            effective_ky=effective_ky,
+            effective_kz=effective_kz,
+            dtype=dtype,
+        )
+
+        # Apply MULTFLT to fault-type NNCs only
+        if (
+            grid.fault_transmissibility_multipliers is not None
+            and grid.fault_face_indices is not None
+        ):
+            nnc_transmissibilities = _apply_nnc_fault_multipliers(
+                nnc_transmissibilities=nnc_transmissibilities,
+                nnc_connection_types=np.asarray(
+                    grid.nnc_connection_types, dtype=np.int8
+                ),
+                fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
+            )
+
+    # Apply MULTFLT to face-based connections
     if (
         grid.fault_face_indices is not None
         and grid.fault_transmissibility_multipliers is not None
     ):
         interior_transmissibilities, boundary_transmissibilities = (
-            _apply_fault_multipliers(
+            _apply_fault_face_multipliers(
                 interior_transmissibilities=interior_transmissibilities,
                 boundary_transmissibilities=boundary_transmissibilities,
                 interior_face_indices=interior_face_indices,
@@ -199,34 +203,7 @@ def compute_face_transmissibilities(
             )
         )
 
-    # NNC transmissibilities
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None
-    if grid.nnc_transmissibilities is not None:
-        # Caller-supplied (e.g. from GRDECL NNC keyword).
-        nnc_transmissibilities = np.asarray(grid.nnc_transmissibilities, dtype=dtype)
-        nan_mask = ~np.isfinite(nnc_transmissibilities)
-        if nan_mask.any():
-            warnings.warn(
-                f"{nan_mask.sum()} NNC transmissibilities are NaN / Inf "
-                "(recorded from pinchout geometry without explicit `T` values). "
-                "These NNCs will be assigned zero transmissibility. "
-                "Supply explicit transmissibilities via the GRDECL NNC keyword "
-                "or a post-processing step.",
-                stacklevel=2,
-            )
-            nnc_transmissibilities = nnc_transmissibilities.copy()
-            nnc_transmissibilities[nan_mask] = 0.0
-    elif grid.n_nnc > 0:
-        # Grid has NNC pairs but no pre-computed T: warn, return zeros.
-        warnings.warn(
-            f"Grid has {grid.n_nnc} NNC pair(s) but no transmissibilities. "
-            "Returning zero transmissibility for all NNCs. "
-            "Provide `nnc_transmissibilities` to the grid factory to resolve this.",
-            stacklevel=2,
-        )
-        nnc_transmissibilities = np.zeros(grid.n_nnc, dtype=dtype)
-
-    return FaceTransmissibilities(
+    return ConnectionTransmissibilities(
         interior=interior_transmissibilities.astype(dtype, copy=False),
         boundary=boundary_transmissibilities.astype(dtype, copy=False),
         nnc=nnc_transmissibilities,
@@ -249,44 +226,34 @@ def _compute_interior_tpfa_transmissibilities(
     dtype: npt.DTypeLike,
 ) -> FloatArray[OneDimension]:
     """
-    Compute harmonic-mean TPFA transmissibilities for all interior faces.
+    Harmonic-mean TPFA transmissibilities for all interior faces.
 
-    For each interior face the half-transmissibility of cell *c* is:
+    For each interior face the half-T of cell *c* is:
 
     ```text
     K_c = |nx|·Kx_c + |ny|·Ky_c + |nz|·Kz_c
-    T_c = K_c · face_area / d_c
+    T_c = K_c · area / d_c
     ```
 
-    where `d_c` is the distance from cell centroid *c* to the face centroid,
-    and `(nx, ny, nz)` are the face unit-normal components.
+    Full harmonic T: `T_A · T_B / (T_A + T_B)`.
 
-    The full harmonic transmissibility is:
-
-    ```text
-    T = T_A · T_B / (T_A + T_B)
-    ```
-
-    :param interior_face_indices: Shape `(n_interior,)` - indices of interior
-        faces into the global face arrays.
-    :param face_cell_indices: Shape `(n_faces, 2)` - owner/neighbour pairs.
-    :param face_centroids: Shape `(n_faces, 3)` - face centroid coordinates.
-    :param face_areas: Shape `(n_faces,)` - face areas (grid units²).
-    :param face_unit_normals: Shape `(n_faces, 3)` - outward unit normals
-        from the owner cell.
-    :param cell_centroids: Shape `(n_cells, 3)` - cell centroid coordinates.
-    :param effective_kx: Shape `(n_cells,)` - effective x-permeability (Kx x NTG).
-    :param effective_ky: Shape `(n_cells,)` - effective y-permeability.
-    :param effective_kz: Shape `(n_cells,)` - effective z-permeability.
+    :param interior_face_indices: Shape `(n_interior,)`.
+    :param face_cell_indices: Shape `(n_faces, 2)`.
+    :param face_centroids: Shape `(n_faces, 3)`.
+    :param face_areas: Shape `(n_faces,)`.
+    :param face_unit_normals: Shape `(n_faces, 3)`.
+    :param cell_centroids: Shape `(n_cells, 3)`.
+    :param effective_kx: Shape `(n_cells,)`.
+    :param effective_ky: Shape `(n_cells,)`.
+    :param effective_kz: Shape `(n_cells,)`.
     :param dtype: Output dtype.
-    :returns: Shape `(n_interior,)` float64 transmissibility array.
+    :returns: Shape `(n_interior,)` transmissibility array.
     """
     n_interior = interior_face_indices.shape[0]
     transmissibilities = np.zeros(n_interior, dtype=dtype)
 
     for idx in numba.prange(n_interior):  # type: ignore
         face_idx = interior_face_indices[idx]
-
         owner = face_cell_indices[face_idx, 0]
         neighbour = face_cell_indices[face_idx, 1]
 
@@ -299,12 +266,10 @@ def _compute_interior_tpfa_transmissibilities(
         fy = face_centroids[face_idx, 1]
         fz = face_centroids[face_idx, 2]
 
-        # Half-transmissibility: owner
         dx_a = fx - cell_centroids[owner, 0]
         dy_a = fy - cell_centroids[owner, 1]
         dz_a = fz - cell_centroids[owner, 2]
-        d_a = (dx_a**2 + dy_a**2 + dz_a**2) ** 0.5
-
+        d_a = (dx_a * dx_a + dy_a * dy_a + dz_a * dz_a) ** 0.5
         k_a = (
             nx * effective_kx[owner]
             + ny * effective_ky[owner]
@@ -312,12 +277,10 @@ def _compute_interior_tpfa_transmissibilities(
         )
         T_a = k_a * area / d_a if d_a > 0.0 else 0.0
 
-        # Half-transmissibility: neighbour
         dx_b = fx - cell_centroids[neighbour, 0]
         dy_b = fy - cell_centroids[neighbour, 1]
         dz_b = fz - cell_centroids[neighbour, 2]
         d_b = (dx_b * dx_b + dy_b * dy_b + dz_b * dz_b) ** 0.5
-
         k_b = (
             nx * effective_kx[neighbour]
             + ny * effective_ky[neighbour]
@@ -325,7 +288,6 @@ def _compute_interior_tpfa_transmissibilities(
         )
         T_b = k_b * area / d_b if d_b > 0.0 else 0.0
 
-        # Harmonic mean
         if T_a + T_b > 0.0:
             transmissibilities[idx] = (T_a * T_b) / (T_a + T_b)
 
@@ -346,51 +308,28 @@ def _compute_boundary_half_transmissibilities(
     dtype: npt.DTypeLike,
 ) -> FloatArray[OneDimension]:
     """
-    Compute owner half-transmissibilities for all boundary faces.
+    Owner half-transmissibilities for all boundary faces.
 
-    Boundary faces have `face_cell_indices[:, 1] == -1` (no neighbour). Only
-    the owner cell contributes a half-transmissibility; the complementary half
-    is supplied by the boundary condition at solve time:
+    Formula: `T_half = K_owner · area / d_owner`.
 
-    - **No-flow (Neumann = 0)**: multiply by zero - equivalent to omitting
-      the face from flux assembly.
-    - **Constant-pressure (Dirichlet)**: assemble `T_half x (P_bc - P_cell)`
-      as a source term in the pressure equation.
-    - **Aquifer influx**: scale `T_half` by the aquifer productivity index.
-
-    The half-transmissibility formula is identical to the per-cell half used
-    in `_compute_interior_tpfa_transmissibilities`:
-
-    ```text
-    K_owner = |nx|·Kx_owner + |ny|·Ky_owner + |nz|·Kz_owner
-    T_half   = K_owner · face_area / d_owner
-    ```
-
-    where `d_owner` is the distance from the owner centroid to the face
-    centroid.
-
-    :param boundary_face_indices: Shape `(n_boundary,)` - indices of boundary
-        faces into the global face arrays.
-    :param face_cell_indices: Shape `(n_faces, 2)` - owner/neighbour pairs;
-        neighbour is `-1` for all boundary faces.
-    :param face_centroids: Shape `(n_faces, 3)` - face centroid coordinates.
-    :param face_areas: Shape `(n_faces,)` - face areas (grid units²).
-    :param face_unit_normals: Shape `(n_faces, 3)` - outward unit normals
-        from the owner cell.
-    :param cell_centroids: Shape `(n_cells, 3)` - cell centroid coordinates.
-    :param effective_kx: Shape `(n_cells,)` - effective x-permeability (Kx x NTG).
-    :param effective_ky: Shape `(n_cells,)` - effective y-permeability.
-    :param effective_kz: Shape `(n_cells,)` - effective z-permeability.
+    :param boundary_face_indices: Shape `(n_boundary,)`.
+    :param face_cell_indices: Shape `(n_faces, 2)`.
+    :param face_centroids: Shape `(n_faces, 3)`.
+    :param face_areas: Shape `(n_faces,)`.
+    :param face_unit_normals: Shape `(n_faces, 3)`.
+    :param cell_centroids: Shape `(n_cells, 3)`.
+    :param effective_kx: Shape `(n_cells,)`.
+    :param effective_ky: Shape `(n_cells,)`.
+    :param effective_kz: Shape `(n_cells,)`.
     :param dtype: Output dtype.
     :returns: Shape `(n_boundary,)` half-transmissibility array.
     """
     n_boundary = boundary_face_indices.shape[0]
-    boundary_transmissibilities = np.zeros(n_boundary, dtype=dtype)
+    transmissibilities = np.zeros(n_boundary, dtype=dtype)
 
     for idx in numba.prange(n_boundary):  # type: ignore
         face_idx = boundary_face_indices[idx]
         owner = face_cell_indices[face_idx, 0]
-        # face_cell_indices[face_idx, 1] == -1 for all boundary faces; unused.
 
         nx = abs(face_unit_normals[face_idx, 0])
         ny = abs(face_unit_normals[face_idx, 1])
@@ -412,9 +351,94 @@ def _compute_boundary_half_transmissibilities(
             + nz * effective_kz[owner]
         )
         if d > 0.0:
-            boundary_transmissibilities[idx] = k * area / d
+            transmissibilities[idx] = k * area / d
 
-    return boundary_transmissibilities
+    return transmissibilities
+
+
+@numba.njit(parallel=True, cache=True)
+def _resolve_nnc_transmissibilities(
+    nnc_cell_indices: IntArray[TwoDimensions],
+    nnc_transmissibilities: FloatArray[OneDimension],
+    cell_centroids: FloatArray[TwoDimensions],
+    effective_kx: FloatArray[OneDimension],
+    effective_ky: FloatArray[OneDimension],
+    effective_kz: FloatArray[OneDimension],
+    dtype: npt.DTypeLike,
+) -> FloatArray[OneDimension]:
+    """
+    Resolve final NNC transmissibilities.
+
+    For each NNC:
+
+    - If `nnc_transmissibilities` is finite (caller-supplied explicitly), use it verbatim.
+    - Otherwise compute geometrically using the arithmetic-mean permeability
+      and straight-line centroid-to-centroid distance (Eclipse/OPM convention
+      for NNCs without explicit T):
+
+        ```text
+        K_nnc = 0.5 * (Kx_a + Kx_b) * |dx/d| + ...
+        T_nnc = K_nnc / d
+        ```
+
+      where `d` is the Euclidean distance between the two cell centroids and
+      the direction cosines are derived from the centroid-to-centroid vector.
+      There is no face area term because NNCs have no geometric shared face;
+      the T value is treated as a bulk connection conductance.
+
+    :param nnc_cell_indices: Shape `(n_nnc, 2)` - cell pair indices.
+    :param nnc_connection_types: Shape `(n_nnc,)` - `ConnectionType` per NNC.
+    :param nnc_transmissibilities: Shape `(n_nnc,)` - Current NNC transmissibilities values
+        (any nnc with NaN transmissibility will be computed).
+    :param cell_centroids: Shape `(n_cells, 3)`.
+    :param effective_kx: Shape `(n_cells,)`.
+    :param effective_ky: Shape `(n_cells,)`.
+    :param effective_kz: Shape `(n_cells,)`.
+    :param dtype: Output dtype.
+    :returns: Shape `(n_nnc,)` transmissibility array.
+    """
+    n_nnc = nnc_cell_indices.shape[0]
+    result = np.zeros(n_nnc, dtype=dtype)
+
+    for idx in numba.prange(n_nnc):  # type: ignore
+        t_stored = nnc_transmissibilities[idx]
+        if t_stored == t_stored:  # NaN check: NaN != NaN
+            result[idx] = t_stored
+            continue
+
+        cell_a = nnc_cell_indices[idx, 0]
+        cell_b = nnc_cell_indices[idx, 1]
+
+        dx = cell_centroids[cell_b, 0] - cell_centroids[cell_a, 0]
+        dy = cell_centroids[cell_b, 1] - cell_centroids[cell_a, 1]
+        dz = cell_centroids[cell_b, 2] - cell_centroids[cell_a, 2]
+        d = (dx * dx + dy * dy + dz * dz) ** 0.5
+
+        if d <= 0.0:
+            result[idx] = 0.0
+            continue
+
+        # Direction cosines from centroid-to-centroid vector
+        abs_dx = abs(dx) / d
+        abs_dy = abs(dy) / d
+        abs_dz = abs(dz) / d
+
+        # Arithmetic-mean permeability along the connection direction
+        k_a = (
+            abs_dx * effective_kx[cell_a]
+            + abs_dy * effective_ky[cell_a]
+            + abs_dz * effective_kz[cell_a]
+        )
+        k_b = (
+            abs_dx * effective_kx[cell_b]
+            + abs_dy * effective_ky[cell_b]
+            + abs_dz * effective_kz[cell_b]
+        )
+        k_mean = 0.5 * (k_a + k_b)
+
+        result[idx] = k_mean / d
+
+    return result
 
 
 @numba.njit(cache=True)
@@ -433,53 +457,31 @@ def _apply_directional_multipliers(
     negative_z_multipliers: typing.Optional[FloatArray[OneDimension]],
 ) -> typing.Tuple[FloatArray[OneDimension], FloatArray[OneDimension]]:
     """
-    Scale transmissibilities by per-cell directional multiplier (`MULT*`) arrays (in-place).
+    Scale face transmissibilities by per-cell directional MULT arrays (in-place).
 
-    **Interior faces**
+    For interior faces: `multiplier = MULT_forward(owner) x MULT_backward(neighbour)`.
+    For boundary faces: `multiplier = MULT_forward(owner)` (no neighbour).
+    Direction is the dominant component of the face unit normal.
 
-    For a face between owner cell *A* and neighbour cell *B* the multiplier is:
+    NNCs are not affected.
 
-    ```text
-    multiplier = MULT_forward(A) x MULT_backward(B)
-    ```
-
-    where *forward* is the owner's outgoing direction (e.g. positive-x if the
-    face normal is predominantly in +x) and *backward* is the neighbour's
-    incoming direction (negative-x for the same face).
-
-    **Boundary faces**
-
-    Only the owner's outgoing direction multiplier is applied - there is no
-    neighbour cell to pair with:
-
-    ```text
-    multiplier = MULT_forward(owner)
-    ```
-
-    Direction is determined by the dominant component of the face unit normal
-    (largest absolute component).
-
-    :param interior_transmissibilities: Shape `(n_interior,)` - interior transmissibilities
-        before applying directional multipliers.
-    :param boundary_transmissibilities: Shape `(n_boundary,)` - boundary
-        half-transmissibilities before applying directional multipliers.
-    :param interior_face_indices: Global face indices for the interior faces.
-    :param boundary_face_indices: Global face indices for the boundary faces.
-    :param face_cell_indices: Shape `(n_faces, 2)` - owner/neighbour pairs.
-    :param face_unit_normals: Shape `(n_faces, 3)` - face unit normals.
-    :param positive_x_multipliers: Shape `(n_cells,)` MULTX or `None`.
-    :param negative_x_multipliers: Shape `(n_cells,)` MULTX- or `None`.
-    :param positive_y_multipliers: Shape `(n_cells,)` MULTY or `None`.
-    :param negative_y_multipliers: Shape `(n_cells,)` MULTY- or `None`.
-    :param positive_z_multipliers: Shape `(n_cells,)` MULTZ or `None`.
-    :param negative_z_multipliers: Shape `(n_cells,)` MULTZ- or `None`.
-    :returns: Tuple `(transmissibilities, boundary_transmissibilities)` with
-        multipliers applied in-place.
+    :param interior_transmissibilities: Shape `(n_interior,)`.
+    :param boundary_transmissibilities: Shape `(n_boundary,)`.
+    :param interior_face_indices: Global face indices for interior faces.
+    :param boundary_face_indices: Global face indices for boundary faces.
+    :param face_cell_indices: Shape `(n_faces, 2)`.
+    :param face_unit_normals: Shape `(n_faces, 3)`.
+    :param positive_x_multipliers: MULTX or `None`.
+    :param negative_x_multipliers: MULTX- or `None`.
+    :param positive_y_multipliers: MULTY or `None`.
+    :param negative_y_multipliers: MULTY- or `None`.
+    :param positive_z_multipliers: MULTZ or `None`.
+    :param negative_z_multipliers: MULTZ- or `None`.
+    :returns: Updated `(interior_transmissibilities, boundary_transmissibilities)`.
     """
     n_interior = len(interior_face_indices)
     n_boundary = len(boundary_face_indices)
 
-    # Interior faces - owner forward multiplier x neighbour backward multiplier
     for idx in range(n_interior):
         face_idx = int(interior_face_indices[idx])
         owner = int(face_cell_indices[face_idx, 0])
@@ -508,7 +510,6 @@ def _apply_directional_multipliers(
 
         interior_transmissibilities[idx] *= multiplier
 
-    # Boundary faces - owner forward multiplier only (no neighbour)
     for idx in range(n_boundary):
         face_idx = int(boundary_face_indices[idx])
         owner = int(face_cell_indices[face_idx, 0])
@@ -534,7 +535,7 @@ def _apply_directional_multipliers(
 
 
 @numba.njit(cache=True)
-def _apply_fault_multipliers(
+def _apply_fault_face_multipliers(
     interior_transmissibilities: FloatArray[OneDimension],
     boundary_transmissibilities: FloatArray[OneDimension],
     interior_face_indices: IntArray[OneDimension],
@@ -543,44 +544,31 @@ def _apply_fault_multipliers(
     fault_transmissibility_multipliers: typing.Mapping[str, float],
 ) -> typing.Tuple[FloatArray[OneDimension], FloatArray[OneDimension]]:
     """
-    Apply per-fault (`MULTFLT`) transmissibility multipliers (in-place).
+    Apply `MULTFLT` multipliers to face-based fault connections (in-place).
 
-    For each fault name present in *both* `fault_face_indices` and
-    `fault_transmissibility_multipliers`, every face belonging to the fault
-    is scaled by the corresponding multiplier - whether interior or boundary.
+    Only faces tagged with `ConnectionType.*_FAULT_FACE` (i.e. present in
+    `fault_face_indices`) are affected. NNCs are handled separately.
 
-    Faces that appear in `fault_face_indices` but whose fault name has no
-    entry in `fault_transmissibility_multipliers` are left unchanged
-    (multiplier defaults to 1.0).
-
-    :param interior_transmissibilities: Shape `(n_interior,)` - interior transmissibilities
-        before applying fault multipliers.
-    :param boundary_transmissibilities: Shape `(n_boundary,)` - boundary
-        half-transmissibilities before applying fault multipliers.
-    :param interior_face_indices: Global face indices for the interior faces.
-    :param boundary_face_indices: Global face indices for the boundary faces.
-    :param fault_face_indices: Mapping from fault name to global face index array.
-    :param fault_transmissibility_multipliers: Mapping from fault name to scalar multiplier.
-    :returns: Tuple `(transmissibilities, boundary_transmissibilities)` with
-        fault multipliers applied in-place.
+    :param interior_transmissibilities: Shape `(n_interior,)`.
+    :param boundary_transmissibilities: Shape `(n_boundary,)`.
+    :param interior_face_indices: Global face indices for interior faces.
+    :param boundary_face_indices: Global face indices for boundary faces.
+    :param fault_face_indices: `{name: face_indices}`.
+    :param fault_transmissibility_multipliers: `{name: multiplier}`.
+    :returns: Updated transmissibility arrays.
     """
-    # Build reverse maps: global face index -> position in each local array.
-    # Only interior/boundary faces can carry a finite TPFA transmissibility.
     global_to_interior: typing.Dict[int, int] = {
-        int(global_idx): interior_pos
-        for interior_pos, global_idx in enumerate(interior_face_indices)
+        int(global_idx): pos for pos, global_idx in enumerate(interior_face_indices)
     }
     global_to_boundary: typing.Dict[int, int] = {
-        int(global_idx): boundary_pos
-        for boundary_pos, global_idx in enumerate(boundary_face_indices)
+        int(global_idx): pos for pos, global_idx in enumerate(boundary_face_indices)
     }
 
-    for fault_name, face_idx_array in fault_face_indices.items():
+    for fault_name, face_indices in fault_face_indices.items():
         multiplier = fault_transmissibility_multipliers.get(fault_name, 1.0)
         if multiplier == 1.0:
-            continue  # No-op, skip.
-
-        for global_idx in face_idx_array:
+            continue
+        for global_idx in face_indices:
             interior_pos = global_to_interior.get(int(global_idx))
             if interior_pos is not None:
                 interior_transmissibilities[interior_pos] *= multiplier
@@ -590,3 +578,42 @@ def _apply_fault_multipliers(
                 boundary_transmissibilities[boundary_pos] *= multiplier
 
     return interior_transmissibilities, boundary_transmissibilities
+
+
+@numba.njit(cache=True)
+def _apply_nnc_fault_multipliers(
+    nnc_transmissibilities: FloatArray[OneDimension],
+    nnc_connection_types: IntArray[OneDimension],
+    fault_transmissibility_multipliers: typing.Mapping[str, float],
+) -> FloatArray[OneDimension]:
+    """
+    Apply `MULTFLT` to fault-type NNCs (in-place).
+
+    Since fault NNCs are not individually named, the global MULTFLT multiplier
+    from any fault is applied uniformly to all `ConnectionType.FAULT_NNC` NNCs.
+    This matches Eclipse behaviour where a fault NNC without an explicit name
+    picks up the aggregate fault multiplier.
+
+    Pinchout and user-defined NNCs are not affected.
+
+    :param nnc_transmissibilities: Shape `(n_nnc,)`.
+    :param nnc_connection_types: Shape `(n_nnc,)` - `ConnectionType` per NNC.
+    :param fault_transmissibility_multipliers: `{name: multiplier}`.
+    :returns: Updated `nnc_transmissibilities`.
+    """
+    fault_type_val = int(ConnectionType.FAULT_NNC)
+
+    # Aggregate multiplier across all named faults (product convention)
+    aggregate_mult = 1.0
+    for mult in fault_transmissibility_multipliers.values():
+        if mult != 1.0:
+            aggregate_mult *= mult
+
+    if aggregate_mult == 1.0:
+        return nnc_transmissibilities
+
+    for idx in range(len(nnc_transmissibilities)):
+        if int(nnc_connection_types[idx]) == fault_type_val:
+            nnc_transmissibilities[idx] *= aggregate_mult
+
+    return nnc_transmissibilities

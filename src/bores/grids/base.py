@@ -1,11 +1,11 @@
-"""Face-based unstructured polyhedral grid implementation for reservoir simulation."""
+"""Face-based unstructured polyhedral grid for reservoir simulation."""
+
 import enum
 import typing
 
 import attrs
 import numba
 import numpy as np
-import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from bores.errors import (
@@ -27,62 +27,87 @@ from bores.typing import (
     UnitSystem,
 )
 
-__all__ = ["Grid", "ConnectionType", "FaceStatus", "CellStatus"]
+__all__ = ["Grid", "ConnectionType", "CellStatus"]
 
 
 class ConnectionType(enum.IntEnum):
     """
-    Topological classification of a connection between two grid cells.
+    Classification of flow connections between reservoir cells.
 
-    Each face in the grid represents a connection.  The type governs how
-    transmissibility is computed and how boundary conditions are applied.
+    Face-based connections originate from the grid topology and correspond
+    to geometric faces in the mesh. NNC-based connections represent
+    additional cell-to-cell flow paths that do not correspond to a shared
+    geometric face.
 
-    `INTERIOR`
-        A standard shared face between two active cells.
+    Connection types determine how transmissibilities and transmissibility
+    multipliers are applied during simulation.
 
-    `BOUNDARY`
-        A face on the outer hull of the domain; one side is the exterior
-        (`neighbour_cell_index == -1`).
+    **Face connections**:
 
-    `FAULT`
-        An interior face that crosses a fault plane.  Transmissibility may
-        be modified by a fault multiplier (see `Grid.fault_transmissibility_multipliers`).
+    INTERIOR_FACE
+        Standard internal face shared by two active cells.
 
-    `NON_NEIGHBOR_CONNECTION`
-        A connection between two cells that do not share a face in the
-        geometric sense - typically across a pinched-out layer or an
-        explicit NNC declared in the input file.  These connections are
-        stored both as faces (when a surviving lateral face bridges the
-        pinch) and as explicit NNC pairs in `Grid.nnc_cell_indices`.
+    BOUNDARY_FACE
+        Boundary face connecting an active cell to the exterior domain.
+        The neighbour cell index is ``-1``.
 
-    `PINCHOUT`
-        A face whose existence is due to a pinched-out layer being collapsed.
-        Functionally equivalent to `NON_NEIGHBOR_CONNECTION` but marks
-        specifically the surviving lateral face that now connects cells on
-        either side of the collapsed layer.
+    INTERIOR_FAULT_FACE
+        Internal face shared by two active cells and belonging to a named
+        fault. Directional transmissibility multipliers and fault
+        transmissibility multipliers may both apply.
+
+    BOUNDARY_FAULT_FACE
+        Boundary face belonging to a named fault.
+
+
+    **NNC connections**:
+
+    PINCHOUT_NNC
+        Non-neighbour connection generated from pinchout processing where
+        flow occurs between cells that do not share a geometric face.
+
+    USER_NNC
+        Explicit user-defined non-neighbour connection, typically created
+        from an Eclipse ``NNC`` keyword.
+
+    FAULT_NNC
+        Non-neighbour connection generated from fault juxtaposition where
+        communicating cells do not share a geometric face.
     """
 
-    INTERIOR = 0
-    BOUNDARY = 1
-    FAULT = 2
-    PINCHOUT = 3
-    NON_NEIGHBOR_CONNECTION = 4
+    INTERIOR_FACE = 0
+    """Standard interior face between two active cells."""
 
+    BOUNDARY_FACE = 1
+    """Boundary face between an active cell and the exterior domain."""
 
-class FaceStatus(enum.IntEnum):
+    INTERIOR_FAULT_FACE = 2
     """
-    Activation status of a grid face.
+    Interior face belonging to a fault.
 
-    `ACTIVE`
-        The face transmits flow normally.
-
-    `INACTIVE`
-        The face is closed (e.g. a closed fault or a zero-multiplier face);
-        transmissibility is treated as zero by the flow solver.
+    Both directional transmissibility multipliers and fault
+    transmissibility multipliers may apply.
     """
 
-    ACTIVE = 1
-    INACTIVE = 0
+    BOUNDARY_FAULT_FACE = 3
+    """
+    Boundary face belonging to a fault.
+    """
+
+    PINCHOUT_NNC = 4
+    """
+    Non-neighbour connection generated from pinchout processing.
+    """
+
+    USER_NNC = 5
+    """
+    Explicit user-defined non-neighbour connection.
+    """
+
+    FAULT_NNC = 6
+    """
+    Non-neighbour connection generated from fault juxtaposition.
+    """
 
 
 class CellStatus(enum.IntEnum):
@@ -94,18 +119,12 @@ class CellStatus(enum.IntEnum):
 
     `INACTIVE`
         The cell is excluded from flow simulation (e.g. ACTNUM == 0).
-        Inactive cells are not stored in the `Grid` (they are filtered
-        out during construction), so in practice `cell_statuses` for a
-        fully constructed `Grid` will always be `ACTIVE` for every
-        stored cell.  The field exists so that partial-activity sub-grids
-        can be represented without re-indexing.
     """
 
     ACTIVE = 1
     INACTIVE = 0
 
 
-# Absolute tolerance used in geometry validation.
 _GEOMETRY_TOLERANCE: float = 1e-14
 
 
@@ -122,16 +141,10 @@ def _compute_face_geometry(
     """
     Compute face centroids, areas, and unit outward normals via Newell's method.
 
-    Uses Newell's method [Sutherland et al. 1974] which is robust for planar
-    polygons with an arbitrary number of vertices and does not require a
-    pre-computed face centroid.  The normal magnitude equals twice the face
-    area, so `area = ||n|| / 2`.
-
-    :param face_vertex_indices: Flat CSR data array of vertex indices (all faces).
+    :param face_vertex_indices: Flat CSR data array of vertex indices.
     :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
     :param vertex_coordinates: Shape `(n_vertices, 3)` coordinate array.
-    :returns: Tuple `(face_centroids, face_areas, face_unit_normals)` of
-        shapes `(n_faces, 3)`, `(n_faces,)`, `(n_faces, 3)` respectively.
+    :returns: Tuple `(face_centroids, face_areas, face_unit_normals)`.
     """
     n_faces = face_vertex_offsets.shape[0] - 1
     face_centroids = np.zeros((n_faces, 3), dtype=np.float64)
@@ -197,23 +210,12 @@ def _compute_cell_volumes_and_centroids(
     """
     Compute cell volumes and centroids via the divergence theorem.
 
-    Decomposes every face into a fan of triangles anchored at the first face
-    vertex, then accumulates signed tetrahedral contributions for each
-    owner / neighbour cell.
-
-    **Sign convention**: face vertices are wound counter-clockwise from the
-    **owner** (c1) side, so the Newell normal points from c1 toward c2.
-    The signed tet volume is positive for the owner and negative for the
-    neighbour; both therefore accumulate positive contributions.
-
-    :param face_cell_indices: Shape `(n_faces, 2)` - `(owner, neighbour)`
-        per face.
+    :param face_cell_indices: Shape `(n_faces, 2)`.
     :param face_vertex_indices: Flat CSR vertex index data array.
     :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
-    :param vertex_coordinates: Shape `(n_vertices, 3)` coordinate array.
-    :param n_cells: Total number of cells in the grid.
-    :returns: Tuple `(cell_volumes, cell_centroids)` of shapes
-        `(n_cells,)` and `(n_cells, 3)`.
+    :param vertex_coordinates: Shape `(n_vertices, 3)`.
+    :param n_cells: Total number of cells.
+    :returns: Tuple `(cell_volumes, cell_centroids)`.
     """
     n_faces = face_cell_indices.shape[0]
     cell_volumes = np.zeros(n_cells, dtype=np.float64)
@@ -253,35 +255,29 @@ def _compute_cell_volumes_and_centroids(
                 cy = v2[1]
                 cz = v2[2]
 
-                signed_tetrahedron_volume = (
+                signed_tet_volume = (
                     ax * (by * cz - bz * cy)
                     + ay * (bz * cx - bx * cz)
                     + az * (bx * cy - by * cx)
                 ) / 6.0
-                cell_volumes[cell_idx] += sign * signed_tetrahedron_volume
+                cell_volumes[cell_idx] += sign * signed_tet_volume
 
-                x_barycentre = (ax + bx + cx) / 4.0
-                y_barycentre = (ay + by + cy) / 4.0
-                z_barycentre = (az + bz + cz) / 4.0
+                x_bar = (ax + bx + cx) / 4.0
+                y_bar = (ay + by + cy) / 4.0
+                z_bar = (az + bz + cz) / 4.0
 
-                weighted_volume = sign * signed_tetrahedron_volume
-                centroid_accumulators[cell_idx, 0] += weighted_volume * x_barycentre
-                centroid_accumulators[cell_idx, 1] += weighted_volume * y_barycentre
-                centroid_accumulators[cell_idx, 2] += weighted_volume * z_barycentre
+                w = sign * signed_tet_volume
+                centroid_accumulators[cell_idx, 0] += w * x_bar
+                centroid_accumulators[cell_idx, 1] += w * y_bar
+                centroid_accumulators[cell_idx, 2] += w * z_bar
 
     cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
     for cell_idx in range(n_cells):
-        cell_volume = cell_volumes[cell_idx]
-        if abs(cell_volume) > 0.0:
-            cell_centroids[cell_idx, 0] = (
-                centroid_accumulators[cell_idx, 0] / cell_volume
-            )
-            cell_centroids[cell_idx, 1] = (
-                centroid_accumulators[cell_idx, 1] / cell_volume
-            )
-            cell_centroids[cell_idx, 2] = (
-                centroid_accumulators[cell_idx, 2] / cell_volume
-            )
+        vol = cell_volumes[cell_idx]
+        if abs(vol) > 0.0:
+            cell_centroids[cell_idx, 0] = centroid_accumulators[cell_idx, 0] / vol
+            cell_centroids[cell_idx, 1] = centroid_accumulators[cell_idx, 1] / vol
+            cell_centroids[cell_idx, 2] = centroid_accumulators[cell_idx, 2] / vol
 
     return cell_volumes, cell_centroids
 
@@ -293,21 +289,19 @@ def _compute_cell_bounding_boxes(
     face_vertex_offsets: IntArray[OneDimension],
     vertex_coordinates: FloatArray[TwoDimensions],
     n_cells: int,
-    dtype: npt.DTypeLike = np.float64,
 ) -> typing.Tuple[FloatArray[TwoDimensions], FloatArray[TwoDimensions]]:
     """
     Compute per-cell axis-aligned bounding boxes.
 
-    :param face_cell_indices: Shape `(n_faces, 2)` owner/neighbour array.
+    :param face_cell_indices: Shape `(n_faces, 2)`.
     :param face_vertex_indices: Flat CSR vertex index data array.
-    :param face_vertex_offsets: CSR offset array of length `n_faces + 1`.
-    :param vertex_coordinates: Shape `(n_vertices, 3)` coordinate array.
+    :param face_vertex_offsets: CSR offset array.
+    :param vertex_coordinates: Shape `(n_vertices, 3)`.
     :param n_cells: Total number of cells.
-    :param dtype: Floating dtype for the output arrays.
     :returns: Tuple `(cell_min_xyz, cell_max_xyz)` each of shape `(n_cells, 3)`.
     """
-    cell_min = np.full((n_cells, 3), np.inf, dtype=dtype)
-    cell_max = np.full((n_cells, 3), -np.inf, dtype=dtype)
+    cell_min = np.full((n_cells, 3), np.inf, dtype=np.float64)
+    cell_max = np.full((n_cells, 3), -np.inf, dtype=np.float64)
     n_faces = face_cell_indices.shape[0]
 
     for face_idx in range(n_faces):
@@ -319,7 +313,6 @@ def _compute_cell_bounding_boxes(
 
         for i in range(start, end):
             vid = face_vertex_indices[i]
-
             vx = vertex_coordinates[vid, 0]
             vy = vertex_coordinates[vid, 1]
             vz = vertex_coordinates[vid, 2]
@@ -360,144 +353,81 @@ class Grid(Serializable):
     """
     Immutable face-based unstructured polyhedral grid.
 
-    All topology and geometry is computed once during construction and stored
-    as read-only NumPy arrays. The grid is fully unstructured: cells may be
-    arbitrary convex polyhedra; faces may be arbitrary planar polygons.
+    All topology and geometry is computed once during construction and stored as
+    read-only NumPy arrays. All index arrays use int32 and all floating-point
+    arrays use float64.
 
-    **Construction**:
+    **Connection model**
 
-    Supply the three mandatory arrays and any optional metadata; all derived
-    arrays (connectivity, geometry, bounding boxes) are computed automatically.
+    Two layers of connection data are maintained:
 
-    **Coordinate convention**:
+    `face_connection_types` (shape `(n_faces,)`)
+        Per-face type: `BOUNDARY_FACE`, `INTERIOR_FACE`, `INTERIOR_FAULT_FACE`,
+        `BOUNDARY_FAULT_FACE`. This covers every geometric face in the grid.
 
-    The z-axis is positive **downward** (reservoir depth convention).
-
-    **Non-neighbour connections (NNCs)**:
-
-    Connections that cannot be expressed as a shared face - typically across
-    pinched-out layers or declared via the GRDECL `NNC` keyword - are
-    stored explicitly in `nnc_cell_indices` and `nnc_transmissibilities`.
-    The surviving lateral face that bridges a pinch is additionally present
-    in the face arrays and tagged `ConnectionType.PINCHOUT`.
-
-    **Fault transmissibility**:
-
-    Named faults parsed from `FAULTS` / `MULTFLT` keywords are stored in
-    `fault_face_indices` and `fault_transmissibility_multipliers`.  These
-    are purely advisory; the flow solver must apply them when assembling the
-    transmissibility matrix.
+    `nnc_connection_types` (shape `(n_nnc,)`)
+        Per-NNC type: `USER_NNC`, `FAULT_NNC`, or `PINCHOUT_NNC`.
+        These are connections with no corresponding shared geometric face.
 
     **Raises**:
 
     `InvalidPointArrayError`
         If `vertex_coordinates` is not a 2-D `(n_vertices, 3)` array.
     `InvalidFaceConnectivityError`
-        If `face_cell_indices` is not a 2-D `(n_faces, 2)` array, or if
-        `face_vertex_offsets` does not start at 0 or is inconsistent with
-        `face_vertex_indices`.
+        If face connectivity arrays are malformed.
     `InvalidVolumeError`
-        If any cell ends up with a non-positive volume after construction.
+        If any cell has a non-positive volume after construction.
     """
 
     vertex_coordinates: FloatArray[TwoDimensions]
     """
-    Shape `(n_vertices, 3)` - world (x, y, z) coordinates of every vertex.
-
-    The z-axis is positive downward (reservoir depth convention).
+    Shape `(n_vertices, 3)` - world (x, y, z) coordinates.
+    z-axis is positive downward (reservoir depth convention).
     """
 
     face_vertex_indices: IntArray[OneDimension]
     """
     Flat CSR data array: concatenated vertex index lists for all faces.
-
     Face *f* uses
     `face_vertex_indices[face_vertex_offsets[f]:face_vertex_offsets[f+1]]`.
-    Vertices are wound counter-clockwise when viewed from the **owner** cell.
     """
 
     face_vertex_offsets: IntArray[OneDimension]
-    """
-    CSR offset array of length `n_faces + 1`.
-
-    `face_vertex_offsets[0]` must be 0; `face_vertex_offsets[-1]` must
-    equal `len(face_vertex_indices)`.
-    """
+    """CSR offset array of length `n_faces + 1`."""
 
     face_cell_indices: IntArray[TwoDimensions]
     """
-    Shape `(n_faces, 2)` - `(owner_cell_index, neighbour_cell_index)`
-    per face.
-
-    Boundary faces have `neighbour_cell_index == -1`. Interior faces have
-    both indices >= 0. The owner cell is the one from whose perspective the
-    face vertices are wound counter-clockwise.
+    Shape `(n_faces, 2)` - `(owner_cell_index, neighbour_cell_index)`.
+    Boundary faces have `neighbour_cell_index == -1`.
     """
-
-    # Optional dtype / unit hints
-
-    index_dtype: np.dtype = attrs.field(default=np.dtype(np.int32))
-    """NumPy integer dtype used for all connectivity index arrays."""
-
-    floating_dtype: np.dtype = attrs.field(default=np.dtype(np.float64))
-    """NumPy floating-point dtype used for all coordinate and geometry arrays."""
 
     unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
-    """
-    Declared unit system for all coordinate and geometry arrays.
-
-    Set by the factory or IO reader that built this grid.  Downstream
-    physics code reads this field to perform any necessary unit conversions.
-    """
+    """Declared unit system for all coordinate and geometry arrays."""
 
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = attrs.field(
         default=None
     )
-    """Optional free-form metadata mapping (e.g. units, CRS, source filename)."""
-
-    # Optional caller-supplied status / classification arrays
+    """Optional free-form metadata mapping."""
 
     cell_statuses: typing.Optional[IntArray[OneDimension]] = attrs.field(default=None)
     """
     Shape `(n_cells,)` - per-cell `CellStatus` flags.
-
-    When `None` on construction, auto-populated to all
-    `CellStatus.ACTIVE`. Factories that honour ACTNUM should populate
-    this explicitly; note that inactive cells are typically excluded from the
-    grid entirely (they are not stored as cells), so this array will almost
-    always be all-active for a fully constructed grid.
+    Auto-populated to all `CellStatus.ACTIVE` when `None`.
     """
 
-    connection_types: typing.Optional[IntArray[OneDimension]] = attrs.field(
+    face_connection_types: typing.Optional[IntArray[OneDimension]] = attrs.field(
         default=None
     )
     """
-    Shape `(n_faces,)` - per-face `ConnectionType` classification.
-
-    When `None` on construction, auto-populated from topology:
-    `BOUNDARY` for faces with `neighbour == -1`, `INTERIOR` for all
-    others. Factories that know about faults or pinchouts should pass an
-    explicit array.
+    Shape `(n_faces,)` - per-face `ConnectionType`.
+    Auto-populated from topology (`BOUNDARY` / `INTERIOR`) when `None`.
+    Factories that know about faults or pinchouts supply an explicit array.
     """
 
-    face_statuses: typing.Optional[IntArray[OneDimension]] = attrs.field(default=None)
-    """
-    Shape `(n_faces,)` - per-face `FaceStatus` flags.
-
-    When `None` on construction, auto-populated to all
-    `FaceStatus.ACTIVE`. Set faces to `FaceStatus.INACTIVE` to model
-    closed faults or zero-transmissibility connections.
-    """
-
-    # Optional factory-supplied cell geometry (bypasses divergence theorem)
     cell_volumes: typing.Optional[FloatArray[OneDimension]] = attrs.field(default=None)
     """
     Shape `(n_cells,)` pre-computed cell volumes from the factory.
-
-    When provided, the divergence-theorem volume computation is skipped.
-    Used by the corner-point factory which computes volumes via direct
-    5-tet decomposition of the 8 hex corners — robust against distorted
-    cells, non-planar faces, and inverted pillars.
+    When provided, the divergence-theorem computation is skipped.
     """
 
     cell_centroids: typing.Optional[FloatArray[TwoDimensions]] = attrs.field(
@@ -508,242 +438,143 @@ class Grid(Serializable):
     Must be provided together with `cell_volumes`.
     """
 
-    # NNC (non-neighbour connections)
-    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = attrs.field(default=None)
+    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = attrs.field(
+        default=None
+    )
     """
-    Shape `(n_nnc, 2)` - non-neighbour connection (NNC) cell index pairs.
-
-    Each row `(cell_a, cell_b)` identifies two cells that are connected
-    across a pinchout, fault, or other non-standard topology that has no
-    corresponding shared face. Both indices are >= 0.
-
-    Sources:
-
-    - Pinchout geometry: the corner-point factory emits these when a pinched
-      layer creates a third claimant for a face key.
-    - GRDECL `NNC` keyword: explicit NNCs declared in the input file.
-
+    Shape `(n_nnc, 2)` - non-neighbour connection cell index pairs.
     `None` when no NNCs are present.
+    """
+
+    nnc_connection_types: typing.Optional[IntArray[OneDimension]] = attrs.field(
+        default=None
+    )
+    """
+    Shape `(n_nnc,)` - `ConnectionType` for each NNC entry.
+    Auto-populated to all `NNC` when `nnc_cell_indices`
+    is provided but this is `None`.
     """
 
     nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = attrs.field(
         default=None
     )
     """
-    Shape `(n_nnc,)` - transmissibility for each NNC pair in
-    `nnc_cell_indices`.
-
-    Units follow the grid's declared `unit_system` (e.g. md·ft/cP in
-    FIELD, md·m/cP in METRIC). `None` when transmissibilities were not
-    supplied - physics code must compute them from geometry in that case.
+    Shape `(n_nnc,)` - transmissibility for each NNC pair.
+    `None` when not supplied; NaN entries indicate geometrically-detected
+    connections whose T must be computed.
     """
 
-    # Fault classification
     fault_face_indices: typing.Optional[typing.Mapping[str, IntArray[OneDimension]]] = (
         attrs.field(default=None)
     )
     """
-    Mapping from fault name to a 1-D array of face indices belonging to that
-    fault.
-
-    Populated from the GRDECL `FAULTS` keyword when present. `None`
-    when no fault definitions were parsed. The face indices reference the
-    same ordering as `face_cell_indices`.
+    Mapping from fault name to 1-D array of face indices belonging to that fault.
+    Populated from the GRDECL `FAULTS` keyword. `None` when absent.
     """
 
     fault_transmissibility_multipliers: typing.Optional[typing.Mapping[str, float]] = (
         attrs.field(default=None)
     )
     """
-    Mapping from fault name to its transmissibility multiplier.
-
-    Populated from the GRDECL `MULTFLT` keyword. A multiplier of 0.0
-    closes the fault entirely; 1.0 leaves it fully open; values in between
-    reduce flow proportionally. `None` when no `MULTFLT` data was
-    parsed.
-
-    To obtain the effective transmissibility for a named fault face:
-
-    ```
-    T_effective = T_geometric * fault_transmissibility_multipliers[fault_name]
-    ```
+    Mapping from fault name to its transmissibility multiplier (from `MULTFLT`).
+    `None` when absent.
     """
 
-    # Directional transmissibility multipliers (`MULTX` / `MULTY` / `MULTZ` and their `-` variants)
     positive_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-x** face of each cell (GRDECL `MULTX` keyword).
-
-    The effective inter-cell transmissibility between cell *i* and its
-    +x neighbour *i+1* is scaled by
-    ``positive_x_transmissibility_multipliers[i] * negative_x_transmissibility_multipliers[i+1]``.
-    `None` when not supplied (equivalent to all-ones).
-    """
+    """Shape `(n_cells,)` MULTX multipliers. `None` when not supplied."""
 
     negative_x_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-x** face of each cell (GRDECL `MULTX-` keyword).
-
-    Combined with `positive_x_transmissibility_multipliers` on the adjacent cell to give the
-    face multiplier in the x-direction. `None` when not supplied.
-    """
+    """Shape `(n_cells,)` MULTX- multipliers. `None` when not supplied."""
 
     positive_y_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-y** face (GRDECL `MULTY`).  `None` when not supplied.
-    """
+    """Shape `(n_cells,)` MULTY multipliers. `None` when not supplied."""
 
     negative_y_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-y** face (GRDECL `MULTY-`). `None` when not supplied.
-    """
+    """Shape `(n_cells,)` MULTY- multipliers. `None` when not supplied."""
 
     positive_z_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **positive-z** face (GRDECL `MULTZ`).  `None` when not supplied.
-    """
+    """Shape `(n_cells,)` MULTZ multipliers. `None` when not supplied."""
 
     negative_z_transmissibility_multipliers: typing.Optional[
         FloatArray[OneDimension]
     ] = attrs.field(default=None)
-    """
-    Shape `(n_cells,)` - per-cell transmissibility multiplier applied to
-    the **negative-z** face (GRDECL `MULTZ-`). `None` when not supplied.
-    """
+    """Shape `(n_cells,)` MULTZ- multipliers. `None` when not supplied."""
 
-    # Derived topology
     cell_face_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """
-    Flat CSR data array: concatenated face index lists for all cells.
-
-    Cell *c* uses
-    `cell_face_indices[cell_face_offsets[c]:cell_face_offsets[c+1]]`.
-    """
+    """Flat CSR data array: face indices per cell."""
 
     cell_face_offsets: IntArray[OneDimension] = attrs.field(init=False)
     """CSR offset array of length `n_cells + 1` for the cell-to-face map."""
 
     cell_neighbor_indices: IntArray[OneDimension] = attrs.field(init=False)
     """
-    Flat CSR data array: concatenated neighbour cell index lists for all
-    cells.
-
-    Cell *c* uses
-    `cell_neighbor_indices[cell_neighbor_offsets[c]:cell_neighbor_offsets[c+1]]`.
-    Only cells sharing an **interior** face (`ConnectionType.INTERIOR`,
-    `FAULT`, or `PINCHOUT`) are listed; boundary faces do not contribute.
+    Flat CSR data array: neighbour cell indices per cell (interior faces only).
     """
 
     cell_neighbor_offsets: IntArray[OneDimension] = attrs.field(init=False)
-    """
-    CSR offset array of length `n_cells + 1` for the cell-to-neighbour map.
-    """
+    """CSR offset array of length `n_cells + 1` for the cell-to-neighbour map."""
 
     boundary_face_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """Indices of all boundary faces (`neighbour_cell_index == -1`)."""
+    """Indices of all boundary faces."""
 
     interior_face_indices: IntArray[OneDimension] = attrs.field(init=False)
-    """Indices of all interior faces (both owner and neighbour cell indices >= 0)."""
+    """Indices of all interior faces."""
 
-    # Derived geometry
     face_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
-    """Shape `(n_faces, 3)` - (x, y, z) centroid of each face polygon."""
+    """Shape `(n_faces, 3)` - centroid of each face polygon."""
 
     face_areas: FloatArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_faces,)` - geometric area of each face in grid units²."""
+    """Shape `(n_faces,)` - geometric area of each face."""
 
     face_unit_normals: FloatArray[TwoDimensions] = attrs.field(init=False)
-    """
-    Shape `(n_faces, 3)` - unit outward normal from the owner cell for
-    each face.
-    """
+    """Shape `(n_faces, 3)` - unit outward normal from the owner cell."""
 
     cell_min_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
-    """
-    Shape `(n_cells, 3)` - axis-aligned bounding box minimum corner per
-    cell.
-    """
+    """Shape `(n_cells, 3)` - AABB minimum corner per cell."""
 
     cell_max_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
-    """
-    Shape `(n_cells, 3)` - axis-aligned bounding box maximum corner per
-    cell.
-    """
+    """Shape `(n_cells, 3)` - AABB maximum corner per cell."""
 
     bounding_box: tuple[float, float, float, float, float, float] = attrs.field(
         init=False
     )
-    """
-    Axis-aligned bounding box of the entire grid.
-
-    `(x_min, x_max, y_min, y_max, z_min, z_max)` in grid coordinates.
-    """
+    """Global AABB: `(x_min, x_max, y_min, y_max, z_min, z_max)`."""
 
     cell_length_x: FloatArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - bounding-box extent in the x direction."""
+    """Shape `(n_cells,)` - AABB extent in x."""
 
     cell_length_y: FloatArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - bounding-box extent in the y direction."""
+    """Shape `(n_cells,)` - AABB extent in y."""
 
     cell_length_z: FloatArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - bounding-box extent in the z direction (thickness)."""
+    """Shape `(n_cells,)` - AABB extent in z (thickness)."""
 
     cell_thickness: FloatArray[OneDimension] = attrs.field(init=False)
-    """
-    Shape `(n_cells,)` - vertical thickness of each cell (alias for
-    `cell_length_z`).
-    """
+    """Shape `(n_cells,)` - vertical thickness (alias for `cell_length_z`)."""
 
     cell_center_depths: FloatArray[OneDimension] = attrs.field(init=False)
-    """
-    Shape `(n_cells,)` - depth of each cell centroid (positive downward = centroid z).
-    """
+    """Shape `(n_cells,)` - depth of cell centroid (positive downward)."""
 
     cell_center_elevations: FloatArray[OneDimension] = attrs.field(init=False)
-    """
-    Shape `(n_cells,)` - elevation of each cell centroid (positive upward = -depth).
-    """
+    """Shape `(n_cells,)` - elevation of cell centroid (negation of depth)."""
 
     _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
-    """
-    KD-tree built on cell centroids for fast spatial lookup.  Internal use
-    only.
-    """
+    """KD-tree on cell centroids for fast nearest-cell queries."""
 
     def __attrs_post_init__(self) -> None:
-        """
-        Validate inputs and compute all derived topology and geometry.
-        Steps performed in order:
-
-        1. Validate primary input arrays.
-        2. Classify faces into boundary / interior subsets.
-        3. Auto-populate status and connection-type arrays when not supplied.
-        4. Build cell-to-face CSR connectivity.
-        5. Build cell-to-neighbour CSR connectivity.
-        6. Compute face geometry (centroids, areas, normals).
-        7. Compute cell geometry (volumes, centroids).
-        8. Compute per-cell bounding boxes and the global bounding box.
-        9. Derive scalar cell dimensions.
-        10. Build the KD-tree spatial index.
-        """
         self._validate_inputs()
         self._classify_faces()
-        self._populate_default_statuses()
+        self._populate_defaults()
         self._build_cell_face_connectivity()
         self._build_cell_neighbor_connectivity()
         self._compute_face_geometry()
@@ -753,12 +584,6 @@ class Grid(Serializable):
         self._build_spatial_index()
 
     def _validate_inputs(self) -> None:
-        """
-        Validate primary input arrays for shape and internal consistency.
-
-        :raises InvalidPointArrayError: If `vertex_coordinates` is not `(N, 3)`.
-        :raises InvalidFaceConnectivityError: If face connectivity arrays are malformed.
-        """
         if self.vertex_coordinates.ndim != 2 or self.vertex_coordinates.shape[1] != 3:
             raise InvalidPointArrayError(
                 f"`vertex_coordinates` must be shape (n_vertices, 3); "
@@ -773,7 +598,6 @@ class Grid(Serializable):
             raise InvalidFaceConnectivityError(
                 "`face_vertex_offsets` must be a 1-D array starting at 0."
             )
-
         expected_n_faces = self.face_cell_indices.shape[0]
         if self.face_vertex_offsets.shape[0] != expected_n_faces + 1:
             raise InvalidFaceConnectivityError(
@@ -785,92 +609,92 @@ class Grid(Serializable):
                 f"face_vertex_offsets[-1] = {self.face_vertex_offsets[-1]} does not "
                 f"match len(face_vertex_indices) = {len(self.face_vertex_indices)}."
             )
-
         max_valid_vertex = self.vertex_coordinates.shape[0] - 1
         if self.face_vertex_indices.size > 0:
             if int(self.face_vertex_indices.max()) > max_valid_vertex:
                 raise InvalidFaceConnectivityError(
-                    f"`face_vertex_indices` contains vertex index "
+                    f"`face_vertex_indices` contains index "
                     f"{int(self.face_vertex_indices.max())} which exceeds "
-                    f"the maximum valid index {max_valid_vertex}."
+                    f"max valid index {max_valid_vertex}."
                 )
-
         min_cell_index = int(self.face_cell_indices.min())
         if min_cell_index < -1:
             raise InvalidFaceConnectivityError(
                 f"`face_cell_indices` contains negative cell index {min_cell_index}; "
                 "only -1 is allowed (boundary sentinel)."
             )
+        if self.nnc_cell_indices is not None:
+            if self.nnc_connection_types is not None and len(
+                self.nnc_connection_types
+            ) != len(self.nnc_cell_indices):
+                raise InvalidFaceConnectivityError(
+                    f"`nnc_connection_types` length {len(self.nnc_connection_types)} does not match "
+                    f"`nnc_cell_indices` length {len(self.nnc_cell_indices)}."
+                )
+            if self.nnc_transmissibilities is not None and len(
+                self.nnc_transmissibilities
+            ) != len(self.nnc_cell_indices):
+                raise InvalidFaceConnectivityError(
+                    f"`nnc_transmissibilities` length {len(self.nnc_transmissibilities)} "
+                    f"does not match `nnc_cell_indices` length {len(self.nnc_cell_indices)}."
+                )
 
     def _classify_faces(self) -> None:
-        """
-        Partition face indices into boundary and interior subsets.
-
-        A boundary face has `neighbour_cell == -1`; an interior face has
-        both owner and neighbour cells >= 0.
-
-        Results are stored in `boundary_face_indices` and
-        `interior_face_indices`.
-        """
         owner_cells = self.face_cell_indices[:, 0]
         neighbour_cells = self.face_cell_indices[:, 1]
-
         boundary_mask = (owner_cells < 0) | (neighbour_cells < 0)
-        interior_mask = (owner_cells >= 0) & (neighbour_cells >= 0)
-
+        interior_mask = ~boundary_mask
         object.__setattr__(
             self,
             "boundary_face_indices",
-            np.where(boundary_mask)[0].astype(self.index_dtype),
+            np.where(boundary_mask)[0].astype(np.int32),
         )
         object.__setattr__(
             self,
             "interior_face_indices",
-            np.where(interior_mask)[0].astype(self.index_dtype),
+            np.where(interior_mask)[0].astype(np.int32),
         )
 
-    def _populate_default_statuses(self) -> None:
-        """
-        Auto-populate `connection_types`, `cell_statuses`, and
-        `face_statuses` when the caller did not supply explicit arrays.
-
-        `connection_types`
-            `BOUNDARY` for faces with `neighbour == -1`, `INTERIOR`
-            for all others. Factories that know about faults, pinchouts, or
-            NNCs should pass an overriding array.
-
-        `cell_statuses`
-            All `CellStatus.ACTIVE` by default.
-
-        `face_statuses`
-            All `FaceStatus.ACTIVE` by default.
-        """
+    def _populate_defaults(self) -> None:
         n_faces = self.face_cell_indices.shape[0]
         n_cells = int(self.face_cell_indices.max()) + 1
 
-        if self.connection_types is None:
-            ct = np.full(n_faces, ConnectionType.INTERIOR, dtype=np.int8)
-            ct[self.boundary_face_indices] = int(ConnectionType.BOUNDARY)
-            object.__setattr__(self, "connection_types", ct)
+        if self.face_connection_types is None:
+            face_connection_types = np.full(
+                n_faces, ConnectionType.INTERIOR_FACE, dtype=np.int8
+            )
+            face_connection_types[self.boundary_face_indices] = int(
+                ConnectionType.BOUNDARY_FACE
+            )
+
+            if self.fault_face_indices is not None:
+                for face_indices in self.fault_face_indices.values():
+                    boundary_fault_mask = (
+                        self.face_cell_indices[face_indices, 0] < 0
+                    ) | (self.face_cell_indices[face_indices, 1] < 0)
+                    boundary_fault_faces = face_indices[boundary_fault_mask]
+                    interior_fault_faces = face_indices[~boundary_fault_mask]
+
+                    face_connection_types[interior_fault_faces] = int(
+                        ConnectionType.INTERIOR_FAULT_FACE
+                    )
+                    face_connection_types[boundary_fault_faces] = int(
+                        ConnectionType.BOUNDARY_FAULT_FACE
+                    )
+            object.__setattr__(self, "face_connection_types", face_connection_types)
 
         if self.cell_statuses is None:
-            cs = np.full(n_cells, CellStatus.ACTIVE, dtype=np.int8)
-            object.__setattr__(self, "cell_statuses", cs)
+            cell_statuses = np.full(n_cells, CellStatus.ACTIVE, dtype=np.int8)
+            object.__setattr__(self, "cell_statuses", cell_statuses)
 
-        if self.face_statuses is None:
-            fs = np.full(n_faces, FaceStatus.ACTIVE, dtype=np.int8)
-            object.__setattr__(self, "face_statuses", fs)
+        if self.nnc_cell_indices is not None and self.nnc_connection_types is None:
+            nnc_connection_types = np.full(
+                len(self.nnc_cell_indices), int(ConnectionType.USER_NNC), dtype=np.int8
+            )
+            object.__setattr__(self, "nnc_connection_types", nnc_connection_types)
 
     def _build_cell_face_connectivity(self) -> None:
-        """
-        Build CSR cell-to-face adjacency lists from `face_cell_indices`.
-
-        Each cell accumulates the indices of every face that touches it (as
-        either owner or neighbour). Results are stored in `cell_face_indices`
-        and `cell_face_offsets`.
-        """
         n_cells = int(self.face_cell_indices.max()) + 1
-
         cell_face_lists: list[list[int]] = [[] for _ in range(n_cells)]
         for face_idx, (owner, neighbour) in enumerate(self.face_cell_indices):
             if owner >= 0:
@@ -878,59 +702,37 @@ class Grid(Serializable):
             if neighbour >= 0:
                 cell_face_lists[neighbour].append(face_idx)
 
-        flat_face_indices: list[int] = []
-        csr_offsets: list[int] = [0]
+        flat: list[int] = []
+        offsets: list[int] = [0]
         for faces in cell_face_lists:
-            flat_face_indices.extend(faces)
-            csr_offsets.append(len(flat_face_indices))
-
+            flat.extend(faces)
+            offsets.append(len(flat))
+        object.__setattr__(self, "cell_face_indices", np.asarray(flat, dtype=np.int32))
         object.__setattr__(
-            self,
-            "cell_face_indices",
-            np.asarray(flat_face_indices, dtype=self.index_dtype),
-        )
-        object.__setattr__(
-            self,
-            "cell_face_offsets",
-            np.asarray(csr_offsets, dtype=self.index_dtype),
+            self, "cell_face_offsets", np.asarray(offsets, dtype=np.int32)
         )
 
     def _build_cell_neighbor_connectivity(self) -> None:
-        """
-        Build CSR cell-to-neighbour adjacency lists from `face_cell_indices`.
-
-        Two cells are neighbours if they share an interior face (i.e. both
-        owner and neighbour indices >= 0). Boundary faces do not contribute
-        neighbours.  Results are stored in `cell_neighbor_indices` and
-        `cell_neighbor_offsets`.
-        """
         n_cells = int(self.face_cell_indices.max()) + 1
-
         neighbor_sets: list[set[int]] = [set() for _ in range(n_cells)]
         for owner, neighbour in self.face_cell_indices:
             if owner >= 0 and neighbour >= 0:
                 neighbor_sets[owner].add(neighbour)
                 neighbor_sets[neighbour].add(owner)
 
-        flat_neighbor_indices: list[int] = []
-        csr_offsets: list[int] = [0]
+        flat: list[int] = []
+        offsets: list[int] = [0]
         for neighbors in neighbor_sets:
-            flat_neighbor_indices.extend(sorted(neighbors))
-            csr_offsets.append(len(flat_neighbor_indices))
-
+            flat.extend(sorted(neighbors))
+            offsets.append(len(flat))
         object.__setattr__(
-            self,
-            "cell_neighbor_indices",
-            np.asarray(flat_neighbor_indices, dtype=self.index_dtype),
+            self, "cell_neighbor_indices", np.asarray(flat, dtype=np.int32)
         )
         object.__setattr__(
-            self,
-            "cell_neighbor_offsets",
-            np.asarray(csr_offsets, dtype=self.index_dtype),
+            self, "cell_neighbor_offsets", np.asarray(offsets, dtype=np.int32)
         )
 
     def _compute_face_geometry(self) -> None:
-        """Compute face centroids, areas, and unit outward normals."""
         face_centroids, face_areas, face_unit_normals = _compute_face_geometry(
             face_vertex_indices=self.face_vertex_indices,
             face_vertex_offsets=self.face_vertex_offsets,
@@ -941,13 +743,7 @@ class Grid(Serializable):
         object.__setattr__(self, "face_unit_normals", face_unit_normals)
 
     def _compute_cell_geometry(self) -> None:
-        """
-        Compute cell volumes and volume-weighted centroids.
-
-        :raises InvalidVolumeError: If any cell has a non-positive volume.
-        """
         if self.cell_volumes is not None and self.cell_centroids is not None:
-            # Factory provided pre-computed geometry
             return
 
         n_cells = int(self.face_cell_indices.max()) + 1
@@ -958,22 +754,17 @@ class Grid(Serializable):
             vertex_coordinates=self.vertex_coordinates,
             n_cells=n_cells,
         )
-        invalid_volume_mask = cell_volumes <= 0.0
-        if invalid_volume_mask.any():
-            bad_cells = np.where(invalid_volume_mask)[0].tolist()
+        invalid_mask = cell_volumes <= 0.0
+        if invalid_mask.any():
+            bad = np.where(invalid_mask)[0].tolist()
             raise InvalidVolumeError(
-                f"Cells {bad_cells[:20]}{'...' if len(bad_cells) > 20 else ''} "
-                f"have non-positive computed volumes. Check face winding order "
-                f"(vertices must be CCW from the owner-cell side)."
+                f"Cells {bad[:20]}{'...' if len(bad) > 20 else ''} "
+                f"have non-positive volumes. Check face winding order."
             )
         object.__setattr__(self, "cell_volumes", cell_volumes)
         object.__setattr__(self, "cell_centroids", cell_centroids)
 
     def _compute_bounding_boxes(self) -> None:
-        """
-        Compute per-cell axis-aligned bounding boxes from face vertex
-        coordinates.
-        """
         n_cells = int(self.face_cell_indices.max()) + 1
         cell_min, cell_max = _compute_cell_bounding_boxes(
             face_cell_indices=self.face_cell_indices,
@@ -981,12 +772,7 @@ class Grid(Serializable):
             face_vertex_offsets=self.face_vertex_offsets,
             vertex_coordinates=self.vertex_coordinates,
             n_cells=n_cells,
-            dtype=self.floating_dtype,
         )
-
-        # Cells with no faces (fully suppressed pinchouts) retain the sentinel
-        # values (+inf / -inf) from the kernel. Fall back to the pre-computed
-        # centroid so at least their position is meaningful.
         if self.cell_centroids is not None:
             no_face_mask = ~np.isfinite(cell_min).all(axis=1)
             if no_face_mask.any():
@@ -1006,15 +792,6 @@ class Grid(Serializable):
         object.__setattr__(self, "bounding_box", bounding_box)
 
     def _compute_derived_dimensions(self) -> None:
-        """
-        Derive per-cell scalar dimensions from axis-aligned bounding boxes.
-
-        Computes `cell_length_x/y/z`, `cell_thickness`,
-        `cell_center_depths`, and `cell_center_elevations`.
-
-        Depth is positive downward (z-axis convention); elevation is the
-        negation of depth.
-        """
         delta = self.cell_max_xyz - self.cell_min_xyz
         object.__setattr__(self, "cell_length_x", delta[:, 0])
         object.__setattr__(self, "cell_length_y", delta[:, 1])
@@ -1027,68 +804,58 @@ class Grid(Serializable):
         object.__setattr__(self, "cell_center_elevations", -depths)
 
     def _build_spatial_index(self) -> None:
-        """Construct a KD-tree on cell centroids for fast nearest-cell queries."""
         assert self.cell_centroids is not None
         object.__setattr__(self, "_spatial_index", cKDTree(self.cell_centroids))
 
     @property
     def n_cells(self) -> int:
-        """Total number of cells in the grid."""
+        """Total number of cells."""
         assert self.cell_centroids is not None
         return self.cell_centroids.shape[0]
 
     @property
     def n_faces(self) -> int:
-        """Total number of faces (boundary + interior) in the grid."""
+        """Total number of faces (boundary + interior)."""
         return self.face_cell_indices.shape[0]
 
     @property
     def n_vertices(self) -> int:
-        """Total number of vertex points in the grid."""
+        """Total number of vertex points."""
         return self.vertex_coordinates.shape[0]
 
     @property
     def n_boundary_faces(self) -> int:
-        """Number of boundary faces (faces on the outer hull of the domain)."""
+        """Number of boundary faces."""
         return len(self.boundary_face_indices)
 
     @property
     def n_interior_faces(self) -> int:
-        """Number of interior faces (faces shared between two cells)."""
+        """Number of interior faces."""
         return len(self.interior_face_indices)
 
     @property
     def n_nnc(self) -> int:
-        """
-        Number of non-neighbour connections (NNCs).
-
-        Returns 0 when `nnc_cell_indices` is `None`.
-        """
+        """Number of non-neighbour connections. 0 when `nnc_cell_indices` is `None`."""
         if self.nnc_cell_indices is None:
             return 0
         return self.nnc_cell_indices.shape[0]
 
     @property
-    def n_faults(self) -> int:
-        """
-        Number of named faults in the grid.
+    def n_connections(self) -> int:
+        """Total connections: `n_faces + n_nnc`."""
+        return self.n_faces + self.n_nnc
 
-        Returns 0 when `fault_face_indices` is `None`.
-        """
-        if self.fault_face_indices is None:
-            return 0
-        return len(self.fault_face_indices)
+    @property
+    def n_faults(self) -> int:
+        """Number of named faults. 0 when `fault_face_indices` is `None`."""
+        n_faults = (
+            0 if self.fault_face_indices is None else len(self.fault_face_indices)
+        )
+        return n_faults
 
     @property
     def has_transmissibility_multipliers(self) -> bool:
-        """
-        Return `True` if any directional transmissibility multiplier array
-        is present on this grid.
-
-        Checks all six MULT arrays (MULTX, MULTX-, MULTY, MULTY-, MULTZ,
-        MULTZ-). A return value of `False` means all inter-cell
-        transmissibilities can be computed from geometry alone.
-        """
+        """`True` if any directional `MULT*` array is present."""
         return any(
             arr is not None
             for arr in (
@@ -1101,27 +868,72 @@ class Grid(Serializable):
             )
         )
 
-    def get_cell_face_indices(self, cell_index: int) -> IntArray[OneDimension]:
+    def is_cell_active(self, cell_index: int) -> bool:
         """
-        Return the indices of all faces belonging to a given cell.
+        Return whether a given cell is active.
 
         :param cell_index: Zero-based cell index.
-        :returns: 1-D array of face indices for the requested cell.
+        :returns: `True` if the cell has `CellStatus.ACTIVE`.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
         if cell_index < 0 or cell_index >= self.n_cells:
             raise CellNotFoundError(
                 f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
             )
+
+        assert self.cell_statuses is not None
+        return bool(self.cell_statuses[cell_index])
+
+    def get_nnc_type(self, nnc_index: int) -> ConnectionType:
+        """
+        Return the `ConnectionType` for a given NNC.
+
+        :param nnc_index: Zero-based NNC index.
+        :returns: `ConnectionType` enum value.
+        :raises IndexError: If `nnc_index` is out of range.
+        """
+        assert self.nnc_connection_types is not None
+        if nnc_index < 0 or nnc_index >= self.n_connections:
+            raise IndexError(
+                f"NNC index {nnc_index} is out of range [0, {self.n_nnc - 1}]."
+            )
+        return ConnectionType(int(self.nnc_connection_types[nnc_index]))
+
+    def get_face_type(self, face_index: int) -> ConnectionType:
+        """
+        Return the `ConnectionType` for a given face.
+
+        :param face_index: Zero-based face index.
+        :returns: `ConnectionType` enum value.
+        :raises IndexError: If `face_index` is out of range.
+        """
+        assert self.face_connection_types is not None
+        if face_index < 0 or face_index >= self.n_faces:
+            raise IndexError(
+                f"Face index {face_index} is out of range [0, {self.n_faces - 1}]."
+            )
+        return ConnectionType(int(self.face_connection_types[face_index]))
+
+    def get_cell_face_indices(self, cell_index: int) -> IntArray[OneDimension]:
+        """
+        Return the indices of all faces belonging to a given cell.
+
+        :param cell_index: Zero-based cell index.
+        :returns: 1-D array of face indices.
+        :raises CellNotFoundError: If `cell_index` is out of range.
+        """
+        if cell_index < 0 or cell_index >= self.n_cells:
+            raise CellNotFoundError(
+                f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
+            )
+
         start = self.cell_face_offsets[cell_index]
         end = self.cell_face_offsets[cell_index + 1]
         return self.cell_face_indices[start:end]
 
     def get_cell_neighbor_indices(self, cell_index: int) -> IntArray[OneDimension]:
         """
-        Return the indices of all cells neighbouring a given cell.
-
-        Only cells sharing an interior face are considered neighbours.
+        Return the indices of all face-adjacent neighbours of a given cell.
 
         :param cell_index: Zero-based cell index.
         :returns: 1-D array of neighbouring cell indices.
@@ -1131,21 +943,35 @@ class Grid(Serializable):
             raise CellNotFoundError(
                 f"Cell index {cell_index} is out of range [0, {self.n_cells - 1}]."
             )
+
         start = self.cell_neighbor_offsets[cell_index]
         end = self.cell_neighbor_offsets[cell_index + 1]
         return self.cell_neighbor_indices[start:end]
 
     def get_face_vertex_coordinates(self, face_index: int) -> FloatArray[TwoDimensions]:
         """
-        Return the (x, y, z) coordinates of all vertices of a given face.
+        Return the vertex coordinates of a given face.
 
         :param face_index: Zero-based face index.
         :returns: Shape `(n_verts_for_face, 3)` coordinate array.
-        :raises IndexError: If `face_index` is out of range.
         """
         start = int(self.face_vertex_offsets[face_index])
         end = int(self.face_vertex_offsets[face_index + 1])
         return self.vertex_coordinates[self.face_vertex_indices[start:end]]
+
+    def get_face_cell_indices(self, face_index: int) -> IntArray[OneDimension]:
+        """
+        Return the indices of all cells that share a given face.
+
+        :param face_index: Zero-based face index.
+        :returns: 1-D array of cell indices (usually of length=2).
+        :raises IndexError: If `face_index` is out of range.
+        """
+        if face_index < 0 or face_index >= self.n_faces:
+            raise IndexError(
+                f"Face index {face_index} is out of range [0, {self.n_faces - 1}]."
+            )
+        return self.face_cell_indices[face_index]
 
     def get_face_normal_for_cell(
         self, face_index: int, cell_index: int
@@ -1153,20 +979,13 @@ class Grid(Serializable):
         """
         Return the outward unit normal of a face relative to a specific cell.
 
-        The stored normal points outward from the owner cell.  For the
-        neighbour cell the normal is reversed.
-
         :param face_index: Zero-based face index.
-        :param cell_index: Zero-based cell index (must be owner or neighbour
-            of the face).
-        :returns: Shape `(3,)` unit normal vector pointing outward from
-            `cell_index`.
-        :raises ValidationError: If `cell_index` is not connected to
-            `face_index`.
+        :param cell_index: Must be owner or neighbour of `face_index`.
+        :returns: Shape `(3,)` unit normal pointing outward from `cell_index`.
+        :raises ValidationError: If `cell_index` is not connected to `face_index`.
         """
         owner = int(self.face_cell_indices[face_index, 0])
         neighbour = int(self.face_cell_indices[face_index, 1])
-
         if cell_index == owner:
             return self.face_unit_normals[face_index]
         elif cell_index == neighbour:
@@ -1177,30 +996,18 @@ class Grid(Serializable):
         )
 
     def get_boundary_cell_indices(self) -> IntArray[OneDimension]:
-        """
-        Return the indices of all cells that touch at least one boundary face.
-
-        :returns: 1-D sorted array of boundary-adjacent cell indices.
-        """
-        boundary_owners = self.face_cell_indices[self.boundary_face_indices, 0]
-        boundary_neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-
-        all_boundary_cells = np.concatenate(
-            [
-                boundary_owners[boundary_owners >= 0],
-                boundary_neighbours[boundary_neighbours >= 0],
-            ]
+        """Return sorted indices of all cells that touch at least one boundary face."""
+        owners = self.face_cell_indices[self.boundary_face_indices, 0]
+        neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
+        all_boundary = np.concatenate(
+            [owners[owners >= 0], neighbours[neighbours >= 0]]
         )
-        return np.unique(all_boundary_cells).astype(self.index_dtype)
+        return np.unique(all_boundary).astype(np.int32)
 
     def get_interior_cell_indices(self) -> IntArray[OneDimension]:
-        """
-        Return the indices of all cells that have no boundary faces.
-
-        :returns: 1-D sorted array of fully interior cell indices.
-        """
+        """Return sorted indices of all cells that have no boundary faces."""
         boundary_cells = self.get_boundary_cell_indices()
-        all_cells = np.arange(self.n_cells, dtype=self.index_dtype)
+        all_cells = np.arange(self.n_cells, dtype=np.int32)
         return np.setdiff1d(all_cells, boundary_cells)
 
     def is_boundary_cell(self, cell_index: int) -> bool:
@@ -1208,7 +1015,6 @@ class Grid(Serializable):
         Return whether a given cell is adjacent to at least one boundary face.
 
         :param cell_index: Zero-based cell index.
-        :returns: `True` if the cell has at least one boundary face.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
         if cell_index < 0 or cell_index >= self.n_cells:
@@ -1218,22 +1024,46 @@ class Grid(Serializable):
 
         face_indices = self.get_cell_face_indices(cell_index)
         for face_idx in face_indices:
-            owner = int(self.face_cell_indices[face_idx, 0])
-            neighbour = int(self.face_cell_indices[face_idx, 1])
-            if owner < 0 or neighbour < 0:
+            if (
+                int(self.face_cell_indices[face_idx, 0]) < 0
+                or int(self.face_cell_indices[face_idx, 1]) < 0
+            ):
                 return True
         return False
 
+    def is_boundary_face(self, face_index: int) -> bool:
+        """
+        Return whether a given face is adjacent to at least one boundary cell.
+
+        :param face_index: Zero-based face index.
+        :raises IndexError: If `face_index` is out of range.
+        """
+        face_type = self.get_face_type(face_index)
+        return face_type in (
+            ConnectionType.BOUNDARY_FACE,
+            ConnectionType.BOUNDARY_FAULT_FACE,
+        )
+
+    def is_fault_face(self, face_index: int) -> bool:
+        """
+        Return whether a given face belongs to fault.
+
+        :param face_index: Zero-based face index.
+        :raises IndexError: If `face_index` is out of range.
+        """
+        face_type = self.get_face_type(face_index)
+        return face_type in (
+            ConnectionType.INTERIOR_FAULT_FACE,
+            ConnectionType.BOUNDARY_FAULT_FACE,
+        )
+
     def get_fault_face_indices(self, fault_name: str) -> IntArray[OneDimension]:
         """
-        Return the face indices for a named fault.
+        Return face indices for a named fault.
 
-        :param fault_name: Name of the fault as declared in the GRDECL
-            `FAULTS` keyword.
-        :returns: 1-D array of face indices belonging to that fault.
-        :raises KeyError: If `fault_name` is not found in
-            `fault_face_indices`.
-        :raises ValidationError: If no fault data is available on this grid.
+        :param fault_name: Fault name as declared in `FAULTS`.
+        :raises KeyError: If `fault_name` is not found.
+        :raises ValidationError: If no fault data is available.
         """
         if self.fault_face_indices is None:
             raise ValidationError(
@@ -1243,7 +1073,7 @@ class Grid(Serializable):
         if fault_name not in self.fault_face_indices:
             available = sorted(self.fault_face_indices.keys())
             raise KeyError(
-                f"Fault {fault_name!r} not found.  Available faults: {available}."
+                f"Fault {fault_name!r} not found. Available faults: {available}."
             )
         return self.fault_face_indices[fault_name]
 
@@ -1251,8 +1081,7 @@ class Grid(Serializable):
         """
         Return the transmissibility multiplier for a named fault.
 
-        :param fault_name: Name of the fault as declared in `MULTFLT`.
-        :returns: Multiplier value (1.0 = fully open, 0.0 = fully closed).
+        :param fault_name: Fault name as declared in `MULTFLT`.
         :raises KeyError: If `fault_name` is not found.
         :raises ValidationError: If no multiplier data is available.
         """
@@ -1260,24 +1089,23 @@ class Grid(Serializable):
             raise ValidationError(
                 "No fault transmissibility multipliers available on this grid."
             )
-
         if fault_name not in self.fault_transmissibility_multipliers:
             available = sorted(self.fault_transmissibility_multipliers.keys())
             raise KeyError(
-                f"Fault {fault_name!r} not found in MULTFLT data.  "
+                f"Fault {fault_name!r} not found in MULTFLT data. "
                 f"Available: {available}."
             )
         return self.fault_transmissibility_multipliers[fault_name]
 
     def find_nearest_cell(self, x: float, y: float, z: float) -> int:
         """
-        Find the cell whose centroid is nearest to the given (x, y, z) point.
+        Find the cell whose centroid is nearest to `(x, y, z)`.
 
-        Uses a pre-built KD-tree for O(log n) lookup.
+        O(log n) via the pre-built KD-tree.
 
         :param x: Query x-coordinate.
         :param y: Query y-coordinate.
-        :param z: Query z-coordinate (depth, positive downward).
+        :param z: Query z-coordinate (positive downward).
         :returns: Zero-based index of the nearest cell.
         """
         _, cell_index = self._spatial_index.query([x, y, z])  # type: ignore
@@ -1287,19 +1115,16 @@ class Grid(Serializable):
         self, x: float, y: float, z: float, radius: float
     ) -> IntArray[OneDimension]:
         """
-        Return all cell indices whose centroids fall within `radius` of a
-        point.
+        Return all cell indices whose centroids fall within `radius` of a point.
 
         :param x: Query x-coordinate.
         :param y: Query y-coordinate.
-        :param z: Query z-coordinate (depth, positive downward).
+        :param z: Query z-coordinate (positive downward).
         :param radius: Search radius in grid length units.
-        :returns: 1-D array of matching cell indices (unsorted).
+        :returns: 1-D array of matching cell indices.
         """
-        raw_indices = self._spatial_index.query_ball_point(  # type: ignore
-            [x, y, z], r=radius
-        )
-        return np.asarray(raw_indices, dtype=self.index_dtype)
+        raw = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore
+        return np.asarray(raw, dtype=np.int32)
 
     def compute_pore_volume(
         self,
@@ -1307,12 +1132,11 @@ class Grid(Serializable):
         net_to_gross: NumberOrArray[OneDimension],
     ) -> FloatArray[OneDimension]:
         """
-        Compute the pore volume for each cell given a porosity field.
+        Compute the pore volume for each cell.
 
-        :param porosity: Scalar or shape `(n_cells,)` array of porosity
-            values (dimensionless, in `[0, 1]`).
-        :returns: Pore volumes in the same units³ as `cell_volumes`,
-            broadcast against `porosity`.
+        :param porosity: Scalar or shape `(n_cells,)` porosity values in `[0, 1]`.
+        :param net_to_gross: Scalar or shape `(n_cells,)` NTG values.
+        :returns: Pore volumes in the same units³ as `cell_volumes`.
         """
         assert self.cell_volumes is not None
         return porosity * net_to_gross * self.cell_volumes
@@ -1321,13 +1145,9 @@ class Grid(Serializable):
         """
         Validate that all computed geometry values are physically reasonable.
 
-        Checks that all cell volumes are strictly positive, all face areas are
-        non-negative, and all face unit normals have unit magnitude.
-
         :raises InvalidVolumeError: If any cell volume is <= 0.
         :raises InvalidFaceAreaError: If any face area is negative.
-        :raises InvalidNormalVectorError: If any face normal deviates from
-            unit length by more than a loose tolerance.
+        :raises InvalidNormalVectorError: If any face normal deviates from unit length.
         """
         assert self.cell_volumes is not None
         if (self.cell_volumes <= 0.0).any():

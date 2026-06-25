@@ -58,65 +58,34 @@ def make_cartesian_grid(
     """
     Factory for axis-aligned structured Cartesian hexahedral grids.
 
-    Produces a regular Cartesian grid with uniform or variable cell spacing.
-    Supports scalar (uniform) or array (variable) spacing in each direction,
-    an optional origin offset.
+    Supports scalar (uniform) or array (variable) spacing in each direction.
+    Cell counts `nx`, `ny`, `nz` may be inferred from array-valued spacing.
 
-    Example usage:
+    Fault records whose IJK range resolves to cell pairs sharing no geometric
+    face (e.g. boundary cells) are recorded as NNCs of type `FAULT` rather
+    than silently dropped.
 
-    ```python
-    grid = make_cartesian_grid(nx=10, ny=10, nz=5, dx=100.0, dy=100.0, dz=5.0)
-
-    # Variable spacing:
-    grid = make_cartesian_grid(
-        dx=np.array([50., 100., 50.]),
-        dy=100.0,
-        dz=np.array([3., 5., 3., 5., 3.]),
-        origin=(0.0, 0.0, 2000.0),
-    )
-    ```
-
-    Cell counts `nx`, `ny`, `nz` may be inferred from array-valued
-    spacing arguments (`len(dx)` etc.) when not explicitly provided.
-
-    :param nx: Number of cells in the x direction.
-    :param ny: Number of cells in the y direction.
-    :param nz: Number of cells in the z direction (positive downward).
+    :param nx: Number of cells in x.
+    :param ny: Number of cells in y.
+    :param nz: Number of cells in z (positive downward).
     :param dx: Cell width(s) in x. Scalar = uniform; 1-D array = variable.
     :param dy: Cell width(s) in y.
     :param dz: Cell thickness(es) in z.
-    :param origin: `(x0, y0, z0)` coordinate of the grid origin (minimum
-        x, y, z vertex).
-    :param unit_system: Declared unit system for all coordinate arrays.
-    :param metadata: Optional metadata dictionary attached to the grid.
-    :param fault_records: Sequence of
-        `bores.grids.factories.corner_point.FaultRecord` objects
-        parsed from the GRDECL `FAULTS` keyword. Each record's IJK range
-        and face direction are resolved to unstructured face indices using
-        closed-form Cartesian index arithmetic. Resolved faces are tagged
-        :attr:`ConnectionType.FAULT`.
-    :param fault_transmissibility_multipliers: Mapping `{name: multiplier}`
-        from the GRDECL `MULTFLT` keyword. Stored verbatim on the
-        returned `Grid`.
-    :param nnc_cell_indices: Shape `(n_nnc, 2)` int32 array of 0-based
-        cell index pairs for explicit NNCs from the GRDECL `NNC` keyword.
-    :param nnc_transmissibilities: Shape `(n_nnc,)` float64 array of
-        transmissibilities corresponding to `nnc_cell_indices`.
-    :param positive_x_transmissibility_multipliers: Shape `(n_cells,)`
-        per-cell MULTX values. `None` if not supplied.
-    :param negative_x_transmissibility_multipliers: Shape `(n_cells,)`
-        MULTX- values.
-    :param positive_y_transmissibility_multipliers: Shape `(n_cells,)`
-        MULTY values.
-    :param negative_y_transmissibility_multipliers: Shape `(n_cells,)`
-        MULTY- values.
-    :param positive_z_transmissibility_multipliers: Shape `(n_cells,)`
-        MULTZ values.
-    :param negative_z_transmissibility_multipliers: Shape `(n_cells,)`
-        MULTZ- values.
-    :returns: A fully initialised `bores.grids.base.Grid`.
-    :raises ValidationError: If cell counts cannot be determined, spacing
-        values are non-positive, or NNC array lengths are inconsistent.
+    :param origin: `(x0, y0, z0)` coordinate of the grid origin.
+    :param unit_system: Declared unit system.
+    :param metadata: Optional metadata dictionary.
+    :param fault_records: `FaultRecord` objects from `FAULTS` keyword.
+    :param fault_transmissibility_multipliers: `{name: multiplier}` from `MULTFLT`.
+    :param positive_x_transmissibility_multipliers: Per-cell MULTX.
+    :param negative_x_transmissibility_multipliers: Per-cell MULTX-.
+    :param positive_y_transmissibility_multipliers: Per-cell MULTY.
+    :param negative_y_transmissibility_multipliers: Per-cell MULTY-.
+    :param positive_z_transmissibility_multipliers: Per-cell MULTZ.
+    :param negative_z_transmissibility_multipliers: Per-cell MULTZ-.
+    :param nnc_cell_indices: Shape `(n_nnc, 2)` user-declared NNC pairs.
+    :param nnc_transmissibilities: Shape `(n_nnc,)` user-declared NNC T.
+    :returns: Fully initialised `Grid`.
+    :raises ValidationError: If spacing or NNC arrays are inconsistent.
     """
     dx_arr, dy_arr, dz_arr = _resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
     nx = len(dx_arr)
@@ -127,8 +96,7 @@ def make_cartesian_grid(
         if len(nnc_cell_indices) != len(nnc_transmissibilities):
             raise ValidationError(
                 f"nnc_cell_indices has {len(nnc_cell_indices)} rows but "
-                f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries; "
-                "they must have the same length."
+                f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries."
             )
 
     vertex_coordinates = _build_vertex_coordinates(
@@ -138,23 +106,19 @@ def make_cartesian_grid(
         nx, ny, nz
     )
 
-    # Default connection_types array: BOUNDARY or INTERIOR inferred from topology.
-    # We start with the default and patch in FAULT tags after resolution.
-    n_faces = face_cell_indices.shape[0]
     n_x_faces = (nx + 1) * ny * nz
     n_y_faces = nx * (ny + 1) * nz
-    connection_types = np.where(
+
+    face_connection_types = np.where(
         (face_cell_indices[:, 0] >= 0) & (face_cell_indices[:, 1] >= 0),
-        int(ConnectionType.INTERIOR),
-        int(ConnectionType.BOUNDARY),
+        int(ConnectionType.INTERIOR_FACE),
+        int(ConnectionType.BOUNDARY_FACE),
     ).astype(np.int8)
 
-    # Resolve FAULTS IJK records to Cartesian face indices.
-    resolved_fault_face_indices: typing.Optional[
-        typing.Dict[str, IntArray[OneDimension]]
-    ] = None
+    fault_face_indices: typing.Optional[typing.Dict[str, IntArray[OneDimension]]] = None
+    fault_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
     if fault_records:
-        resolved_fault_face_indices = _resolve_fault_face_indices(
+        fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
             fault_records=fault_records,
             nx=nx,
             ny=ny,
@@ -162,8 +126,70 @@ def make_cartesian_grid(
             n_x_faces=n_x_faces,
             n_y_faces=n_y_faces,
         )
-        for face_indices in resolved_fault_face_indices.values():
-            connection_types[face_indices] = int(ConnectionType.FAULT)
+        for face_indices in fault_face_indices.values():
+            boundary_fault_mask = (face_cell_indices[face_indices, 0] < 0) | (
+                face_cell_indices[face_indices, 1] < 0
+            )
+            boundary_fault_faces = face_indices[boundary_fault_mask]
+            interior_fault_faces = face_indices[~boundary_fault_mask]
+
+            face_connection_types[interior_fault_faces] = int(
+                ConnectionType.INTERIOR_FAULT_FACE
+            )
+            face_connection_types[boundary_fault_faces] = int(
+                ConnectionType.BOUNDARY_FAULT_FACE
+            )
+
+    # Merge all NNC sources: [fault NNCs] + [user NNCs]
+    all_nnc_parts: typing.List[
+        typing.Tuple[
+            npt.NDArray[np.int32],
+            npt.NDArray[np.int8],
+            npt.NDArray[np.float64],
+        ]
+    ] = []
+
+    if fault_nnc_pairs:
+        fault_pairs = np.asarray(fault_nnc_pairs, dtype=np.int32).reshape(-1, 2)
+        fault_nnc_connection_types = np.full(
+            len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
+        )
+        fault_nnc_transmissibilities = np.full(
+            len(fault_nnc_pairs), np.nan, dtype=np.float64
+        )
+        all_nnc_parts.append(
+            (fault_pairs, fault_nnc_connection_types, fault_nnc_transmissibilities)
+        )
+
+    if nnc_cell_indices is not None and len(nnc_cell_indices) > 0:
+        user_nnc_pairs = np.asarray(nnc_cell_indices, dtype=np.int32)
+        user_nnc_connection_types = np.full(
+            len(user_nnc_pairs), int(ConnectionType.USER_NNC), dtype=np.int8
+        )
+        user_nnc_transmissibilities = (
+            np.asarray(nnc_transmissibilities, dtype=np.float64)
+            if nnc_transmissibilities is not None
+            else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
+        )
+        all_nnc_parts.append(
+            (user_nnc_pairs, user_nnc_connection_types, user_nnc_transmissibilities)
+        )
+
+    merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
+    merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
+    merged_nnc_transmissibilities: typing.Optional[npt.NDArray[np.float64]] = None
+
+    if all_nnc_parts:
+        merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
+        merged_nnc_connection_types = np.concatenate(
+            [t for _, t, _ in all_nnc_parts]
+        ).astype(np.int8)
+        merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
+        merged_nnc_transmissibilities = (
+            merged_transmissibilities
+            if np.any(np.isfinite(merged_transmissibilities))
+            else None
+        )
 
     return Grid(
         vertex_coordinates=vertex_coordinates.astype(np.float64, copy=False),
@@ -172,18 +198,11 @@ def make_cartesian_grid(
         face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
-        connection_types=connection_types,
-        nnc_cell_indices=(
-            nnc_cell_indices.astype(np.int32, copy=False)
-            if nnc_cell_indices is not None
-            else None
-        ),
-        nnc_transmissibilities=(
-            nnc_transmissibilities.astype(np.float64, copy=False)
-            if nnc_transmissibilities is not None
-            else None
-        ),
-        fault_face_indices=resolved_fault_face_indices,
+        face_connection_types=face_connection_types,
+        nnc_cell_indices=merged_nnc_pairs,
+        nnc_connection_types=merged_nnc_connection_types,
+        nnc_transmissibilities=merged_nnc_transmissibilities,
+        fault_face_indices=fault_face_indices,
         fault_transmissibility_multipliers=(
             dict(fault_transmissibility_multipliers)
             if fault_transmissibility_multipliers is not None
@@ -208,46 +227,38 @@ def _resolve_fault_face_indices(
     nz: int,
     n_x_faces: int,
     n_y_faces: int,
-) -> typing.Dict[str, IntArray[OneDimension]]:
+) -> typing.Tuple[
+    typing.Dict[str, IntArray[OneDimension]],
+    typing.List[typing.Tuple[int, int]],
+]:
     """
-    Resolve `FaultRecord` IJK ranges to Cartesian face index arrays using
-    closed-form index arithmetic.
+    Resolve `FaultRecord` IJK ranges to Cartesian face index arrays.
 
-    The Cartesian face array produced by `_build_face_arrays` is laid
-    out in three contiguous groups:
+    The Cartesian face layout (from `_build_face_arrays`):
 
-    * **X-normal faces** (count `(nx+1)*ny*nz`):
-      face at `(i_plane, j, k)` has global index
-      `i_plane * ny * nz + j * nz + k`.
-      The *interior* X face between `cell(i, j, k)` and `cell(i+1, j, k)`
-      sits at `i_plane = i + 1`.
+    - X-normal faces (count `(nx+1)*ny*nz`): face at plane `i_plane`,
+      cell `(j, k)` → global index `i_plane * ny * nz + j * nz + k`.
+    - Y-normal faces (count `nx*(ny+1)*nz`, offset `n_x_faces`):
+      `n_x_faces + i * (ny+1) * nz + j_plane * nz + k`.
+    - Z-normal faces (count `nx*ny*(nz+1)`, offset `n_x_faces + n_y_faces`):
+      `n_x_faces + n_y_faces + i * ny * (nz+1) + j * (nz+1) + k_plane`.
 
-    * **Y-normal faces** (count `nx*(ny+1)*nz`, offset `n_x_faces`):
-      face at `(i, j_plane, k)` has group-local index
-      `i * (ny + 1) * nz + j_plane * nz + k`.
-      Interior Y face between `cell(i, j, k)` and `cell(i, j+1, k)`
-      sits at `j_plane = j + 1`.
+    Cell pairs that map to boundary or out-of-range faces are returned as
+    fault NNC pairs instead of being silently dropped.
 
-    * **Z-normal faces** (count `nx*ny*(nz+1)`, offset `n_x_faces + n_y_faces`):
-      face at `(i, j, k_plane)` has group-local index
-      `i * ny * (nz + 1) + j * (nz + 1) + k_plane`.
-      Interior Z face between `cell(i, j, k)` and `cell(i, j, k+1)`
-      sits at `k_plane = k + 1`.
-
-    Eclipse `X-` / `Y-` / `Z-` directions resolve to the same physical
-    face as `X` / `Y` / `Z` respectively (same shared face, opposite
-    normal direction).
-
-    :param fault_records: Sequence of
-        `bores.grids.factories.corner_point.FaultRecord`.
-    :param nx: Grid dimension in x.
-    :param ny: Grid dimension in y.
-    :param nz: Grid dimension in z.
-    :param n_x_faces: Total number of X-normal faces `(nx+1)*ny*nz`.
-    :param n_y_faces: Total number of Y-normal faces `nx*(ny+1)*nz`.
-    :returns: `{fault_name: int32 face index array}` mapping.
+    :param fault_records: Sequence of `FaultRecord`.
+    :param nx: Grid dimension x.
+    :param ny: Grid dimension y.
+    :param nz: Grid dimension z.
+    :param n_x_faces: Total X-normal face count.
+    :param n_y_faces: Total Y-normal face count.
+    :returns: Tuple `(fault_face_dict, fault_nnc_pairs)`.
     """
+    cell_stride_j = nx
+    cell_stride_k = nx * ny
+
     result: typing.Dict[str, typing.List[int]] = {}
+    fault_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
 
     for record in fault_records:
         face_dir = record.face_direction.upper()
@@ -255,43 +266,33 @@ def _resolve_fault_face_indices(
             warnings.warn(
                 f"Fault {record.name!r}: unrecognised face direction "
                 f"{record.face_direction!r}. "
-                f"Valid directions: {sorted(_VALID_FACE_DIRS)}. Skipping.",
+                f"Valid: {sorted(_VALID_FACE_DIRS)}. Skipping.",
                 stacklevel=4,
             )
             continue
 
         face_indices: typing.List[int] = []
-        n_missed = 0
 
-        # IJK ranges are 1-based inclusive in Eclipse convention.
         for k in range(record.k1 - 1, record.k2):
             for j in range(record.j1 - 1, record.j2):
                 for i in range(record.i1 - 1, record.i2):
                     face_idx: typing.Optional[int] = None
-
                     if face_dir in ("X", "X-"):
-                        # Face between cell(i, j, k) and cell(i+1, j, k).
-                        # Plane index = i + 1; must be in [1, nx-1] for interior.
                         i_plane = i + 1
-                        if 0 <= i < nx - 1 and 0 <= j < ny and 0 <= k < nz:
+                        is_interior = 0 <= i < nx - 1 and 0 <= j < ny and 0 <= k < nz
+                        if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
                             face_idx = i_plane * ny * nz + j * nz + k
-                        else:
-                            n_missed += 1
-                            continue
 
                     elif face_dir in ("Y", "Y-"):
-                        # Face between cell(i, j, k) and cell(i, j+1, k).
                         j_plane = j + 1
-                        if 0 <= i < nx and 0 <= j < ny - 1 and 0 <= k < nz:
+                        is_interior = 0 <= i < nx and 0 <= j < ny - 1 and 0 <= k < nz
+                        if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
                             face_idx = n_x_faces + i * (ny + 1) * nz + j_plane * nz + k
-                        else:
-                            n_missed += 1
-                            continue
 
                     else:  # Z, Z-
-                        # Face between cell(i, j, k) and cell(i, j, k+1).
                         k_plane = k + 1
-                        if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz - 1:
+                        is_interior = 0 <= i < nx and 0 <= j < ny and 0 <= k < nz - 1
+                        if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
                             face_idx = (
                                 n_x_faces
                                 + n_y_faces
@@ -299,21 +300,49 @@ def _resolve_fault_face_indices(
                                 + j * (nz + 1)
                                 + k_plane
                             )
-                        else:
-                            n_missed += 1
-                            continue
 
-                    if face_idx is not None:
-                        face_indices.append(face_idx)
+                    if face_idx is None:
+                        continue
 
-        if n_missed > 0:
-            warnings.warn(
-                f"Fault {record.name!r}: {n_missed} cell pair(s) in the IJK range "
-                f"I=[{record.i1},{record.i2}] J=[{record.j1},{record.j2}] "
-                f"K=[{record.k1},{record.k2}] "
-                f"could not be resolved (boundary or out-of-range). Skipped.",
-                stacklevel=4,
-            )
+                    if not is_interior:
+                        # Boundary face - no interior neighbour; record as fault derived NNC
+                        # if both cells exist within the grid extents.
+                        if (
+                            face_dir in ("X", "X-")
+                            and 0 <= i < nx
+                            and 0 <= j < ny
+                            and 0 <= k < nz
+                        ):
+                            nb_i = i + 1
+                            if 0 <= nb_i < nx:
+                                cell_a = i + j * cell_stride_j + k * cell_stride_k
+                                cell_b = nb_i + j * cell_stride_j + k * cell_stride_k
+                                fault_nnc_pairs.append((cell_a, cell_b))
+                        elif (
+                            face_dir in ("Y", "Y-")
+                            and 0 <= i < nx
+                            and 0 <= j < ny
+                            and 0 <= k < nz
+                        ):
+                            nb_j = j + 1
+                            if 0 <= nb_j < ny:
+                                cell_a = i + j * cell_stride_j + k * cell_stride_k
+                                cell_b = i + nb_j * cell_stride_j + k * cell_stride_k
+                                fault_nnc_pairs.append((cell_a, cell_b))
+                        elif (
+                            face_dir in ("Z", "Z-")
+                            and 0 <= i < nx
+                            and 0 <= j < ny
+                            and 0 <= k < nz
+                        ):
+                            nb_k = k + 1
+                            if 0 <= nb_k < nz:
+                                cell_a = i + j * cell_stride_j + k * cell_stride_k
+                                cell_b = i + j * cell_stride_j + nb_k * cell_stride_k
+                                fault_nnc_pairs.append((cell_a, cell_b))
+                        continue
+
+                    face_indices.append(face_idx)
 
         if face_indices:
             existing = result.get(record.name)
@@ -321,16 +350,14 @@ def _resolve_fault_face_indices(
                 existing.extend(face_indices)
             else:
                 result[record.name] = face_indices
-        elif n_missed == 0:
-            warnings.warn(
-                f"Fault {record.name!r} produced no resolvable face indices.",
-                stacklevel=4,
-            )
 
-    return {
-        name: np.unique(np.asarray(idxs, dtype=np.int32))
-        for name, idxs in result.items()
-    }
+    return (
+        {
+            name: np.unique(np.asarray(idxs, dtype=np.int32))
+            for name, idxs in result.items()
+        },
+        fault_nnc_pairs,
+    )
 
 
 def _resolve_spacing(
@@ -354,8 +381,8 @@ def _resolve_spacing(
     :param dx: Scalar or array x-spacing.
     :param dy: Scalar or array y-spacing.
     :param dz: Scalar or array z-spacing.
-    :returns: Tuple of three 1-D float64 spacing arrays `(dx, dy, dz)`.
-    :raises ValidationError: If counts cannot be determined or spacings ≤ 0.
+    :returns: Tuple of three 1-D float64 spacing arrays.
+    :raises ValidationError: If counts cannot be determined or spacings <= 0.
     """
 
     def _to_array(
@@ -376,8 +403,7 @@ def _resolve_spacing(
             )
         if np.any(arr <= 0.0):
             raise ValidationError(
-                f"All d{axis} values must be strictly positive; "
-                f"got min={arr.min():.6g}."
+                f"All d{axis} values must be strictly positive; got min={arr.min():.6g}."
             )
         return arr
 
@@ -407,17 +433,14 @@ def _build_vertex_coordinates(
     y_nodes = origin[1] + np.concatenate([[0.0], np.cumsum(dy)])
     z_nodes = origin[2] + np.concatenate([[0.0], np.cumsum(dz)])
 
-    # meshgrid with 'ij' indexing: shape (nx+1, ny+1, nz+1)
     xx, yy, zz = np.meshgrid(x_nodes, y_nodes, z_nodes, indexing="ij")
-    # Ravel in Fortran order to match vert_id(i,j,k) = i + j*(nx+1) + k*(nx+1)*(ny+1)
-    vertex_coordinates = np.column_stack(
+    return np.column_stack(
         [
             xx.ravel(order="F"),
             yy.ravel(order="F"),
             zz.ravel(order="F"),
         ]
     )
-    return vertex_coordinates
 
 
 def _build_face_arrays(
@@ -430,83 +453,54 @@ def _build_face_arrays(
     """
     Build face connectivity arrays for a structured Cartesian grid.
 
-    Uses closed-form index arithmetic (no Python loops) to build all
-    X-normal, Y-normal, and Z-normal faces simultaneously.
+    Face winding conventions (CCW from owner = lower-index side):
 
-    Face winding conventions (verified to give correct Newell normals):
-
-    * **X-normal faces** (normal = +x):
-      vertices `(i,j,k) -> (i,j+1,k) -> (i,j+1,k+1) -> (i,j,k+1)`
-    * **Y-normal faces** (normal = +y):
-      vertices `(i,j,k) -> (i,j,k+1) -> (i+1,j,k+1) -> (i+1,j,k)`
-    * **Z-normal faces** (normal = +z):
-      vertices `(i,j,k) -> (i+1,j,k) -> (i+1,j+1,k) -> (i,j+1,k)`
-
-    Owner is always the cell at the **lower** index in the face-normal
-    direction (or -1 for boundary faces).
+    - X-normal: `(i,j,k) → (i,j+1,k) → (i,j+1,k+1) → (i,j,k+1)`
+    - Y-normal: `(i,j,k) → (i,j,k+1) → (i+1,j,k+1) → (i+1,j,k)`
+    - Z-normal: `(i,j,k) → (i+1,j,k) → (i+1,j+1,k) → (i,j+1,k)`
 
     :param nx: Number of cells in x.
     :param ny: Number of cells in y.
     :param nz: Number of cells in z.
     :returns: Tuple `(face_vertex_indices, face_vertex_offsets, face_cell_indices)`.
     """
-    # Flat vertex index helper (matches _build_vertex_coordinates meshgrid order)
-    # vert_id(i,j,k) = i + j*(nx+1) + k*(nx+1)*(ny+1)
     stride_j = nx + 1
     stride_k = (nx + 1) * (ny + 1)
-
-    # Flat cell index helper
-    # cell_id(i,j,k) = i + j*nx + k*nx*ny
     cell_stride_j = nx
     cell_stride_k = nx * ny
 
     face_vertex_indices_parts: typing.List[npt.NDArray[np.int32]] = []
     face_cell_indices_parts: typing.List[npt.NDArray[np.int32]] = []
 
-    # X-normal faces: (nx+1) * ny * nz faces
-    # For plane i (i=0..nx): owner=cell(i-1,j,k), neighbour=cell(i,j,k)
-
     i_planes = np.arange(nx + 1, dtype=np.int32)
     j_cells = np.arange(ny, dtype=np.int32)
     k_cells = np.arange(nz, dtype=np.int32)
-
     ii_x, jj_x, kk_x = np.meshgrid(i_planes, j_cells, k_cells, indexing="ij")
     ii_x = ii_x.ravel()
     jj_x = jj_x.ravel()
     kk_x = kk_x.ravel()
 
-    # 4 vertices per X-face (CCW from owner = lower-i side):
-    # v0=(i,j,k)  v1=(i,j+1,k)  v2=(i,j+1,k+1)  v3=(i,j,k+1)
-    v0_x = ii_x * 1 + jj_x * stride_j + kk_x * stride_k
-    v1_x = ii_x * 1 + (jj_x + 1) * stride_j + kk_x * stride_k
-    v2_x = ii_x * 1 + (jj_x + 1) * stride_j + (kk_x + 1) * stride_k
-    v3_x = ii_x * 1 + jj_x * stride_j + (kk_x + 1) * stride_k
-
+    v0_x = ii_x + jj_x * stride_j + kk_x * stride_k
+    v1_x = ii_x + (jj_x + 1) * stride_j + kk_x * stride_k
+    v2_x = ii_x + (jj_x + 1) * stride_j + (kk_x + 1) * stride_k
+    v3_x = ii_x + jj_x * stride_j + (kk_x + 1) * stride_k
     nx_faces = len(ii_x)
-    x_face_verts = np.column_stack([v0_x, v1_x, v2_x, v3_x]).astype(np.int32)
-    face_vertex_indices_parts.append(x_face_verts.ravel())
-
+    face_vertex_indices_parts.append(
+        np.column_stack([v0_x, v1_x, v2_x, v3_x]).astype(np.int32).ravel()
+    )
     owner_x = np.where(
-        ii_x > 0,
-        (ii_x - 1) + jj_x * cell_stride_j + kk_x * cell_stride_k,
-        -1,
+        ii_x > 0, (ii_x - 1) + jj_x * cell_stride_j + kk_x * cell_stride_k, -1
     ).astype(np.int32)
     neighbour_x = np.where(
-        ii_x < nx,
-        ii_x + jj_x * cell_stride_j + kk_x * cell_stride_k,
-        -1,
+        ii_x < nx, ii_x + jj_x * cell_stride_j + kk_x * cell_stride_k, -1
     ).astype(np.int32)
     face_cell_indices_parts.append(
         np.column_stack([owner_x, neighbour_x]).astype(np.int32)
     )
 
-    # Y-normal faces: nx * (ny+1) * nz faces
-    # Winding (normal=+y): (i,j,k) -> (i,j,k+1) -> (i+1,j,k+1) -> (i+1,j,k)
-
     i_cells_y = np.arange(nx, dtype=np.int32)
     j_planes = np.arange(ny + 1, dtype=np.int32)
     k_cells_y = np.arange(nz, dtype=np.int32)
-
     ii_y, jj_y, kk_y = np.meshgrid(i_cells_y, j_planes, k_cells_y, indexing="ij")
     ii_y = ii_y.ravel()
     jj_y = jj_y.ravel()
@@ -516,31 +510,22 @@ def _build_face_arrays(
     v1_y = ii_y + jj_y * stride_j + (kk_y + 1) * stride_k
     v2_y = (ii_y + 1) + jj_y * stride_j + (kk_y + 1) * stride_k
     v3_y = (ii_y + 1) + jj_y * stride_j + kk_y * stride_k
-
-    y_face_verts = np.column_stack([v0_y, v1_y, v2_y, v3_y]).astype(np.int32)
-    face_vertex_indices_parts.append(y_face_verts.ravel())
-
+    face_vertex_indices_parts.append(
+        np.column_stack([v0_y, v1_y, v2_y, v3_y]).astype(np.int32).ravel()
+    )
     owner_y = np.where(
-        jj_y > 0,
-        ii_y + (jj_y - 1) * cell_stride_j + kk_y * cell_stride_k,
-        -1,
+        jj_y > 0, ii_y + (jj_y - 1) * cell_stride_j + kk_y * cell_stride_k, -1
     ).astype(np.int32)
     neighbour_y = np.where(
-        jj_y < ny,
-        ii_y + jj_y * cell_stride_j + kk_y * cell_stride_k,
-        -1,
+        jj_y < ny, ii_y + jj_y * cell_stride_j + kk_y * cell_stride_k, -1
     ).astype(np.int32)
     face_cell_indices_parts.append(
         np.column_stack([owner_y, neighbour_y]).astype(np.int32)
     )
 
-    # Z-normal faces: nx * ny * (nz+1) faces
-    # Winding (normal=+z): (i,j,k) -> (i+1,j,k) -> (i+1,j+1,k) -> (i,j+1,k)
-
     i_cells_z = np.arange(nx, dtype=np.int32)
     j_cells_z = np.arange(ny, dtype=np.int32)
     k_planes = np.arange(nz + 1, dtype=np.int32)
-
     ii_z, jj_z, kk_z = np.meshgrid(i_cells_z, j_cells_z, k_planes, indexing="ij")
     ii_z = ii_z.ravel()
     jj_z = jj_z.ravel()
@@ -550,25 +535,19 @@ def _build_face_arrays(
     v1_z = (ii_z + 1) + jj_z * stride_j + kk_z * stride_k
     v2_z = (ii_z + 1) + (jj_z + 1) * stride_j + kk_z * stride_k
     v3_z = ii_z + (jj_z + 1) * stride_j + kk_z * stride_k
-
-    z_face_verts = np.column_stack([v0_z, v1_z, v2_z, v3_z]).astype(np.int32)
-    face_vertex_indices_parts.append(z_face_verts.ravel())
-
+    face_vertex_indices_parts.append(
+        np.column_stack([v0_z, v1_z, v2_z, v3_z]).astype(np.int32).ravel()
+    )
     owner_z = np.where(
-        kk_z > 0,
-        ii_z + jj_z * cell_stride_j + (kk_z - 1) * cell_stride_k,
-        -1,
+        kk_z > 0, ii_z + jj_z * cell_stride_j + (kk_z - 1) * cell_stride_k, -1
     ).astype(np.int32)
     neighbour_z = np.where(
-        kk_z < nz,
-        ii_z + jj_z * cell_stride_j + kk_z * cell_stride_k,
-        -1,
+        kk_z < nz, ii_z + jj_z * cell_stride_j + kk_z * cell_stride_k, -1
     ).astype(np.int32)
     face_cell_indices_parts.append(
         np.column_stack([owner_z, neighbour_z]).astype(np.int32)
     )
 
-    # Concatenate all face parts
     all_face_vertices = np.concatenate(face_vertex_indices_parts)
     all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(np.int32)
 
