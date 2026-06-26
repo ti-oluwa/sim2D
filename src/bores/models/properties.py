@@ -1,5 +1,6 @@
-""" "Per-cell" properties definitions for a black-oil reservoir model."""
+"""Per-cell property definitions for a black-oil reservoir model."""
 
+import dataclasses
 import typing
 
 import attrs
@@ -15,6 +16,7 @@ from bores.typing import BooleanCellArray, CellArray, UnitSystem
 __all__ = [
     "FluidProperties",
     "HysteresisState",
+    "PVTCache",
     "RockPermeability",
     "RockProperties",
     "ReservoirState",
@@ -25,7 +27,7 @@ def _scale(arr: CellArray, factor: float) -> CellArray:
     """Return `arr * factor` as the same dtype; identity when factor == 1.0."""
     if factor == 1.0:
         return arr
-    return (arr * factor).astype(arr.dtype)
+    return typing.cast(CellArray, (arr * factor).astype(arr.dtype))
 
 
 def _scale_non_empty(arr: CellArray, fac: float) -> CellArray:
@@ -37,7 +39,7 @@ def _scale_and_offset(arr: CellArray, scale: float, offset: float) -> CellArray:
     """Return `arr * scale + offset` as the same dtype; identity when trivial."""
     if scale == 1.0 and offset == 0.0:
         return arr
-    return ((arr * scale) + offset).astype(arr.dtype)
+    return typing.cast(CellArray, ((arr * scale) + offset).astype(arr.dtype))
 
 
 @attrs.frozen(slots=True)
@@ -45,9 +47,9 @@ class RockPermeability(StoreSerializable):
     """
     Absolute permeability tensor stored as three orthogonal components.
 
-    If only `x` is supplied, the y and z components default to `x`
-    (isotropic assumption).  The geometric-mean `mean` is computed
-    automatically when not provided.
+    If only `x` is supplied, `y` and `z` default to `x` (isotropic
+    assumption). The geometric-mean `mean` is computed automatically when
+    not provided.
 
     Units follow the parent `RockProperties.unit_system`.
     """
@@ -93,11 +95,12 @@ class RockPermeability(StoreSerializable):
             if np.array_equal(self.x, self.y) and np.array_equal(self.x, self.z):
                 object.__setattr__(self, "mean", self.x)
             else:
-                geom = (self.x * self.y * self.z) ** (1.0 / 3.0)
-                object.__setattr__(self, "mean", geom)
+                object.__setattr__(
+                    self, "mean", (self.x * self.y * self.z) ** (1.0 / 3.0)
+                )
 
     def scale(self, factor: float) -> Self:
-        """Return a new instance with all components multiplied by factor."""
+        """Return a new instance with all components multiplied by *factor*."""
         if factor == 1.0:
             return self
         return self.__class__(
@@ -113,12 +116,17 @@ class RockProperties(StoreSerializable):
     """
     Static petrophysical properties of the reservoir rock.
 
-    These arrays are constant between simulation time steps.  They are
-    populated from GRDECL keywords: PORO, PERMX/Y/Z, NTG,
-    SWCON, SWCRIT, etc.
+    These arrays are constant between simulation time steps and are populated
+    from GRDECL keywords such as `PORO`, `PERMX/Y/Z`, `NTG`, `SWCON`,
+    `SWCRIT`, and `TEMPVD`.
+
+    `temperature` lives here because it is static in standard black-oil
+    (isothermal) simulations.  For thermal extensions it becomes spatially
+    varying but still does not change between Newton iterations; it is not
+    part of the primary variable set that the solver updates.
 
     All saturation arrays are dimensionless fractions in [0, 1].
-    Use convert(target) to rescale dimensional quantities to another
+    Use `convert(target)` to rescale dimensional quantities to another
     unit system.
     """
 
@@ -126,7 +134,7 @@ class RockProperties(StoreSerializable):
     """
     Shape (n_cells,) - pore volume fraction (dimensionless, [0, 1]).
 
-    Used to compute pore volume: PV = φ x NTG x Vcell.
+    Used to compute pore volume: PV = φ x NTG x V_cell.
     """
 
     absolute_permeability: RockPermeability
@@ -152,12 +160,28 @@ class RockProperties(StoreSerializable):
     Used in the pore-volume accumulation term: dPV/dP = PV · cr.
     """
 
+    temperature: CellArray
+    """
+    Shape (n_cells,) - reservoir temperature, one value per cell.
+
+    Units: °F (FIELD), °C (METRIC / LAB), K (SI).
+
+    For standard isothermal black-oil the array is uniform (a single
+    reservoir temperature broadcast across all cells).  For thermal
+    extensions the values vary spatially and are interpolated from the
+    `TEMPVD` keyword (temperature vs depth) at each cell centroid.
+
+    This quantity belongs on `RockProperties` rather than
+    `ReservoirState` because it is *not* a primary unknown - the solver
+    does not update it during Newton iterations.
+    """
+
     connate_water_saturation: CellArray
     """
     Shape (n_cells,) - connate (initial irreducible) water saturation
     (fraction).
 
-    Lower bound on water saturation; set at geological initial conditions.
+    Lower bound on water saturation; set from geological initial conditions.
     """
 
     irreducible_water_saturation: CellArray
@@ -165,13 +189,13 @@ class RockProperties(StoreSerializable):
     Shape (n_cells,) - irreducible water saturation during imbibition
     (fraction).
 
-    Equal to or greater than connate_water_saturation.
+    Equal to or greater than `connate_water_saturation`.
     """
 
     residual_oil_saturation_water_flood: CellArray
     """
     Shape (n_cells,) - residual oil saturation at end of water flooding
-    (Sor,w, fraction).
+    (Sor,w - fraction).
 
     Oil is immobile below this saturation during water-flood imbibition.
     """
@@ -179,7 +203,7 @@ class RockProperties(StoreSerializable):
     residual_oil_saturation_gas_flood: CellArray
     """
     Shape (n_cells,) - residual oil saturation at end of gas flooding
-    (Sor,g, fraction).
+    (Sor,g - fraction).
 
     Oil is immobile below this saturation during gas injection.
     """
@@ -195,7 +219,7 @@ class RockProperties(StoreSerializable):
     """
     Unit system in which all dimensional quantities on this object are expressed.
 
-    Dimensionless arrays (porosities, saturations, NTG) are unaffected by
+    Dimensionless arrays (porosity, NTG, saturations) are unaffected by
     unit conversion.
     """
 
@@ -208,13 +232,14 @@ class RockProperties(StoreSerializable):
     ) -> Self:
         """
         Return a new `RockProperties` with all dimensional quantities rescaled
-        to target.
+        to *target*.
 
         Dimensionless arrays (porosity, NTG, saturations) are copied unchanged.
         Conversion factors are sourced from `get_conversion_factors`.
 
         :param target: Desired `UnitSystem`.
-        :returns: New `RockProperties` in target units.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `RockProperties` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -226,7 +251,14 @@ class RockProperties(StoreSerializable):
                 factors["permeability"]
             ),
             net_to_gross=self.net_to_gross,
-            rock_compressibility=self.rock_compressibility * factors["compressibility"],
+            rock_compressibility=_scale(
+                self.rock_compressibility, factors["compressibility"]
+            ),
+            temperature=_scale_and_offset(
+                self.temperature,
+                factors["temperature_scale"],
+                factors["temperature_offset"],
+            ),
             connate_water_saturation=self.connate_water_saturation,
             irreducible_water_saturation=self.irreducible_water_saturation,
             residual_oil_saturation_water_flood=self.residual_oil_saturation_water_flood,
@@ -241,16 +273,17 @@ class FluidProperties(StoreSerializable):
     """
     Static PVT reference characterisation of the reservoir fluids.
 
-    Stores the per-fluid scalars that are read once from the PVT deck and do
-    not change between time steps.  Quantities that *do* vary with pressure
-    (FVFs, viscosities, densities, solution GOR, Rv, bubble-point,
-    dew-point, compressibilities) live in `ReservoirState`.
+    Stores the per-fluid scalars read once from the PVT deck that do not
+    change between time steps.  Quantities that *do* vary with pressure -
+    FVFs, viscosities, densities, Rs, Rv, Rsw, bubble-point and dew-point
+    pressures, z-factor, and compressibilities - live in `PVTCache` and
+    are recomputed from the PVT tables each Newton iteration.
 
     The split reflects the physical distinction between what fluids *are*
     (static characterisation, stored here) and what the current reservoir
-    *condition* looks like (dynamic state, stored in `ReservoirState`).
+    *condition* looks like (transient evaluation, stored in `PVTCache`).
 
-    Use convert(target) to rescale dimensional quantities to another
+    Use `convert(target)` to rescale dimensional quantities to another
     unit system.
     """
 
@@ -260,7 +293,7 @@ class FluidProperties(StoreSerializable):
     """
     Oil specific gravity relative to fresh water at 60 °F (dimensionless).
 
-    Constant for a given crude; typically 0.75-0.95.  Used to derive
+    Constant for a given crude; typically 0.75-0.95.  Used to derive the
     stock-tank oil density: ρ_o,STC = oil_specific_gravity x ρ_water_STC.
     """
 
@@ -268,15 +301,15 @@ class FluidProperties(StoreSerializable):
     """
     Oil API gravity (°API), computed as 141.5 / SG - 131.5.
 
-    Provided for convenience; redundant with oil_specific_gravity.
+    Provided for convenience; redundant with `oil_specific_gravity`.
     """
 
     oil_reference_fvf: float
     """
-    Oil formation volume factor at bubble-point (reference) pressure.
+    Oil formation volume factor at bubble-point (reference) pressure (Bo_ref).
 
     Units: bbl/STB (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
-    Used to initialise ReservoirState.oil_fvf.
+    Used to initialise `PVTCache.oil_fvf` before the first Newton iteration.
     """
 
     oil_reference_viscosity: float
@@ -284,8 +317,8 @@ class FluidProperties(StoreSerializable):
     Dead-oil viscosity at standard conditions.
 
     Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
-    Serves as the correlation reference; live-oil viscosity at reservoir
-    conditions is stored in `ReservoirState`.
+    Serves as the correlation reference value; live-oil viscosity at
+    reservoir conditions is evaluated in `PVTCache`.
     """
 
     oil_reference_compressibility: float
@@ -306,9 +339,19 @@ class FluidProperties(StoreSerializable):
     viscosity correlations (e.g. Batzle-Wang).  Typical seawater: 35 000 ppm.
     """
 
+    water_reference_pressure: float
+    """
+    Reference pressure at which `water_reference_fvf` and
+    `water_reference_compressibility` are defined.
+
+    This is the `PVTW` reference pressure (item 1).
+
+    Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
+    """
+
     water_reference_fvf: float
     """
-    Water formation volume factor at reference pressure.
+    Water formation volume factor at `water_reference_pressure` (Bw_ref).
 
     Units: bbl/STB (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
     Approximately 1.00-1.08 depending on salinity and temperature.
@@ -316,7 +359,7 @@ class FluidProperties(StoreSerializable):
 
     water_reference_viscosity: float
     """
-    Water viscosity at reference conditions.
+    Water viscosity at reference conditions (μw_ref).
 
     Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
     Approximately 0.3-1.0 cP at reservoir temperature.
@@ -324,23 +367,32 @@ class FluidProperties(StoreSerializable):
 
     water_reference_compressibility: float
     """
-    Water compressibility at reference pressure.
+    Water compressibility at `water_reference_pressure` (cw_ref).
 
     Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
     Typically 3-5 x 10⁻⁶ psi⁻¹.
     """
 
+    water_viscosibility: float = 0.0
+    """
+    Water viscosibility - rate of change of water viscosity with pressure
+    (d ln μw / dP), item 5 of the `PVTW` record.
+
+    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
+    Zero for incompressible-viscosity water (the common default).
+    """
+
     # Gas
 
-    reservoir_gas: str
+    reservoir_gas: str = "methane"
     """
     Name or identifier of the reservoir (or injected) gas
-    (e.g. "methane", "CO2").
+    (e.g. `"methane"`, `"CO2"`).
 
     Used to select z-factor correlations and for documentation.
     """
 
-    gas_gravity: float
+    gas_gravity: float = 0.6
     """
     Gas specific gravity relative to air (dimensionless).
 
@@ -349,31 +401,33 @@ class FluidProperties(StoreSerializable):
     viscosity.
     """
 
-    gas_molecular_weight: float
+    gas_molecular_weight: float = 16.04
     """
     Gas molecular weight (g/mol).
 
-    Methane: 16.04 g/mol; CO₂: 44.01 g/mol.  Should satisfy
-    MW ≈ 28.97 x gas_gravity.
+    Methane: 16.04 g/mol; CO₂: 44.01 g/mol.
+    Should satisfy MW ≈ 28.97 x gas_gravity.
     """
 
-    gas_reference_viscosity: float
+    gas_reference_viscosity: float = 0.012
     """
-    Gas viscosity at reference conditions.
+    Gas viscosity at reference (standard) conditions.
 
     Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
     Typically 0.01-0.03 cP at reservoir temperature.
     """
 
-    # Miscible / solvent
+    # Miscible / solvent (EOR)
 
     miscibility_model: str = "immiscible"
     """
     Miscibility model identifier.
 
-    "immiscible" for standard black-oil; "todd-longstaff" for first-
-    contact miscible EOR.  Controls how solvent concentration in the oil
-    phase is handled.
+    `"immiscible"` - standard black-oil.
+    `"todd-longstaff"` - first-contact miscible EOR.
+
+    Controls how solvent concentration in the oil phase is handled and which
+    mixing rules are applied for effective viscosity and density.
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -381,7 +435,7 @@ class FluidProperties(StoreSerializable):
     Unit system in which all dimensional quantities are expressed.
 
     Dimensionless fields (specific gravity, API, gas gravity, molecular
-    weight, miscibility model, reservoir_gas name) are unaffected by unit
+    weight, miscibility_model, reservoir_gas) are unaffected by unit
     conversion.
     """
 
@@ -394,13 +448,14 @@ class FluidProperties(StoreSerializable):
     ) -> Self:
         """
         Return a new `FluidProperties` with dimensional quantities rescaled to
-        target.
+        *target*.
 
         Dimensionless fields (gravities, API, molecular weight,
-        miscibility_model, reservoir_gas) are copied unchanged.
+        `miscibility_model`, `reservoir_gas`) are copied unchanged.
 
         :param target: Desired `UnitSystem`.
-        :returns: New `FluidProperties` in target units.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `FluidProperties` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -410,24 +465,197 @@ class FluidProperties(StoreSerializable):
             oil_specific_gravity=self.oil_specific_gravity,
             oil_api_gravity=self.oil_api_gravity,
             oil_reference_fvf=self.oil_reference_fvf * factors["liquid_fvf"],
-            oil_reference_viscosity=self.oil_reference_viscosity * factors["viscosity"],
+            oil_reference_viscosity=(
+                self.oil_reference_viscosity * factors["viscosity"]
+            ),
             oil_reference_compressibility=(
                 self.oil_reference_compressibility * factors["compressibility"]
             ),
-            water_salinity=self.water_salinity,  # ppm is dimensionless
+            water_salinity=self.water_salinity,
+            water_reference_pressure=(
+                self.water_reference_pressure * factors["pressure"]
+            ),
             water_reference_fvf=self.water_reference_fvf * factors["liquid_fvf"],
-            water_reference_viscosity=self.water_reference_viscosity
-            * factors["viscosity"],
+            water_reference_viscosity=(
+                self.water_reference_viscosity * factors["viscosity"]
+            ),
             water_reference_compressibility=(
                 self.water_reference_compressibility * factors["compressibility"]
             ),
+            water_viscosibility=self.water_viscosibility * factors["compressibility"],
             reservoir_gas=self.reservoir_gas,
             gas_gravity=self.gas_gravity,
             gas_molecular_weight=self.gas_molecular_weight,
-            gas_reference_viscosity=self.gas_reference_viscosity * factors["viscosity"],
+            gas_reference_viscosity=(
+                self.gas_reference_viscosity * factors["viscosity"]
+            ),
             miscibility_model=self.miscibility_model,
             unit_system=target,
         )
+
+
+@attrs.frozen(slots=True)
+class PVTCache:
+    """
+    Transient per-cell PVT quantities derived from pressure and the PVT tables.
+
+    Every field in this class is a function of the current `ReservoirState`
+    pressure (and optionally Rs, Rv, Rsw) evaluated against the parsed PVT
+    tables.  They are recomputed at the start of each Newton iteration and
+    discarded at the end of each time step.
+
+    **This class is deliberately not** `Serializable` **and not**
+    `StoreSerializable`. It must never be checkpointed, persisted, or
+    passed to `evolve_state`. If you need to write PVT quantities to an
+    output file for post-processing, compute them on demand from the stored
+    `ReservoirState` and the PVT tables at output time - exactly as Eclipse
+    does when it writes `DENO`, `DENG` etc. via `RPTRST`.
+
+    Use `bores.models.pvt.compute_pvt_cache` to construct an instance.
+
+    All arrays are shape `(n_cells,)` and indexed in the same order as
+    `Grid.cell_centroids`.  Units follow `ReservoirState.unit_system`.
+    """
+
+    oil_fvf: CellArray
+    """
+    Oil formation volume factor at reservoir pressure (Bo).
+
+    Units: bbl/STB (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
+    Interpolated from the Bo-pressure PVT table (`PVTO` saturated branch
+    or undersaturated correction above bubble point).
+    """
+
+    water_fvf: CellArray
+    """
+    Water formation volume factor at reservoir pressure (Bw).
+
+    Units: same as `oil_fvf`.
+    Evaluated from the `PVTW` table using the exponential FVF model:
+    Bw = Bw_ref x exp(-cw x (P - P_ref)).
+    """
+
+    gas_fvf: CellArray
+    """
+    Gas formation volume factor at reservoir pressure (Bg).
+
+    Units: ft³/scf (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
+    Derived from the real-gas law: Bg = (z · T / P) x (P_STC / T_STC).
+    """
+
+    oil_viscosity: CellArray
+    """
+    Live-oil viscosity at reservoir conditions (μo).
+
+    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
+    Interpolated from `PVTO` using the Beggs-Robinson or tabular method.
+    """
+
+    water_viscosity: CellArray
+    """
+    Water viscosity at reservoir conditions (μw).
+
+    Units: same as `oil_viscosity`.
+    Evaluated from the `PVTW` viscosibility model:
+    μw = μw_ref x exp(-cvw x (P - P_ref)).
+    """
+
+    gas_viscosity: CellArray
+    """
+    Free-gas viscosity at reservoir conditions (μg).
+
+    Units: same as `oil_viscosity`.  Typically 0.01-0.05 cP.
+    Evaluated via the Lee-Kesler / Carr-Kobayashi-Burrows correlations or
+    interpolated from `PVDG`.
+    """
+
+    oil_density: CellArray
+    """
+    Live-oil density at reservoir conditions (ρo).
+
+    Units: lbm/ft³ (FIELD), kg/m³ (METRIC / SI), g/cm³ (LAB).
+    Computed from stock-tank density and FVF:
+    ρo_res = (ρo_STC + Rs · ρg_STC) / Bo.
+    """
+
+    water_density: CellArray
+    """
+    Water density at reservoir conditions (ρw).
+
+    Units: same as `oil_density`.
+    Computed as: ρw_res = ρw_STC / Bw.
+    """
+
+    gas_density: CellArray
+    """
+    Free-gas density at reservoir conditions (ρg).
+
+    Units: same as `oil_density`.
+    Computed as: ρg_res = ρg_STC / Bg (for dry gas);
+    includes Rv correction for wet-gas / condensate:
+    ρg_res = (ρg_STC + Rv · ρo_STC) / Bg.
+    """
+
+    oil_compressibility: CellArray
+    """
+    Oil compressibility at current pressure (co).
+
+    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
+    Pressure-dependent; used in the undersaturated-oil accumulation term.
+    In the saturated region derived analytically from the Bo-Rs relationship:
+    co = (1/Bo) x dBo/dP - (1/Bo) x Rs x dRs/dP x Bg_sat.
+    """
+
+    water_compressibility: CellArray
+    """
+    Water compressibility at current pressure (cw).
+
+    Units: same as `oil_compressibility`.
+    Approximately 3-5 x 10⁻⁶ psi⁻¹ at reservoir conditions.
+    Sourced from item 3 of `PVTW` (constant with pressure in the standard
+    Eclipse black-oil water model).
+    """
+
+    gas_compressibility: CellArray
+    """
+    Gas compressibility at current pressure (cg).
+
+    Units: same as `oil_compressibility`.
+    For real gas: cg = 1/P - (1/z) x (dz/dP).
+    """
+
+    gas_compressibility_factor: CellArray
+    """
+    Real-gas z-factor (dimensionless).
+
+    Interpolated from the z-pressure table or computed via a correlation
+    (e.g. Pitzer-Curl, Hall-Yarborough, Dranchuk-Abou-Kassem).
+    Used in gas FVF: Bg = z · T / P x P_STC / T_STC, and in gas
+    compressibility: cg = 1/P - (1/z) x (dz/dP).
+    """
+
+    oil_effective_viscosity: CellArray = attrs.field(
+        factory=lambda: np.zeros(0, dtype=get_dtype())
+    )
+    """
+    Effective oil-solvent mixture viscosity (μo_eff).
+
+    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
+    Computed via the Todd-Longstaff mixing rule when
+    `ReservoirState.solvent_concentration` is non-zero; equals
+    `oil_viscosity` for immiscible flow.
+    Empty array for standard black-oil runs.
+    """
+
+    oil_effective_density: CellArray = attrs.field(
+        factory=lambda: np.zeros(0, dtype=get_dtype())
+    )
+    """
+    Effective oil-solvent mixture density (ρo_eff).
+
+    Units: same as `oil_density`.
+    Empty array for standard black-oil runs.
+    """
 
 
 @attrs.frozen(slots=True)
@@ -435,31 +663,54 @@ class ReservoirState(StoreSerializable):
     """
     Dynamic per-cell simulation state, updated at every time step.
 
-    This is the only property group that the solver mutates.  It holds:
+    This is the canonical state that the solver integrates forward in time.
+    It holds exactly the quantities that cannot be recomputed from static
+    data alone:
 
-    - Thermodynamic state (pressure, temperature).
-    - Phase saturations (oil, water, free gas).
-    - Component masses - the IMPES conserved quantities:
+    **Primary unknowns** (solved implicitly):
 
-      - oil_mass: oil component (liquid phase).
-      - water_mass: water component.
-      - free_gas_mass: gas component in the free-gas phase.
-      - dissolved_gas_mass_in_oil: gas dissolved in oil (Rs contribution).
-      - dissolved_gas_mass_in_water: gas dissolved in water (Rsw).
-      - vaporized_oil_mass_in_gas: oil vaporized in gas (Rv contribution).
+    - `pressure` - oil-phase reference pressure.
+    - `oil_saturation`, `water_saturation`, `gas_saturation` - phase
+      saturations (must sum to 1 in every cell).
+    - `solution_gor` (Rs) - gas dissolved in oil per unit stock-tank oil
+      volume.  *Primary variable in saturated cells* (Sg > 0); capped at
+      bubble-point Rs in undersaturated cells.
+    - `oil_bubble_point_pressure` - *primary variable in undersaturated oil
+      cells* (Sg = 0, Po < Pbub is not possible, so here Pbub tracks the
+      evolving bubble-point as the reservoir depletes below saturation
+      pressure).
+    - `vaporized_oil_ratio` (Rv) - stock-tank oil vaporized in gas per unit
+      standard gas volume.  Primary variable for volatile-oil / gas-condensate
+      models when So = 0.
+    - `water_bubble_point_pressure` - bubble-point pressure of the water
+      phase with respect to dissolved gas (Rsw).  Relevant for CO₂ or sour-gas
+      reservoirs where gas solubility in water is non-negligible.
+    - `gas_dew_point_pressure` - dew-point pressure of the gas phase; primary
+      variable in condensate models when So = 0.
+    - `gas_solubility_in_water` (Rsw) - gas dissolved in water per unit
+      stock-tank water volume.
 
-    - Pressure-dependent PVT quantities updated each Newton iteration:
-      FVFs, viscosities, densities, Rs, Rv, Rsw, bubble-point pressure,
-      dew-point pressure, z-factor, and per-phase compressibilities.
+    **Conserved component masses** (updated explicitly in IMPES):
 
-    All shape-(n_cells,) arrays are indexed in the same order as
-    Grid.cell_centroids.
+    - `oil_mass`, `water_mass`, `free_gas_mass`
+    - `dissolved_gas_mass_in_oil`, `dissolved_gas_mass_in_water`
+    - `vaporized_oil_mass_in_gas`
 
-    Use convert(target) to rescale to another unit system, or
-    evolve(**kwargs) to produce a new state with selected fields replaced.
+    **What is NOT here** (see `PVTCache`):
+
+    FVFs, viscosities, densities, z-factor, and compressibilities are all
+    derived from `pressure`, `solution_gor`, `vaporized_oil_ratio`,
+    and the PVT tables.  They are evaluated transiently each Newton iteration
+    and never checkpointed.  This mirrors how Eclipse manages its restart
+    files: only primary variables are written to `.UNRST`; everything else
+    is recomputed on load.
+
+    **Temperature** lives on `RockProperties.temperature` because it is a
+    static field (not a solver unknown) in standard isothermal black-oil.
+
+    Use `convert(target)` to rescale to another unit system, or
+    `evolve(**kwargs)` to produce a new state with selected fields replaced.
     """
-
-    # Thermodynamic state
 
     pressure: CellArray
     """
@@ -468,159 +719,30 @@ class ReservoirState(StoreSerializable):
     Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
     Primary implicit unknown in the IMPES pressure equation.
     Phase pressures for water and gas are recovered via capillary pressure:
-    Pw = Po - Pcow, Pg = Po + Pcgo.
+    Pw = Po - Pcow,  Pg = Po + Pcgo.
     """
-
-    temperature: CellArray
-    """
-    Shape (n_cells,) - reservoir temperature.
-
-    Units: °F (FIELD), °C (METRIC / LAB), K (SI).
-    Constant for isothermal simulation; spatially varying for thermal models.
-    """
-
-    # Saturations
 
     oil_saturation: CellArray
     """
     Shape (n_cells,) - oil-phase saturation (fraction, [0, 1]).
 
-    Updated explicitly in IMPES.
+    Derived as So = 1 - Sw - Sg after updating Sw and Sg.
     Must satisfy So + Sw + Sg = 1 in every cell.
     """
 
     water_saturation: CellArray
-    """Shape (n_cells,) - water-phase saturation (fraction, [0, 1])."""
+    """
+    Shape (n_cells,) - water-phase saturation (fraction, [0, 1]).
+
+    Updated explicitly in the IMPES saturation step.
+    """
 
     gas_saturation: CellArray
     """
     Shape (n_cells,) - free gas-phase saturation (fraction, [0, 1]).
 
     Includes only free (non-dissolved, non-vaporized) gas.
-    """
-
-    # Component masses
-
-    oil_mass: CellArray
-    """
-    Shape (n_cells,) - oil-component mass in each cell.
-
-    Units: lbm (FIELD), kg (METRIC / SI), g (LAB).
-    Conserved quantity in the oil component material balance.
-    Includes only the liquid oil; vaporized oil in gas is tracked separately
-    in vaporized_oil_mass_in_gas.
-    """
-
-    water_mass: CellArray
-    """
-    Shape (n_cells,) - water-component mass in each cell.
-
-    Units: same as oil_mass.
-    """
-
-    free_gas_mass: CellArray
-    """
-    Shape (n_cells,) - free gas-component mass in each cell.
-
-    Units: same as oil_mass.
-    The total gas material balance is
-    free_gas_mass + dissolved_gas_mass_in_oil + dissolved_gas_mass_in_water.
-    """
-
-    dissolved_gas_mass_in_oil: CellArray
-    """
-    Shape (n_cells,) - gas dissolved in the oil phase (lbm / kg / g).
-
-    Equal to Rs x oil_mass x (ρ_g,STC / ρ_o,STC) at standard conditions.
-    Tracked separately so the gas material balance can be assembled without
-    recomputing Rs at every cell.
-    """
-
-    dissolved_gas_mass_in_water: CellArray
-    """
-    Shape (n_cells,) - gas dissolved in the water phase (lbm / kg / g).
-
-    Non-negligible for CO₂ injection or sour-gas reservoirs (Rsw > 0).
-    """
-
-    vaporized_oil_mass_in_gas: CellArray
-    """
-    Shape (n_cells,) - oil (condensate) vaporized in the gas phase
-    (lbm / kg / g).
-
-    Equal to Rv x free_gas_mass x (ρ_o,STC / ρ_g,STC) at standard
-    conditions.  Part of the *oil* component material balance, not the gas
-    balance.  Zero for standard dry-gas black-oil models; required for
-    volatile-oil and gas-condensate simulations.
-    """
-
-    # Pressure-dependent PVT (updated each Newton iteration)
-
-    oil_fvf: CellArray
-    """
-    Shape (n_cells,) - oil formation volume factor at reservoir pressure.
-
-    Units: bbl/STB (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
-    Interpolated from the Bo-pressure PVT table.
-    """
-
-    water_fvf: CellArray
-    """
-    Shape (n_cells,) - water formation volume factor at reservoir pressure.
-
-    Units: same as oil_fvf.  Typically close to 1.0.
-    """
-
-    gas_fvf: CellArray
-    """
-    Shape (n_cells,) - gas formation volume factor at reservoir pressure.
-
-    Units: ft³/scf (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
-    Derived from the real-gas law: Bg = (z·T/P) x (P_STC/T_STC).
-    """
-
-    oil_viscosity: CellArray
-    """
-    Shape (n_cells,) - live-oil viscosity at reservoir conditions.
-
-    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
-    """
-
-    water_viscosity: CellArray
-    """
-    Shape (n_cells,) - water viscosity at reservoir conditions.
-
-    Units: same as oil_viscosity.
-    """
-
-    gas_viscosity: CellArray
-    """
-    Shape (n_cells,) - free-gas viscosity at reservoir conditions.
-
-    Units: same as oil_viscosity.  Typically 0.01-0.05 cP.
-    """
-
-    oil_density: CellArray
-    """
-    Shape (n_cells,) - live-oil density at reservoir conditions.
-
-    Units: lbm/ft³ (FIELD), kg/m³ (METRIC / SI), g/cm³ (LAB).
-    Computed from stock-tank density and FVF:
-    ρo_res = (ρo_STC + Rs·ρg_STC) / Bo.
-    """
-
-    water_density: CellArray
-    """
-    Shape (n_cells,) - water density at reservoir conditions.
-
-    Units: same as oil_density.
-    """
-
-    gas_density: CellArray
-    """
-    Shape (n_cells,) - free-gas density at reservoir conditions.
-
-    Units: same as oil_density.
+    Updated explicitly in the IMPES saturation step.
     """
 
     solution_gor: CellArray
@@ -628,8 +750,29 @@ class ReservoirState(StoreSerializable):
     Shape (n_cells,) - solution gas-to-oil ratio (Rs).
 
     Units: scf/STB (FIELD), sm³/sm³ (METRIC / SI), scc/scc (LAB).
+
     Gas dissolved in oil per unit stock-tank oil volume at current pressure.
-    Capped at the bubble-point value when the cell is above bubble point.
+
+    *Primary variable in saturated cells* (Sg > 0): updated by the solver.
+    *In undersaturated cells* (Sg = 0): fixed at the bubble-point value
+    corresponding to `oil_bubble_point_pressure`; not independently solved.
+    """
+
+    oil_bubble_point_pressure: CellArray
+    """
+    Shape (n_cells,) - bubble-point pressure of the oil phase (Pbub).
+
+    Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
+
+    *In saturated cells* (Sg > 0): computed from Rs via the PVT table - not
+    a stored primary variable; could be derived from `solution_gor`.
+
+    *In undersaturated cells* (Sg = 0): this IS a primary variable, tracking
+    the evolving bubble-point as the reservoir depletes while remaining single-
+    phase.  Must be stored and checkpointed in this regime.
+
+    The two-regime handling is the same saturated/undersaturated switching
+    used by Eclipse E100 (PBPD switching logic).
     """
 
     vaporized_oil_ratio: CellArray
@@ -637,70 +780,114 @@ class ReservoirState(StoreSerializable):
     Shape (n_cells,) - vaporized oil ratio (Rv).
 
     Units: STB/Mscf (FIELD), sm³/sm³ (METRIC / SI), scc/scc (LAB).
+
     Stock-tank oil vaporized in gas per unit standard gas volume.
-    Non-zero only for volatile-oil and gas-condensate reservoirs; set to
-    all-zeros for standard black-oil.
+
+    Non-zero only for volatile-oil and gas-condensate reservoirs.
+    Set to all-zeros for standard dry-gas black-oil.
+    """
+
+    gas_dew_point_pressure: CellArray
+    """
+    Shape (n_cells,) - dew-point pressure of the gas phase (Pdew).
+
+    Units: same as `oil_bubble_point_pressure`.
+
+    Analogous to `oil_bubble_point_pressure` but for the gas phase in
+    volatile-oil / gas-condensate models:
+
+    *In two-phase cells* (So > 0): derived from Rv via the PVT table.
+    *In single-phase gas cells* (So = 0): primary variable, tracking the
+    evolving dew-point as the condensate reservoir depletes.
+
+    Set to all-zeros for standard black-oil.
     """
 
     gas_solubility_in_water: CellArray
     """
     Shape (n_cells,) - gas solubility in water (Rsw).
 
-    Units: same as solution_gor.
-    Non-negligible for CO₂ or sour-gas injection scenarios.
+    Units: same as `solution_gor`.
+
+    Non-negligible for CO₂ or sour-gas injection scenarios; zero for
+    standard black-oil with no dissolved gas in the water phase.
     """
 
-    oil_bubble_point_pressure: CellArray
+    water_bubble_point_pressure: CellArray
     """
-    Shape (n_cells,) - bubble-point pressure of the oil phase.
+    Shape (n_cells,) - bubble-point pressure of the water phase with respect
+    to dissolved gas (Pbub,w).
 
-    Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
-    Used to select between saturated and undersaturated oil PVT branches.
-    """
+    Units: same as `oil_bubble_point_pressure`.
 
-    gas_dew_point_pressure: CellArray
-    """
-    Shape (n_cells,) - dew-point pressure of the gas phase.
+    Tracks the pressure at which dissolved gas (Rsw) begins to exsolve from
+    water.  Relevant for CO₂ or sour-gas reservoirs.  In the undersaturated
+    water regime (no free gas exsolving from water), this is a primary
+    variable analogous to `oil_bubble_point_pressure`.
 
-    Units: same as oil_bubble_point_pressure.
-    Used in volatile-oil / gas-condensate models to select the gas PVT
-    branch.  Set to all-zeros for standard black-oil.
+    Set to all-zeros for standard black-oil with Rsw = 0.
     """
 
-    gas_compressibility_factor: CellArray
+    oil_mass: CellArray
     """
-    Shape (n_cells,) - real-gas z-factor (dimensionless).
+    Shape (n_cells,) - oil-component mass in each cell.
 
-    Interpolated from the z-pressure table or computed via a correlation
-    (e.g. Pitzer-Curl, Hall-Yarborough).
-    Used in gas FVF: Bg = z·T/P x P_STC/T_STC.
-    """
+    Units: lbm (FIELD), kg (METRIC / SI), g (LAB).
 
-    oil_compressibility: CellArray
-    """
-    Shape (n_cells,) - oil compressibility at current pressure.
-
-    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
-    Pressure-dependent; used in the undersaturated-oil accumulation term.
+    Conserved quantity in the oil-component material balance.
+    Tracks only the liquid oil phase; vaporized oil in gas is accumulated
+    separately in `vaporized_oil_mass_in_gas`.
     """
 
-    water_compressibility: CellArray
+    water_mass: CellArray
     """
-    Shape (n_cells,) - water compressibility at current pressure.
+    Shape (n_cells,) - water-component mass in each cell.
 
-    Units: same as oil_compressibility.
-    Approximately 3-5 x 10⁻⁶ psi⁻¹ at reservoir conditions.
-    """
-
-    gas_compressibility: CellArray
-    """
-    Shape (n_cells,) - gas compressibility at current pressure.
-
-    Units: same as oil_compressibility.
-    For real gas: cg = 1/P - (1/z)(dz/dP).
+    Units: same as `oil_mass`.
     """
 
-    # Miscible / solvent (EOR)
+    free_gas_mass: CellArray
+    """
+    Shape (n_cells,) - free gas-component mass in each cell.
+
+    Units: same as `oil_mass`.
+
+    The total gas material balance is:
+    free_gas_mass + dissolved_gas_mass_in_oil + dissolved_gas_mass_in_water.
+    """
+
+    dissolved_gas_mass_in_oil: CellArray
+    """
+    Shape (n_cells,) - gas dissolved in the oil phase.
+
+    Units: same as `oil_mass`.
+
+    Equal to Rs x oil_mass x (ρg_STC / ρo_STC) at standard conditions.
+    Tracked separately so the gas material balance can be assembled without
+    recomputing Rs at every cell.
+    """
+
+    dissolved_gas_mass_in_water: CellArray
+    """
+    Shape (n_cells,) - gas dissolved in the water phase.
+
+    Units: same as `oil_mass`.
+
+    Non-negligible for CO₂ injection or sour-gas reservoirs (Rsw > 0).
+    Zero for standard black-oil.
+    """
+
+    vaporized_oil_mass_in_gas: CellArray
+    """
+    Shape (n_cells,) - oil (condensate) vaporized in the gas phase.
+
+    Units: same as `oil_mass`.
+
+    Equal to Rv x free_gas_mass x (ρo_STC / ρg_STC) at standard conditions.
+    Part of the *oil-component* material balance, not the gas balance.
+    Zero for standard dry-gas black-oil; required for volatile-oil and
+    gas-condensate simulations.
+    """
 
     solvent_concentration: CellArray = attrs.field(
         factory=lambda: np.zeros(0, dtype=get_dtype())
@@ -709,37 +896,16 @@ class ReservoirState(StoreSerializable):
     Shape (n_cells,) - solvent volume fraction in the oil-phase mixture
     (dimensionless, [0, 1]).
 
-    0 = pure oil; 1 = pure solvent.  Populated only for Todd-Longstaff
-    or similar EOR miscibility models.  Defaults to empty (i.e. no solvent)
-    for standard black-oil.
-    """
-
-    oil_effective_viscosity: CellArray = attrs.field(
-        factory=lambda: np.zeros(0, dtype=get_dtype())
-    )
-    """
-    Shape (n_cells,) - effective oil-solvent mixture viscosity.
-
-    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
-    Computed via the Todd-Longstaff mixing rule when solvent_concentration
-    is non-zero; equals oil_viscosity for immiscible flow.
-    Empty for standard black-oil runs.
-    """
-
-    oil_effective_density: CellArray = attrs.field(
-        factory=lambda: np.zeros(0, dtype=get_dtype())
-    )
-    """
-    Shape (n_cells,) - effective oil-solvent mixture density.
-
-    Units: same as oil_density.  Empty for standard black-oil runs.
+    0 = pure oil; 1 = pure solvent.  Populated only for Todd-Longstaff or
+    similar EOR miscibility models.  Defaults to an empty array for standard
+    black-oil (zero memory cost).
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
     """
     Unit system in which all dimensional quantities are expressed.
 
-    Use convert(target) to produce a rescaled copy.
+    Use `convert(target)` to produce a rescaled copy.
     """
 
     @property
@@ -747,11 +913,11 @@ class ReservoirState(StoreSerializable):
         """
         Shape (n_cells,) - total gas-component mass per cell.
 
-        m_g = free_gas_mass + dissolved_gas_mass_in_oil
-              + dissolved_gas_mass_in_water
+        m_g,total = free_gas_mass + dissolved_gas_mass_in_oil
+                    + dissolved_gas_mass_in_water
 
-        This is the conserved quantity in the gas component material balance.
-        Note: vaporized_oil_mass_in_gas is part of the *oil* component
+        This is the conserved quantity in the gas-component material balance.
+        Note that `vaporized_oil_mass_in_gas` belongs to the *oil* component
         balance, not the gas balance.
         """
         return typing.cast(
@@ -766,10 +932,10 @@ class ReservoirState(StoreSerializable):
         """
         Shape (n_cells,) - total oil-component mass per cell.
 
-        m_o = oil_mass + vaporized_oil_mass_in_gas
+        m_o,total = oil_mass + vaporized_oil_mass_in_gas
 
-        The conserved quantity in the oil component material balance for
-        volatile-oil / gas-condensate models.
+        This is the conserved quantity in the oil-component material balance
+        for volatile-oil / gas-condensate models.
         """
         return typing.cast(CellArray, self.oil_mass + self.vaporized_oil_mass_in_gas)
 
@@ -777,11 +943,10 @@ class ReservoirState(StoreSerializable):
         """
         Return a new `ReservoirState` with selected fields replaced.
 
-        All fields not present in kwargs are carried forward from self
-        unchanged. Preferred solver pattern:
+        All fields not present in *kwargs* are carried forward unchanged.
+        Preferred solver pattern:
 
         ```python
-
         new_state = state.evolve(
             pressure=new_p,
             oil_saturation=new_so,
@@ -792,7 +957,7 @@ class ReservoirState(StoreSerializable):
         )
         ```
 
-        :param kwargs: Field names and replacement values.
+        :param kwargs: Field names and their replacement values.
         :returns: New immutable `ReservoirState`.
         :raises TypeError: If an unknown field name is passed.
         """
@@ -807,35 +972,38 @@ class ReservoirState(StoreSerializable):
     ) -> Self:
         """
         Return a new `ReservoirState` with all dimensional quantities rescaled
-        to target.
+        to *target*.
 
-        Dimensionless fields (saturations, z-factor, solvent concentration)
-        are copied unchanged.
-
-        Mass unit: derived as density_factor x length_factor³, e.g.
-        lbm -> kg uses 16.0185 x 0.3048³ ≈ 0.4536.
-
-        Temperature uses the affine map from `get_conversion_factors`:
-        T_to = T_from * scale + offset.
+        Dimensionless fields (saturations, `solvent_concentration`) are
+        copied unchanged.  Rs, Rv, and Rsw are scaled by the GOR factor.
+        Pressures use the pressure factor.  Masses use the combined density x
+        length³ factor.
 
         :param target: Desired `UnitSystem`.
-        :returns: New `ReservoirState` in target units.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `ReservoirState` in *target* units.
         """
         if target == self.unit_system:
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        mass_factor = factors["density"] * (factors["length"] ** 3)
+        mass_factor: float = factors["density"] * (factors["length"] ** 3)
+        p_factor: float = factors["pressure"]
+        gor_factor: float = factors["gor"]
+
         return self.__class__(
-            pressure=_scale(self.pressure, factors["pressure"]),
-            temperature=_scale_and_offset(
-                self.temperature,
-                factors["temperature_scale"],
-                factors["temperature_offset"],
-            ),
+            pressure=_scale(self.pressure, p_factor),
             oil_saturation=self.oil_saturation,
             water_saturation=self.water_saturation,
             gas_saturation=self.gas_saturation,
+            solution_gor=_scale(self.solution_gor, gor_factor),
+            oil_bubble_point_pressure=_scale(self.oil_bubble_point_pressure, p_factor),
+            vaporized_oil_ratio=_scale(self.vaporized_oil_ratio, gor_factor),
+            gas_dew_point_pressure=_scale(self.gas_dew_point_pressure, p_factor),
+            gas_solubility_in_water=_scale(self.gas_solubility_in_water, gor_factor),
+            water_bubble_point_pressure=_scale(
+                self.water_bubble_point_pressure, p_factor
+            ),
             oil_mass=_scale(self.oil_mass, mass_factor),
             water_mass=_scale(self.water_mass, mass_factor),
             free_gas_mass=_scale(self.free_gas_mass, mass_factor),
@@ -848,43 +1016,7 @@ class ReservoirState(StoreSerializable):
             vaporized_oil_mass_in_gas=_scale(
                 self.vaporized_oil_mass_in_gas, mass_factor
             ),
-            oil_fvf=_scale(self.oil_fvf, factors["liquid_fvf"]),
-            water_fvf=_scale(self.water_fvf, factors["liquid_fvf"]),
-            gas_fvf=_scale(self.gas_fvf, factors["gaseous_fvf"]),
-            oil_viscosity=_scale(self.oil_viscosity, factors["viscosity"]),
-            water_viscosity=_scale(self.water_viscosity, factors["viscosity"]),
-            gas_viscosity=_scale(self.gas_viscosity, factors["viscosity"]),
-            oil_density=_scale(self.oil_density, factors["density"]),
-            water_density=_scale(self.water_density, factors["density"]),
-            gas_density=_scale(self.gas_density, factors["density"]),
-            solution_gor=_scale(self.solution_gor, factors["gor"]),
-            vaporized_oil_ratio=_scale(self.vaporized_oil_ratio, factors["gor"]),
-            gas_solubility_in_water=_scale(
-                self.gas_solubility_in_water, factors["gor"]
-            ),
-            oil_bubble_point_pressure=_scale(
-                self.oil_bubble_point_pressure, factors["pressure"]
-            ),
-            gas_dew_point_pressure=_scale(
-                self.gas_dew_point_pressure, factors["pressure"]
-            ),
-            gas_compressibility_factor=self.gas_compressibility_factor,
-            oil_compressibility=_scale(
-                self.oil_compressibility, factors["compressibility"]
-            ),
-            water_compressibility=_scale(
-                self.water_compressibility, factors["compressibility"]
-            ),
-            gas_compressibility=_scale(
-                self.gas_compressibility, factors["compressibility"]
-            ),
             solvent_concentration=self.solvent_concentration,
-            oil_effective_viscosity=_scale_non_empty(
-                self.oil_effective_viscosity, factors["viscosity"]
-            ),
-            oil_effective_density=_scale_non_empty(
-                self.oil_effective_density, factors["density"]
-            ),
             unit_system=target,
         )
 
@@ -896,18 +1028,18 @@ class HysteresisState(StoreSerializable):
 
     Maintains historical saturation extrema and displacement-regime flags
     required to compute effective residual saturations on the scanning curves.
-    These are consumed inside relative permeability and capillary pressure
-    evaluation routines - the flow solver does not interpret them directly.
+    These are consumed inside relative-permeability and capillary-pressure
+    evaluation routines; the flow solver does not interpret them directly.
 
-    Kept separate from `ReservoirState` so that simulations without hysteresis
-    pay zero memory cost.  All arrays are dimensionless (saturations, flags)
-    and therefore require no unit conversion.
+    Kept separate from `ReservoirState` so that simulations without
+    hysteresis pay zero memory cost.  All arrays are dimensionless (saturations,
+    flags) and therefore require no unit conversion.
     """
 
     max_water_saturation: CellArray
     """
-    Shape (n_cells,) - historical maximum water saturation reached in
-    each cell (fraction).
+    Shape (n_cells,) - historical maximum water saturation reached in each
+    cell (fraction).
 
     Initialised to the initial water saturation.  Updated whenever the
     current water saturation exceeds the stored maximum.  Determines the
@@ -916,24 +1048,24 @@ class HysteresisState(StoreSerializable):
 
     max_gas_saturation: CellArray
     """
-    Shape (n_cells,) - historical maximum gas saturation reached in
-    each cell (fraction).
+    Shape (n_cells,) - historical maximum gas saturation reached in each
+    cell (fraction).
 
-    Analogous to max_water_saturation for the gas phase.
+    Analogous to `max_water_saturation` for the gas phase.
     """
 
     water_imbibition_flag: BooleanCellArray
     """
-    Shape (n_cells,) - True if the current water-phase displacement is
-    imbibition (water saturation increasing toward max_water_saturation).
+    Shape (n_cells,) - `True` if the current water-phase displacement is
+    imbibition (water saturation increasing toward `max_water_saturation`).
 
-    False indicates drainage (water saturation decreasing).
+    `False` indicates drainage (water saturation decreasing).
     """
 
     gas_imbibition_flag: BooleanCellArray
     """
-    Shape (n_cells,) - True if the current gas-phase displacement is
-    imbibition (gas saturation decreasing, i.e. water or liquid displacing gas).
+    Shape (n_cells,) - `True` if the current gas-phase displacement is
+    imbibition (gas saturation decreasing - water or liquid displacing gas).
     """
 
     water_reversal_saturation: CellArray
@@ -950,12 +1082,14 @@ class HysteresisState(StoreSerializable):
     Shape (n_cells,) - gas saturation at the most recent reversal point
     (fraction).
 
-    Analogous to water_reversal_saturation for the gas phase.
+    Analogous to `water_reversal_saturation` for the gas phase.
     """
 
     @classmethod
     def from_initial_saturations(
-        cls, water_saturation: npt.ArrayLike, gas_saturation: npt.ArrayLike
+        cls,
+        water_saturation: npt.ArrayLike,
+        gas_saturation: npt.ArrayLike,
     ) -> Self:
         """
         Construct a `HysteresisState` from initial saturation arrays.
@@ -966,8 +1100,8 @@ class HysteresisState(StoreSerializable):
 
         :param water_saturation: Array-like (n_cells,) - initial water
             saturation per cell (fraction).
-        :param gas_saturation: Array-like (n_cells,) - initial gas
-            saturation per cell (fraction).
+        :param gas_saturation: Array-like (n_cells,) - initial gas saturation
+            per cell (fraction).
         :returns: Initialised `HysteresisState`.
         """
         sw = np.asarray(water_saturation, dtype=get_dtype())
@@ -975,8 +1109,8 @@ class HysteresisState(StoreSerializable):
         return cls(
             max_water_saturation=sw.copy(),
             max_gas_saturation=sg.copy(),
-            water_imbibition_flag=np.zeros(sw.shape, dtype=np.bool_),  # type: ignore
-            gas_imbibition_flag=np.zeros(sg.shape, dtype=np.bool_),  # type: ignore
+            water_imbibition_flag=np.zeros(sw.shape, dtype=np.bool_),  # type: ignore[arg-type]
+            gas_imbibition_flag=np.zeros(sg.shape, dtype=np.bool_),  # type: ignore[arg-type]
             water_reversal_saturation=sw.copy(),
             gas_reversal_saturation=sg.copy(),
         )
@@ -985,7 +1119,7 @@ class HysteresisState(StoreSerializable):
         """
         Return a new `HysteresisState` with selected fields replaced.
 
-        :param kwargs: Field names and replacement values.
+        :param kwargs: Field names and their replacement values.
         :returns: New immutable `HysteresisState`.
         """
         return attrs.evolve(self, **kwargs)
