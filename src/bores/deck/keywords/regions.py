@@ -22,6 +22,7 @@ Keywords:
 
 All keywords default to `1` (first table) when absent.
 """
+
 import numpy as np
 
 from bores.deck.keywords.base import GridArrayKeyword

@@ -13,11 +13,11 @@ from bores.correlations.arrays import (
     compute_gas_solubility_in_water,
     compute_gas_to_oil_ratio,
 )
-from bores.correlations.core import compute_harmonic_mean
+from bores.correlations.scalars import compute_harmonic_mean
 from bores.errors import PreconditionerError, SolverError
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids, RelPermGrids
 from bores.grids.rock_fluid import build_three_phase_relative_mobilities_grids
-from bores.models import FluidProperties, RockProperties
+from bores.model import FluidProperties, RockProperties
 from bores.rock_fluid.relperm import RelPermEndpoints
 from bores.solvers.base import (
     Solution,

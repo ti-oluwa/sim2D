@@ -1,6 +1,5 @@
 """BORES-specific error classes."""
 
-
 __all__ = [
     "BORESError",
     "ComputationError",

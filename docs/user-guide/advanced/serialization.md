@@ -289,7 +289,7 @@ The `to_file()` method saves any serializable object to a file. The `from_file()
 
 ```python
 import bores
-from bores.models import ReservoirModel
+from bores.model import ReservoirModel
 
 # Save a model to HDF5
 model.to_file("my_model.h5")
@@ -343,7 +343,7 @@ Reservoir models contain large arrays (porosity, permeability, saturations), so 
 model.to_file("reservoir_model.h5")
 
 # Load model
-from bores.models import ReservoirModel
+from bores.model import ReservoirModel
 loaded_model = ReservoirModel.from_file("reservoir_model.h5")
 ```
 

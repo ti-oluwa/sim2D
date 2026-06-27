@@ -1,4 +1,4 @@
-"""Relative permeability models and mixing rules for multi-phase flow simulations."""
+"""Relative permeability models, tables and mixing rules for multi-phase flow simulations."""
 
 import threading
 import typing
@@ -13,16 +13,16 @@ from scipy.interpolate import PchipInterpolator
 
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.grids.base import array as bores_array
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
-from bores.tables.utils import build_pchip_interpolant
+from bores.tables.rock_fluid.utils import build_pchip_interpolant
 from bores.typing import (
     FluidPhase,
     MixingRuleDFunc,
     MixingRuleFunc,
     MixingRulePartialDerivatives,
+    NDimension,
     NumberOrArray,
     RelativePermeabilities,
     RelativePermeabilityDerivatives,
@@ -30,12 +30,13 @@ from bores.typing import (
     T,
     Wettability,
 )
+from bores.utils import array as bores_array
 from bores.utils import is_scalar_like
 
 __all__ = [
-    "BrooksCoreyRelPermModel",
+    "BrooksCoreyRelPermTable",
     "LETParameters",
-    "LETThreePhaseRelPermModel",
+    "LETThreePhaseRelPermTable",
     "RelPermEndpoints",
     "ThreePhaseRelPermTable",
     "TwoPhaseRelPermTable",
@@ -60,10 +61,12 @@ __all__ = [
 ]
 
 
-def _show_invalid_saturation(val: NumberOrArray, *, max_display: int = 20) -> str:
+def _show_invalid_saturation(
+    val: NumberOrArray[NDimension], *, max_display: int = 20
+) -> str:
     if is_scalar_like(val) and (val < 0 or val > 1):
         return str(val)
-    
+
     invalid = val[(val < 0) | (val > 1)]  # type: ignore
     length = len(invalid)
     if length == 0:
@@ -120,9 +123,9 @@ def _resolve_min_relperm(min_value: MinimumRelPerm) -> typing.Optional[float]:
 
 @numba.njit(cache=True, inline="always")
 def _clamp_relperm(
-    kr: NumberOrArray,
+    kr: NumberOrArray[NDimension],
     min_value: typing.Optional[float],
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Clamp `kr` to `[min_value, ∞)` in-place-compatible fashion.
 
@@ -142,10 +145,10 @@ def _clamp_relperm(
 
 @numba.njit(cache=True, inline="always")
 def _clamp_relperm_derivative(
-    dkr: NumberOrArray,
-    kr_raw: NumberOrArray,
+    dkr: NumberOrArray[NDimension],
+    kr_raw: NumberOrArray[NDimension],
     min_value: typing.Optional[float],
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Smoothly clamp the derivative of `kr` to zero in the min_value region.
     When `kr` is above the min_value, the derivative is unchanged. As `kr` approaches
@@ -204,24 +207,23 @@ class MixingRule:
     **Construction**:
 
     Normally produced by the `@mixing_rule` decorator, which registers the
-    rule and returns a `MixingRule` instance.  You can also build one
-    directly:
+    rule and returns a `MixingRule` instance. You can also build one directly:
 
-    ```python
+    ``python
     my_rule = MixingRule(func=my_func)
-    ```
+    ``
 
     **Attaching an analytical derivative later**:
 
     Use `MixingRule.dfunc` as a decorator:
 
-    ```python
+    ``python
     @my_rule.dfunc
     def _(kro_w, kro_g, krw, krg, kr_max,
           water_saturation, oil_saturation, gas_saturation):
         ...
         return MixingRulePartialDerivatives(...)
-    ```
+    ``
 
     **Protocol-compatible objects**:
 
@@ -249,28 +251,28 @@ class MixingRule:
 
         Usage:
 
-        ```python
+        ``python
         @stone_I_rule.dfunc
         def _(kro_w, kro_g, krw, krg, kr_max,
               water_saturation, oil_saturation, gas_saturation):
             ...
             return MixingRulePartialDerivatives(...)
-        ```
+        ``
         """
         self._dfunc = fn
         return fn
 
     def __call__(
         self,
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-    ) -> NumberOrArray:
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         return self.func(
             kro_w=kro_w,
             kro_g=kro_g,
@@ -284,14 +286,14 @@ class MixingRule:
 
     def partial_derivatives(
         self,
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         epsilon: float = 1e-7,
     ) -> MixingRulePartialDerivatives:
         """
@@ -333,6 +335,7 @@ class MixingRule:
             )
             if isinstance(derivatives, Mapping):
                 return derivatives  # type: ignore[return-value]
+
             # Unpack 7-tuple: (d_kro_w, d_kro_g, d_krw, d_krg, d_sw, d_so, d_sg)
             return MixingRulePartialDerivatives(
                 d_kro_d_kro_w=derivatives[0],
@@ -357,7 +360,11 @@ class MixingRule:
         )
 
     def __str__(self) -> str:
-        return self.func.__name__ if hasattr(self.func, "__name__") else repr(self.func)  # type: ignore[union-attr]
+        return (
+            str(self.func.__name__)
+            if hasattr(self.func, "__name__")
+            else repr(self.func)
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(func={self.func!r}, dfunc={self._dfunc!r})"
@@ -376,14 +383,14 @@ class MixingRule:
 
 def _central_difference_partial_derivatives(
     rule: MixingRuleFunc,
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     epsilon: float = 1e-7,
 ) -> MixingRulePartialDerivatives:
     """
@@ -393,7 +400,7 @@ def _central_difference_partial_derivatives(
     This function approximates the partial derivatives numerically when an
     analytical derivative function is not available. It computes central
     differences for `kro_w`, `kro_g`, `krw`, `krg`, `Sw`, `So`,
-    and `Sg` — fourteen mixing-rule evaluations in total.
+    and `Sg` - fourteen mixing-rule evaluations in total.
 
     Uses **relative perturbation** for accuracy across different value scales:
 
@@ -688,29 +695,29 @@ def mixing_rule(
 
     **Plain function**:
 
-    ```python
+    ``python
     @mixing_rule
     def my_rule(kro_w, kro_g, krw, krg, kr_max,
                 water_saturation, oil_saturation, gas_saturation):
         return (kro_w + kro_g) / 2.0
-    ```
+    ``
 
     **Protocol-compatible class**:
 
-    ```python
+    ``python
     class MyRule:
         def __call__(self, *, kro_w, kro_g, krw, krg, kr_max, ...): ...
         def partial_derivatives(self, *, kro_w, kro_g, krw, krg, kr_max, ...): ...
 
     my_rule = mixing_rule(MyRule())
-    ```
+    ``
 
     **With keyword arguments**:
 
-    ```python
+    ``python
     @mixing_rule(name="custom", override=True)
     def my_rule(...): ...
-    ```
+    ``
 
     :param func: The function or `MixingRule` to register. When omitted, the
         decorator is called with keyword arguments and returns a one-argument decorator.
@@ -818,7 +825,7 @@ def get_mixing_rule(name: str) -> MixingRule:
     )
 
 
-def _zeros_like_kro(kro_w: NumberOrArray) -> NumberOrArray:
+def _zeros_like_kro(kro_w: NumberOrArray) -> NumberOrArray[NDimension]:
     """Return an array (or scalar) of zeros with the same shape as kro_w."""
     return np.zeros_like(kro_w) if not np.isscalar(kro_w) else kro_w.dtype.type(0.0)  # type: ignore
 
@@ -845,15 +852,15 @@ def _overload_zeros_like_kro(kro_w):
 @mixing_rule
 @numba.njit(cache=True)
 def min_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Conservative rule for 3-phase oil relative permeability.
 
@@ -865,22 +872,22 @@ def min_rule(
 @min_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Analytical derivatives for min_rule.
@@ -889,7 +896,7 @@ def _(
 
     Where kro_w < kro_g  -  ∂kro/∂kro_w = 1, ∂kro/∂kro_g = 0
     Where kro_g ≤ kro_w  -  ∂kro/∂kro_w = 0, ∂kro/∂kro_g = 1
-    Tie: split evenly (0.5 each) — subgradient convention.
+    Tie: split evenly (0.5 each) - subgradient convention.
     No dependence on krw, krg, or explicit saturations.
     """
     kw = np.asarray(kro_w, dtype=np.float64)
@@ -903,15 +910,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def stone_I_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Stone I rule (1970) for 3-phase oil relative permeability.
     kro = (kro_w * kro_g) / (kro_w + kro_g - kro_w * kro_g)
@@ -925,22 +932,22 @@ def stone_I_rule(
 @stone_I_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Analytical derivatives for Stone I.
@@ -967,15 +974,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def stone_II_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Stone II rule (Stone, 1973, JPT) for 3-phase oil relative permeability.
 
@@ -992,7 +999,7 @@ def stone_II_rule(
 
     This is the **exact** Stone II formulation, valid for both normalized
     (krocw = 1) and non-normalized tables.  Using the actual krw and krg
-    from the two-phase tables removes the approximation ``krw ≈ 1 - kro_w``
+    from the two-phase tables removes the approximation `krw ≈ 1 - kro_w`
     that was previously needed when only kro_w and kro_g were available.
 
     **Reference:**
@@ -1014,22 +1021,22 @@ def stone_II_rule(
 @stone_II_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Analytical derivatives for Stone II (full normalized form).
@@ -1069,15 +1076,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def arithmetic_mean_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Simple arithmetic mean of oil-water and oil-gas relative permeabilities.
 
@@ -1094,22 +1101,22 @@ def arithmetic_mean_rule(
 @arithmetic_mean_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """∂kro/∂kro_w = 0.5, ∂kro/∂kro_g = 0.5, no dependence on krw, krg, or saturations."""
     half = np.full_like(np.asarray(kro_w, dtype=np.float64), 0.5)
@@ -1120,15 +1127,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def geometric_mean_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Geometric mean of oil-water and oil-gas relative permeabilities.
 
@@ -1145,22 +1152,22 @@ def geometric_mean_rule(
 @geometric_mean_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = sqrt(kw * kg)
@@ -1182,15 +1189,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def harmonic_mean_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Harmonic mean of oil-water and oil-gas relative permeabilities.
 
@@ -1216,22 +1223,22 @@ def harmonic_mean_rule(
 @harmonic_mean_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = 2 kw kg / (kw + kg)
@@ -1253,15 +1260,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def baker_linear_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Baker's linear interpolation rule (1988).
 
@@ -1293,22 +1300,22 @@ def baker_linear_rule(
 @baker_linear_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     ∂kro/∂kw  = Sw / T
@@ -1338,15 +1345,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def blunt_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Blunt's rule for three-phase relative permeability.
 
@@ -1368,22 +1375,22 @@ def blunt_rule(
 @blunt_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = kw * kg * (2 - kw - kg)
@@ -1407,15 +1414,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def hustad_hansen_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Hustad-Hansen rule (1995) for three-phase relative permeability.
 
@@ -1435,22 +1442,22 @@ def hustad_hansen_rule(
 @hustad_hansen_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = (kw * kg) / max(kw, kg)
@@ -1509,15 +1516,15 @@ def aziz_settari_rule(a: float = 0.5, b: float = 0.5) -> MixingRule:
 
     @numba.njit(cache=True)
     def _func(
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-    ) -> NumberOrArray:
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         result = kro_w**a * kro_g**b
         return np.where((kro_w <= 0.0) | (kro_g <= 0.0), 0.0, result)
 
@@ -1531,22 +1538,22 @@ def aziz_settari_rule(a: float = 0.5, b: float = 0.5) -> MixingRule:
     @rule.dfunc
     @numba.njit(cache=True)
     def _dfunc(
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
     ) -> typing.Tuple[
-        NumberOrArray,
-        NumberOrArray,
-        NumberOrArray,
-        NumberOrArray,
-        NumberOrArray,
-        NumberOrArray,
-        NumberOrArray,
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
+        NumberOrArray[NDimension],
     ]:
         """
         kro = kw^a * kg^b
@@ -1573,15 +1580,15 @@ def aziz_settari_rule(a: float = 0.5, b: float = 0.5) -> MixingRule:
 @mixing_rule
 @numba.njit(cache=True)
 def eclipse_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     ECLIPSE simulator default three-phase rule.
 
@@ -1613,22 +1620,22 @@ def eclipse_rule(
 @eclipse_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = kw * So/(So+Sg) + kg * So/(So+Sw)
@@ -1684,15 +1691,15 @@ def _(
 @mixing_rule
 @numba.njit(cache=True)
 def max_rule(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-) -> NumberOrArray:
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """
     Maximum rule - most optimistic estimate.
 
@@ -1709,22 +1716,22 @@ def max_rule(
 @max_rule.dfunc
 @numba.njit(cache=True)
 def _(
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
 ) -> typing.Tuple[
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
-    NumberOrArray,
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     kro = max(kw, kg)
@@ -1744,14 +1751,14 @@ def _(
 
 def get_mixing_rule_partial_derivatives(
     rule: typing.Union[MixingRule, MixingRuleFunc],
-    kro_w: NumberOrArray,
-    kro_g: NumberOrArray,
-    krw: NumberOrArray,
-    krg: NumberOrArray,
-    kr_max: NumberOrArray,
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    kro_w: NumberOrArray[NDimension],
+    kro_g: NumberOrArray[NDimension],
+    krw: NumberOrArray[NDimension],
+    krg: NumberOrArray[NDimension],
+    kr_max: NumberOrArray[NDimension],
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     epsilon: float = 1e-7,
 ) -> MixingRulePartialDerivatives:
     """
@@ -1760,10 +1767,10 @@ def get_mixing_rule_partial_derivatives(
 
     The mixing rule signature is:
 
-    ```python
+    ``python
     kro = mixing_rule(kro_w, kro_g, krw, krg, kr_max,
                       water_saturation, oil_saturation, gas_saturation)
-    ```
+    ``
 
     This function returns a dictionary containing seven partial derivatives:
 
@@ -1842,7 +1849,8 @@ class RelPermEndpoints:
 
 class RelativePermeabilityTable(StoreSerializable):
     """
-    Protocol for a relative permeability table that computes relative permeabilities based on fluid saturations.
+    Protocol for a relative permeability model/table that
+    computes relative permeabilities based on fluid saturations.
     """
 
     __abstract_serializable__ = True
@@ -1893,17 +1901,17 @@ class RelativePermeabilityTable(StoreSerializable):
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
         Compute relative permeabilities for water, oil, and gas.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :param kwargs: Other key word arguments for computing the relative peremabilities.
         :return: `RelativePermeabilities` dictionary with keys "water", "oil", "gas".
         """
@@ -1911,17 +1919,17 @@ class RelativePermeabilityTable(StoreSerializable):
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
         Compute relative permeability derivatives for water, oil, and gas.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :param kwargs: Other key word arguments for computing the derivatives.
         :return: `RelativePermeabilityDerivatives` dictionary.
         """
@@ -1929,17 +1937,17 @@ class RelativePermeabilityTable(StoreSerializable):
 
     def __call__(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
         Compute relative permeabilities for water, oil, and gas.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :param kwargs: Other key word arguments for computing the relative peremabilities.
         :return: `RelativePermeabilities` dictionary.
         """
@@ -1952,17 +1960,17 @@ class RelativePermeabilityTable(StoreSerializable):
 
     def derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
         Compute relative permeability derivatives for water, oil, and gas.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :param kwargs: Other key word arguments for computing the derivatives.
         :return: `RelativePermeabilityDerivatives` dictionary.
         """
@@ -2103,10 +2111,10 @@ class TwoPhaseRelPermTable(
     """
     Which phase the `reference_saturation` axis represents.
  
-    - `"wetting"` — `reference_saturation` holds wetting phase saturation
+    - `"wetting"` - `reference_saturation` holds wetting phase saturation
       values.  krw increases and krnw decreases as `reference_saturation`
       increases.
-    - `"non_wetting"` — `reference_saturation` holds non-wetting phase
+    - `"non_wetting"` - `reference_saturation` holds non-wetting phase
       saturation values.  krnw increases and krw decreases as
       `reference_saturation` increases.
  
@@ -2120,9 +2128,9 @@ class TwoPhaseRelPermTable(
     """
     Minimum min_value for the wetting-phase relative permeability.
  
-    `"auto"` — `max(4 * machine_epsilon, 1e-8)` (dtype-aware).
-    `None` — no min_value; kr can reach zero exactly.
-    `float` — explicit user-supplied min_value value.
+    `"auto"` - `max(4 * machine_epsilon, 1e-8)` (dtype-aware).
+    `None` - no min_value; kr can reach zero exactly.
+    `float` - explicit user-supplied min_value value.
  
     The min_value is applied to the interpolated kr value, and the derivative is
     zeroed out in the min_value region so that the Jacobian is consistent with
@@ -2223,16 +2231,16 @@ class TwoPhaseRelPermTable(
         object.__setattr__(self, "_non_wetting_dpchip", non_wetting_dpchip)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
-        return self.wetting_phase  # type: ignore[return-value]
+        return typing.cast(FluidPhase, self.wetting_phase)
 
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
-        return self.wetting_phase  # type: ignore[return-value]
+        return typing.cast(FluidPhase, self.wetting_phase)
 
     def _resolve_reference(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: NumberOrArray,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         """
         Return whichever saturation array corresponds to the reference axis.
 
@@ -2247,16 +2255,16 @@ class TwoPhaseRelPermTable(
     def _query_pchip(
         self,
         interpolant: PchipInterpolator,
-        reference: NumberOrArray,
+        reference: NumberOrArray[NDimension],
         extrapolate_left: float,
         extrapolate_right: float,
-    ) -> NumberOrArray:
+    ) -> NumberOrArray[NDimension]:
         """
         Evaluate a pre-built PCHIP interpolant at `reference`, applying
         constant extrapolation at the boundaries.
 
         :param interpolant: Pre-built `PchipInterpolator` instance.
-        :param reference: Query saturation value(s) — scalar or array.
+        :param reference: Query saturation value(s) - scalar or array.
         :param extrapolate_left: Constant returned for values below the knot range.
         :param extrapolate_right: Constant returned for values above the knot range.
         :return: Interpolated value(s) with the same shape as `reference`.
@@ -2271,20 +2279,20 @@ class TwoPhaseRelPermTable(
         result = np.where(sat > x_max, extrapolate_right, result)
 
         if is_scalar:
-            return float(result.ravel()[0])
+            return float(result.item())
         return result.reshape(sat.shape)
 
     def _query_dpchip(
         self,
         d_interpolant: PchipInterpolator,
-        reference: NumberOrArray,
-    ) -> NumberOrArray:
+        reference: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         """
         Evaluate a pre-built PCHIP derivative interpolant at `reference`,
         returning zero outside the knot range (constant extrapolation = zero slope).
 
         :param d_interpolant: Pre-built derivative `PchipInterpolator`.
-        :param reference: Query saturation value(s) — scalar or array.
+        :param reference: Query saturation value(s) - scalar or array.
         :return: Derivative value(s) with the same shape as `reference`.
         """
         is_scalar = np.isscalar(reference)
@@ -2296,14 +2304,14 @@ class TwoPhaseRelPermTable(
         result = np.where((sat < x_min) | (sat > x_max), 0.0, result)
 
         if is_scalar:
-            return float(result.ravel()[0])
+            return float(result.item())
         return result.reshape(sat.shape)
 
     def get_wetting_phase_relative_permeability(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Get wetting phase relative permeability.
 
@@ -2334,9 +2342,9 @@ class TwoPhaseRelPermTable(
 
     def get_non_wetting_phase_relative_permeability(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Get non-wetting phase relative permeability.
 
@@ -2367,9 +2375,9 @@ class TwoPhaseRelPermTable(
 
     def get_two_phase_relative_permeabilities(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> typing.Tuple[NumberOrArray, NumberOrArray]:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
         """
         Get both wetting and non-wetting phase relative permeabilities.
 
@@ -2388,9 +2396,9 @@ class TwoPhaseRelPermTable(
 
     def get_wetting_phase_relative_permeability_derivative(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Derivative of the wetting-phase relative permeability with respect to
         the reference saturation axis of this table, evaluated from the
@@ -2430,9 +2438,9 @@ class TwoPhaseRelPermTable(
 
     def get_non_wetting_phase_relative_permeability_derivative(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Derivative of the non-wetting-phase relative permeability with respect
         to the reference saturation axis of this table, evaluated from the
@@ -2494,9 +2502,9 @@ class TwoPhaseRelPermTable(
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -2506,17 +2514,17 @@ class TwoPhaseRelPermTable(
         to the underlying PCHIP interpolant is chosen by inspecting which phases
         this table covers and what `reference_phase` is declared:
 
-        - **Oil-water table** (phases are OIL and WATER): krg = 0.  Sw or So is
+        - **Oil-water table** (phases are OIL and WATER): krg = 0. Sw or So is
         forwarded to the interpolant according to `reference_phase`.
-        - **Gas-oil table** (phases are GAS and OIL): krw = 0.  So or Sg is
+        - **Gas-oil table** (phases are GAS and OIL): krw = 0. So or Sg is
         forwarded according to `reference_phase`.
 
         Minimum relperm min_values declared on the table are applied automatically
         inside the underlying query methods and propagate transparently.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :return: `RelativePermeabilities` dict with keys `"water"`, `"oil"`, `"gas"`.
         """
         is_scalar = (
@@ -2586,9 +2594,9 @@ class TwoPhaseRelPermTable(
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -2770,7 +2778,7 @@ class ThreePhaseRelPermTable(
     and gas-oil) and a mixing rule for oil in the three-phase system.
 
     Each two-phase table declares its own `reference_phase` ("wetting" or
-    "non_wetting"), so the correct saturation is dispatched automatically —
+    "non_wetting"), so the correct saturation is dispatched automatically -
     no assumptions are hard-coded about whether a table is indexed by So or Sg.
 
     Minimum relperm min_values on the two-phase tables propagate automatically
@@ -2840,9 +2848,9 @@ class ThreePhaseRelPermTable(
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -2856,9 +2864,9 @@ class ThreePhaseRelPermTable(
         automatically inside the table query methods and propagate into the
         mixing-rule inputs transparently.
 
-        :param water_saturation: Water saturation (fraction) — scalar or array.
-        :param oil_saturation: Oil saturation (fraction) — scalar or array.
-        :param gas_saturation: Gas saturation (fraction) — scalar or array.
+        :param water_saturation: Water saturation (fraction) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :return: `RelativePermeabilities` dict with keys "water", "oil", "gas".
         """
         sw = np.atleast_1d(water_saturation)
@@ -2945,9 +2953,9 @@ class ThreePhaseRelPermTable(
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -2956,11 +2964,11 @@ class ThreePhaseRelPermTable(
         gas saturation.
 
         Returns a dictionary containing:
-        ``
+        `
         (dkrw/dSw, dkrw/dSo, dkrw/dSg,
         dkro/dSw, dkro/dSo, dkro/dSg,
         dkrg/dSw, dkrg/dSo, dkrg/dSg)
-        ```
+        ``
 
         Water and gas relative permeability derivatives are computed analytically
         from the slopes of the underlying two-phase lookup tables.  Where a
@@ -2971,15 +2979,15 @@ class ThreePhaseRelPermTable(
 
         Oil relative permeability derivatives use the full extended chain rule
         through the three-phase mixing rule:
-        ```
+        ``
         dkro/dSalpha = (d_kro/d_kro_w) * (d_kro_w/d_Salpha)
                      + (d_kro/d_kro_g) * (d_kro_g/d_Salpha)
                      + (d_kro/d_krw)   * (d_krw/d_Salpha)
                      + (d_kro/d_krg)   * (d_krg/d_Salpha)
                      + (d_kro/d_Salpha)_explicit_in_mixing_rule
-        ```
+        ``
 
-        The ``d_kro/d_krw`` and ``d_kro/d_krg`` terms are non-zero only for
+        The `d_kro/d_krw` and `d_kro/d_krg` terms are non-zero only for
         rules that use the actual two-phase water/gas kr values (e.g. the full
         Stone II rule); they are zero for all other built-in rules.
 
@@ -3274,13 +3282,13 @@ class ThreePhaseRelPermTable(
 
 
 def compute_corey_three_phase_relative_permeabilities(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     water_exponent: float,
     oil_exponent: float,
     gas_exponent: float,
@@ -3295,7 +3303,9 @@ def compute_corey_three_phase_relative_permeabilities(
     minimum_water_relperm: typing.Optional[float] = None,
     minimum_oil_relperm: typing.Optional[float] = None,
     minimum_gas_relperm: typing.Optional[float] = None,
-) -> typing.Tuple[NumberOrArray, NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[
+    NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension]
+]:
     """
     Computes relative permeability for water, oil, and gas in a three-phase system.
     Supports water-wet and oil-wet wettability assumptions.
@@ -3566,7 +3576,7 @@ def compute_corey_three_phase_relative_permeabilities(
 
 @relperm_table
 @attrs.frozen
-class BrooksCoreyRelPermModel(
+class BrooksCoreyRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},
     deserializers={"mixing_rule": deserialize_mixing_rule},
@@ -3574,7 +3584,7 @@ class BrooksCoreyRelPermModel(
     dump_exclude={"supports_vector"},
 ):
     """
-    Brooks-Corey-type three-phase relative permeability model.
+    Implements the Brooks-Corey-type three-phase relative permeability model.
 
     Supports water-wet and oil-wet wettability assumptions.
 
@@ -3703,13 +3713,15 @@ class BrooksCoreyRelPermModel(
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -3777,7 +3789,7 @@ class BrooksCoreyRelPermModel(
             maximum_gas_relperm=self.get_gas_relperm_endpoint(),
             wettability=self.wettability,
             mixed_wet_water_fraction=self.mixed_wet_water_fraction,
-            mixing_rule=self.mixing_rule,  # type: ignore[arg-type]
+            mixing_rule=typing.cast(MixingRule, self.mixing_rule),  # type: ignore[arg-type]
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
             minimum_water_relperm=_resolve_min_relperm(self.minimum_water_relperm),
@@ -3788,13 +3800,15 @@ class BrooksCoreyRelPermModel(
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -3804,11 +3818,11 @@ class BrooksCoreyRelPermModel(
 
         Returns a dictionary containing:
 
-        ```
+        ``
         (dkrw/dSw, dkrw/dSo, dkrw/dSg,
         dkro/dSw, dkro/dSo, dkro/dSg,
         dkrg/dSw, dkrg/dSo, dkrg/dSg)
-        ```
+        ``
 
         For the water-wet case all two-phase Corey power-law derivatives are
         computed analytically via the chain rule through effective saturation.
@@ -4513,11 +4527,11 @@ class LETParameters(Serializable):
 
 @numba.njit(cache=True)
 def _let_relperm(
-    normalized_saturation: NumberOrArray,
+    normalized_saturation: FloatArray[NDimension],
     L: float,
     E: float,
     T: float,
-) -> NumberOrArray:
+) -> FloatArray[NDimension]:
     """
     Core LET relative permeability formula (without endpoint scaling).
 
@@ -4544,13 +4558,13 @@ def _let_relperm(
 
 
 def compute_let_three_phase_relative_permeabilities(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     water_L: float,
     water_E: float,
     water_T: float,
@@ -4574,7 +4588,9 @@ def compute_let_three_phase_relative_permeabilities(
     minimum_water_relperm: typing.Optional[float] = None,
     minimum_oil_relperm: typing.Optional[float] = None,
     minimum_gas_relperm: typing.Optional[float] = None,
-) -> typing.Tuple[NumberOrArray, NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[
+    NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension]
+]:
     """
     Compute three-phase relative permeabilities using the LET correlation.
 
@@ -4881,28 +4897,28 @@ def compute_let_three_phase_relative_permeabilities(
 
 @numba.njit(cache=True)
 def _let_curve_slope_wrt_normalized_saturation(
-    normalized_saturation: npt.NDArray,
+    normalized_saturation: FloatArray[NDimension],
     L: float,
     E: float,
     T: float,
     kr_max: float,
-) -> npt.NDArray:
+) -> FloatArray[NDimension]:
     """
     Analytical derivative of the LET relative permeability curve with
     respect to normalized (effective) saturation.
 
     The LET curve is:
 
-    ```
+    ``
     kr = kr_max * S*^L / (S*^L + E * (1-S*)^T)
-    ```
+    ``
 
     Applying the quotient rule and simplifying:
 
-    ```
+    ``
     dkr / dS* = kr_max * E * S*^(L-1) * (1-S*)^(T-1)
                 * [L*(1-S*) + T*S*] / (S*^L + E*(1-S*)^T)^2
-    ```
+    ``
 
     The result is zero when the normalized saturation is exactly 0 or 1
     (boundary conditions).
@@ -4929,7 +4945,7 @@ def _let_curve_slope_wrt_normalized_saturation(
 
 @relperm_table
 @attrs.frozen
-class LETThreePhaseRelPermModel(
+class LETThreePhaseRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},
     deserializers={"mixing_rule": deserialize_mixing_rule},
@@ -4937,7 +4953,7 @@ class LETThreePhaseRelPermModel(
     dump_exclude={"supports_vector"},
 ):
     """
-    LET (Lomeland-Ebeltoft-Thomas) three-phase relative permeability model.
+    Implements the LET (Lomeland-Ebeltoft-Thomas) three-phase relative permeability model.
 
     Uses the LET correlation for two-phase relative permeability curves and a
     configurable mixing rule for three-phase oil relative permeability. The LET
@@ -4956,8 +4972,8 @@ class LETThreePhaseRelPermModel(
     Supports water-wet and oil-wet wettability assumptions. Supports both
     scalar and array inputs for saturations (`supports_vector=True`).
 
-    **Minimum relperm min_values** (``minimum_water_relperm``, ``minimum_oil_relperm``,
-    ``minimum_gas_relperm``): same semantics as ``BrooksCoreyRelPermModel``.
+    **Minimum relperm min_values** (`minimum_water_relperm`, `minimum_oil_relperm`,
+    `minimum_gas_relperm`): same semantics as `BrooksCoreyRelPermTable`.
     """
 
     __type__ = "let_three_phase_relperm_model"
@@ -5055,13 +5071,15 @@ class LETThreePhaseRelPermModel(
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -5139,7 +5157,7 @@ class LETThreePhaseRelPermModel(
             maximum_gas_relperm=self.get_gas_relperm_endpoint(),
             wettability=self.wettability,
             mixed_wet_water_fraction=self.mixed_wet_water_fraction,
-            mixing_rule=self.mixing_rule,  # type: ignore[arg-type]
+            mixing_rule=typing.cast(MixingRule, self.mixing_rule),
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
             minimum_water_relperm=_resolve_min_relperm(self.minimum_water_relperm),
@@ -5150,13 +5168,15 @@ class LETThreePhaseRelPermModel(
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -5166,11 +5186,11 @@ class LETThreePhaseRelPermModel(
 
         Returns a dictionary containing:
 
-        ```
+        ``
         (dkrw/dSw, dkrw/dSo, dkrw/dSg,
         dkro/dSw, dkro/dSo, dkro/dSg,
         dkrg/dSw, dkrg/dSo, dkrg/dSg)
-        ```
+        ``
 
         For the water-wet case all LET curve derivatives are computed
         analytically via the closed-form quotient-rule formula (see
@@ -5179,7 +5199,7 @@ class LETThreePhaseRelPermModel(
         normalisation to give derivatives with respect to physical saturation.
         The three-phase oil relative permeability derivative is then completed
         by the extended chain rule through the mixing rule (including the
-        ``d_kro/d_krw`` and ``d_kro/d_krg`` terms for rules like Stone II that
+        `d_kro/d_krw` and `d_kro/d_krg` terms for rules like Stone II that
         use the actual two-phase water/gas kr values).
 
         Wherever a minimum relperm min_value is active (raw kr ≤ min_value), the
@@ -5358,7 +5378,7 @@ class LETThreePhaseRelPermModel(
                 water_params.T,
             )
 
-            # d(krw_ow)/dSw — depends only on Sw
+            # d(krw_ow)/dSw - depends only on Sw
             d_krw_ow_d_sw = np.where(
                 valid_water_ow,
                 _let_curve_slope_wrt_normalized_saturation(
@@ -5367,7 +5387,7 @@ class LETThreePhaseRelPermModel(
                 / movable_water_range_ow,
                 zeros,
             )
-            # d(krw_gw)/dSw — depends only on Sw
+            # d(krw_gw)/dSw - depends only on Sw
             d_krw_gw_d_sw = np.where(
                 valid_water_gw,
                 _let_curve_slope_wrt_normalized_saturation(

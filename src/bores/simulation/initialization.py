@@ -10,7 +10,7 @@ import numpy.typing as npt
 from bores.config import Config
 from bores.constants import c
 from bores.grids.rock_fluid import build_rock_fluid_properties_grids
-from bores.models import FluidProperties, RockProperties
+from bores.model import FluidProperties, RockProperties
 from bores.solvers.explicit.transport import assemble_flux_contributions
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import FluidPhase, ThreeDimensionalGrid, ThreeDimensions
@@ -555,7 +555,8 @@ def check_zero_flow_initialization(
         net_water_mass_flux_grid,
         net_oil_mass_flux_grid,
         net_gas_mass_flux_grid,
-        _, _,
+        _,
+        _,
     ) = assemble_flux_contributions(
         pressure_grid=pressure_grid,
         cell_count_x=cell_count_x,

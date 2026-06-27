@@ -9,7 +9,7 @@ import numpy.typing as npt
 from bores.config import Config
 from bores.constants import c
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids
-from bores.models import FluidProperties
+from bores.model import FluidProperties
 from bores.solvers.base import Solution
 from bores.solvers.rates import WellRates
 from bores.transmissibility import FaceTransmissibilities

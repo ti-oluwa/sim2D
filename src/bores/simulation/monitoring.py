@@ -19,7 +19,7 @@ from tqdm import tqdm
 from bores.config import Config
 from bores.constants import c
 from bores.datastructures import FormationVolumeFactors, Rates, SparseTensor
-from bores.models import ReservoirModel
+from bores.model import ReservoirModel
 from bores.simulate import Run, StepCallback, StepResult, run
 from bores.states import ModelState
 from bores.typing import ThreeDimensions

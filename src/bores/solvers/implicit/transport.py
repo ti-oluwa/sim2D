@@ -12,7 +12,7 @@ from bores.constants import c
 from bores.datastructures import BottomHolePressures
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids
 from bores.grids.rock_fluid import build_rock_fluid_properties_grids
-from bores.models import FluidProperties, HysteresisState, RockProperties
+from bores.model import FluidProperties, HysteresisState, RockProperties
 from bores.solvers.base import (
     Solution,
     compute_mobility_grids,

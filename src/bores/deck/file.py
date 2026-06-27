@@ -1,4 +1,5 @@
 """Entry point for parsing Eclipse / GRDECL decks."""
+
 import typing
 from collections.abc import Collection
 
@@ -130,7 +131,7 @@ from bores.deck.keywords.summary import (
 )
 from bores.deck.operators import Operation, resolve_operations
 
-__all__ = ["DataFile"]
+__all__ = ["DeckFile"]
 
 T = TypeVar("T")
 
@@ -258,22 +259,22 @@ DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
 )
 
 
-class DataFile:
+class DeckFile:
     """
-    A parsed Eclipse deck: comment-stripped, `INCLUDE`-resolved text plus a
+    A parsed Eclipse deck file: comment-stripped, `INCLUDE`-resolved text plus a
     registry of `bores.deck.keywords.base.Keyword` objects, exposed through `get`.
 
     **Usage**:
 
     ```python
-    from bores.deck import DataFile, DEFAULT_KEYWORDS
+    from bores.deck import DeckFile, DEFAULT_KEYWORDS
 
-    df = DataFile("path/to/model.DATA")
+    df = DeckFile("path/to/model.DATA")
     poro = df.get("PORO")    # ndarray (n_cells,) or None
     faults = df.get("FAULTS")  # List[Dict] or None
 
     # With extra keywords not in the default set:
-    df2 = DataFile(text, keywords=DEFAULT_KEYWORDS | [MyCustomKeyword()])
+    df2 = DeckFile(text, keywords=DEFAULT_KEYWORDS | [MyCustomKeyword()])
     val = df2.get("MYCUSTOM")
     ```
 
@@ -288,7 +289,7 @@ class DataFile:
 
     **Or pass it at construction time**:
     ```python
-    df = DataFile(source, keywords=[GridArrayKeyword("MYARRAY")])
+    df = DeckFile(source, keywords=[GridArrayKeyword("MYARRAY")])
     ```
     """
 
@@ -377,7 +378,9 @@ class DataFile:
     def get(self, k: Keyword[T], /, *, use_cache: bool = ...) -> typing.Optional[T]: ...
 
     @typing.overload
-    def get(self, k: str, /, *, use_cache: bool = ...) -> typing.Optional[typing.Any]: ...
+    def get(
+        self, k: str, /, *, use_cache: bool = ...
+    ) -> typing.Optional[typing.Any]: ...
 
     def get(
         self, k: typing.Union[str, Keyword[typing.Any]], /, *, use_cache: bool = False
@@ -386,7 +389,7 @@ class DataFile:
         Parse and return the value of keyword `k`.
 
         :param k: Keyword `k`, case-insensitive or a `Keyword` object (never cached if `Keyword` object).
-        :param use_cache: Whether to read/write the per-`DataFile`
+        :param use_cache: Whether to read/write the per-`DeckFile`
             value cache. Set `False` to force re-parsing (mainly for testing).
         :returns: The keyword's parsed value, or `None` if it is absent
             from the deck or not registered.

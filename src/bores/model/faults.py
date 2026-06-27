@@ -7,12 +7,12 @@ import attrs
 import numpy as np
 from typing_extensions import Self
 
-from bores.deck.datafile import DataFile
+from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.base import VALID_FAULT_FACE_DIRECTIONS
-from bores.models.blackoil import BlackOilModel
-from bores.models.transmissibility import compute_connection_transmissibilities
+from bores.model.blackoil import BlackOilModel
+from bores.model.transmissibility import compute_connection_transmissibilities
 from bores.serialization import Serializable
 
 __all__ = ["FaultRecord", "apply_faults", "remove_faults"]
@@ -84,17 +84,17 @@ class FaultRecord(Serializable):
     @classmethod
     def from_data_file(
         cls,
-        data_file: DataFile,
+        data_file: DeckFile,
         fault_name: typing.Optional[str] = None,
     ) -> typing.Union[Self, typing.List[Self]]:
         """
-        Construct one or all `FaultRecord` objects from a parsed `DataFile`.
+        Construct one or all `FaultRecord` objects from a parsed `DeckFile`.
 
         Reads the `FAULTS` keyword for geometry and `MULTFLT` for multipliers.
         When `fault_name` is given, returns a single `FaultRecord` for that fault.
         When `fault_name` is `None`, returns a list of all faults in the deck.
 
-        :param data_file: Parsed `bores.deck.datafile.DataFile`.
+        :param data_file: Parsed `bores.deck.file.DeckFile`.
         :param fault_name: Name of a specific fault to extract, or `None` for all.
         :returns: A single `FaultRecord` if `fault_name` is given; a
             `List[FaultRecord]` otherwise.

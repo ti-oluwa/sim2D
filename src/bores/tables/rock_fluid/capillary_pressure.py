@@ -11,33 +11,35 @@ from scipy.interpolate import PchipInterpolator
 
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.grids.base import array as bores_array
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
-from bores.tables.utils import build_pchip_interpolant
+from bores.tables.rock_fluid.utils import build_pchip_interpolant
 from bores.typing import (
     CapillaryPressureDerivatives,
     CapillaryPressures,
+    FloatArray,
     FluidPhase,
+    NDimension,
     NumberOrArray,
     Spacing,
     Wettability,
 )
+from bores.utils import array as bores_array
 from bores.utils import atleast_1d
 
 __all__ = [
-    "BrooksCoreyCapillaryPressureModel",
-    "LeverettJCapillaryPressureModel",
+    "BrooksCoreyCapillaryPressureTable",
+    "LeverettJCapillaryPressureTable",
     "ThreePhaseCapillaryPressureTable",
     "TwoPhaseCapillaryPressureTable",
-    "VanGenuchtenCapillaryPressureModel",
+    "VanGenuchtenCapillaryPressureTable",
     "capillary_pressure_table",
 ]
 
 
 class CapillaryPressureTable(StoreSerializable):
     """
-    Protocol for a capillary pressure table that computes
+    Protocol for a capillary pressure model that computes
     capillary pressures based on fluid saturations.
     """
 
@@ -51,9 +53,9 @@ class CapillaryPressureTable(StoreSerializable):
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -70,9 +72,9 @@ class CapillaryPressureTable(StoreSerializable):
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -89,9 +91,9 @@ class CapillaryPressureTable(StoreSerializable):
 
     def __call__(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -111,9 +113,9 @@ class CapillaryPressureTable(StoreSerializable):
 
     def derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -211,7 +213,7 @@ class TwoPhaseCapillaryPressureTable(
     reference_saturation: npt.NDArray = attrs.field(converter=bores_array)
     """
     Saturation values used as the x-axis for interpolation, monotonically
-    increasing.  May represent either the wetting or non-wetting phase
+    increasing. May represent either the wetting or non-wetting phase
     saturation depending on `reference_phase`.
     """
 
@@ -227,10 +229,10 @@ class TwoPhaseCapillaryPressureTable(
     """
     Which phase the `reference_saturation` axis represents.
  
-    - `"wetting"` — the x-axis holds wetting-phase saturation values.
+    - `"wetting"` - the x-axis holds wetting-phase saturation values.
       This is the standard convention for oil-water tables (Sw axis) and for
       gas-oil tables indexed by So.
-    - `"non_wetting"` — the x-axis holds non-wetting-phase saturation
+    - `"non_wetting"` - the x-axis holds non-wetting-phase saturation
       values.  Use this for gas-oil tables indexed by Sg.
  
     This attribute does not change the interpolation mechanics. It only
@@ -293,16 +295,16 @@ class TwoPhaseCapillaryPressureTable(
         object.__setattr__(self, "_dpchip", dpchip)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
-        return self.wetting_phase  # type: ignore[return-value]
+        return typing.cast(FluidPhase, self.wetting_phase)
 
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
-        return self.wetting_phase  # type: ignore[return-value]
+        return typing.cast(FluidPhase, self.wetting_phase)
 
     def _resolve_reference(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: NumberOrArray,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         """
         Return whichever saturation array corresponds to the reference axis.
 
@@ -316,13 +318,13 @@ class TwoPhaseCapillaryPressureTable(
 
     def _query_pchip(
         self,
-        reference: NumberOrArray,
-    ) -> NumberOrArray:
+        reference: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         """
         Evaluate the capillary pressure PCHIP interpolant at `reference`,
         applying constant extrapolation at the boundaries.
 
-        :param reference: Query saturation value(s) — scalar or array.
+        :param reference: Query saturation value(s) - scalar or array.
         :return: Capillary pressure value(s).
         """
         is_scalar = np.isscalar(reference)
@@ -335,15 +337,17 @@ class TwoPhaseCapillaryPressureTable(
         result = np.where(sat > x_max, float(self.capillary_pressure[-1]), result)
 
         if is_scalar:
-            return float(result.ravel()[0])
-        return result.reshape(sat.shape)
+            return float(result.item())
+        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape))
 
-    def _query_dpchip(self, reference: NumberOrArray) -> NumberOrArray:
+    def _query_dpchip(
+        self, reference: NumberOrArray[NDimension]
+    ) -> NumberOrArray[NDimension]:
         """
         Evaluate the analytical PCHIP derivative at `reference`, returning
         zero outside the knot range.
 
-        :param reference: Query saturation value(s) — scalar or array.
+        :param reference: Query saturation value(s) - scalar or array.
         :return: Derivative value(s).
         """
         is_scalar = np.isscalar(reference)
@@ -355,14 +359,14 @@ class TwoPhaseCapillaryPressureTable(
         result = np.where((sat < x_min) | (sat > x_max), 0.0, result)
 
         if is_scalar:
-            return float(result.ravel()[0])
-        return result.reshape(sat.shape)
+            return float(result.item())
+        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape))
 
     def get_capillary_pressure(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Get capillary pressure at the given saturation(s).
 
@@ -384,9 +388,9 @@ class TwoPhaseCapillaryPressureTable(
 
     def get_capillary_pressure_derivative(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
-    ) -> NumberOrArray:
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+    ) -> NumberOrArray[NDimension]:
         """
         Derivative of capillary pressure with respect to the reference
         saturation axis of this table: `dPc / d(reference_saturation)`.
@@ -409,10 +413,10 @@ class TwoPhaseCapillaryPressureTable(
 
     def __call__(
         self,
-        wetting_saturation: NumberOrArray,
-        non_wetting_saturation: typing.Optional[NumberOrArray] = None,
+        wetting_saturation: NumberOrArray[NDimension],
+        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
-    ) -> NumberOrArray:
+    ) -> NumberOrArray[NDimension]:
         """
         Get capillary pressure at the given saturation(s).
 
@@ -482,16 +486,16 @@ class ThreePhaseCapillaryPressureTable(
             )
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
-        return self.oil_water_table.wetting_phase  # type:ignore[return-value]
+        return typing.cast(FluidPhase, self.oil_water_table.wetting_phase)
 
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
-        return self.gas_oil_table.wetting_phase  # type:ignore[return-value]
+        return typing.cast(FluidPhase, self.gas_oil_table.wetting_phase)
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -547,9 +551,9 @@ class ThreePhaseCapillaryPressureTable(
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -801,13 +805,13 @@ def _compute_brooks_corey_capillary_pressures_scalar(
 
 @numba.njit(cache=True)
 def _compute_brooks_corey_capillary_pressures_array(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_entry_pressure_water_wet: float,
     oil_water_entry_pressure_oil_wet: float,
@@ -818,7 +822,7 @@ def _compute_brooks_corey_capillary_pressures_array(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-12,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[FloatArray[NDimension], FloatArray[NDimension]]:
     """
     Array variant of Brooks-Corey capillary pressure computation.
 
@@ -976,17 +980,19 @@ def _compute_brooks_corey_capillary_pressures_array(
             )
             gas_oil_capillary_pressure = np.where(undersaturated_gas, pcgo, zero)
 
-    return oil_water_capillary_pressure, gas_oil_capillary_pressure
+    return typing.cast(
+        FloatArray[NDimension], oil_water_capillary_pressure
+    ), typing.cast(FloatArray[NDimension], gas_oil_capillary_pressure)
 
 
 def compute_brooks_corey_capillary_pressures(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_entry_pressure_water_wet: float,
     oil_water_entry_pressure_oil_wet: float,
@@ -997,15 +1003,12 @@ def compute_brooks_corey_capillary_pressures(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-12,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Union[typing.Tuple[float, float], typing.Tuple[npt.NDArray, npt.NDArray]]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for Brooks-Corey capillary pressure computation.
 
     Routes to the scalar variant when all inputs are Python scalars, otherwise
     routes to the array variant. This avoids Numba union return-type limitations.
-
-    See _compute_brooks_corey_capillary_pressures_scalar and
-    _compute_brooks_corey_capillary_pressures_array for full parameter docs.
 
     :return: (Pcow, Pcgo) as (float, float) for scalar inputs,
              or (NDArray, NDArray) for array inputs, both in psi.
@@ -1167,12 +1170,12 @@ def _compute_brooks_corey_derivatives_scalar(
 
 @numba.njit(cache=True)
 def _compute_brooks_corey_derivatives_array(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_pore_size_distribution_index_water_wet: float,
     oil_water_pore_size_distribution_index_oil_wet: float,
@@ -1183,7 +1186,12 @@ def _compute_brooks_corey_derivatives_array(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-12,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+]:
     """
     Array variant of Brooks-Corey capillary pressure derivatives.
 
@@ -1284,16 +1292,21 @@ def _compute_brooks_corey_derivatives_array(
         np.zeros_like(sg),
     )
     d_pcgo_d_so = np.zeros_like(sg)
-    return d_pcow_d_sw, d_pcow_d_so, d_pcgo_d_sg, d_pcgo_d_so
+    return (
+        typing.cast(FloatArray[NDimension], d_pcow_d_sw),
+        typing.cast(FloatArray[NDimension], d_pcow_d_so),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_sg),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_so),
+    )
 
 
 def compute_brooks_corey_derivatives(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_pore_size_distribution_index_water_wet: float,
     oil_water_pore_size_distribution_index_oil_wet: float,
@@ -1304,9 +1317,11 @@ def compute_brooks_corey_derivatives(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-12,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Union[
-    typing.Tuple[float, float, float, float],
-    typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray],
+) -> typing.Tuple[
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Dispatch function for Brooks-Corey capillary pressure derivatives.
@@ -1364,13 +1379,13 @@ def compute_brooks_corey_derivatives(
 
 @capillary_pressure_table
 @attrs.frozen
-class BrooksCoreyCapillaryPressureModel(
+class BrooksCoreyCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
     dump_exclude={"supports_vector"},
 ):
     """
-    Brooks-Corey capillary pressure model for three-phase systems.
+    Implements the Brooks-Corey capillary pressure model for three-phase systems.
 
     Implements the Brooks-Corey model: Pc = Pd * (Se)^(-1/λ)
 
@@ -1422,13 +1437,15 @@ class BrooksCoreyCapillaryPressureModel(
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -1504,13 +1521,15 @@ class BrooksCoreyCapillaryPressureModel(
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -1770,13 +1789,13 @@ def _compute_van_genuchten_capillary_pressures_scalar(
 
 @numba.njit(cache=True)
 def _compute_van_genuchten_capillary_pressures_array(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_alpha_water_wet: float,
     oil_water_alpha_oil_wet: float,
@@ -1787,7 +1806,7 @@ def _compute_van_genuchten_capillary_pressures_array(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[FloatArray[NDimension], FloatArray[NDimension]]:
     """
     Array variant of van Genuchten capillary pressure computation.
 
@@ -1934,17 +1953,19 @@ def _compute_van_genuchten_capillary_pressures_array(
         pcgo = (one / gas_oil_alpha) * term
         gas_oil_capillary_pressure = np.where(valid_gas, pcgo, zero)
 
-    return oil_water_capillary_pressure, gas_oil_capillary_pressure
+    return typing.cast(
+        FloatArray[NDimension], oil_water_capillary_pressure
+    ), typing.cast(FloatArray[NDimension], gas_oil_capillary_pressure)
 
 
 def compute_van_genuchten_capillary_pressures(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_alpha_water_wet: float,
     oil_water_alpha_oil_wet: float,
@@ -1955,7 +1976,7 @@ def compute_van_genuchten_capillary_pressures(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Union[typing.Tuple[float, float], typing.Tuple[npt.NDArray, npt.NDArray]]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for van Genuchten capillary pressure computation.
 
@@ -2013,12 +2034,12 @@ def compute_van_genuchten_capillary_pressures(
 
 @numba.njit(cache=True)
 def _van_genuchten_pc_slope_wrt_effective_saturation(
-    effective_saturation: npt.NDArray,
+    effective_saturation: FloatArray[NDimension],
     alpha: float,
     n: float,
     sign: float,
     saturation_epsilon: float = 1e-6,
-) -> npt.NDArray:
+) -> FloatArray[NDimension]:
     """
     Analytical derivative of the van Genuchten capillary pressure with
     respect to effective (normalised) saturation.
@@ -2026,10 +2047,12 @@ def _van_genuchten_pc_slope_wrt_effective_saturation(
     The van Genuchten model is:
 
     ```
-    Pc = sign * (1/alpha) * (Se^(-1/m) - 1)^(1/n)   where m = 1 - 1/n
+    Pc = sign * (1/alpha) * (Se^(-1/m) - 1)^(1/n)
+
+    where m = 1 - 1/n
     ```
 
-    Let u = Se^(-1/m) - 1.  By the chain rule::
+    Let u = Se^(-1/m) - 1.  By the chain rule:
 
     ```
     dPc/dSe = (dPc/du) * (du/dSe)
@@ -2199,12 +2222,12 @@ def _compute_van_genuchten_derivatives_scalar(
 
 @numba.njit(cache=True)
 def _compute_van_genuchten_derivatives_array(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_alpha_water_wet: float,
     oil_water_alpha_oil_wet: float,
@@ -2215,7 +2238,12 @@ def _compute_van_genuchten_derivatives_array(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+]:
     """
     Array variant of van Genuchten capillary pressure derivatives.
 
@@ -2345,16 +2373,21 @@ def _compute_van_genuchten_derivatives_array(
     )
     d_pcgo_d_so = np.zeros_like(sg)
 
-    return d_pcow_d_sw, d_pcow_d_so, d_pcgo_d_sg, d_pcgo_d_so
+    return (
+        typing.cast(FloatArray[NDimension], d_pcow_d_sw),
+        typing.cast(FloatArray[NDimension], d_pcow_d_so),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_sg),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_so),
+    )
 
 
 def compute_van_genuchten_derivatives(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_alpha_water_wet: float,
     oil_water_alpha_oil_wet: float,
@@ -2365,9 +2398,11 @@ def compute_van_genuchten_derivatives(
     mixed_wet_water_fraction: float = 0.5,
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
-) -> typing.Union[
-    typing.Tuple[float, float, float, float],
-    typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray],
+) -> typing.Tuple[
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Dispatch function for van Genuchten capillary pressure derivatives.
@@ -2425,13 +2460,13 @@ def compute_van_genuchten_derivatives(
 
 @capillary_pressure_table
 @attrs.frozen
-class VanGenuchtenCapillaryPressureModel(
+class VanGenuchtenCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
     dump_exclude={"supports_vector"},
 ):
     """
-    van Genuchten capillary pressure model for three-phase systems.
+    Implements the van Genuchten capillary pressure model for three-phase systems.
 
     Implements: Pc = (1/α) * [(Se^(-1/m) - 1)^(1/n)] where m = 1 - 1/n
 
@@ -2482,13 +2517,15 @@ class VanGenuchtenCapillaryPressureModel(
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -2564,13 +2601,15 @@ class VanGenuchtenCapillaryPressureModel(
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -2814,15 +2853,15 @@ def _compute_leverett_j_capillary_pressures_scalar(
 
 @numba.njit(cache=True)
 def _compute_leverett_j_capillary_pressures_array(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
-    permeability: NumberOrArray,
-    porosity: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
+    permeability: NumberOrArray[NDimension],
+    porosity: NumberOrArray[NDimension],
     oil_water_interfacial_tension: float,
     gas_oil_interfacial_tension: float,
     oil_water_contact_angle: float = 0.0,
@@ -2834,7 +2873,7 @@ def _compute_leverett_j_capillary_pressures_array(
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
     dyne_per_cm_to_psi: float = 4.725e-4,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[FloatArray[NDimension], FloatArray[NDimension]]:
     """
     Array variant of Leverett J-function capillary pressure computation.
 
@@ -2981,15 +3020,15 @@ def _compute_leverett_j_capillary_pressures_array(
 
 
 def compute_leverett_j_capillary_pressures(
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
-    permeability: NumberOrArray,
-    porosity: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
+    permeability: NumberOrArray[NDimension],
+    porosity: NumberOrArray[NDimension],
     oil_water_interfacial_tension: float,
     gas_oil_interfacial_tension: float,
     oil_water_contact_angle: float = 0.0,
@@ -3001,15 +3040,12 @@ def compute_leverett_j_capillary_pressures(
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
     dyne_per_cm_to_psi: float = 4.725e-4,
-) -> typing.Union[typing.Tuple[float, float], typing.Tuple[npt.NDArray, npt.NDArray]]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for Leverett J-function capillary pressure computation.
 
     Routes to the scalar variant when all inputs are Python scalars, otherwise
     routes to the array variant. This avoids Numba union return-type limitations.
-
-    See `_compute_leverett_j_capillary_pressures_scalar` and
-    `_compute_leverett_j_capillary_pressures_array` for full parameter docs.
 
     :return: (Pcow, Pcgo) as (float, float) for scalar inputs,
         or (NDArray, NDArray) for array inputs, both in psi.
@@ -3204,14 +3240,14 @@ def _compute_leverett_j_derivatives_scalar(
 
 @numba.njit(cache=True)
 def _compute_leverett_j_derivatives_array(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
-    permeability: NumberOrArray,
-    porosity: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
+    permeability: NumberOrArray[NDimension],
+    porosity: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_interfacial_tension: float,
     gas_oil_interfacial_tension: float,
@@ -3223,7 +3259,12 @@ def _compute_leverett_j_derivatives_array(
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
     dyne_per_cm_to_psi: float = 4.725e-4,
-) -> typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> typing.Tuple[
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+    FloatArray[NDimension],
+]:
     """
     Array variant of Leverett J-function capillary pressure derivatives.
 
@@ -3336,18 +3377,23 @@ def _compute_leverett_j_derivatives_array(
     )
     d_pcgo_d_so = np.zeros_like(sg)
 
-    return d_pcow_d_sw, d_pcow_d_so, d_pcgo_d_sg, d_pcgo_d_so
+    return (
+        typing.cast(FloatArray[NDimension], d_pcow_d_sw),
+        typing.cast(FloatArray[NDimension], d_pcow_d_so),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_sg),
+        typing.cast(FloatArray[NDimension], d_pcgo_d_so),
+    )
 
 
 def compute_leverett_j_derivatives(
-    water_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
-    irreducible_water_saturation: NumberOrArray,
-    residual_oil_saturation_water: NumberOrArray,
-    residual_oil_saturation_gas: NumberOrArray,
-    residual_gas_saturation: NumberOrArray,
-    permeability: NumberOrArray,
-    porosity: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
+    irreducible_water_saturation: NumberOrArray[NDimension],
+    residual_oil_saturation_water: NumberOrArray[NDimension],
+    residual_oil_saturation_gas: NumberOrArray[NDimension],
+    residual_gas_saturation: NumberOrArray[NDimension],
+    permeability: NumberOrArray[NDimension],
+    porosity: NumberOrArray[NDimension],
     wettability: Wettability,
     oil_water_interfacial_tension: float,
     gas_oil_interfacial_tension: float,
@@ -3359,9 +3405,11 @@ def compute_leverett_j_derivatives(
     saturation_epsilon: float = 1e-6,
     minimum_mobile_pore_space: float = 1e-9,
     dyne_per_cm_to_psi: float = 4.725e-4,
-) -> typing.Union[
-    typing.Tuple[float, float, float, float],
-    typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray],
+) -> typing.Tuple[
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
+    NumberOrArray[NDimension],
 ]:
     """
     Dispatch function for Leverett J-function capillary pressure derivatives.
@@ -3427,13 +3475,13 @@ def compute_leverett_j_derivatives(
 
 @capillary_pressure_table
 @attrs.frozen
-class LeverettJCapillaryPressureModel(
+class LeverettJCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
     dump_exclude={"supports_vector"},
 ):
     """
-    Leverett J-function capillary pressure model for three-phase systems.
+    Implements the Leverett J-function capillary pressure model for three-phase systems.
 
     Uses dimensionless J-function correlation to relate capillary pressure
     to rock and fluid properties: Pc = σ * cos(θ) * sqrt(φ/k) * J(Se)
@@ -3490,15 +3538,17 @@ class LeverettJCapillaryPressureModel(
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
-        porosity: typing.Optional[NumberOrArray] = None,
-        permeability: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        porosity: typing.Optional[NumberOrArray[NDimension]] = None,
+        permeability: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -3580,15 +3630,17 @@ class LeverettJCapillaryPressureModel(
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        irreducible_water_saturation: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_water: typing.Optional[NumberOrArray] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray] = None,
-        porosity: typing.Optional[NumberOrArray] = None,
-        permeability: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_oil_saturation_water: typing.Optional[
+            NumberOrArray[NDimension]
+        ] = None,
+        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
+        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        porosity: typing.Optional[NumberOrArray[NDimension]] = None,
+        permeability: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """

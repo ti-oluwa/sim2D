@@ -2,7 +2,7 @@
 Grid import / export functions. Each sub-module handles one file family.
 
 IO code only converts between external representations and the
-`bores.grids.base.Grid` data model. 
+`bores.grids.base.Grid` data model.
 
 GRDECL / Eclipse text:
 

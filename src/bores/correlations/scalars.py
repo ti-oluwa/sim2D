@@ -12,7 +12,7 @@ from scipy.optimize import brentq, root_scalar  # type: ignore[import-untyped]
 
 from bores.constants import c
 from bores.errors import ComputationError, ValidationError
-from bores.typing import NDimension, NumberOrArray, ZFactorMethod[NDimension], ZFactorMethod
+from bores.typing import NDimension, NumberOrArray, ZFactorMethod
 from bores.utils import clip
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,9 @@ def is_CoolProp_supported_fluid(fluid: str) -> bool:
     return PropsSI("D", "T", 300, "P", 101325, fluid) is not None
 
 
-def clip_pressure(pressure: NumberOrArray[NDimension], fluid: str) -> NumberOrArray[NDimension]:
+def clip_pressure(
+    pressure: NumberOrArray[NDimension], fluid: str
+) -> NumberOrArray[NDimension]:
     """
     Clips pressure to be within CoolProp's valid pressure range for the given fluid.
 
@@ -100,7 +102,9 @@ def clip_pressure(pressure: NumberOrArray[NDimension], fluid: str) -> NumberOrAr
     )  # Add small buffer
 
 
-def clip_temperature(temperature: NumberOrArray[NDimension], fluid: str) -> NumberOrArray[NDimension]:
+def clip_temperature(
+    temperature: NumberOrArray[NDimension], fluid: str
+) -> NumberOrArray[NDimension]:
     """
     Clips temperature to be within CoolProp's valid temperature range for the given fluid.
 
@@ -116,25 +120,33 @@ def clip_temperature(temperature: NumberOrArray[NDimension], fluid: str) -> Numb
 
 
 @numba.njit(cache=True)
-def kelvin_to_fahrenheit(temp_K: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
+def kelvin_to_fahrenheit(
+    temp_K: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """Converts temperature from Kelvin to Fahrenheit."""
     return (temp_K - 273.15) * 9 / 5 + 32  # type: ignore[return-value]
 
 
 @numba.njit(cache=True)
-def fahrenheit_to_kelvin(temp_F: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
+def fahrenheit_to_kelvin(
+    temp_F: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """Converts temperature from Fahrenheit to Kelvin."""
     return (temp_F - 32) * 5 / 9 + 273.15  # type: ignore[return-value]
 
 
 @numba.njit(cache=True)
-def fahrenheit_to_celsius(temp_F: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
+def fahrenheit_to_celsius(
+    temp_F: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """Converts temperature from Fahrenheit to Celsius."""
     return (temp_F - 32) * 5 / 9  # type: ignore[return-value]
 
 
 @numba.njit(cache=True)
-def fahrenheit_to_rankine(temp_F: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
+def fahrenheit_to_rankine(
+    temp_F: NumberOrArray[NDimension],
+) -> NumberOrArray[NDimension]:
     """Converts temperature from Fahrenheit to Rankine."""
     return temp_F + 459.67  # type: ignore[return-value]
 

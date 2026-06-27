@@ -1,14 +1,14 @@
 """
-Reservoir model: Top-level assembly of grid, rock, fluid, and dynamic state.
+Reservoir model: Top-level assembly of grid, rock, pvt, and dynamic state.
 
 `BlackOilModel` is the single entity passed between the deck reader, the
 initialisation routines, and the flow solver. It binds together:
 
 - A `bores.grids.base.Grid` — the unstructured polyhedral geometry.
-- `RockProperties` (attribute `rock`) — static petrophysical arrays.
-- `FluidProperties` (attribute `fluid`) — static PVT characterisation.
-- `ReservoirState` (attribute `state`) — dynamic per-cell simulation state.
-- Optionally, `HysteresisState` (attribute `hysteresis`) — scanning-curve
+- `Rock` (attribute `rock`) — static petrophysical arrays.
+- `PVT` (attribute `pvt`) — static PVT characterisation.
+- `State` (attribute `state`) — dynamic per-cell simulation state.
+- Optionally, `Hysteresis` (attribute `hysteresis`) — scanning-curve
   hysteresis tracking.
 """
 
@@ -20,14 +20,8 @@ from typing_extensions import Self
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.models.properties import (
-    FluidProperties,
-    HysteresisState,
-    ReservoirState,
-    RockProperties,
-    get_conversion_factors,
-)
-from bores.models.transmissibility import (
+from bores.model.properties import PVT, Hysteresis, Rock, State, get_conversion_factors
+from bores.model.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,
     get_face_transmissibility_map,
@@ -38,14 +32,114 @@ from bores.typing import CellArray, UnitSystem
 __all__ = ["BlackOilModel"]
 
 
+# TODO: Update `_validate_state`
+def _validate_state(state: State, n_cells: int) -> None:
+    """
+    Verify that all mandatory per-cell arrays in `state` have length
+    `n_cells`.
+
+    Optional EOR arrays (`solvent_concentration` etc.) are validated only
+    when non-empty.
+
+    :param state: `State` to validate.
+    :param n_cells: Expected array length.
+    :raises ValidationError: On any mismatch.
+    """
+    mandatory = {
+        "state.pressure": state.pressure,
+        "state.oil_saturation": state.oil_saturation,
+        "state.water_saturation": state.water_saturation,
+        "state.gas_saturation": state.gas_saturation,
+        "state.oil_mass": state.oil_mass,
+        "state.water_mass": state.water_mass,
+        "state.free_gas_mass": state.free_gas_mass,
+        "state.dissolved_gas_mass_in_oil": state.dissolved_gas_mass_in_oil,
+        "state.dissolved_gas_mass_in_water": state.dissolved_gas_mass_in_water,
+        "state.vaporized_oil_mass_in_gas": state.vaporized_oil_mass_in_gas,
+        "state.solution_gor": state.solution_gor,
+        "state.vaporized_oil_ratio": state.vaporized_oil_ratio,
+        "state.gas_solubility_in_water": state.gas_solubility_in_water,
+        "state.oil_bubble_point_pressure": state.oil_bubble_point_pressure,
+        "state.gas_dew_point_pressure": state.gas_dew_point_pressure,
+    }
+    for name, arr in mandatory.items():
+        if arr.shape != (n_cells,):
+            raise ValidationError(
+                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
+            )
+
+    for name, arr in (("state.solvent_concentration", state.solvent_concentration),):
+        if arr.size > 0 and arr.shape != (n_cells,):
+            raise ValidationError(
+                f"`{name}` has shape {arr.shape}; expected ({n_cells},) or empty."
+            )
+
+    if state.hysteresis is not None:
+        _validate_hysteresis(state.hysteresis, n_cells)
+
+
+def _validate_hysteresis(hysteresis: Hysteresis, n_cells: int) -> None:
+    """
+    Verify that all per-cell arrays in `hysteresis` have length `n_cells`.
+
+    :param hysteresis: `Hysteresis` to validate.
+    :param n_cells: Expected array length.
+    :raises ValidationError: On any mismatch.
+    """
+    checks = {
+        "hysteresis.max_water_saturation": hysteresis.max_water_saturation,
+        "hysteresis.max_gas_saturation": hysteresis.max_gas_saturation,
+        "hysteresis.water_imbibition_flag": hysteresis.water_imbibition_flag,
+        "hysteresis.gas_imbibition_flag": hysteresis.gas_imbibition_flag,
+        "hysteresis.water_reversal_saturation": hysteresis.water_reversal_saturation,
+        "hysteresis.gas_reversal_saturation": hysteresis.gas_reversal_saturation,
+    }
+    for name, arr in checks.items():
+        if arr.shape != (n_cells,):
+            raise ValidationError(
+                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
+            )
+
+
+def _validate_rock(rock: Rock, n_cells: int) -> None:
+    """
+    Verify that all per-cell arrays in `rock` have length `n_cells`.
+
+    :param rock: `Rock` to validate.
+    :param n_cells: Expected array length.
+    :raises ValidationError: On any mismatch.
+    """
+    checks = {
+        "rock.porosity": rock.porosity,
+        "rock.temperature": rock.temperature,
+        "rock.absolute_permeability.x": rock.absolute_permeability.x,
+        "rock.absolute_permeability.y": rock.absolute_permeability.y,
+        "rock.absolute_permeability.z": rock.absolute_permeability.z,
+        "rock.net_to_gross": rock.net_to_gross,
+        "rock.connate_water_saturation": rock.connate_water_saturation,
+        "rock.irreducible_water_saturation": rock.irreducible_water_saturation,
+        "rock.residual_oil_saturation_water_flood": (
+            rock.residual_oil_saturation_water_flood
+        ),
+        "rock.residual_oil_saturation_gas_flood": (
+            rock.residual_oil_saturation_gas_flood
+        ),
+        "rock.residual_gas_saturation": rock.residual_gas_saturation,
+    }
+    for name, arr in checks.items():
+        if arr.shape != (n_cells,):
+            raise ValidationError(
+                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
+            )
+
+
 class BlackOilModel(
     Serializable,
     fields={
         "grid": Grid,
-        "rock": RockProperties,
-        "fluid": FluidProperties,
-        "state": ReservoirState,
-        "hysteresis": typing.Optional[HysteresisState],
+        "rock": Rock,
+        "pvt": PVT,
+        "state": State,
         "datum_depth": typing.Optional[float],
         "unit_system": typing.Optional[UnitSystem],
     },
@@ -53,7 +147,7 @@ class BlackOilModel(
     """
     Reservoir model for black-oil simulation.
 
-    Binds a polyhedral `Grid` to per-cell rock, fluid, and dynamic state
+    Binds a polyhedral `Grid` to per-cell rock, pvt, and dynamic state
     arrays. On construction all property groups are normalised to the
     declared `unit_system` (defaults to the grid's own unit system).
     """
@@ -61,10 +155,9 @@ class BlackOilModel(
     def __init__(
         self,
         grid: Grid,
-        rock: RockProperties,
-        fluid: FluidProperties,
-        state: ReservoirState,
-        hysteresis: typing.Optional[HysteresisState] = None,
+        rock: Rock,
+        pvt: PVT,
+        state: State,
         datum_depth: typing.Optional[float] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
@@ -73,11 +166,9 @@ class BlackOilModel(
 
         :param grid: Fully constructed `bores.grids.base.Grid`.
         :param rock: Static petrophysical properties. Array lengths must equal `grid.n_cells`.
-        :param fluid: Static PVT characterisation of the reservoir fluids.
+        :param pvt: Static PVT characterisation of the reservoir fluids.
         :param state: Initial (or current) dynamic simulation state. Array lengths must
             equal `grid.n_cells`.
-        :param hysteresis: Optional `HysteresisState` for Killough scanning curves.
-            `None` (default) for simulations without hysteresis.
         :param datum_depth: Reference depth (positive downward, grid length units) of the datum
             plane used for pressure initialisation by the equilibration routine.
             `None` means no explicit datum is declared.
@@ -111,29 +202,24 @@ class BlackOilModel(
         unit_conversion_table = build_unit_conversion_table()
         # Normalise property groups to the target unit system.
         rock = rock.convert(target_unit_system, table=unit_conversion_table)
-        fluid = fluid.convert(target_unit_system, table=unit_conversion_table)
+        pvt = pvt.convert(target_unit_system, table=unit_conversion_table)
         state = state.convert(target_unit_system, table=unit_conversion_table)
 
         n_cells = grid.n_cells
-        self._validate_rock(rock, n_cells)
-        self._validate_state(state, n_cells)
-        if hysteresis is not None:
-            self._validate_hysteresis(hysteresis, n_cells)
+        _validate_rock(rock, n_cells)
+        _validate_state(state, n_cells)
 
         self.grid: Grid = grid
         """The unstructured polyhedral grid with all geometry and topology."""
 
-        self.rock: RockProperties = rock
+        self.rock: Rock = rock
         """Static petrophysical properties in `unit_system`."""
 
-        self.fluid: FluidProperties = fluid
+        self.pvt: PVT = pvt
         """Static PVT characterisation in `unit_system`."""
 
-        self.state: ReservoirState = state
+        self.state: State = state
         """Dynamic per-cell simulation state in `unit_system`."""
-
-        self.hysteresis: typing.Optional[HysteresisState] = hysteresis
-        """Optional Killough hysteresis state (all-dimensionless)."""
 
         self.datum_depth: typing.Optional[float] = datum_depth
         """
@@ -149,120 +235,6 @@ class BlackOilModel(
         """
         self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
         self._face_transmissibility_map: typing.Optional[typing.Dict[int, float]] = None
-
-    @staticmethod
-    def _validate_rock(rock: RockProperties, n_cells: int) -> None:
-        """
-        Verify that all per-cell arrays in `rock` have length `n_cells`.
-
-        :param rock: `RockProperties` to validate.
-        :param n_cells: Expected array length.
-        :raises ValidationError: On any mismatch.
-        """
-        checks = {
-            "rock.porosity": rock.porosity,
-            "rock.absolute_permeability.x": rock.absolute_permeability.x,
-            "rock.absolute_permeability.y": rock.absolute_permeability.y,
-            "rock.absolute_permeability.z": rock.absolute_permeability.z,
-            "rock.net_to_gross": rock.net_to_gross,
-            "rock.connate_water_saturation": rock.connate_water_saturation,
-            "rock.irreducible_water_saturation": rock.irreducible_water_saturation,
-            "rock.residual_oil_saturation_water_flood": (
-                rock.residual_oil_saturation_water_flood
-            ),
-            "rock.residual_oil_saturation_gas_flood": (
-                rock.residual_oil_saturation_gas_flood
-            ),
-            "rock.residual_gas_saturation": rock.residual_gas_saturation,
-        }
-        for name, arr in checks.items():
-            if arr.shape != (n_cells,):
-                raise ValidationError(
-                    f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-                )
-
-    @staticmethod
-    def _validate_state(state: ReservoirState, n_cells: int) -> None:
-        """
-        Verify that all mandatory per-cell arrays in `state` have length
-        `n_cells`.
-
-        Optional EOR arrays (`solvent_concentration` etc.) are validated only
-        when non-empty.
-
-        :param state: `ReservoirState` to validate.
-        :param n_cells: Expected array length.
-        :raises ValidationError: On any mismatch.
-        """
-        mandatory = {
-            "state.pressure": state.pressure,
-            "state.temperature": state.temperature,
-            "state.oil_saturation": state.oil_saturation,
-            "state.water_saturation": state.water_saturation,
-            "state.gas_saturation": state.gas_saturation,
-            "state.oil_mass": state.oil_mass,
-            "state.water_mass": state.water_mass,
-            "state.free_gas_mass": state.free_gas_mass,
-            "state.dissolved_gas_mass_in_oil": state.dissolved_gas_mass_in_oil,
-            "state.dissolved_gas_mass_in_water": state.dissolved_gas_mass_in_water,
-            "state.vaporized_oil_mass_in_gas": state.vaporized_oil_mass_in_gas,
-            "state.oil_fvf": state.oil_fvf,
-            "state.water_fvf": state.water_fvf,
-            "state.gas_fvf": state.gas_fvf,
-            "state.oil_viscosity": state.oil_viscosity,
-            "state.water_viscosity": state.water_viscosity,
-            "state.gas_viscosity": state.gas_viscosity,
-            "state.oil_density": state.oil_density,
-            "state.water_density": state.water_density,
-            "state.gas_density": state.gas_density,
-            "state.solution_gor": state.solution_gor,
-            "state.vaporized_oil_ratio": state.vaporized_oil_ratio,
-            "state.gas_solubility_in_water": state.gas_solubility_in_water,
-            "state.oil_bubble_point_pressure": state.oil_bubble_point_pressure,
-            "state.gas_dew_point_pressure": state.gas_dew_point_pressure,
-            "state.gas_compressibility_factor": state.gas_compressibility_factor,
-            "state.oil_compressibility": state.oil_compressibility,
-            "state.water_compressibility": state.water_compressibility,
-            "state.gas_compressibility": state.gas_compressibility,
-        }
-        for name, arr in mandatory.items():
-            if arr.shape != (n_cells,):
-                raise ValidationError(
-                    f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-                )
-
-        for name, arr in (
-            ("state.solvent_concentration", state.solvent_concentration),
-            ("state.oil_effective_viscosity", state.oil_effective_viscosity),
-            ("state.oil_effective_density", state.oil_effective_density),
-        ):
-            if arr.size > 0 and arr.shape != (n_cells,):
-                raise ValidationError(
-                    f"`{name}` has shape {arr.shape}; expected ({n_cells},) or empty."
-                )
-
-    @staticmethod
-    def _validate_hysteresis(hysteresis: HysteresisState, n_cells: int) -> None:
-        """
-        Verify that all per-cell arrays in `hysteresis` have length `n_cells`.
-
-        :param hysteresis: `HysteresisState` to validate.
-        :param n_cells: Expected array length.
-        :raises ValidationError: On any mismatch.
-        """
-        checks = {
-            "hysteresis.max_water_saturation": hysteresis.max_water_saturation,
-            "hysteresis.max_gas_saturation": hysteresis.max_gas_saturation,
-            "hysteresis.water_imbibition_flag": hysteresis.water_imbibition_flag,
-            "hysteresis.gas_imbibition_flag": hysteresis.gas_imbibition_flag,
-            "hysteresis.water_reversal_saturation": hysteresis.water_reversal_saturation,
-            "hysteresis.gas_reversal_saturation": hysteresis.gas_reversal_saturation,
-        }
-        for name, arr in checks.items():
-            if arr.shape != (n_cells,):
-                raise ValidationError(
-                    f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-                )
 
     @property
     def n_cells(self) -> int:
@@ -380,50 +352,25 @@ class BlackOilModel(
         self._transmissibilities = None
         self._face_transmissibility_map = None
 
-    def evolve_state(self, new_state: ReservoirState) -> Self:
+    def evolve_state(self, new_state: State) -> Self:
         """
         Return a new `ReservoirModel` with the dynamic state replaced.
 
-        The grid, rock, fluid, hysteresis, datum depth, and unit system are
+        The grid, rock, pvt, datum depth, and unit system are
         carried forward unchanged.  The transmissibility cache is **preserved**
         (it depends only on grid geometry and rock, which have not changed).
 
-        :param new_state: Updated `ReservoirState` from the solver.
+        :param new_state: Updated `State` from the solver.
         :returns: New `ReservoirModel`.
         :raises ValidationError: If `new_state` array lengths do not match
             `grid.n_cells`.
         """
-        self._validate_state(new_state, self.n_cells)
+        _validate_state(new_state, self.n_cells)
         new_model = self.__class__(
             grid=self.grid,
             rock=self.rock,
-            fluid=self.fluid,
+            pvt=self.pvt,
             state=new_state,
-            hysteresis=self.hysteresis,
-            datum_depth=self.datum_depth,
-            unit_system=self.unit_system,
-        )
-        new_model._transmissibilities = self._transmissibilities
-        return new_model
-
-    def evolve_hysteresis(self, new_hysteresis: HysteresisState) -> Self:
-        """
-        Return a new `ReservoirModel` with the hysteresis state replaced.
-
-        Everything else is carried forward, including the transmissibility cache.
-
-        :param new_hysteresis: Updated `HysteresisState`.
-        :returns: New `ReservoirModel`.
-        :raises ValidationError: If `new_hysteresis` array lengths do not
-            match `grid.n_cells`.
-        """
-        self._validate_hysteresis(new_hysteresis, self.n_cells)
-        new_model = self.__class__(
-            grid=self.grid,
-            rock=self.rock,
-            fluid=self.fluid,
-            state=self.state,
-            hysteresis=new_hysteresis,
             datum_depth=self.datum_depth,
             unit_system=self.unit_system,
         )
@@ -461,9 +408,8 @@ class BlackOilModel(
         new_model = self.__class__(
             grid=new_grid,
             rock=self.rock.convert(target, table=table),
-            fluid=self.fluid.convert(target, table=table),
+            pvt=self.pvt.convert(target, table=table),
             state=self.state.convert(target, table=table),
-            hysteresis=self.hysteresis,  # dimensionless — no conversion
             datum_depth=(
                 self.datum_depth
                 * get_conversion_factors(self.unit_system, target, table=table)[
@@ -525,7 +471,6 @@ class BlackOilModel(
             "sg_min": float(sg.min()),
             "sg_max": float(sg.max()),
             "saturation_balance_max_error": float(abs(so + sw + sg - 1.0).max()),
-            "has_hysteresis": self.hysteresis is not None,
             "has_transmissibility_multipliers": (
                 self.grid.has_transmissibility_multipliers
             ),
@@ -541,8 +486,6 @@ class BlackOilModel(
             f"n_boundary={self.n_boundary_faces}, "
             f"n_nnc={self.n_nnc}, "
             f"unit_system={self.unit_system.value!r}, "
-            f"has_hysteresis={self.hysteresis is not None}"
+            f"has_hysteresis={self.state.hysteresis is not None}"
             f")"
         )
-
-    

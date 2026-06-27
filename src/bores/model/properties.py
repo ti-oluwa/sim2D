@@ -1,6 +1,5 @@
 """Per-cell property definitions for a black-oil reservoir model."""
 
-import dataclasses
 import typing
 
 import attrs
@@ -11,15 +10,15 @@ from typing_extensions import Self, TypedDict
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import BooleanCellArray, CellArray, UnitSystem
+from bores.typing import BooleanCellArray, CellArray, MiscibilityModel, UnitSystem
 
 __all__ = [
-    "FluidProperties",
-    "HysteresisState",
+    "PVT",
+    "Hysteresis",
     "PVTCache",
     "RockPermeability",
-    "RockProperties",
-    "ReservoirState",
+    "Rock",
+    "State",
 ]
 
 
@@ -51,7 +50,7 @@ class RockPermeability(StoreSerializable):
     assumption). The geometric-mean `mean` is computed automatically when
     not provided.
 
-    Units follow the parent `RockProperties.unit_system`.
+    Units follow the parent `Rock.unit_system`.
     """
 
     x: CellArray
@@ -112,7 +111,7 @@ class RockPermeability(StoreSerializable):
 
 
 @attrs.frozen(slots=True)
-class RockProperties(StoreSerializable):
+class Rock(StoreSerializable):
     """
     Static petrophysical properties of the reservoir rock.
 
@@ -171,8 +170,8 @@ class RockProperties(StoreSerializable):
     extensions the values vary spatially and are interpolated from the
     `TEMPVD` keyword (temperature vs depth) at each cell centroid.
 
-    This quantity belongs on `RockProperties` rather than
-    `ReservoirState` because it is *not* a primary unknown - the solver
+    This quantity belongs on `Rock` rather than
+    `State` because it is *not* a primary unknown - the solver
     does not update it during Newton iterations.
     """
 
@@ -231,7 +230,7 @@ class RockProperties(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `RockProperties` with all dimensional quantities rescaled
+        Return a new `Rock` with all dimensional quantities rescaled
         to *target*.
 
         Dimensionless arrays (porosity, NTG, saturations) are copied unchanged.
@@ -239,7 +238,7 @@ class RockProperties(StoreSerializable):
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
-        :returns: New `RockProperties` in *target* units.
+        :returns: New `Rock` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -269,17 +268,17 @@ class RockProperties(StoreSerializable):
 
 
 @attrs.frozen(slots=True)
-class FluidProperties(StoreSerializable):
+class PVT(StoreSerializable):
     """
     Static PVT reference characterisation of the reservoir fluids.
 
     Stores the per-fluid scalars read once from the PVT deck that do not
-    change between time steps.  Quantities that *do* vary with pressure -
+    change between time steps. Quantities that *do* vary with pressure -
     FVFs, viscosities, densities, Rs, Rv, Rsw, bubble-point and dew-point
-    pressures, z-factor, and compressibilities - live in `PVTCache` and
+    pressures, z-factor, and compressibilities, live in `PVTCache` and
     are recomputed from the PVT tables each Newton iteration.
 
-    The split reflects the physical distinction between what fluids *are*
+    This split reflects the physical distinction between what fluids *are*
     (static characterisation, stored here) and what the current reservoir
     *condition* looks like (transient evaluation, stored in `PVTCache`).
 
@@ -335,8 +334,8 @@ class FluidProperties(StoreSerializable):
     """
     Formation water salinity (ppm NaCl).
 
-    Assumed spatially and temporally constant.  Used in brine density and
-    viscosity correlations (e.g. Batzle-Wang).  Typical seawater: 35 000 ppm.
+    Assumed spatially and temporally constant. Used in brine density and
+    viscosity correlations (e.g. Batzle-Wang). Typical seawater: 35 000 ppm.
     """
 
     water_reference_pressure: float
@@ -396,7 +395,7 @@ class FluidProperties(StoreSerializable):
     """
     Gas specific gravity relative to air (dimensionless).
 
-    0.556 for pure methane; up to ~0.9 for rich condensate gas.  Input to
+    0.556 for pure methane; up to ~0.9 for rich condensate gas. Input to
     pseudo-critical property correlations (Sutton, Pitzer) for z-factor and
     viscosity.
     """
@@ -419,7 +418,7 @@ class FluidProperties(StoreSerializable):
 
     # Miscible / solvent (EOR)
 
-    miscibility_model: str = "immiscible"
+    miscibility_model: MiscibilityModel = "immiscible"
     """
     Miscibility model identifier.
 
@@ -447,7 +446,7 @@ class FluidProperties(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `FluidProperties` with dimensional quantities rescaled to
+        Return a new `PVT` with dimensional quantities rescaled to
         *target*.
 
         Dimensionless fields (gravities, API, molecular weight,
@@ -455,7 +454,7 @@ class FluidProperties(StoreSerializable):
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
-        :returns: New `FluidProperties` in *target* units.
+        :returns: New `PVT` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -499,7 +498,7 @@ class PVTCache:
     """
     Transient per-cell PVT quantities derived from pressure and the PVT tables.
 
-    Every field in this class is a function of the current `ReservoirState`
+    Every field in this class is a function of the current `State`
     pressure (and optionally Rs, Rv, Rsw) evaluated against the parsed PVT
     tables.  They are recomputed at the start of each Newton iteration and
     discarded at the end of each time step.
@@ -508,13 +507,13 @@ class PVTCache:
     `StoreSerializable`. It must never be checkpointed, persisted, or
     passed to `evolve_state`. If you need to write PVT quantities to an
     output file for post-processing, compute them on demand from the stored
-    `ReservoirState` and the PVT tables at output time - exactly as Eclipse
+    `State` and the PVT tables at output time - exactly as Eclipse
     does when it writes `DENO`, `DENG` etc. via `RPTRST`.
 
-    Use `bores.models.pvt.compute_pvt_cache` to construct an instance.
+    Use `bores.model.pvt.compute_pvt_cache` to construct an instance.
 
     All arrays are shape `(n_cells,)` and indexed in the same order as
-    `Grid.cell_centroids`.  Units follow `ReservoirState.unit_system`.
+    `Grid.cell_centroids`.  Units follow `State.unit_system`.
     """
 
     oil_fvf: CellArray
@@ -564,7 +563,7 @@ class PVTCache:
     """
     Free-gas viscosity at reservoir conditions (μg).
 
-    Units: same as `oil_viscosity`.  Typically 0.01-0.05 cP.
+    Units: same as `oil_viscosity`. Typically 0.01-0.05 cP.
     Evaluated via the Lee-Kesler / Carr-Kobayashi-Burrows correlations or
     interpolated from `PVDG`.
     """
@@ -642,7 +641,7 @@ class PVTCache:
 
     Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
     Computed via the Todd-Longstaff mixing rule when
-    `ReservoirState.solvent_concentration` is non-zero; equals
+    `State.solvent_concentration` is non-zero; equals
     `oil_viscosity` for immiscible flow.
     Empty array for standard black-oil runs.
     """
@@ -659,7 +658,113 @@ class PVTCache:
 
 
 @attrs.frozen(slots=True)
-class ReservoirState(StoreSerializable):
+class Hysteresis(StoreSerializable):
+    """
+    Drainage / imbibition hysteresis tracking for Killough scanning curves.
+
+    Maintains historical saturation extrema and displacement-regime flags
+    required to compute effective residual saturations on the scanning curves.
+    These are consumed inside relative-permeability and capillary-pressure
+    evaluation routines; the flow solver does not interpret them directly.
+
+    All arrays are dimensionless (saturations, flags) and therefore require no unit conversion.
+    """
+
+    max_water_saturation: CellArray
+    """
+    Shape (n_cells,) - historical maximum water saturation reached in each
+    cell (fraction).
+
+    Initialised to the initial water saturation. Updated whenever the
+    current water saturation exceeds the stored maximum. Determines the
+    imbibition end-point on the scanning curve when drainage reverses.
+    """
+
+    max_gas_saturation: CellArray
+    """
+    Shape (n_cells,) - historical maximum gas saturation reached in each
+    cell (fraction).
+
+    Analogous to `max_water_saturation` for the gas phase.
+    """
+
+    water_imbibition_flag: BooleanCellArray
+    """
+    Shape (n_cells,) - `True` if the current water-phase displacement is
+    imbibition (water saturation increasing toward `max_water_saturation`).
+
+    `False` indicates drainage (water saturation decreasing).
+    """
+
+    gas_imbibition_flag: BooleanCellArray
+    """
+    Shape (n_cells,) - `True` if the current gas-phase displacement is
+    imbibition (gas saturation decreasing - water or liquid displacing gas).
+    """
+
+    water_reversal_saturation: CellArray
+    """
+    Shape (n_cells,) - water saturation at the most recent
+    drainage-to-imbibition (or reverse) reversal point (fraction).
+
+    Starting saturation of the Killough scanning curve when the displacement
+    regime changes.
+    """
+
+    gas_reversal_saturation: CellArray
+    """
+    Shape (n_cells,) - gas saturation at the most recent reversal point
+    (fraction).
+
+    Analogous to `water_reversal_saturation` for the gas phase.
+    """
+
+    @classmethod
+    def from_initial_saturations(
+        cls,
+        water_saturation: npt.ArrayLike,
+        gas_saturation: npt.ArrayLike,
+    ) -> Self:
+        """
+        Construct a `Hysteresis` from initial saturation arrays.
+
+        Sets maximum saturations to the initial values, marks all cells as
+        drainage (not yet reversing), and places reversal points at the
+        initial saturation values.
+
+        :param water_saturation: Array-like (n_cells,) - initial water
+            saturation per cell (fraction).
+        :param gas_saturation: Array-like (n_cells,) - initial gas saturation
+            per cell (fraction).
+        :returns: Initialised `Hysteresis`.
+        """
+        sw = np.asarray(water_saturation, dtype=get_dtype())
+        sg = np.asarray(gas_saturation, dtype=get_dtype())
+        return cls(
+            max_water_saturation=typing.cast(CellArray, sw.copy()),
+            max_gas_saturation=typing.cast(CellArray, sg.copy()),
+            water_imbibition_flag=typing.cast(
+                BooleanCellArray, np.zeros(sw.shape, dtype=np.bool_)
+            ),
+            gas_imbibition_flag=typing.cast(
+                BooleanCellArray, np.zeros(sg.shape, dtype=np.bool_)
+            ),
+            water_reversal_saturation=typing.cast(CellArray, sw.copy()),
+            gas_reversal_saturation=typing.cast(CellArray, sg.copy()),
+        )
+
+    def evolve(self, **kwargs: typing.Any) -> Self:
+        """
+        Return a new `Hysteresis` with selected fields replaced.
+
+        :param kwargs: Field names and their replacement values.
+        :returns: New immutable `Hysteresis`.
+        """
+        return attrs.evolve(self, **kwargs)
+
+
+@attrs.frozen(slots=True)
+class State(StoreSerializable):
     """
     Dynamic per-cell simulation state, updated at every time step.
 
@@ -680,7 +785,7 @@ class ReservoirState(StoreSerializable):
       evolving bubble-point as the reservoir depletes below saturation
       pressure).
     - `vaporized_oil_ratio` (Rv) - stock-tank oil vaporized in gas per unit
-      standard gas volume.  Primary variable for volatile-oil / gas-condensate
+      standard gas volume. Primary variable for volatile-oil / gas-condensate
       models when So = 0.
     - `water_bubble_point_pressure` - bubble-point pressure of the water
       phase with respect to dissolved gas (Rsw).  Relevant for CO₂ or sour-gas
@@ -690,7 +795,7 @@ class ReservoirState(StoreSerializable):
     - `gas_solubility_in_water` (Rsw) - gas dissolved in water per unit
       stock-tank water volume.
 
-    **Conserved component masses** (updated explicitly in IMPES):
+    **Conserved component masses** (updated explicitly):
 
     - `oil_mass`, `water_mass`, `free_gas_mass`
     - `dissolved_gas_mass_in_oil`, `dissolved_gas_mass_in_water`
@@ -705,7 +810,7 @@ class ReservoirState(StoreSerializable):
     files: only primary variables are written to `.UNRST`; everything else
     is recomputed on load.
 
-    **Temperature** lives on `RockProperties.temperature` because it is a
+    **Temperature** lives on `Rock.temperature` because it is a
     static field (not a solver unknown) in standard isothermal black-oil.
 
     Use `convert(target)` to rescale to another unit system, or
@@ -901,6 +1006,12 @@ class ReservoirState(StoreSerializable):
     black-oil (zero memory cost).
     """
 
+    hysteresis: typing.Optional[Hysteresis] = None
+    """
+    Optional `HysteresisState` for Killough scanning curves.
+    `None` (default) for simulations without hysteresis.
+    """
+
     unit_system: UnitSystem = UnitSystem.FIELD
     """
     Unit system in which all dimensional quantities are expressed.
@@ -941,7 +1052,7 @@ class ReservoirState(StoreSerializable):
 
     def evolve(self, **kwargs: typing.Any) -> Self:
         """
-        Return a new `ReservoirState` with selected fields replaced.
+        Return a new `State` with selected fields replaced.
 
         All fields not present in *kwargs* are carried forward unchanged.
         Preferred solver pattern:
@@ -958,7 +1069,7 @@ class ReservoirState(StoreSerializable):
         ```
 
         :param kwargs: Field names and their replacement values.
-        :returns: New immutable `ReservoirState`.
+        :returns: New immutable `State`.
         :raises TypeError: If an unknown field name is passed.
         """
         return attrs.evolve(self, **kwargs)
@@ -971,7 +1082,7 @@ class ReservoirState(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `ReservoirState` with all dimensional quantities rescaled
+        Return a new `State` with all dimensional quantities rescaled
         to *target*.
 
         Dimensionless fields (saturations, `solvent_concentration`) are
@@ -981,7 +1092,7 @@ class ReservoirState(StoreSerializable):
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
-        :returns: New `ReservoirState` in *target* units.
+        :returns: New `State` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -1017,109 +1128,6 @@ class ReservoirState(StoreSerializable):
                 self.vaporized_oil_mass_in_gas, mass_factor
             ),
             solvent_concentration=self.solvent_concentration,
+            hysteresis=self.hysteresis,
             unit_system=target,
         )
-
-
-@attrs.frozen(slots=True)
-class HysteresisState(StoreSerializable):
-    """
-    Drainage / imbibition hysteresis tracking for Killough scanning curves.
-
-    Maintains historical saturation extrema and displacement-regime flags
-    required to compute effective residual saturations on the scanning curves.
-    These are consumed inside relative-permeability and capillary-pressure
-    evaluation routines; the flow solver does not interpret them directly.
-
-    Kept separate from `ReservoirState` so that simulations without
-    hysteresis pay zero memory cost.  All arrays are dimensionless (saturations,
-    flags) and therefore require no unit conversion.
-    """
-
-    max_water_saturation: CellArray
-    """
-    Shape (n_cells,) - historical maximum water saturation reached in each
-    cell (fraction).
-
-    Initialised to the initial water saturation.  Updated whenever the
-    current water saturation exceeds the stored maximum.  Determines the
-    imbibition end-point on the scanning curve when drainage reverses.
-    """
-
-    max_gas_saturation: CellArray
-    """
-    Shape (n_cells,) - historical maximum gas saturation reached in each
-    cell (fraction).
-
-    Analogous to `max_water_saturation` for the gas phase.
-    """
-
-    water_imbibition_flag: BooleanCellArray
-    """
-    Shape (n_cells,) - `True` if the current water-phase displacement is
-    imbibition (water saturation increasing toward `max_water_saturation`).
-
-    `False` indicates drainage (water saturation decreasing).
-    """
-
-    gas_imbibition_flag: BooleanCellArray
-    """
-    Shape (n_cells,) - `True` if the current gas-phase displacement is
-    imbibition (gas saturation decreasing - water or liquid displacing gas).
-    """
-
-    water_reversal_saturation: CellArray
-    """
-    Shape (n_cells,) - water saturation at the most recent
-    drainage-to-imbibition (or reverse) reversal point (fraction).
-
-    Starting saturation of the Killough scanning curve when the displacement
-    regime changes.
-    """
-
-    gas_reversal_saturation: CellArray
-    """
-    Shape (n_cells,) - gas saturation at the most recent reversal point
-    (fraction).
-
-    Analogous to `water_reversal_saturation` for the gas phase.
-    """
-
-    @classmethod
-    def from_initial_saturations(
-        cls,
-        water_saturation: npt.ArrayLike,
-        gas_saturation: npt.ArrayLike,
-    ) -> Self:
-        """
-        Construct a `HysteresisState` from initial saturation arrays.
-
-        Sets maximum saturations to the initial values, marks all cells as
-        drainage (not yet reversing), and places reversal points at the
-        initial saturation values.
-
-        :param water_saturation: Array-like (n_cells,) - initial water
-            saturation per cell (fraction).
-        :param gas_saturation: Array-like (n_cells,) - initial gas saturation
-            per cell (fraction).
-        :returns: Initialised `HysteresisState`.
-        """
-        sw = np.asarray(water_saturation, dtype=get_dtype())
-        sg = np.asarray(gas_saturation, dtype=get_dtype())
-        return cls(
-            max_water_saturation=sw.copy(),
-            max_gas_saturation=sg.copy(),
-            water_imbibition_flag=np.zeros(sw.shape, dtype=np.bool_),  # type: ignore[arg-type]
-            gas_imbibition_flag=np.zeros(sg.shape, dtype=np.bool_),  # type: ignore[arg-type]
-            water_reversal_saturation=sw.copy(),
-            gas_reversal_saturation=sg.copy(),
-        )
-
-    def evolve(self, **kwargs: typing.Any) -> Self:
-        """
-        Return a new `HysteresisState` with selected fields replaced.
-
-        :param kwargs: Field names and their replacement values.
-        :returns: New immutable `HysteresisState`.
-        """
-        return attrs.evolve(self, **kwargs)

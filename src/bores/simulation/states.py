@@ -16,7 +16,7 @@ from bores.grids.base import (
     RelPermGrids,
 )
 from bores.material_balance import MaterialBalanceErrors
-from bores.models import (
+from bores.model import (
     FluidProperties,
     HysteresisState,
     ReservoirModel,

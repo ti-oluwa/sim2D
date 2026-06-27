@@ -10,6 +10,7 @@ The active box is set by the most recent `BOX` record in file order
 (or reset to the full grid by `ENDBOX`); individual operator records
 may also carry an inline box override as six trailing integers.
 """
+
 import typing
 import warnings
 

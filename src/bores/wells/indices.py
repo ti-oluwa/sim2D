@@ -4,7 +4,7 @@ import typing
 import attrs
 
 from bores.datastructures import ContextFlag
-from bores.models import RockPermeability
+from bores.model import RockPermeability
 from bores.solvers.base import to_1D_index
 from bores.typing import NDimensionalGrid, ThreeDimensions
 from bores.wells.base import Well, Wells

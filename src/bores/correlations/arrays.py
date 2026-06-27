@@ -9,7 +9,7 @@ from scipy.optimize import brentq  # type: ignore[import-untyped]
 
 from bores.constants import c
 from bores.correlations import fahrenheit_to_rankine
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     HENRY_COEFFICIENTS,
     SETSCHENOW_CONSTANTS,
     _get_gas_symbol,
@@ -18,13 +18,13 @@ from bores.correlations.core import (
     fahrenheit_to_celsius,
     fahrenheit_to_kelvin,
 )
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_solubility_in_water as compute_gas_solubility_in_water_scalar,
 )
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_to_oil_ratio_standing as compute_gas_to_oil_ratio_standing_scalar,
 )
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     estimate_solution_gor as estimate_solution_gor_scalar,
 )
 from bores.errors import ComputationError, ValidationError
@@ -1126,7 +1126,7 @@ def compute_gas_compressibility_factor(
 
     Example:
     ```python
-    Z = compute_gas_compressibility_factor(P_grid, T_grid, gamma_g, method="dak")
+    Z = compute_gas_compressibility_factor(P, T, G, method="dak")
     ```
 
     References:

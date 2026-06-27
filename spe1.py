@@ -4,7 +4,7 @@ import typing
 import numpy as np
 
 import bores
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_molecular_weight,
     compute_oil_specific_gravity,
 )

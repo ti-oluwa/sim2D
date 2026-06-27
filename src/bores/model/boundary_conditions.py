@@ -14,7 +14,7 @@ from typing_extensions import ParamSpec, Self
 from bores.constants import c
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids, RelPermGrids
-from bores.models import FluidProperties, RockProperties
+from bores.model import PVT, Rock
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
 from bores.transmissibility import FaceTransmissibilities
@@ -434,11 +434,11 @@ class BoundaryMetadata:
     :param thickness_grid: Un-padded cell thickness array (ft).
     """
 
-    fluid_properties: typing.Optional[FluidProperties] = None
-    """Full `FluidProperties` object for the padded grid."""
+    fluid_properties: typing.Optional[PVT] = None
+    """Full `PVT` object for the padded grid."""
 
-    rock_properties: typing.Optional[RockProperties] = None
-    """Full `RockProperties` object for the padded grid."""
+    rock_properties: typing.Optional[Rock] = None
+    """Full `Rock` object for the padded grid."""
 
     relative_permeability_grids: typing.Optional[RelPermGrids] = None
     """Three-phase relative permeability grids (krw, kro, krg)."""
@@ -469,8 +469,8 @@ class BoundaryMetadata:
 
 
 def build_boundary_metadata(
-    fluid_properties: FluidProperties[ThreeDimensions],
-    rock_properties: RockProperties[ThreeDimensions],
+    fluid_properties: PVT[ThreeDimensions],
+    rock_properties: Rock[ThreeDimensions],
     relperm_grids: RelPermGrids[ThreeDimensions],
     relative_mobility_grids: RelativeMobilityGrids[ThreeDimensions],
     capillary_pressure_grids: CapillaryPressureGrids[ThreeDimensions],
@@ -1604,9 +1604,7 @@ class BoundaryConditions(Serializable, typing.Generic[NDimension]):
             object.__setattr__(self, "_flux_cache", flux_cache)
             object.__setattr__(self, "_pressure_cache", pressure_cache)
             # Determine and cache whether all boundaries are static
-            all_static = all(
-                condition.is_static() for _, condition in face_conditions
-            )
+            all_static = all(condition.is_static() for _, condition in face_conditions)
             object.__setattr__(self, "_all_static", all_static)
         else:
             flux_cache = self._flux_cache

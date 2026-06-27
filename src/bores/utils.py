@@ -8,9 +8,12 @@ import numpy.typing as npt
 import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
 
+from bores.precision import get_dtype
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "array",
     "apply_mask",
     "clip",
     "clip_scalar",
@@ -19,6 +22,18 @@ __all__ = [
     "max_",
     "min_",
 ]
+
+
+def array(obj: typing.Any, **kwargs: typing.Any):
+    """
+    Wrapper around `np.array` to enforce global dtype.
+
+    :param obj: Object to convert to numpy array
+    :param kwargs: Additional keyword arguments for `np.array`
+    :return: return value of `np.array`
+    """
+    kwargs.setdefault("dtype", get_dtype())
+    return np.array(obj, **kwargs)
 
 
 @numba.vectorize(cache=True)

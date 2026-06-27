@@ -12,7 +12,7 @@ from bores.grids.base import (
     RelPermGrids,
     build_uniform_grid,
 )
-from bores.models import HysteresisState
+from bores.model import HysteresisState
 from bores.precision import get_dtype
 from bores.tables.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
 from bores.typing import NDimension, NDimensionalGrid, ThreeDimensions

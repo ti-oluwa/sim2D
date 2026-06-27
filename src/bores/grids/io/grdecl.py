@@ -35,7 +35,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.deck.core import DeckParseError
-from bores.deck.datafile import DataFile
+from bores.deck.file import DeckFile
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.cartesian import make_cartesian_grid
@@ -93,9 +93,9 @@ _US_TO_MAPUNITS: typing.Dict[UnitSystem, str] = {
 }
 
 
-def _detect_unit_system(data_file: DataFile) -> UnitSystem:
+def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     """
-    Determine the grid geometry unit system from a parsed `DataFile`.
+    Determine the grid geometry unit system from a parsed `DeckFile`.
 
     Resolution order (highest to lowest priority):
 
@@ -104,17 +104,17 @@ def _detect_unit_system(data_file: DataFile) -> UnitSystem:
        (detected in the raw deck text).
     3. Default: `FIELD` (Eclipse default when no unit keyword is present).
 
-    :param data_file: Already-constructed `DataFile`.
+    :param deck_file: Already-constructed `DeckFile`.
     :returns: The declared `bores.typing.UnitSystem`.
     """
-    gridunit = data_file.get("GRIDUNIT")
+    gridunit = deck_file.get("GRIDUNIT")
     if gridunit is not None:
         unit_str = str(gridunit.get("unit", "")).strip().upper()
         unit_system = _UNITS_MAP.get(unit_str)
         if unit_system is not None:
             return unit_system
 
-    deck_text = data_file.deck.text
+    deck_text = deck_file.deck.text
     for keyword, unit_system in _BARE_UNIT_KEYWORDS.items():
         if re.search(r"(?<!\w)" + keyword + r"(?!\w)", deck_text, re.IGNORECASE):
             return unit_system
@@ -159,6 +159,7 @@ class MapAxes:
                 stacklevel=3,
             )
             return np.eye(2, dtype=np.float64)
+
         x_dir = x_vec / x_norm
         y_dir = y_vec / y_norm
         return np.array(
@@ -176,6 +177,7 @@ class MapAxes:
         """
         if self.unit_system == to:
             return self
+
         factor = _get_length_conversion_factor(self.unit_system, to)
         return self.__class__(
             origin=self.origin * factor,
@@ -185,22 +187,22 @@ class MapAxes:
         )
 
 
-def _build_map_axes(data_file: DataFile) -> typing.Optional[MapAxes]:
+def _build_map_axes(deck_file: DeckFile) -> typing.Optional[MapAxes]:
     """
     Construct a `MapAxes` from parsed `MAPAXES` / `MAPUNITS` keyword dicts.
 
     Eclipse `MAPAXES` field order:
     `(Y-axis X, Y-axis Y, origin X, origin Y, X-axis X, X-axis Y)`.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :returns: `MapAxes` or `None` if `MAPAXES` is absent.
     """
-    mapaxes = data_file.get("MAPAXES")
+    mapaxes = deck_file.get("MAPAXES")
     if mapaxes is None:
         return None
 
     # Honour both MAPUNITS and MAPUNIT (the latter is an Eclipse alias).
-    mapunits = data_file.get("MAPUNITS") or data_file.get("MAPUNIT")
+    mapunits = deck_file.get("MAPUNITS") or deck_file.get("MAPUNIT")
     map_unit_str = str(mapunits.get("unit", "")).strip().upper() if mapunits else ""
     map_unit = _UNITS_MAP.get(map_unit_str, UnitSystem.FIELD)
 
@@ -217,7 +219,7 @@ def _build_map_axes(data_file: DataFile) -> typing.Optional[MapAxes]:
 
 
 def _build_nnc_arrays(
-    data_file: DataFile,
+    deck_file: DeckFile,
     nx: int,
     ny: int,
     nz: int,
@@ -228,7 +230,7 @@ def _build_nnc_arrays(
     """
     Convert parsed `NNC` keyword records to flat cell-index arrays.
 
-    :param data_file: Parsed deck (`NNC` keyword already registered).
+    :param deck_file: Parsed deck (`NNC` keyword already registered).
     :param nx: Grid extent in x.
     :param ny: Grid extent in y.
     :param nz: Grid extent in z.
@@ -237,7 +239,7 @@ def _build_nnc_arrays(
         keyword is absent.
     :raises GridImportError: If a record has out-of-bounds cell indices.
     """
-    nnc_records = data_file.get("NNC")
+    nnc_records = deck_file.get("NNC")
     if not nnc_records:
         return None, None
 
@@ -271,14 +273,14 @@ def _build_nnc_arrays(
     )
 
 
-def _build_fault_records(data_file: DataFile) -> typing.List[FaultRecord]:
+def _build_fault_records(deck_file: DeckFile) -> typing.List[FaultRecord]:
     """
     Convert parsed `FAULTS` keyword records to `FaultRecord` objects.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :returns: List of `FaultRecord` in file order.
     """
-    faults = data_file.get("FAULTS")
+    faults = deck_file.get("FAULTS")
     if not faults:
         return []
 
@@ -298,22 +300,22 @@ def _build_fault_records(data_file: DataFile) -> typing.List[FaultRecord]:
 
 
 def _build_multflt(
-    data_file: DataFile,
+    deck_file: DeckFile,
 ) -> typing.Optional[typing.Dict[str, float]]:
     """
     Convert parsed `MULTFLT` records to a `{name: multiplier}` dict.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :returns: Dict or `None` if `MULTFLT` is absent.
     """
-    multflt_records = data_file.get("MULTFLT")
+    multflt_records = deck_file.get("MULTFLT")
     if not multflt_records:
         return None
     return {rec["name"]: rec["multiplier"] for rec in multflt_records}
 
 
 def _resolve_vector_spacing(
-    data_file: DataFile,
+    deck_file: DeckFile,
     vector_key: str,
     per_cell_key: str,
     count: int,
@@ -334,7 +336,7 @@ def _resolve_vector_spacing(
        row / column / layer is extracted.
     3. Returns `None` if neither keyword is present.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :param vector_key: Vector keyword name (`"DXV"`, `"DYV"`, `"DZV"`).
     :param per_cell_key: Per-cell keyword name (`"DX"`, `"DY"`, `"DZ"`).
     :param count: Expected length of the vector (`nx`, `ny`, or `nz`).
@@ -346,7 +348,7 @@ def _resolve_vector_spacing(
     :raises GridImportError: If the vector keyword has the wrong length.
     """
     # Prefer the vector form (DXV / DYV / DZV).
-    vec = data_file.get(vector_key)
+    vec = deck_file.get(vector_key)
     if vec is not None:
         arr = np.asarray(vec, dtype=np.float64).ravel()
         if len(arr) != count:
@@ -357,7 +359,7 @@ def _resolve_vector_spacing(
         return arr
 
     # Fall back to the per-cell array.
-    per_cell = data_file.get(per_cell_key)
+    per_cell = deck_file.get(per_cell_key)
     if per_cell is None:
         return None
 
@@ -371,7 +373,7 @@ def _resolve_vector_spacing(
 
 
 def load_grdecl(
-    source: _TextOrPath,
+    source: typing.Union[_TextOrPath, DeckFile],
     *,
     encoding: str = "ascii",
     unit_system: typing.Optional[UnitSystem] = None,
@@ -382,7 +384,7 @@ def load_grdecl(
     string, or bytes.
 
     Automatically detects whether `source` is a filesystem path or raw
-    GRDECL text / bytes. Recursively resolves `INCLUDE` directives when
+    GRDECL text / bytes, or a `DeckFile`. Recursively resolves `INCLUDE` directives when
     loading from a file path.
 
     Parsed keyword coverage:
@@ -414,12 +416,15 @@ def load_grdecl(
     :returns: A fully initialised `bores.grids.base.Grid`.
     :raises GridImportError: If required keywords are missing or malformed.
     """
-    try:
-        data_file = DataFile(source, encoding=encoding)
-    except DeckParseError as exc:
-        raise GridImportError(f"Failed to parse GRDECL deck: {exc}") from exc
+    if isinstance(source, DeckFile):
+        deck_file = source
+    else:
+        try:
+            deck_file = DeckFile(source, encoding=encoding)
+        except DeckParseError as exc:
+            raise GridImportError(f"Failed to parse GRDECL deck: {exc}") from exc
 
-    grid = _assemble_grid(data_file, metadata=metadata)
+    grid = _assemble_grid(deck_file, metadata=metadata)
     return convert(grid, to=unit_system) if unit_system is not None else grid
 
 
@@ -472,30 +477,30 @@ def dump_grdecl(
 
 
 def _assemble_grid(
-    data_file: DataFile,
+    deck_file: DeckFile,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
-    Assemble a `bores.grids.base.Grid` from a parsed `bores.deck.DataFile`.
+    Assemble a `bores.grids.base.Grid` from a parsed `bores.deck.file`.
 
-    :param data_file: Parsed deck with grid dimensions resolved.
+    :param deck_file: Parsed deck with grid dimensions resolved.
     :param metadata: Optional extra metadata for the returned grid.
     :returns: A fully initialised `bores.grids.base.Grid`.
     :raises GridImportError: If required keywords are missing or the deck
         has no grid-dimension keyword.
     """
-    if data_file.dimensions is None:
+    if deck_file.dimensions is None:
         raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
 
-    dims = data_file.dimensions
+    dims = deck_file.dimensions
     nx, ny, nz = dims.nx, dims.ny, dims.nz
 
-    unit_system = _detect_unit_system(data_file)
-    map_axes = _build_map_axes(data_file)
+    unit_system = _detect_unit_system(deck_file)
+    map_axes = _build_map_axes(deck_file)
 
-    pinch_rec = data_file.get("PINCH")
+    pinch_rec = deck_file.get("PINCH")
     pinch = pinch_rec["thickness"] if pinch_rec is not None else None
-    if pinch is None and data_file.has("PINCHOUT"):
+    if pinch is None and deck_file.has("PINCHOUT"):
         pinch = 1e-6
 
     meta: typing.Dict[str, typing.Any] = dict(metadata or {})
@@ -507,14 +512,14 @@ def _assemble_grid(
         nz=nz,
     )
 
-    has_coord = data_file.has("COORD")
-    has_tops = data_file.has("TOPS") or data_file.has("DX") or data_file.has("DXV")
+    has_coord = deck_file.has("COORD")
+    has_tops = deck_file.has("TOPS") or deck_file.has("DX") or deck_file.has("DXV")
 
     try:
         if has_coord:
-            return _assemble_corner_point(data_file, nx, ny, nz, unit_system, meta)
+            return _assemble_corner_point(deck_file, nx, ny, nz, unit_system, meta)
         if has_tops:
-            return _assemble_cartesian(data_file, nx, ny, nz, unit_system, meta)
+            return _assemble_cartesian(deck_file, nx, ny, nz, unit_system, meta)
     except GridImportError:
         raise
     except Exception as exc:
@@ -529,7 +534,7 @@ def _assemble_grid(
 
 
 def _assemble_corner_point(
-    data_file: DataFile,
+    deck_file: DeckFile,
     nx: int,
     ny: int,
     nz: int,
@@ -539,7 +544,7 @@ def _assemble_corner_point(
     """
     Build a corner-point `bores.grids.base.Grid` from a parsed deck.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :param nx: Grid extent in x.
     :param ny: Grid extent in y.
     :param nz: Grid extent in z.
@@ -549,15 +554,15 @@ def _assemble_corner_point(
     :raises GridImportError: If `COORD` or `ZCORN` are missing or
         malformed.
     """
-    coord = data_file.get("COORD")
+    coord = deck_file.get("COORD")
     if coord is None:
         raise GridImportError("GRDECL file is missing the required COORD keyword.")
 
-    zcorn = data_file.get("ZCORN")
+    zcorn = deck_file.get("ZCORN")
     if zcorn is None:
         raise GridImportError("GRDECL file is missing the required ZCORN keyword.")
 
-    actnum_flat = data_file.get("ACTNUM")
+    actnum_flat = deck_file.get("ACTNUM")
     if actnum_flat is not None:
         actnum = actnum_flat.astype(np.int32, copy=False).reshape(nz, ny, nx)
     else:
@@ -566,9 +571,9 @@ def _assemble_corner_point(
     meta["source_format"] = "grdecl_corner_point"
     meta["actnum"] = actnum
 
-    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(data_file, nx, ny, nz)
-    fault_records = _build_fault_records(data_file)
-    multflt = _build_multflt(data_file)
+    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
+    fault_records = _build_fault_records(deck_file)
+    multflt = _build_multflt(deck_file)
 
     return make_corner_point_grid(
         coord=coord,
@@ -580,17 +585,17 @@ def _assemble_corner_point(
         nnc_transmissibilities=nnc_transmissibilities,
         fault_records=fault_records,
         fault_transmissibility_multipliers=multflt,
-        positive_x_transmissibility_multipliers=data_file.get("MULTX"),
-        negative_x_transmissibility_multipliers=data_file.get("MULTX-"),
-        positive_y_transmissibility_multipliers=data_file.get("MULTY"),
-        negative_y_transmissibility_multipliers=data_file.get("MULTY-"),
-        positive_z_transmissibility_multipliers=data_file.get("MULTZ"),
-        negative_z_transmissibility_multipliers=data_file.get("MULTZ-"),
+        positive_x_transmissibility_multipliers=deck_file.get("MULTX"),
+        negative_x_transmissibility_multipliers=deck_file.get("MULTX-"),
+        positive_y_transmissibility_multipliers=deck_file.get("MULTY"),
+        negative_y_transmissibility_multipliers=deck_file.get("MULTY-"),
+        positive_z_transmissibility_multipliers=deck_file.get("MULTZ"),
+        negative_z_transmissibility_multipliers=deck_file.get("MULTZ-"),
     )
 
 
 def _assemble_cartesian(
-    data_file: DataFile,
+    deck_file: DeckFile,
     nx: int,
     ny: int,
     nz: int,
@@ -609,7 +614,7 @@ def _assemble_cartesian(
     Also reads `FAULTS`, `MULTFLT`, `NNC`, and all six `MULT*`
     arrays, passing them on to :func:`make_cartesian_grid`.
 
-    :param data_file: Parsed deck.
+    :param deck_file: Parsed deck.
     :param nx: Grid extent in x.
     :param ny: Grid extent in y.
     :param nz: Grid extent in z.
@@ -619,7 +624,7 @@ def _assemble_cartesian(
     :raises GridImportError: If required keywords are missing or malformed.
     """
     # Z origin from TOPS
-    tops_flat = data_file.get("TOPS")
+    tops_flat = deck_file.get("TOPS")
     if tops_flat is not None:
         tops_flat = np.asarray(tops_flat, dtype=np.float64)
         n_columns = nx * ny
@@ -636,9 +641,9 @@ def _assemble_cartesian(
         z_top = 0.0
 
     # Spacing vectors
-    dx_1d = _resolve_vector_spacing(data_file, "DXV", "DX", nx, "x", nz, ny, nx)
-    dy_1d = _resolve_vector_spacing(data_file, "DYV", "DY", ny, "y", nz, ny, nx)
-    dz_1d = _resolve_vector_spacing(data_file, "DZV", "DZ", nz, "z", nz, ny, nx)
+    dx_1d = _resolve_vector_spacing(deck_file, "DXV", "DX", nx, "x", nz, ny, nx)
+    dy_1d = _resolve_vector_spacing(deck_file, "DYV", "DY", ny, "y", nz, ny, nx)
+    dz_1d = _resolve_vector_spacing(deck_file, "DZV", "DZ", nz, "z", nz, ny, nx)
 
     if dx_1d is None:
         raise GridImportError(
@@ -653,14 +658,14 @@ def _assemble_cartesian(
             "Cartesian GRDECL grid is missing required spacing keyword DZ or DZV."
         )
 
-    actnum_flat = data_file.get("ACTNUM")
+    actnum_flat = deck_file.get("ACTNUM")
     meta["source_format"] = "grdecl_cartesian"
     if actnum_flat is not None:
         meta["actnum"] = actnum_flat.astype(np.int32).reshape(nz, ny, nx)
 
-    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(data_file, nx, ny, nz)
-    fault_records = _build_fault_records(data_file)
-    multflt = _build_multflt(data_file)
+    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
+    fault_records = _build_fault_records(deck_file)
+    multflt = _build_multflt(deck_file)
 
     # Store pinch in metadata so dump_grdecl can re-emit it.
     if meta.get("pinch") is not None:
@@ -680,12 +685,12 @@ def _assemble_cartesian(
         fault_transmissibility_multipliers=multflt,
         nnc_cell_indices=nnc_pairs,
         nnc_transmissibilities=nnc_transmissibilities,
-        positive_x_transmissibility_multipliers=data_file.get("MULTX"),
-        negative_x_transmissibility_multipliers=data_file.get("MULTX-"),
-        positive_y_transmissibility_multipliers=data_file.get("MULTY"),
-        negative_y_transmissibility_multipliers=data_file.get("MULTY-"),
-        positive_z_transmissibility_multipliers=data_file.get("MULTZ"),
-        negative_z_transmissibility_multipliers=data_file.get("MULTZ-"),
+        positive_x_transmissibility_multipliers=deck_file.get("MULTX"),
+        negative_x_transmissibility_multipliers=deck_file.get("MULTX-"),
+        positive_y_transmissibility_multipliers=deck_file.get("MULTY"),
+        negative_y_transmissibility_multipliers=deck_file.get("MULTY-"),
+        positive_z_transmissibility_multipliers=deck_file.get("MULTZ"),
+        negative_z_transmissibility_multipliers=deck_file.get("MULTZ-"),
     )
 
 

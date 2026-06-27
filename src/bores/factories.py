@@ -6,7 +6,7 @@ import numpy as np
 
 from bores.constants import c
 from bores.correlations.arrays import estimate_solution_gor
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_gravity,
     validate_input_pressure,
     validate_input_temperature,
@@ -36,7 +36,7 @@ from bores.grids.pvt import (
     build_water_formation_volume_factor_grid,
     build_water_viscosity_grid,
 )
-from bores.models import (
+from bores.model import (
     FluidProperties,
     HysteresisState,
     ReservoirModel,

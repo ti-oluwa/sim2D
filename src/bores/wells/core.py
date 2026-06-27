@@ -38,7 +38,7 @@ from bores.correlations.arrays import (
 from bores.correlations.arrays import (
     compute_water_viscosity as compute_water_viscosity_vectorized,
 )
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_compressibility,
     compute_gas_compressibility_factor,
     compute_gas_density,

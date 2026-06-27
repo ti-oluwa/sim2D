@@ -37,7 +37,7 @@ from bores.material_balance import (
     MaterialBalanceErrors,
     compute_material_balance_errors,
 )
-from bores.models import (
+from bores.model import (
     FluidProperties,
     HysteresisState,
     ReservoirModel,

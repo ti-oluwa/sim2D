@@ -10,15 +10,15 @@ operator resolution.
 **Usage Example**:
 
 ```python
-from bores.deck import DataFile
+from bores.deck import DeckFile
 
-df = DataFile("model.DATA")
+df = DeckFile("model.DATA")
 poro  = df.get("PORO")   # ndarray (n_cells,) or None
 coord = df.get("COORD")  # ndarray (ny+1, nx+1, 6) or None
 ```
 """
 
 from bores.deck.core import *  # noqa
-from bores.deck.datafile import DataFile  # noqa
+from bores.deck.file import DeckFile  # noqa
 from bores.deck.keywords import *  # noqa
 from bores.deck.operators import *  # noqa

@@ -14,7 +14,7 @@ from bores.constants import c
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import NumberOrArray
+from bores.typing import NDimension, NumberOrArray
 
 logger = logging.getLogger(__name__)
 
@@ -97,14 +97,16 @@ def compute_gas_pseudo_pressure(
         return result
 
     # Perform numerical integration with adaptive strategy
-    p_min = min(pressure, reference_pressure)
-    p_max = max(pressure, reference_pressure)
+    min_pressure = min(pressure, reference_pressure)
+    max_pressure = max(pressure, reference_pressure)
 
     # Split integration into segments if range is large
     # This helps `quad()` adapt better to different pressure regimes
-    if (p_max - p_min) > 1000:  # Large pressure range
+    if (max_pressure - min_pressure) > 1000:  # Large pressure range
         # Split into low, medium, high pressure segments
-        split_points = np.logspace(start=np.log10(p_min), stop=np.log10(p_max), num=5)
+        split_points = np.logspace(
+            start=np.log10(min_pressure), stop=np.log10(max_pressure), num=5
+        )
         total_integral = 0.0
 
         for i in range(len(split_points) - 1):
@@ -133,8 +135,8 @@ def compute_gas_pseudo_pressure(
         try:
             result, _ = quad(
                 func=integrand,
-                a=p_min,
-                b=p_max,
+                a=min_pressure,
+                b=max_pressure,
                 epsabs=1e-6,
                 epsrel=1e-4,
                 limit=200,
@@ -142,7 +144,7 @@ def compute_gas_pseudo_pressure(
         except Exception as exc:
             logger.warning("Integration failed: %s. Using trapezoidal fallback.", exc)
             # Fallback to simple trapezoidal rule
-            p_points = np.linspace(p_min, p_max, 100)
+            p_points = np.linspace(min_pressure, max_pressure, 100)
             y_points = np.array([integrand(p) for p in p_points])
             result = float(np.trapezoid(y=y_points, x=p_points))
 
@@ -191,32 +193,34 @@ def _build_pseudo_pressures_vectorized(
     :return: Array of pseudo-pressures
     """
     # Clamp pressures
-    p_clamped = np.maximum(pressures, 1.0)
+    clamped_pressures = np.maximum(pressures, 1.0)
 
     # Single vectorized call for all pressures
-    Z_array = np.asarray(z_factor_func(p_clamped))
-    mu_array = np.asarray(viscosity_func(p_clamped))
+    z_factor_arr = np.asarray(z_factor_func(clamped_pressures))
+    viscosity_arr = np.asarray(viscosity_func(clamped_pressures))
 
     # Validate shapes
-    if Z_array.shape != pressures.shape or mu_array.shape != pressures.shape:
+    if z_factor_arr.shape != pressures.shape or viscosity_arr.shape != pressures.shape:
         raise ValueError(
-            f"Shape mismatch: P={pressures.shape}, Z={Z_array.shape}, μ={mu_array.shape}"
+            f"Shape mismatch: P={pressures.shape}, Z={z_factor_arr.shape}, μ={viscosity_arr.shape}"
         )
 
     # Handle invalid values
-    invalid_Z = (Z_array <= 0) | ~np.isfinite(Z_array)
-    invalid_mu = (mu_array <= 0) | ~np.isfinite(mu_array)
+    invalid_z_factor = (z_factor_arr <= 0) | ~np.isfinite(z_factor_arr)
+    invalid_viscosity = (viscosity_arr <= 0) | ~np.isfinite(viscosity_arr)
 
-    if np.any(invalid_Z):
-        logger.warning("Clamping %d invalid Z-factor values", np.sum(invalid_Z))
-        Z_array = np.maximum(Z_array, 0.01)
+    if np.any(invalid_z_factor):
+        logger.warning("Clamping %d invalid Z-factor values", np.sum(invalid_z_factor))
+        z_factor_arr = np.maximum(z_factor_arr, 0.01)
 
-    if np.any(invalid_mu):
-        logger.warning("Clamping %d invalid viscosity values", np.sum(invalid_mu))
-        mu_array = np.maximum(mu_array, 0.001)
+    if np.any(invalid_viscosity):
+        logger.warning(
+            "Clamping %d invalid viscosity values", np.sum(invalid_viscosity)
+        )
+        viscosity_arr = np.maximum(viscosity_arr, 0.001)
 
     # Compute integrand: 2*P / (μ*Z)
-    integrand_array = 2.0 * p_clamped / (mu_array * Z_array)
+    integrand_array = 2.0 * clamped_pressures / (viscosity_arr * z_factor_arr)
 
     # Handle invalid integrand values
     invalid = ~np.isfinite(integrand_array) | (integrand_array < 0)
@@ -334,8 +338,8 @@ def build_pseudo_pressures(
     max_workers = min(8, points // 50 + 1)
     return _build_pseudo_pressures_scalar(
         pressures=pressures,
-        z_factor_func=z_factor_func,  # type: ignore[arg-type]
-        viscosity_func=viscosity_func,  # type: ignore[arg-type]
+        z_factor_func=z_factor_func,  # type: ignore
+        viscosity_func=viscosity_func,  # type: ignore
         reference_pressure=reference_pressure,
         max_workers=max_workers,
         dtype=dtype,
@@ -417,7 +421,7 @@ def build_pchip_interpolants_from_points(
         xs = base_grid
 
     interpolant = PchipInterpolator(xs, vals)
-    derivative_interpolant: PchipInterpolator = interpolant.derivative(1)
+    derivative_interpolant = interpolant.derivative(1)
     return interpolant, derivative_interpolant
 
 
@@ -429,6 +433,7 @@ class PseudoPressureTable(
         "reference_pressure": typing.Optional[float],
         "number_of_base_points": int,
         "number_of_endpoint_extra_points": int,
+        "dtype": npt.DTypeLike,
     },
 ):
     """
@@ -459,13 +464,18 @@ class PseudoPressureTable(
     def __init__(
         self,
         *,
-        z_factor_func: typing.Callable[[NumberOrArray], NumberOrArray],
-        viscosity_func: typing.Callable[[NumberOrArray], NumberOrArray],
-        pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
-        points: typing.Optional[int] = None,
-        reference_pressure: typing.Optional[float] = None,
-        number_of_base_points: int = 500,
-        number_of_endpoint_extra_points: int = 20,
+        z_factor_func: typing.Callable[
+            [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+        ],
+        viscosity_func: typing.Callable[
+            [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+        ],
+        pressure_range: typing.Optional[typing.Tuple[float, float]] = ...,
+        points: typing.Optional[int] = ...,
+        reference_pressure: typing.Optional[float] = ...,
+        number_of_base_points: int = ...,
+        number_of_endpoint_extra_points: int = ...,
+        dtype: typing.Optional[npt.DTypeLike] = ...,
     ) -> None: ...
 
     @typing.overload
@@ -474,18 +484,19 @@ class PseudoPressureTable(
         *,
         pressures: npt.NDArray,
         pseudo_pressures: npt.NDArray,
-        reference_pressure: typing.Optional[float] = None,
-        number_of_base_points: int = 500,
-        number_of_endpoint_extra_points: int = 20,
+        reference_pressure: typing.Optional[float] = ...,
+        number_of_base_points: int = ...,
+        number_of_endpoint_extra_points: int = ...,
+        dtype: typing.Optional[npt.DTypeLike] = ...,
     ) -> None: ...
 
     def __init__(
         self,
         z_factor_func: typing.Optional[
-            typing.Callable[[NumberOrArray], NumberOrArray]
+            typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]]
         ] = None,
         viscosity_func: typing.Optional[
-            typing.Callable[[NumberOrArray], NumberOrArray]
+            typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]]
         ] = None,
         pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
         points: typing.Optional[int] = None,
@@ -494,6 +505,7 @@ class PseudoPressureTable(
         reference_pressure: typing.Optional[float] = None,
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
+        dtype: typing.Optional[npt.DTypeLike] = None,
     ):
         """
         Build pseudo-pressure lookup table.
@@ -558,7 +570,7 @@ class PseudoPressureTable(
         )
         self.number_of_base_points = number_of_base_points
         self.number_of_endpoint_extra_points = number_of_endpoint_extra_points
-        dtype = get_dtype()
+        self.dtype = dtype if dtype is not None else get_dtype()
 
         if value_mode:
             if pressures is None or pseudo_pressures is None:
@@ -627,7 +639,9 @@ class PseudoPressureTable(
             minimum_scale_span=1.0,
         )
 
-    def interpolate(self, pressure: NumberOrArray) -> NumberOrArray:
+    def interpolate(
+        self, pressure: NumberOrArray[NDimension]
+    ) -> NumberOrArray[NDimension]:
         """
         Interpolate pseudo-pressure at given pressure.
 
@@ -640,17 +654,26 @@ class PseudoPressureTable(
         :return: Pseudo-pressure m(P) (psi²/cP).
         """
         is_scalar = np.isscalar(pressure)
-        p = np.atleast_1d(np.asarray(pressure, dtype=np.float64))
-        p_min = float(self._pchip.x[0])
-        p_max = float(self._pchip.x[-1])
-        result = self._pchip(np.clip(p, p_min, p_max))
-        result = np.where(p < p_min, float(self.pseudo_pressures[0]), result)
-        result = np.where(p > p_max, float(self.pseudo_pressures[-1]), result)
+        dtype = np.dtype(self.dtype)
+        pressure_arr = np.atleast_1d(np.asarray(pressure, dtype=dtype))
+        min_pressure = self._pchip.x[0]
+        max_pressure = self._pchip.x[-1]
+        result = self._pchip(
+            np.clip(pressure_arr, min_pressure, max_pressure, dtype=dtype)
+        )
+        result = np.where(pressure_arr < min_pressure, self.pseudo_pressures[0], result)
+        result = np.where(
+            pressure_arr > max_pressure, self.pseudo_pressures[-1], result
+        )
         if is_scalar:
-            return float(result.ravel()[0])
-        return result.reshape(p.shape)
+            return dtype.type(result.item())
+        return typing.cast(
+            NumberOrArray[NDimension], result.reshape(pressure_arr.shape)
+        )
 
-    def inverse(self, pseudo_pressure: NumberOrArray) -> NumberOrArray:
+    def inverse(
+        self, pseudo_pressure: NumberOrArray[NDimension]
+    ) -> NumberOrArray[NDimension]:
         """
         Inverse interpolate pressure at given pseudo-pressure.
 
@@ -660,34 +683,41 @@ class PseudoPressureTable(
         :param pseudo_pressure: Pseudo-pressure m(P) (psi²/cP) - scalar or array.
         :return: Pressure (psi).
         """
-        min_mp = float(self.pseudo_pressures[0])
-        max_mp = float(self.pseudo_pressures[-1])
-        p_min = float(self._pchip.x[0])
-        p_max = float(self._pchip.x[-1])
+        min_pseudo_pressure = self.pseudo_pressures[0]
+        max_pseudo_pressure = self.pseudo_pressures[-1]
+        min_pressure = self._pchip.x[0]
+        max_pressure = self._pchip.x[-1]
+        dtype = np.dtype(self.dtype)
 
-        def _invert_scalar(mp: float) -> float:
-            clamped_mp = np.clip(mp, min_mp, max_mp)
-            if abs(clamped_mp - min_mp) < 1e-10:
-                return p_min
-            if abs(clamped_mp - max_mp) < 1e-10:
-                return p_max
+        def _invert_scalar(pseudo_pressure: float) -> float:
+            clamped_pseudo_pressure = np.clip(
+                pseudo_pressure, min_pseudo_pressure, max_pseudo_pressure, dtype=dtype
+            )
+            if abs(clamped_pseudo_pressure - min_pseudo_pressure) < 1e-10:
+                return min_pressure
+            if abs(clamped_pseudo_pressure - max_pseudo_pressure) < 1e-10:
+                return max_pressure
             return brentq(
-                lambda p: self._pchip(p) - clamped_mp,
-                p_min,
-                p_max,
+                lambda p: self._pchip(p) - clamped_pseudo_pressure,
+                min_pressure,
+                max_pressure,
                 xtol=1e-6,
                 rtol=1e-8,
             )
 
         is_scalar = np.isscalar(pseudo_pressure)
-        mp = np.atleast_1d(pseudo_pressure)
-        result = np.vectorize(_invert_scalar)(mp)
+        pseudo_pressure_arr = np.atleast_1d(pseudo_pressure)
+        result = np.vectorize(_invert_scalar)(pseudo_pressure_arr)
 
         if is_scalar:
-            return float(result.item())
-        return result.reshape(mp.shape)
+            return dtype.type(result.item())
+        return typing.cast(
+            NumberOrArray[NDimension], result.reshape(pseudo_pressure_arr.shape)
+        )
 
-    def __call__(self, pressure: NumberOrArray) -> NumberOrArray:
+    def __call__(
+        self, pressure: NumberOrArray[NDimension]
+    ) -> NumberOrArray[NDimension]:
         """
         Fast lookup of pseudo-pressure via PCHIP interpolation.
 
@@ -696,7 +726,9 @@ class PseudoPressureTable(
         """
         return self.interpolate(pressure)
 
-    def gradient(self, pressure: NumberOrArray) -> NumberOrArray:
+    def gradient(
+        self, pressure: NumberOrArray[NDimension]
+    ) -> NumberOrArray[NDimension]:
         """
         Evaluate dm/dP from the stored analytical PCHIP derivative.
 
@@ -711,14 +743,21 @@ class PseudoPressureTable(
         :return: dm/dP (psi/cP).
         """
         is_scalar = np.isscalar(pressure)
-        p = np.atleast_1d(np.asarray(pressure, dtype=np.float64))
-        p_min = float(self._dpchip.x[0])
-        p_max = float(self._dpchip.x[-1])
-        result = self._dpchip(np.clip(p, p_min, p_max))
-        result = np.where((p < p_min) | (p > p_max), 0.0, result)
+        dtype = np.dtype(self.dtype)
+        pressure_arr = np.atleast_1d(np.asarray(pressure, dtype=dtype))
+        min_pressure = self._dpchip.x[0]
+        max_pressure = self._dpchip.x[-1]
+        result = self._dpchip(
+            np.clip(pressure_arr, min_pressure, max_pressure, dtype=dtype)
+        )
+        result = np.where(
+            (pressure_arr < min_pressure) | (pressure_arr > max_pressure), 0.0, result
+        )
         if is_scalar:
-            return float(result.item())
-        return result.reshape(p.shape)
+            return dtype.type(result.item())
+        return typing.cast(
+            NumberOrArray[NDimension], result.reshape(pressure_arr.shape)
+        )
 
 
 _PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(
@@ -731,8 +770,12 @@ _pseudo_pressure_cache_lock = threading.Lock()
 
 
 def build_pseudo_pressure_table(
-    z_factor_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    viscosity_func: typing.Callable[[NumberOrArray], NumberOrArray],
+    z_factor_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    viscosity_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
     reference_pressure: typing.Optional[float] = None,
     pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
     points: typing.Optional[int] = None,
@@ -806,6 +849,7 @@ def build_pseudo_pressure_table(
     # Build new table outside lock to avoid blocking other threads
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("Building new pseudo-pressure table for key: %s", cache_key)
+
     table = PseudoPressureTable(
         z_factor_func=z_factor_func,
         viscosity_func=viscosity_func,

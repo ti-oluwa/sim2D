@@ -8,7 +8,7 @@ import numpy.typing as npt
 from typing_extensions import NamedTuple
 
 from bores.grids.base import Grid
-from bores.models.properties import RockProperties
+from bores.model.properties import Rock
 from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
 
 __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
@@ -61,7 +61,7 @@ def get_face_transmissibility_map(
 
 def compute_connection_transmissibilities(
     grid: Grid,
-    rock: RockProperties,
+    rock: Rock,
     *,
     net_to_gross: typing.Optional[FloatArray[OneDimension]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
@@ -95,7 +95,7 @@ def compute_connection_transmissibilities(
       by `MULTFLT`.
 
     :param grid: Fully constructed `bores.grids.base.Grid`.
-    :param rock: `RockProperties` with `absolute_permeability` and `net_to_gross`.
+    :param rock: `Rock` with `absolute_permeability` and `net_to_gross`.
     :param net_to_gross: Optional override for the NTG array.
     :param dtype: NumPy floating dtype for output arrays. Defaults to `np.float64`.
     :returns: `ConnectionTransmissibilities` named tuple.

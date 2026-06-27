@@ -98,7 +98,7 @@ class Keyword(typing.Generic[T], abc.ABC):
     for record keywords, expected array length for grid-array keywords, or
     nothing extra for nullary keywords. All cross-cutting deck mechanics
     (comments, includes, repeats, operators, boxing, caching) live in
-    `bores.deck.datafile.DataFile` and are shared by every
+    `bores.deck.file.DeckFile` and are shared by every
     keyword for free.
     """
 
@@ -259,7 +259,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
     target for `BOX` / `EQUALS` / `ADD` / `MULTIPLY` / `COPY` /
     `MAXVALUE` / `MINVALUE` operator records anywhere in the deck.
     Operator resolution is shared across all instances via
-    `bores.deck.datafile.DataFile`; no individual keyword
+    `bores.deck.file.DeckFile`; no individual keyword
     subclass needs to implement it.
 
     If the keyword itself never appears as a standalone data block but *is*

@@ -8,11 +8,11 @@ import numpy.typing as npt
 
 from bores.config import Config
 from bores.constants import c
-from bores.correlations.core import compute_harmonic_mean
+from bores.correlations.scalars import compute_harmonic_mean
 from bores.datastructures import PhaseTensorsProxy
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids
 from bores.grids.utils import unpad_grid
-from bores.models import FluidProperties, RockProperties
+from bores.model import FluidProperties, RockProperties
 from bores.precision import get_dtype
 from bores.solvers.base import (
     Solution,
@@ -1096,7 +1096,9 @@ def compute_well_rate_grids(
         for perforation_index in wells_indices:
             i, j, k = perforation_index.cell
             well_index = perforation_index.well_index
-            allocation_fraction = wells_indices.get_allocation_fraction(perforation_index)
+            allocation_fraction = wells_indices.get_allocation_fraction(
+                perforation_index
+            )
             cell_temperature = typing.cast(float, temperature_grid[i, j, k])
             cell_oil_pressure = typing.cast(float, oil_pressure_grid[i, j, k])
 
@@ -1199,7 +1201,9 @@ def compute_well_rate_grids(
         for perforation_index in wells_indices:
             i, j, k = perforation_index.cell
             well_index = perforation_index.well_index
-            allocation_fraction = wells_indices.get_allocation_fraction(perforation_index)
+            allocation_fraction = wells_indices.get_allocation_fraction(
+                perforation_index
+            )
             cell_temperature = typing.cast(float, temperature_grid[i, j, k])
             cell_oil_pressure = typing.cast(float, oil_pressure_grid[i, j, k])
 

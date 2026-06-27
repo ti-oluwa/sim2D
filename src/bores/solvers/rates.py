@@ -15,7 +15,7 @@ from bores.datastructures import (
     SparseTensor,
 )
 from bores.grids.base import RelPermGrids
-from bores.models import FluidProperties
+from bores.model import FluidProperties
 from bores.rock_fluid.relperm import RelPermEndpoints
 from bores.solvers.base import _warn_injection_rate, _warn_production_rate, to_1D_index
 from bores.typing import (

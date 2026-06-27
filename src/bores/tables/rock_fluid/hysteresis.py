@@ -24,12 +24,12 @@ import numpy.typing as npt
 
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.rock_fluid.capillary_pressure import (
+from bores.tables.rock_fluid.capillary_pressure import (
     CapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
     capillary_pressure_table,
 )
-from bores.rock_fluid.relperm import (
+from bores.tables.rock_fluid.relperm import (
     MixingRule,
     RelativePermeabilityTable,
     TwoPhaseRelPermTable,
@@ -39,16 +39,19 @@ from bores.rock_fluid.relperm import (
     serialize_mixing_rule,
 )
 from bores.typing import (
+    BooleanArray,
     CapillaryPressureDerivatives,
     CapillaryPressures,
+    FloatArray,
     FluidPhase,
+    NDimension,
     NumberOrArray,
     RelativePermeabilities,
     RelativePermeabilityDerivatives,
 )
 from bores.utils import atleast_1d
 
-__all__ = ["KilloughCapillaryPressureModel", "KilloughLandRelPermModel"]
+__all__ = ["KilloughCapillaryPressureTable", "KilloughLandRelPermTable"]
 
 
 @numba.njit(cache=True)
@@ -63,7 +66,7 @@ def _compute_land_residual_saturation_scalar(
 
     Land (1968) relates the residual saturation that will be trapped when
     imbibition begins at `initial_non_wetting_saturation` to the maximum
-    possible residual saturation observed at the drainage endpoint::
+    possible residual saturation observed at the drainage endpoint:
 
         S_r = S_r_max / (1 + C * S_i)
 
@@ -93,11 +96,11 @@ def _compute_land_residual_saturation_scalar(
 
 @numba.njit(cache=True, parallel=True)
 def _compute_land_residual_saturation_array(
-    initial_non_wetting_saturation: npt.NDArray,
+    initial_non_wetting_saturation: FloatArray[NDimension],
     maximum_residual_saturation: float,
     land_trapping_coefficient: float,
     saturation_epsilon: float = 1e-12,
-) -> npt.NDArray:
+) -> FloatArray[NDimension]:
     """
     Compute the dynamic residual non-wetting saturation via Land's model (array).
 
@@ -122,15 +125,15 @@ def _compute_land_residual_saturation_array(
                 1.0 + land_trapping_coefficient * non_negative_initial
             )
             result.flat[flat_index] = min(dynamic_residual, non_negative_initial)
-    return result
+    return typing.cast(FloatArray[NDimension], result)
 
 
-def _compute_land_residual_saturation(
-    initial_non_wetting_saturation: NumberOrArray,
+def compute_land_residual_saturation(
+    initial_non_wetting_saturation: NumberOrArray[NDimension],
     maximum_residual_saturation: float,
     land_trapping_coefficient: float,
     saturation_epsilon: float = 1e-12,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Compute the dynamic residual non-wetting saturation via Land's model.
 
@@ -144,7 +147,7 @@ def _compute_land_residual_saturation(
     """
     if np.isscalar(initial_non_wetting_saturation):
         return _compute_land_residual_saturation_scalar(
-            initial_non_wetting_saturation=float(initial_non_wetting_saturation),  # type: ignore[arg-type]
+            initial_non_wetting_saturation=float(initial_non_wetting_saturation),  # type: ignore
             maximum_residual_saturation=maximum_residual_saturation,
             land_trapping_coefficient=land_trapping_coefficient,
             saturation_epsilon=saturation_epsilon,
@@ -223,15 +226,15 @@ def _compute_killough_scanning_curve_scalar(
 
 @numba.njit(cache=True)
 def _compute_killough_scanning_curve_array(
-    saturation: npt.NDArray,
-    drainage_curve_value: npt.NDArray,
-    imbibition_curve_value: npt.NDArray,
-    reversal_saturation: npt.NDArray,
-    maximum_historical_saturation: npt.NDArray,
-    is_imbibition: npt.NDArray,
+    saturation: NumberOrArray[NDimension],
+    drainage_curve_value: NumberOrArray[NDimension],
+    imbibition_curve_value: NumberOrArray[NDimension],
+    reversal_saturation: NumberOrArray[NDimension],
+    maximum_historical_saturation: NumberOrArray[NDimension],
+    is_imbibition: NumberOrArray[NDimension],
     scanning_exponent: float = 1.0,
     numerical_epsilon: float = 1e-12,
-) -> npt.NDArray:
+) -> FloatArray[NDimension]:
     """
     Killough scanning-curve interpolation between primary drainage and
     imbibition curves (array).
@@ -316,19 +319,19 @@ def _compute_killough_scanning_curve_array(
             result.flat[flat_index] = imbibition_value_array.flat[flat_index]
         else:
             result.flat[flat_index] = scanning_curve_value
-    return result
+    return typing.cast(FloatArray[NDimension], result)
 
 
-def _compute_killough_scanning_curve(
-    saturation: NumberOrArray,
-    drainage_curve_value: NumberOrArray,
-    imbibition_curve_value: NumberOrArray,
-    reversal_saturation: NumberOrArray,
-    maximum_historical_saturation: NumberOrArray,
-    is_imbibition: NumberOrArray,
+def compute_killough_scanning_curve(
+    saturation: NumberOrArray[NDimension],
+    drainage_curve_value: NumberOrArray[NDimension],
+    imbibition_curve_value: NumberOrArray[NDimension],
+    reversal_saturation: NumberOrArray[NDimension],
+    maximum_historical_saturation: NumberOrArray[NDimension],
+    is_imbibition: NumberOrArray[NDimension],
     scanning_exponent: float = 1.0,
     numerical_epsilon: float = 1e-12,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Killough scanning-curve interpolation between primary drainage and
     imbibition curves.
@@ -462,17 +465,17 @@ def _compute_killough_scanning_curve_derivative_scalar(
 
 @numba.njit(cache=True)
 def _compute_killough_scanning_curve_derivative_array(
-    saturation: npt.NDArray,
-    drainage_curve_value: npt.NDArray,
-    imbibition_curve_value: npt.NDArray,
-    drainage_curve_derivative: npt.NDArray,
-    imbibition_curve_derivative: npt.NDArray,
-    reversal_saturation: npt.NDArray,
-    maximum_historical_saturation: npt.NDArray,
-    is_imbibition: npt.NDArray,
+    saturation: NumberOrArray[NDimension],
+    drainage_curve_value: NumberOrArray[NDimension],
+    imbibition_curve_value: NumberOrArray[NDimension],
+    drainage_curve_derivative: NumberOrArray[NDimension],
+    imbibition_curve_derivative: NumberOrArray[NDimension],
+    reversal_saturation: NumberOrArray[NDimension],
+    maximum_historical_saturation: NumberOrArray[NDimension],
+    is_imbibition: NumberOrArray[NDimension],
     scanning_exponent: float = 1.0,
     numerical_epsilon: float = 1e-12,
-) -> npt.NDArray:
+) -> FloatArray[NDimension]:
     """
     Analytical derivative of the Killough scanning-curve value with respect
     to the scanning saturation (array).
@@ -532,21 +535,21 @@ def _compute_killough_scanning_curve_derivative_array(
             scanning_exponent=scanning_exponent,
             numerical_epsilon=numerical_epsilon,
         )
-    return result
+    return typing.cast(FloatArray[NDimension], result)
 
 
-def _compute_killough_scanning_curve_derivative(
-    saturation: NumberOrArray,
-    drainage_curve_value: NumberOrArray,
-    imbibition_curve_value: NumberOrArray,
-    drainage_curve_derivative: NumberOrArray,
-    imbibition_curve_derivative: NumberOrArray,
-    reversal_saturation: NumberOrArray,
-    maximum_historical_saturation: NumberOrArray,
-    is_imbibition: NumberOrArray,
+def compute_killough_scanning_curve_derivative(
+    saturation: NumberOrArray[NDimension],
+    drainage_curve_value: NumberOrArray[NDimension],
+    imbibition_curve_value: NumberOrArray[NDimension],
+    drainage_curve_derivative: NumberOrArray[NDimension],
+    imbibition_curve_derivative: NumberOrArray[NDimension],
+    reversal_saturation: NumberOrArray[NDimension],
+    maximum_historical_saturation: NumberOrArray[NDimension],
+    is_imbibition: NumberOrArray[NDimension],
     scanning_exponent: float = 1.0,
     numerical_epsilon: float = 1e-12,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Analytical derivative of the Killough scanning-curve value with respect
     to the scanning saturation.
@@ -602,11 +605,11 @@ def _compute_killough_scanning_curve_derivative(
 
 def _get_oil_water_relative_permeabilities(
     oil_water_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(krw, kro_w)` from an oil-water relative permeability table.
 
@@ -668,11 +671,11 @@ def _get_oil_water_relative_permeabilities(
 
 def _get_gas_oil_relative_permeabilities(
     gas_oil_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(kro_g, krg)` from a gas-oil relative permeability table.
 
@@ -733,11 +736,11 @@ def _get_gas_oil_relative_permeabilities(
 
 def _get_oil_water_relative_permeability_derivatives(
     oil_water_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(d_krw/d_ref, d_kro_w/d_ref)` for the oil-water table, where
     *ref* is the table's natural reference saturation (Sw in water-wet, So in
@@ -792,11 +795,11 @@ def _get_oil_water_relative_permeability_derivatives(
 
 def _get_gas_oil_relative_permeability_derivatives(
     gas_oil_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray, NumberOrArray]:
+) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(d_kro_g/d_ref, d_krg/d_ref)` for the gas-oil table, where
     *ref* is the table's natural reference saturation (So in oil-wet, Sg in
@@ -853,11 +856,11 @@ def _get_oil_water_capillary_pressure(
     oil_water_capillary_pressure_table: typing.Union[
         TwoPhaseCapillaryPressureTable, CapillaryPressureTable
     ],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Extract Pcow from an oil-water capillary pressure table, dispatching
     saturations correctly via the canonical wetting-phase API.
@@ -898,11 +901,11 @@ def _get_gas_oil_capillary_pressure(
     gas_oil_capillary_pressure_table: typing.Union[
         TwoPhaseCapillaryPressureTable, CapillaryPressureTable
     ],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Extract Pcgo from a gas-oil capillary pressure table, dispatching
     saturations correctly via the canonical wetting-phase API.
@@ -941,11 +944,11 @@ def _get_oil_water_capillary_pressure_derivative(
     oil_water_capillary_pressure_table: typing.Union[
         TwoPhaseCapillaryPressureTable, CapillaryPressureTable
     ],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Return dPcow/d(reference_sat) for the oil-water capillary pressure table.
 
@@ -990,11 +993,11 @@ def _get_gas_oil_capillary_pressure_derivative(
     gas_oil_capillary_pressure_table: typing.Union[
         TwoPhaseCapillaryPressureTable, CapillaryPressureTable
     ],
-    water_saturation: NumberOrArray,
-    oil_saturation: NumberOrArray,
-    gas_saturation: NumberOrArray,
+    water_saturation: NumberOrArray[NDimension],
+    oil_saturation: NumberOrArray[NDimension],
+    gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> NumberOrArray:
+) -> NumberOrArray[NDimension]:
     """
     Return dPcgo/d(reference_sat) for the gas-oil capillary pressure table.
 
@@ -1036,7 +1039,7 @@ def _get_gas_oil_capillary_pressure_derivative(
 
 @relperm_table
 @attrs.frozen
-class KilloughLandRelPermModel(
+class KilloughLandRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},
     deserializers={"mixing_rule": get_mixing_rule},
@@ -1044,7 +1047,7 @@ class KilloughLandRelPermModel(
     dump_exclude={"supports_vector"},
 ):
     """
-    Killough relative permeability hysteresis model with Land trapping.
+    Implements the Killough relative permeability hysteresis model/table with Land trapping.
 
     During *primary drainage* the relative permeabilities follow the
     `oil_water_drainage_table` and `gas_oil_drainage_table`.
@@ -1201,12 +1204,12 @@ class KilloughLandRelPermModel(
         self,
         water_saturation: npt.NDArray,
         gas_saturation: npt.NDArray,
-        max_water_saturation: typing.Optional[NumberOrArray],
-        max_gas_saturation: typing.Optional[NumberOrArray],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
         water_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
         gas_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
-        water_reversal_saturation: typing.Optional[NumberOrArray],
-        gas_reversal_saturation: typing.Optional[NumberOrArray],
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
     ) -> typing.Tuple[
         npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
     ]:
@@ -1286,19 +1289,19 @@ class KilloughLandRelPermModel(
 
     def get_relative_permeabilities(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        max_water_saturation: typing.Optional[NumberOrArray] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         water_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
         gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray] = None,
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -1398,7 +1401,7 @@ class KilloughLandRelPermModel(
         )
         imbibition_oil_water_kwargs = dict(kwargs)
         if use_hysteresis and self.maximum_residual_oil_saturation_water is not None:
-            dynamic_residual_oil_saturation_water = _compute_land_residual_saturation(
+            dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
                 land_trapping_coefficient=self.land_trapping_coefficient_water,
@@ -1428,7 +1431,7 @@ class KilloughLandRelPermModel(
             **imbibition_oil_water_kwargs,
         )
 
-        water_relative_permeability = _compute_killough_scanning_curve(
+        water_relative_permeability = compute_killough_scanning_curve(
             saturation=water_saturation,
             drainage_curve_value=water_relative_permeability_drainage,
             imbibition_curve_value=water_relative_permeability_imbibition,
@@ -1437,7 +1440,7 @@ class KilloughLandRelPermModel(
             is_imbibition=water_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_water = _compute_killough_scanning_curve(
+        oil_relative_permeability_water = compute_killough_scanning_curve(
             saturation=water_saturation,
             drainage_curve_value=oil_relative_permeability_water_drainage,
             imbibition_curve_value=oil_relative_permeability_water_imbibition,
@@ -1454,7 +1457,7 @@ class KilloughLandRelPermModel(
         )
         imbibition_gas_oil_kwargs = dict(kwargs)
         if use_hysteresis and self.maximum_residual_gas_saturation is not None:
-            dynamic_residual_gas_saturation = _compute_land_residual_saturation(
+            dynamic_residual_gas_saturation = compute_land_residual_saturation(
                 initial_non_wetting_saturation=gas_reversal_saturation,
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
@@ -1463,7 +1466,7 @@ class KilloughLandRelPermModel(
                 dynamic_residual_gas_saturation
             )
         if use_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
-            dynamic_residual_oil_saturation_gas = _compute_land_residual_saturation(
+            dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_gas,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
@@ -1492,7 +1495,7 @@ class KilloughLandRelPermModel(
             **imbibition_gas_oil_kwargs,
         )
 
-        gas_relative_permeability = _compute_killough_scanning_curve(
+        gas_relative_permeability = compute_killough_scanning_curve(
             saturation=gas_saturation,
             drainage_curve_value=gas_relative_permeability_drainage,
             imbibition_curve_value=gas_relative_permeability_imbibition,
@@ -1501,7 +1504,7 @@ class KilloughLandRelPermModel(
             is_imbibition=gas_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_gas = _compute_killough_scanning_curve(
+        oil_relative_permeability_gas = compute_killough_scanning_curve(
             saturation=gas_saturation,
             drainage_curve_value=oil_relative_permeability_gas_drainage,
             imbibition_curve_value=oil_relative_permeability_gas_imbibition,
@@ -1539,19 +1542,19 @@ class KilloughLandRelPermModel(
 
     def get_relative_permeability_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        max_water_saturation: typing.Optional[NumberOrArray] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         water_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
         gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray] = None,
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -1630,7 +1633,7 @@ class KilloughLandRelPermModel(
         )
         imbibition_oil_water_kwargs = dict(kwargs)
         if use_hysteresis and self.maximum_residual_oil_saturation_water is not None:
-            dynamic_residual_oil_saturation_water = _compute_land_residual_saturation(
+            dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
                 land_trapping_coefficient=self.land_trapping_coefficient_water,
@@ -1645,7 +1648,7 @@ class KilloughLandRelPermModel(
         )
         imbibition_gas_oil_kwargs = dict(kwargs)
         if use_hysteresis and self.maximum_residual_gas_saturation is not None:
-            dynamic_residual_gas_saturation = _compute_land_residual_saturation(
+            dynamic_residual_gas_saturation = compute_land_residual_saturation(
                 initial_non_wetting_saturation=gas_reversal_saturation,
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
@@ -1654,7 +1657,7 @@ class KilloughLandRelPermModel(
                 dynamic_residual_gas_saturation
             )
         if use_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
-            dynamic_residual_oil_saturation_gas = _compute_land_residual_saturation(
+            dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_gas,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
@@ -1706,7 +1709,7 @@ class KilloughLandRelPermModel(
             **imbibition_oil_water_kwargs,
         )
 
-        water_relative_permeability_derivative = _compute_killough_scanning_curve_derivative(
+        water_relative_permeability_derivative = compute_killough_scanning_curve_derivative(
             saturation=water_saturation,
             drainage_curve_value=water_relative_permeability_drainage,
             imbibition_curve_value=water_relative_permeability_imbibition,
@@ -1717,7 +1720,7 @@ class KilloughLandRelPermModel(
             is_imbibition=water_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_water_derivative = _compute_killough_scanning_curve_derivative(
+        oil_relative_permeability_water_derivative = compute_killough_scanning_curve_derivative(
             saturation=water_saturation,
             drainage_curve_value=oil_relative_permeability_water_drainage,
             imbibition_curve_value=oil_relative_permeability_water_imbibition,
@@ -1729,7 +1732,7 @@ class KilloughLandRelPermModel(
             scanning_exponent=self.scanning_interpolation_exponent,
         )
 
-        water_relative_permeability = _compute_killough_scanning_curve(
+        water_relative_permeability = compute_killough_scanning_curve(
             saturation=water_saturation,
             drainage_curve_value=water_relative_permeability_drainage,
             imbibition_curve_value=water_relative_permeability_imbibition,
@@ -1738,7 +1741,7 @@ class KilloughLandRelPermModel(
             is_imbibition=water_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_water = _compute_killough_scanning_curve(
+        oil_relative_permeability_water = compute_killough_scanning_curve(
             saturation=water_saturation,
             drainage_curve_value=oil_relative_permeability_water_drainage,
             imbibition_curve_value=oil_relative_permeability_water_imbibition,
@@ -1790,7 +1793,7 @@ class KilloughLandRelPermModel(
             **imbibition_gas_oil_kwargs,
         )
 
-        gas_relative_permeability_derivative = _compute_killough_scanning_curve_derivative(
+        gas_relative_permeability_derivative = compute_killough_scanning_curve_derivative(
             saturation=gas_saturation,
             drainage_curve_value=gas_relative_permeability_drainage,
             imbibition_curve_value=gas_relative_permeability_imbibition,
@@ -1801,7 +1804,7 @@ class KilloughLandRelPermModel(
             is_imbibition=gas_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_gas_derivative = _compute_killough_scanning_curve_derivative(
+        oil_relative_permeability_gas_derivative = compute_killough_scanning_curve_derivative(
             saturation=gas_saturation,
             drainage_curve_value=oil_relative_permeability_gas_drainage,
             imbibition_curve_value=oil_relative_permeability_gas_imbibition,
@@ -1813,7 +1816,7 @@ class KilloughLandRelPermModel(
             scanning_exponent=self.scanning_interpolation_exponent,
         )
 
-        gas_relative_permeability = _compute_killough_scanning_curve(
+        gas_relative_permeability = compute_killough_scanning_curve(
             saturation=gas_saturation,
             drainage_curve_value=gas_relative_permeability_drainage,
             imbibition_curve_value=gas_relative_permeability_imbibition,
@@ -1822,7 +1825,7 @@ class KilloughLandRelPermModel(
             is_imbibition=gas_imbibition_flag,  # type: ignore
             scanning_exponent=self.scanning_interpolation_exponent,
         )
-        oil_relative_permeability_gas = _compute_killough_scanning_curve(
+        oil_relative_permeability_gas = compute_killough_scanning_curve(
             saturation=gas_saturation,
             drainage_curve_value=oil_relative_permeability_gas_drainage,
             imbibition_curve_value=oil_relative_permeability_gas_imbibition,
@@ -1890,13 +1893,13 @@ class KilloughLandRelPermModel(
 
 @capillary_pressure_table
 @attrs.frozen
-class KilloughCapillaryPressureModel(
+class KilloughCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
     dump_exclude={"supports_vector"},
 ):
     """
-    Killough capillary pressure hysteresis model.
+    Implements the Killough capillary pressure hysteresis model/table.
 
     Capillary pressure hysteresis involves no trapping.  When the displacement
     direction reverses, capillary pressure traces a *scanning curve* that
@@ -2015,12 +2018,12 @@ class KilloughCapillaryPressureModel(
         self,
         water_saturation: npt.NDArray,
         gas_saturation: npt.NDArray,
-        max_water_saturation: typing.Optional[NumberOrArray],
-        max_gas_saturation: typing.Optional[NumberOrArray],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
         water_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
         gas_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
-        water_reversal_saturation: typing.Optional[NumberOrArray],
-        gas_reversal_saturation: typing.Optional[NumberOrArray],
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
     ) -> typing.Tuple[
         npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
     ]:
@@ -2098,19 +2101,19 @@ class KilloughCapillaryPressureModel(
 
     def get_capillary_pressures(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        max_water_saturation: typing.Optional[NumberOrArray] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         water_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
         gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray] = None,
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -2186,7 +2189,7 @@ class KilloughCapillaryPressureModel(
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        oil_water_capillary_pressure = _compute_killough_scanning_curve(
+        oil_water_capillary_pressure = compute_killough_scanning_curve(
             saturation=water_saturation,
             drainage_curve_value=oil_water_capillary_pressure_drainage,
             imbibition_curve_value=oil_water_capillary_pressure_imbibition,
@@ -2211,7 +2214,7 @@ class KilloughCapillaryPressureModel(
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        gas_oil_capillary_pressure = _compute_killough_scanning_curve(
+        gas_oil_capillary_pressure = compute_killough_scanning_curve(
             saturation=gas_saturation,
             drainage_curve_value=gas_oil_capillary_pressure_drainage,
             imbibition_curve_value=gas_oil_capillary_pressure_imbibition,
@@ -2233,19 +2236,19 @@ class KilloughCapillaryPressureModel(
 
     def get_capillary_pressure_derivatives(
         self,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-        max_water_saturation: typing.Optional[NumberOrArray] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         water_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
         gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, npt.NDArray[np.bool_]]
+            typing.Union[bool, BooleanArray[NDimension]]
         ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray] = None,
+        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -2345,7 +2348,7 @@ class KilloughCapillaryPressureModel(
             )
         )
 
-        oil_water_capillary_pressure_derivative = _compute_killough_scanning_curve_derivative(
+        oil_water_capillary_pressure_derivative = compute_killough_scanning_curve_derivative(
             saturation=water_saturation,
             drainage_curve_value=oil_water_capillary_pressure_drainage,
             imbibition_curve_value=oil_water_capillary_pressure_imbibition,
@@ -2391,7 +2394,7 @@ class KilloughCapillaryPressureModel(
             )
         )
 
-        gas_oil_capillary_pressure_derivative = _compute_killough_scanning_curve_derivative(
+        gas_oil_capillary_pressure_derivative = compute_killough_scanning_curve_derivative(
             saturation=gas_saturation,
             drainage_curve_value=gas_oil_capillary_pressure_drainage,
             imbibition_curve_value=gas_oil_capillary_pressure_imbibition,
