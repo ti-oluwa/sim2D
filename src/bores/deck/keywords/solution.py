@@ -55,6 +55,7 @@ __all__ = [
     "EQUIL",
     "RESTART",
     "RTEMP",
+    "TEMPVD",
 ]
 
 SWAT = SW = GridArrayKeyword("SWAT", dtype=np.float64, default_value=0.0)
@@ -136,9 +137,38 @@ RTEMP = PVTTableKeyword(
 `RTEMP  TEMPERATURE /`
 - single reservoir temperature applied uniformly to all cells.
 
+One record per run. Used when the reservoir temperature is spatially
+constant and does not vary with depth. When both `RTEMP` and `TEMPVD`
+are present, `TEMPVD` takes precedence.
+
 Columns:
 
 - `temperature` - reservoir temperature (°F in FIELD, °C in METRIC / LAB).
+"""
+
+TEMPVD = PVTTableKeyword(
+    "TEMPVD",
+    columns=[
+        Field("depth", np.float64),
+        Field("temperature", np.float64),
+    ],
+)
+"""
+`TEMPVD` - temperature versus depth table.
+
+Specifies how reservoir temperature varies with depth, one table per
+equilibration region (matched by `EQLNUM`). Cell temperatures are
+interpolated linearly from this table at each cell centroid depth.
+Values above the shallowest entry or below the deepest entry are
+clamped to the endpoint value (no extrapolation).
+
+Each table (one per equilibration region) contains rows:
+
+- `depth`       - true vertical depth (ft in FIELD, m in METRIC).
+- `temperature` - reservoir temperature at that depth (°F in FIELD,
+  °C in METRIC / LAB).
+
+Rows must be in ascending depth order.
 """
 
 

@@ -370,8 +370,8 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         stop_before_order: typing.Optional[typing.Tuple[int, int]],
     ) -> typing.Optional[FloatArray[OneDimension]]:
         """
-        Replay every event affecting this keyword's array — its own
-        explicit data block(s) *and* every operator record targeting it —
+        Replay every event affecting this keyword's array - its own
+        explicit data block(s) *and* every operator record targeting it -
         strictly in the order they occur in the deck.
 
         This is what makes e.g. `MULTX` set via `EQUALS` and later
@@ -543,7 +543,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         data-block records, interleaved with `("operate", Operation)`
         for every operator record that targets it.
 
-        Both event kinds share one `order` namespace — a
+        Both event kinds share one `order` namespace - a
         `(record_start, line_index)` tuple.
 
         :returns: Events sorted ascending (earliest in file first).
@@ -748,12 +748,12 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
 
     This covers two sub-patterns:
 
-    **Simple (immiscible) tables** — every `/`-terminated segment is one
+    **Simple (immiscible) tables** - every `/`-terminated segment is one
     complete row; all rows in a block share the same column layout.
     Examples: `SWOF`, `SGOF`, `PVDG`, `PVDO`, `SWFN`, `SGFN`,
     `SOF2`, `SOF3`, `ROCK`, `DENSITY`, `PVTW`.
 
-    **Miscible (saturated/under-saturated) tables** — a single primary-key
+    **Miscible (saturated/under-saturated) tables** - a single primary-key
     value on its own `/`-separated segment introduces a new "inner table",
     and subsequent segments are rows belonging to that inner table until the
     next primary-key segment or a double `//` terminates the table.
@@ -766,10 +766,10 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         `PVTO` / `PVTG`. When `None`, the table is flat (immiscible
         / simple-tabular).
     :param table_terminator: The string that separates tables within one
-        keyword block (default `"/"` — i.e. every block is one table).
+        keyword block (default `"/"` - i.e. every block is one table).
         Pass `"//"` for the double-slash convention used by some keywords.
 
-    The parsed value is `List[List[Dict]]` — a list of tables (one per
+    The parsed value is `List[List[Dict]]` - a list of tables (one per
     keyword occurrence / PVT region), each table being a list of row dicts.
     For miscible tables the `primary_key` field is duplicated into every
     inner-table row for convenience.
@@ -822,7 +822,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
             if idx < len(tokens):
                 raw = tokens[idx]
                 if raw == "1*":
-                    # Eclipse default designator — use the column default.
+                    # Eclipse default designator - use the column default.
                     if col.required:
                         raise DeckParseError(
                             f"{self.name}: required column {col.name!r} "

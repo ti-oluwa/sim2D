@@ -164,8 +164,7 @@ Fields:
 - `auto_shut`       - automatic shut-in behaviour (`SHUT` or `STOP`).
 - `crossflow`       - whether crossflow between completions is allowed.
 - `pvt_table`       - PVT region override (`0` = use cell's `PVTNUM`).
-- `density_calc`    - wellbore density calculation method (`SEG` or
-  `AVG`).
+- `density_calc`    - wellbore density calculation method (`SEG` or `AVG`).
 """
 
 COMPDAT = RepeatedRecordKeyword[typing.Union[str, float]](

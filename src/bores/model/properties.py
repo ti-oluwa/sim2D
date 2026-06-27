@@ -17,8 +17,10 @@ from bores.typing import (
     CellArray,
     IntCellArray,
     MiscibilityModel,
+    Number,
     UnitSystem,
 )
+from spe1 import reference_pressure
 
 __all__ = [
     "PVT",
@@ -31,19 +33,19 @@ __all__ = [
 ]
 
 
-def _scale(arr: CellArray, factor: float) -> CellArray:
+def _scale(arr: CellArray, factor: Number) -> CellArray:
     """Return `arr * factor` as the same dtype; identity when factor == 1.0."""
     if factor == 1.0:
         return arr
     return typing.cast(CellArray, (arr * factor).astype(arr.dtype))
 
 
-def _scale_non_empty(arr: CellArray, fac: float) -> CellArray:
+def _scale_non_empty(arr: CellArray, factor: Number) -> CellArray:
     """Scale only if the optional EOR array is non-empty."""
-    return _scale(arr, fac) if arr.size > 0 else arr
+    return _scale(arr, factor) if arr.size > 0 else arr
 
 
-def _scale_and_offset(arr: CellArray, scale: float, offset: float) -> CellArray:
+def _scale_and_offset(arr: CellArray, scale: Number, offset: Number) -> CellArray:
     """Return `arr * scale + offset` as the same dtype; identity when trivial."""
     if scale == 1.0 and offset == 0.0:
         return arr
@@ -59,7 +61,7 @@ class RockPermeability(StoreSerializable):
     assumption). The geometric-mean `mean` is computed automatically when
     not provided.
 
-    Units follow the parent `Rock.unit_system`.
+    Units should follow the parent `Rock.unit_system`.
     """
 
     x: CellArray
@@ -94,6 +96,11 @@ class RockPermeability(StoreSerializable):
     Units: same as `x`.
     """
 
+    unit_system: UnitSystem = UnitSystem.FIELD
+    """
+    Unit system in which all quantities on this object are expressed.
+    """
+
     def __attrs_post_init__(self) -> None:
         if self.y.size == 0:
             object.__setattr__(self, "y", self.x)
@@ -116,6 +123,95 @@ class RockPermeability(StoreSerializable):
             y=_scale(self.y, factor),
             z=_scale(self.z, factor),
             mean=_scale(self.mean, factor),
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+        factor: typing.Optional[Number] = None,
+    ) -> Self:
+        """
+        Return a new `RockPermeability` with all quantities rescaled
+        to *target*.
+
+        Conversion factors are sourced from `get_conversion_factors`.
+
+        :param target: Desired `UnitSystem`.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `RockPermeability` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        if factor is None:
+            factors = get_conversion_factors(self.unit_system, target, table=table)
+            factor = factors["permeability"]
+        if factor == 1.0:
+            return self
+
+        return self.__class__(
+            x=_scale(self.x, factor),
+            y=_scale(self.y, factor),
+            z=_scale(self.z, factor),
+            mean=_scale(self.mean, factor),
+        )
+
+
+@attrs.frozen(slots=True)
+class RockCompressibility(StoreSerializable):
+    reference_pressure: CellArray
+    """
+    Shape (n_cells,) - reference pressure at which each cell's pore volume equals the
+    geometrically calculated value.
+
+    Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
+    """
+
+    compressibility: CellArray
+    """
+    Shape (n_cells,) - formation compressibility.
+
+    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
+    Used in the pore-volume accumulation term: dPV/dP = PV · cr.
+    """
+
+    unit_system: UnitSystem = UnitSystem.FIELD
+    """
+    Unit system in which all quantities on this object are expressed.
+    """
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `RockCompressibility` with all quantities rescaled
+        to *target*.
+
+        Conversion factors are sourced from `get_conversion_factors`.
+
+        :param target: Desired `UnitSystem`.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `RockCompressibility` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        return self.__class__(
+            reference_pressure=typing.cast(
+                CellArray, self.reference_pressure * factors["pressure"]
+            ),
+            compressibility=typing.cast(
+                CellArray, self.compressibility * factors["compressibility"]
+            ),
+            unit_system=target,
         )
 
 
@@ -160,12 +256,11 @@ class Rock(StoreSerializable):
     Applied as a multiplier in pore-volume and transmissibility calculations.
     """
 
-    rock_compressibility: CellArray
+    compressibility: RockCompressibility
     """
-    Shape (n_cells,) - formation compressibility.
+    Formation compressibility tensor.
 
     Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
-    Used in the pore-volume accumulation term: dPV/dP = PV · cr.
     """
 
     temperature: CellArray
@@ -259,9 +354,7 @@ class Rock(StoreSerializable):
                 factors["permeability"]
             ),
             net_to_gross=self.net_to_gross,
-            rock_compressibility=_scale(
-                self.rock_compressibility, factors["compressibility"]
-            ),
+            compressibility=self.compressibility.convert(target, table=table),
             temperature=_scale_and_offset(
                 self.temperature,
                 factors["temperature_scale"],
@@ -868,7 +961,7 @@ class State(StoreSerializable):
     Shape (n_cells,) - oil-phase (reference) pressure.
 
     Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
-    Primary implicit unknown in the IMPES pressure equation.
+    Primary implicit unknown in the pressure equation.
     Phase pressures for water and gas are recovered via capillary pressure:
     Pw = Po - Pcow,  Pg = Po + Pcgo.
     """

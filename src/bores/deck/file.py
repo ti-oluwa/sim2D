@@ -111,6 +111,7 @@ from bores.deck.keywords.solution import (
     SGAS,
     SOIL,
     SWAT,
+    TEMPVD,
 )
 from bores.deck.keywords.summary import (
     FGPR,
@@ -225,6 +226,7 @@ DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
         SOIL,
         SWAT,
         RTEMP,
+        TEMPVD,
         ### SCHEDULE ###
         COMPDAT,
         DATES,
