@@ -9,7 +9,8 @@ from typing_extensions import NamedTuple
 
 from bores.grids.base import Grid
 from bores.model.properties import Rock
-from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
+from bores.precision import get_dtype
+from bores.typing import FloatArray, IntArray, Number, OneDimension, TwoDimensions
 
 __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
 
@@ -40,7 +41,7 @@ class ConnectionTransmissibilities(NamedTuple):
 def get_face_transmissibility_map(
     grid: Grid,
     transmissibilities: ConnectionTransmissibilities,
-) -> typing.Dict[int, float]:
+) -> typing.Dict[int, Number]:
     """
     Build a {global_face_index: transmissibility} dict for single-face lookups.
 
@@ -51,11 +52,11 @@ def get_face_transmissibility_map(
     :param transmissibilities: Precomputed transmissibilities for that grid.
     :returns: Dict mapping global face index to transmissibility value.
     """
-    result: typing.Dict[int, float] = {}
-    for pos, gfi in enumerate(grid.interior_face_indices):
-        result[int(gfi)] = float(transmissibilities.interior[pos])
-    for pos, gfi in enumerate(grid.boundary_face_indices):
-        result[int(gfi)] = float(transmissibilities.boundary[pos])
+    result: typing.Dict[int, Number] = {}
+    for position, global_face_idx in enumerate(grid.interior_face_indices):
+        result[int(global_face_idx)] = transmissibilities.interior[position]
+    for position, global_face_idx in enumerate(grid.boundary_face_indices):
+        result[int(global_face_idx)] = transmissibilities.boundary[position]
     return result
 
 
@@ -97,11 +98,11 @@ def compute_connection_transmissibilities(
     :param grid: Fully constructed `bores.grids.base.Grid`.
     :param rock: `Rock` with `absolute_permeability` and `net_to_gross`.
     :param net_to_gross: Optional override for the NTG array.
-    :param dtype: NumPy floating dtype for output arrays. Defaults to `np.float64`.
+    :param dtype: NumPy floating dtype for output arrays. Defaults to `bores.get_dtype()`.
     :returns: `ConnectionTransmissibilities` named tuple.
     :raises ValueError: If permeability or NTG array lengths do not match `grid.n_cells`.
     """
-    dtype = np.dtype(dtype) if dtype is not None else np.float64
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
     kx = np.asarray(rock.absolute_permeability.x, dtype=dtype)
     ky = np.asarray(rock.absolute_permeability.y, dtype=dtype)

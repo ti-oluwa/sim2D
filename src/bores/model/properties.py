@@ -1,4 +1,4 @@
-"""Per-cell property definitions for a black-oil reservoir model."""
+"""Per-cell and simulation property definitions for a black-oil reservoir model."""
 
 import typing
 
@@ -8,9 +8,17 @@ import numpy.typing as npt
 from typing_extensions import Self, TypedDict
 
 from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.deck.file import DeckFile
+from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import BooleanCellArray, CellArray, MiscibilityModel, UnitSystem
+from bores.typing import (
+    BooleanCellArray,
+    CellArray,
+    IntCellArray,
+    MiscibilityModel,
+    UnitSystem,
+)
 
 __all__ = [
     "PVT",
@@ -19,6 +27,7 @@ __all__ = [
     "RockPermeability",
     "Rock",
     "State",
+    "Meta",
 ]
 
 
@@ -120,7 +129,7 @@ class Rock(StoreSerializable):
     `SWCRIT`, and `TEMPVD`.
 
     `temperature` lives here because it is static in standard black-oil
-    (isothermal) simulations.  For thermal extensions it becomes spatially
+    (isothermal) simulations. For thermal extensions it becomes spatially
     varying but still does not change between Newton iterations; it is not
     part of the primary variable set that the solver updates.
 
@@ -286,6 +295,8 @@ class PVT(StoreSerializable):
     unit system.
     """
 
+    reference_temperature: float
+
     # Oil
 
     oil_specific_gravity: float
@@ -326,6 +337,15 @@ class PVT(StoreSerializable):
 
     Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
     Used for the undersaturated-oil compressibility term above bubble point.
+    """
+
+    standard_oil_density: float
+    """
+    Stock-tank oil density at standard conditions.
+
+    Units: lbm/ft³ (FIELD), kg/m³ (METRIC), g/cm³ (LAB).
+    Read from the DENSITY keyword (column 1).
+    Used in: ρo,res = (standard_oil_density + Rs · standard_gas_density) / Bo
     """
 
     # Water
@@ -370,6 +390,25 @@ class PVT(StoreSerializable):
 
     Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
     Typically 3-5 x 10⁻⁶ psi⁻¹.
+    """
+
+    standard_water_density: float
+    """
+    Stock-tank water density at standard conditions.
+
+    Units: same as standard_oil_density.
+    Read from the DENSITY keyword (column 2).
+    Used in: ρw,res = standard_water_density / Bw
+    """
+
+    standard_gas_density: float
+    """
+    Stock-tank gas density at standard conditions.
+
+    Units: same as standard_oil_density.
+    Read from the DENSITY keyword (column 3).
+    Used in: ρg,res = (standard_gas_density + Rv · standard_oil_density) / Bg  [wet gas]
+            ρg,res = standard_gas_density / Bg                           [dry gas]
     """
 
     water_viscosibility: float = 0.0
@@ -461,6 +500,10 @@ class PVT(StoreSerializable):
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
+            reference_temperature=(
+                self.reference_temperature * factors["temperature_scale"]
+            )
+            + factors["temperature_offset"],
             oil_specific_gravity=self.oil_specific_gravity,
             oil_api_gravity=self.oil_api_gravity,
             oil_reference_fvf=self.oil_reference_fvf * factors["liquid_fvf"],
@@ -482,6 +525,9 @@ class PVT(StoreSerializable):
                 self.water_reference_compressibility * factors["compressibility"]
             ),
             water_viscosibility=self.water_viscosibility * factors["compressibility"],
+            standard_oil_density=self.standard_oil_density * factors["density"],
+            standard_water_density=self.standard_water_density * factors["density"],
+            standard_gas_density=self.standard_gas_density * factors["density"],
             reservoir_gas=self.reservoir_gas,
             gas_gravity=self.gas_gravity,
             gas_molecular_weight=self.gas_molecular_weight,
@@ -1131,3 +1177,125 @@ class State(StoreSerializable):
             hysteresis=self.hysteresis,
             unit_system=target,
         )
+
+
+@attrs.frozen(slots=True)
+class Meta(StoreSerializable):
+    """
+    Per-cell region assignments and simulation metadata.
+
+    Populated from the REGIONS section of an Eclipse deck, or supplied
+    directly by the user. All region arrays are 1-based integer indices
+    selecting which PVT, saturation-function, equilibration, or rock
+    compaction table applies to each cell.
+
+    All fields are optional - when absent, region 1 is assumed for every
+    cell (Eclipse default behaviour).
+    """
+
+    pvt_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - PVT region index per cell (1-based).
+    Selects which PVTTables entry from PVTRegions applies.
+    Read from PVTNUM. Default: 1 everywhere.
+    """
+
+    saturation_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - saturation function region index (1-based).
+    Selects SWOF/SGOF/SWFN/SGFN table. Read from SATNUM.
+    """
+
+    imbibition_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - imbibition saturation function region index (1-based).
+    Used for hysteresis scanning curves. Read from IMBNUM.
+    """
+
+    equilibration_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - equilibration region index (1-based).
+    Selects which EQUIL record governs initialisation. Read from EQLNUM.
+    """
+
+    rock_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - rock compaction region index (1-based).
+    Selects ROCK/ROCKTAB table. Read from ROCKNUM.
+    """
+
+    fluid_in_place_region: typing.Optional[IntCellArray] = None
+    """
+    Shape (n_cells,) - fluid-in-place reporting region (1-based).
+    Controls which cells contribute to ROIP/RGIP/RWIP output groups.
+    Read from FIPNUM.
+    """
+
+    @classmethod
+    def from_deck_file(cls, data_file: DeckFile, n_cells: int) -> Self:
+        """
+        Build Meta from a parsed DeckFile.
+
+        Missing keywords default to None (region 1 is assumed by callers).
+
+        :param data_file: Parsed DeckFile.
+        :param n_cells: Number of active cells, for validation.
+        :returns: Meta.
+        """
+
+        def _load(keyword: str) -> typing.Optional[IntCellArray]:
+            arr = data_file.get(keyword)
+            if arr is None:
+                return None
+
+            arr = np.asarray(arr, dtype=np.int32)
+            if arr.size != n_cells:
+                raise ValidationError(
+                    f"{keyword} has {arr.size} values; expected {n_cells}."
+                )
+            return typing.cast(IntCellArray, arr)
+
+        return cls(
+            pvt_region=_load("PVTNUM"),
+            saturation_region=_load("SATNUM"),
+            imbibition_region=_load("IMBNUM"),
+            equilibration_region=_load("EQLNUM"),
+            rock_region=_load("ROCKNUM"),
+            fluid_in_place_region=_load("FIPNUM"),
+        )
+
+    def get_pvt_region(self, cell_index: int) -> int:
+        """Return the PVT region for a cell, defaulting to 1."""
+        if self.pvt_region is None:
+            return 1
+        return int(self.pvt_region[cell_index])
+
+    def get_saturation_region(self, cell_index: int) -> int:
+        """Return the saturation function region for a cell, defaulting to 1."""
+        if self.saturation_region is None:
+            return 1
+        return int(self.saturation_region[cell_index])
+
+    def get_imbibition_region(self, cell_index: int) -> int:
+        """Return the imbibition region for a cell, defaulting to 1."""
+        if self.imbibition_region is None:
+            return 1
+        return int(self.imbibition_region[cell_index])
+
+    def get_equilibration_region(self, cell_index: int) -> int:
+        """Return the equilibration region for a cell, defaulting to 1."""
+        if self.equilibration_region is None:
+            return 1
+        return int(self.equilibration_region[cell_index])
+
+    def get_fluid_in_place_region(self, cell_index: int) -> int:
+        """Return the fluid-in-place region for a cell, defaulting to 1."""
+        if self.fluid_in_place_region is None:
+            return 1
+        return int(self.fluid_in_place_region[cell_index])
+
+    def get_rock_region(self, cell_index: int) -> int:
+        """Return the rock function region for a cell, defaulting to 1."""
+        if self.rock_region is None:
+            return 1
+        return int(self.rock_region[cell_index])

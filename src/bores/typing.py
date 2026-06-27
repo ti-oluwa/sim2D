@@ -87,6 +87,9 @@ NumberOrArray: TypeAlias = typing.Union[
 CellArray: typing.TypeAlias = FloatArray[OneDimension]
 """Shape (n_cells,) per-cell floating array."""
 
+IntCellArray: typing.TypeAlias = IntArray[OneDimension]
+"""Shape (n_cells,) per-cell integer array."""
+
 BooleanCellArray: typing.TypeAlias = BooleanArray[OneDimension]
 """Shape (n_cells,) per-cell boolean array."""
 

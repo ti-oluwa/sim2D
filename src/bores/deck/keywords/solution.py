@@ -37,6 +37,7 @@ from bores.deck.keywords.base import (
     Field,
     GridArrayKeyword,
     Keyword,
+    PVTTableKeyword,
     RepeatedRecordKeyword,
 )
 from bores.deck.operators import Operation
@@ -53,6 +54,7 @@ __all__ = [
     "RV",
     "EQUIL",
     "RESTART",
+    "RTEMP",
 ]
 
 SWAT = SW = GridArrayKeyword("SWAT", dtype=np.float64, default_value=0.0)
@@ -72,7 +74,6 @@ RS = GridArrayKeyword("RS", dtype=np.float64, default_value=0.0)
 
 RV = GridArrayKeyword("RV", dtype=np.float64, default_value=0.0)
 """`RV` - initial vaporised oil-gas ratio (stb/scf in FIELD)."""
-
 
 EQUIL = RepeatedRecordKeyword[float](
     "EQUIL",
@@ -125,6 +126,19 @@ Note:
     between Eclipse 100 and Eclipse 300 / compositional runs; verify
     against your simulator's manual if this run uses anything beyond
     plain black-oil equilibration.
+"""
+
+RTEMP = PVTTableKeyword(
+    "RTEMP",
+    columns=[Field("temperature", np.float64)],
+)
+"""
+`RTEMP  TEMPERATURE /`
+- single reservoir temperature applied uniformly to all cells.
+
+Columns:
+
+- `temperature` - reservoir temperature (°F in FIELD, °C in METRIC / LAB).
 """
 
 

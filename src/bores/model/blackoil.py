@@ -1,15 +1,8 @@
 """
 Reservoir model: Top-level assembly of grid, rock, pvt, and dynamic state.
 
-`BlackOilModel` is the single entity passed between the deck reader, the
-initialisation routines, and the flow solver. It binds together:
-
-- A `bores.grids.base.Grid` — the unstructured polyhedral geometry.
-- `Rock` (attribute `rock`) — static petrophysical arrays.
-- `PVT` (attribute `pvt`) — static PVT characterisation.
-- `State` (attribute `state`) — dynamic per-cell simulation state.
-- Optionally, `Hysteresis` (attribute `hysteresis`) — scanning-curve
-  hysteresis tracking.
+`BlackOilModel` is the single entity passed (implicitly or explicitly) between the deck reader, the
+initialisation routines, and the flow solver.
 """
 
 import typing
@@ -17,22 +10,25 @@ import typing
 import attrs
 from typing_extensions import Self
 
-from bores.constants import UnitConversionTable, build_unit_conversion_table
+from bores.constants import (
+    UnitConversionTable,
+    build_unit_conversion_table,
+    get_conversion_factors,
+)
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.model.properties import PVT, Hysteresis, Rock, State, get_conversion_factors
+from bores.model.properties import PVT, Hysteresis, Meta, Rock, State
 from bores.model.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,
     get_face_transmissibility_map,
 )
 from bores.serialization import Serializable
-from bores.typing import CellArray, UnitSystem
+from bores.typing import CellArray, Number, UnitSystem
 
 __all__ = ["BlackOilModel"]
 
 
-# TODO: Update `_validate_state`
 def _validate_state(state: State, n_cells: int) -> None:
     """
     Verify that all mandatory per-cell arrays in `state` have length
@@ -61,6 +57,8 @@ def _validate_state(state: State, n_cells: int) -> None:
         "state.gas_solubility_in_water": state.gas_solubility_in_water,
         "state.oil_bubble_point_pressure": state.oil_bubble_point_pressure,
         "state.gas_dew_point_pressure": state.gas_dew_point_pressure,
+        "state.water_bubble_point_pressure": state.water_bubble_point_pressure,
+        "state.gas_solubility_in_water": state.gas_solubility_in_water,
     }
     for name, arr in mandatory.items():
         if arr.shape != (n_cells,):
@@ -140,6 +138,7 @@ class BlackOilModel(
         "rock": Rock,
         "pvt": PVT,
         "state": State,
+        "meta": typing.Optional[Meta],
         "datum_depth": typing.Optional[float],
         "unit_system": typing.Optional[UnitSystem],
     },
@@ -147,7 +146,7 @@ class BlackOilModel(
     """
     Reservoir model for black-oil simulation.
 
-    Binds a polyhedral `Grid` to per-cell rock, pvt, and dynamic state
+    Binds a polyhedral `Grid` to per-cell rock, pvt, metadata, and dynamic state
     arrays. On construction all property groups are normalised to the
     declared `unit_system` (defaults to the grid's own unit system).
     """
@@ -158,6 +157,7 @@ class BlackOilModel(
         rock: Rock,
         pvt: PVT,
         state: State,
+        meta: typing.Optional[Meta] = None,
         datum_depth: typing.Optional[float] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
@@ -221,10 +221,13 @@ class BlackOilModel(
         self.state: State = state
         """Dynamic per-cell simulation state in `unit_system`."""
 
+        self.meta: typing.Optional[Meta] = meta
+        """Per-cell region assignments and simulation metadata."""
+
         self.datum_depth: typing.Optional[float] = datum_depth
         """
         Reference depth (grid length units, positive downward) for pressure
-        equilibration.  `None` when no explicit datum is declared.
+        equilibration. `None` when no explicit datum is declared.
         """
 
         self.unit_system: UnitSystem = target_unit_system
@@ -234,7 +237,9 @@ class BlackOilModel(
         Matches `grid.unit_system` by construction.
         """
         self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
-        self._face_transmissibility_map: typing.Optional[typing.Dict[int, float]] = None
+        self._face_transmissibility_map: typing.Optional[typing.Dict[int, Number]] = (
+            None
+        )
 
     @property
     def n_cells(self) -> int:
@@ -334,7 +339,7 @@ class BlackOilModel(
         return self._transmissibilities
 
     @property
-    def face_transmissibility_map(self) -> typing.Dict[int, float]:
+    def face_transmissibility_map(self) -> typing.Dict[int, Number]:
         if self._face_transmissibility_map is None:
             self._face_transmissibility_map = get_face_transmissibility_map(
                 self.grid, self.transmissibilities
@@ -424,7 +429,7 @@ class BlackOilModel(
         # converted and the new model starts with a clean cache.
         return new_model
 
-    def get_transmissibility_for_face(self, face_index: int) -> float:
+    def get_transmissibility_for_face(self, face_index: int) -> Number:
         """
         Return the transmissibility (or half-transmissibility for boundary) of a single face.
 
@@ -461,15 +466,15 @@ class BlackOilModel(
             "n_nnc": self.grid.n_nnc,
             "unit_system": self.unit_system.value,
             "total_pore_volume": float(pv.sum()),
-            "pressure_min": float(p.min()),
-            "pressure_max": float(p.max()),
-            "pressure_mean": float(p.mean()),
-            "sw_min": float(sw.min()),
-            "sw_max": float(sw.max()),
-            "so_min": float(so.min()),
-            "so_max": float(so.max()),
-            "sg_min": float(sg.min()),
-            "sg_max": float(sg.max()),
+            "min_pressure": float(p.min()),
+            "max_pressure": float(p.max()),
+            "mean_pressure": float(p.mean()),
+            "min_water_saturation": float(sw.min()),
+            "max_water_saturation": float(sw.max()),
+            "min_oil_saturation": float(so.min()),
+            "max_oil_saturation": float(so.max()),
+            "min_gas_saturation": float(sg.min()),
+            "max_gas_saturation": float(sg.max()),
             "saturation_balance_max_error": float(abs(so + sw + sg - 1.0).max()),
             "has_transmissibility_multipliers": (
                 self.grid.has_transmissibility_multipliers
