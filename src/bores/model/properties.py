@@ -1327,13 +1327,13 @@ class Meta(StoreSerializable):
     @classmethod
     def from_deck_file(cls, data_file: DeckFile, n_cells: int) -> Self:
         """
-        Build Meta from a parsed DeckFile.
+        Build `Meta` from a parsed DeckFile.
 
         Missing keywords default to None (region 1 is assumed by callers).
 
         :param data_file: Parsed DeckFile.
         :param n_cells: Number of active cells, for validation.
-        :returns: Meta.
+        :returns: `Meta` object loaded from ECLIPSE deck.
         """
 
         def _load(keyword: str) -> typing.Optional[IntCellArray]:

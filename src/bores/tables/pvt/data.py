@@ -245,7 +245,9 @@ class PVTData(StoreSerializable):
                 object.__setattr__(self, field.name, value.astype(dtype, copy=False))
 
         if self.dtype != dtype:
-            object.__setattr__(self, "dtype", dtype)
+            object.__setattr__(
+                self, "dtype", np.dtype(dtype) if dtype is not None else None
+            )
 
     def _warn_phase_mismatches(self) -> None:
         phase = typing.cast(FluidPhase, self.phase)

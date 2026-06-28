@@ -4,31 +4,22 @@ import warnings
 from collections.abc import Mapping
 from os import PathLike
 
-import attrs
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import RectBivariateSpline  # type: ignore[import-untyped]
-from typing_extensions import Self
 
 from bores.constants import c
 from bores.correlations import arrays, scalars
-from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.model.properties import PVT
 from bores.precision import get_dtype
-from bores.stores import StoreSerializable
-from bores.tables.pvt.base import PVTTable, PVTTables
+from bores.tables.pvt.base import PVTTable
 from bores.tables.pvt.data import PVTData, PVTDataSet
 from bores.typing import (
     FloatArray,
     FluidPhase,
     NDimension,
-    NDimensionalGrid,
     OneDimension,
-    OneDimensionalGrid,
-    ThreeDimensionalGrid,
     ThreeDimensions,
-    TwoDimensionalGrid,
     TwoDimensions,
 )
 
@@ -137,23 +128,23 @@ def _get_gas_tables_from_pvt_table(
 
 
 def build_oil_pvt_data(
-    pressures: OneDimensionalGrid,
-    temperatures: OneDimensionalGrid,
+    pressures: FloatArray[OneDimension],
+    temperatures: FloatArray[OneDimension],
     oil_specific_gravity: float = 0.85,
     gas_gravity: typing.Optional[float] = None,
     estimated_solution_gor: typing.Optional[float] = None,
     bubble_point_pressures: typing.Optional[
-        typing.Union[OneDimensionalGrid, TwoDimensionalGrid]
+        typing.Union[FloatArray[OneDimension], FloatArray[TwoDimensions]]
     ] = None,
-    solution_gas_to_oil_ratios: typing.Optional[OneDimensionalGrid] = None,
+    solution_gas_to_oil_ratios: typing.Optional[FloatArray[OneDimension]] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    viscosity_table: typing.Optional[TwoDimensionalGrid] = None,
-    density_table: typing.Optional[TwoDimensionalGrid] = None,
-    formation_volume_factor_table: typing.Optional[TwoDimensionalGrid] = None,
-    compressibility_table: typing.Optional[TwoDimensionalGrid] = None,
-    specific_gravity_table: typing.Optional[TwoDimensionalGrid] = None,
-    molecular_weight_table: typing.Optional[TwoDimensionalGrid] = None,
-    solution_gas_to_oil_ratio_table: typing.Optional[TwoDimensionalGrid] = None,
+    viscosity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    density_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    compressibility_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    specific_gravity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    molecular_weight_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    solution_gas_to_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None,
     standard_oil_density: typing.Optional[float] = None,
     standard_gas_density: typing.Optional[float] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
@@ -196,7 +187,7 @@ def build_oil_pvt_data(
 
     n_p = len(pressures)
     n_t = len(temperatures)
-    dtype = dtype if dtype is not None else get_dtype()
+    dtype = np.dtype(dtype if dtype is not None else get_dtype())
 
     _, gas_gravity, pvt_table = _resolve_gas(gas, gas_gravity)
     assert gas_gravity is not None
@@ -298,9 +289,8 @@ def build_oil_pvt_data(
         )
         temperatures_flat = np.broadcast_to(temperatures, (n_p, n_t))
         bubble_point_pressure_table = (
-            pb_interp.ev(
-                solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel()
-            )
+            pb_interp
+            .ev(solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel())
             .reshape(n_p, n_t)
             .astype(dtype)
         )
@@ -439,22 +429,22 @@ def build_oil_pvt_data(
 
 
 def build_gas_pvt_data(
-    pressures: OneDimensionalGrid,
-    temperatures: OneDimensionalGrid,
+    pressures: FloatArray[OneDimension],
+    temperatures: FloatArray[OneDimension],
     gas_gravity: typing.Optional[float] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    water_salinities: typing.Optional[OneDimensionalGrid] = None,
-    viscosity_table: typing.Optional[TwoDimensionalGrid] = None,
-    density_table: typing.Optional[TwoDimensionalGrid] = None,
-    formation_volume_factor_table: typing.Optional[TwoDimensionalGrid] = None,
-    compressibility_table: typing.Optional[TwoDimensionalGrid] = None,
-    compressibility_factor_table: typing.Optional[TwoDimensionalGrid] = None,
-    specific_gravity_table: typing.Optional[TwoDimensionalGrid] = None,
-    molecular_weight_table: typing.Optional[TwoDimensionalGrid] = None,
-    solubility_in_water_table: typing.Optional[ThreeDimensionalGrid] = None,
+    water_salinities: typing.Optional[FloatArray[OneDimension]] = None,
+    viscosity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    density_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    compressibility_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    compressibility_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    specific_gravity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    molecular_weight_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    solubility_in_water_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
     standard_gas_density: typing.Optional[float] = None,
     standard_oil_density: typing.Optional[float] = None,
-    vaporized_oil_ratio_table: typing.Optional[TwoDimensionalGrid] = None,
+    vaporized_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     **kwargs: typing.Any,
 ) -> PVTData:
@@ -493,7 +483,7 @@ def build_gas_pvt_data(
     gas_name, gas_gravity, pvt_table = _resolve_gas(gas, gas_gravity)
     assert gas_gravity is not None
 
-    dtype = dtype if dtype is not None else get_dtype()
+    dtype = np.dtype(dtype if dtype is not None else get_dtype())
     n_p = len(pressures)
     n_t = len(temperatures)
 
@@ -652,20 +642,20 @@ def build_gas_pvt_data(
 
 
 def build_water_pvt_data(
-    pressures: OneDimensionalGrid,
-    temperatures: OneDimensionalGrid,
-    salinities: typing.Optional[OneDimensionalGrid] = None,
+    pressures: FloatArray[OneDimension],
+    temperatures: FloatArray[OneDimension],
+    salinities: typing.Optional[FloatArray[OneDimension]] = None,
     water_salinity: typing.Optional[float] = None,
     gas_gravity: typing.Optional[float] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    viscosity_table: typing.Optional[ThreeDimensionalGrid] = None,
-    density_table: typing.Optional[ThreeDimensionalGrid] = None,
-    formation_volume_factor_table: typing.Optional[ThreeDimensionalGrid] = None,
-    compressibility_table: typing.Optional[ThreeDimensionalGrid] = None,
-    specific_gravity_table: typing.Optional[ThreeDimensionalGrid] = None,
-    molecular_weight_table: typing.Optional[ThreeDimensionalGrid] = None,
-    bubble_point_pressure_table: typing.Optional[ThreeDimensionalGrid] = None,
-    gas_free_water_fvf_table: typing.Optional[TwoDimensionalGrid] = None,
+    viscosity_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    density_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    compressibility_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    specific_gravity_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    molecular_weight_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    bubble_point_pressure_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
+    gas_free_water_fvf_table: typing.Optional[FloatArray[TwoDimensions]] = None,
     standard_water_density: typing.Optional[float] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     **kwargs: typing.Any,
@@ -702,7 +692,7 @@ def build_water_pvt_data(
     if temperatures.ndim != 1 or not np.all(np.diff(temperatures) > 0):
         raise ValidationError("`temperatures` must be a strictly increasing 1-D array.")
 
-    dtype = dtype if dtype is not None else get_dtype()
+    dtype = np.dtype(dtype if dtype is not None else get_dtype())
     n_p = len(pressures)
     n_t = len(temperatures)
 
@@ -868,17 +858,17 @@ def build_water_pvt_data(
 
 
 def build_pvt_dataset(
-    pressures: OneDimensionalGrid,
-    temperatures: OneDimensionalGrid,
+    pressures: FloatArray[OneDimension],
+    temperatures: FloatArray[OneDimension],
     oil_specific_gravity: float = 0.85,
     gas_gravity: typing.Optional[float] = None,
     water_salinity: typing.Optional[float] = None,
-    salinities: typing.Optional[OneDimensionalGrid] = None,
+    salinities: typing.Optional[FloatArray[OneDimension]] = None,
     estimated_solution_gor: typing.Optional[float] = None,
     bubble_point_pressures: typing.Optional[
-        typing.Union[OneDimensionalGrid, TwoDimensionalGrid]
+        typing.Union[FloatArray[OneDimension], FloatArray[TwoDimensions]]
     ] = None,
-    solution_gas_to_oil_ratios: typing.Optional[OneDimensionalGrid] = None,
+    solution_gas_to_oil_ratios: typing.Optional[FloatArray[OneDimension]] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
     build_oil_data: bool = True,
     build_gas_data: bool = True,

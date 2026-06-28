@@ -1,5 +1,4 @@
 """Entry point for parsing Eclipse / GRDECL decks."""
-
 import typing
 from collections.abc import Collection
 
@@ -132,6 +131,7 @@ from bores.deck.keywords.summary import (
     WWPR,
 )
 from bores.deck.operators import Operation, resolve_operations
+from bores.typing import UnitSystem
 
 __all__ = ["DeckFile"]
 
@@ -272,10 +272,11 @@ class DeckFile:
 
     ```python
     from bores.deck import DeckFile, DEFAULT_KEYWORDS
+    from bores.deck import keywords as k
 
     df = DeckFile("path/to/model.DATA")
-    poro = df.get("PORO")    # ndarray (n_cells,) or None
-    faults = df.get("FAULTS")  # List[Dict] or None
+    poro = df.get("PORO")    # ndarray (n_cells,) or None (string - poor typing support)
+    faults = df.get(k.FAULTS)  # List[Dict] or None (this - better typing support)
 
     # With extra keywords not in the default set:
     df2 = DeckFile(text, keywords=DEFAULT_KEYWORDS | [MyCustomKeyword()])
@@ -325,6 +326,7 @@ class DeckFile:
         }
         self._cache: typing.Dict[str, typing.Any] = {}
         self.dimensions: typing.Optional[GridDimensions] = self._resolve_dimensions()
+        self.unit_system: UnitSystem = self._resolve_unit_system()
         self._operations: typing.Optional[typing.List[Operation]] = (
             resolve_operations(self._deck, self.dimensions)
             if self.dimensions is not None
@@ -355,6 +357,25 @@ class DeckFile:
                 nz=int(parsed["nz"]),
             )
         return None
+    
+    def _resolve_unit_system(self) -> UnitSystem:
+        """
+        Resolve the unit system from the RUNSPEC unit keywords.
+
+        Eclipse decks declare exactly one of `FIELD`, `METRIC`, or `LAB`.
+        When none is present (e.g. a standalone PVT or relperm include file),
+        `FIELD` is assumed as the Eclipse default.
+
+        :returns: The `UnitSystem` declared in the deck.
+        """
+        for name, unit_system in (
+            ("METRIC", UnitSystem.METRIC),
+            ("LAB", UnitSystem.LAB),
+            ("FIELD", UnitSystem.FIELD),
+        ):
+            if self._deck.has(name):
+                return unit_system
+        return UnitSystem.FIELD
 
     @property
     def deck(self) -> Deck:
@@ -374,9 +395,11 @@ class DeckFile:
             self._keywords[keyword.name] = keyword
             self._cache.pop(keyword.name, None)
 
-    def has(self, name: str) -> bool:
-        """Return whether `name` occurs anywhere in the deck."""
-        return self._deck.has(name.upper())
+    def has(self, k: typing.Union[str, Keyword[typing.Any]],/) -> bool:
+        """Return whether `k` occurs anywhere in the deck."""
+        if isinstance(k, Keyword):
+            return self._deck.has(k.name)
+        return self._deck.has(k)
 
     @typing.overload
     def get(self, k: Keyword[T], /, *, use_cache: bool = ...) -> typing.Optional[T]: ...

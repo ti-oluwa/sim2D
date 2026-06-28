@@ -82,9 +82,9 @@ class FaultRecord(Serializable):
             )
 
     @classmethod
-    def from_data_file(
+    def from_deck_file(
         cls,
-        data_file: DeckFile,
+        deck_file: DeckFile,
         fault_name: typing.Optional[str] = None,
     ) -> typing.Union[Self, typing.List[Self]]:
         """
@@ -94,18 +94,18 @@ class FaultRecord(Serializable):
         When `fault_name` is given, returns a single `FaultRecord` for that fault.
         When `fault_name` is `None`, returns a list of all faults in the deck.
 
-        :param data_file: Parsed `bores.deck.file.DeckFile`.
+        :param deck_file: Parsed `bores.deck.file.DeckFile`.
         :param fault_name: Name of a specific fault to extract, or `None` for all.
         :returns: A single `FaultRecord` if `fault_name` is given; a
             `List[FaultRecord]` otherwise.
         :raises ValidationError: If `fault_name` is given but not found in the deck.
         :raises ValidationError: If the deck contains no `FAULTS` keyword.
         """
-        fault_records = data_file.get("FAULTS")
+        fault_records = deck_file.get("FAULTS")
         if not fault_records:
             raise ValidationError("No FAULTS keyword found in the provided data file.")
 
-        multflt_records = data_file.get("MULTFLT") or []
+        multflt_records = deck_file.get("MULTFLT") or []
         multflt_map: typing.Dict[str, float] = {
             rec["name"]: rec["multiplier"] for rec in multflt_records
         }
@@ -190,7 +190,7 @@ def apply_faults(
       `transmissibility_multiplier` on each `FaultRecord` (when not `None`).
     - The transmissibility cache is invalidated and optionally recomputed eagerly.
 
-    **What does not change**: rock, fluid, dynamic state, hysteresis, datum depth,
+    **What does not change**: rock, pvt, dynamic state, hysteresis, datum depth,
     unit system, and all grid geometry (vertex coordinates, face topology, volumes,
     centroids). Only connectivity classification and multiplier tables are touched.
 
@@ -229,9 +229,9 @@ def apply_faults(
     new_model = model.__class__(
         grid=new_grid,
         rock=model.rock,
-        fluid=model.fluid,
+        pvt=model.pvt,
         state=model.state,
-        hysteresis=model.hysteresis,
+        meta=model.meta,
         datum_depth=model.datum_depth,
         unit_system=model.unit_system,
     )
@@ -287,9 +287,9 @@ def remove_faults(
     new_model = model.__class__(
         grid=new_grid,
         rock=model.rock,
-        fluid=model.fluid,
+        pvt=model.pvt,
         state=model.state,
-        hysteresis=model.hysteresis,
+        meta=model.meta,
         datum_depth=model.datum_depth,
         unit_system=model.unit_system,
     )

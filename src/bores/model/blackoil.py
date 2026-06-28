@@ -1,5 +1,5 @@
 """
-Reservoir model: Top-level assembly of grid, rock, pvt, and dynamic state.
+Reservoir model: Top-level assembly of grid, rock, pvt, metadata and dynamic state.
 
 `BlackOilModel` is the single entity passed (implicitly or explicitly) between the deck reader, the
 initialisation routines, and the flow solver.

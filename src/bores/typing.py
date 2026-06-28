@@ -75,6 +75,7 @@ OneDimension: TypeAlias = typing.Tuple[int]
 """1D index"""
 
 Number: TypeAlias = typing.Union[int, float, np.floating, np.integer]
+Boolean: TypeAlias = typing.Union[bool, np.bool_]
 NDimensionalGrid: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 FloatArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 IntArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.integer]]
@@ -100,6 +101,11 @@ TwoDimensionalGrid = NDimensionalGrid[TwoDimensions]
 """2D grid type for simulation data, represented as a 2D NumPy array of floats"""
 OneDimensionalGrid = NDimensionalGrid[OneDimension]
 """1D grid type for simulation data, represented as a 1D NumPy array of floats"""
+
+
+TableQuery = typing.Union[NumberOrArray[NDimension], npt.ArrayLike]
+TableResult = NumberOrArray[NDimension]
+InterpolationMethod = typing.Literal["linear", "cubic"]
 
 
 class Orientation(enum.Enum):

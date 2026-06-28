@@ -28,12 +28,18 @@ from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.tables.pvt.data import PVTData, PVTDataSet
 from bores.typing import (
+    Boolean,
+    BooleanArray,
     FloatArray,
     FluidPhase,
+    InterpolationMethod,
     NDimension,
     NDimensionalGrid,
+    Number,
     OneDimension,
     OneDimensionalGrid,
+    TableQuery,
+    TableResult,
     ThreeDimensionalGrid,
     ThreeDimensions,
     TwoDimensionalGrid,
@@ -50,10 +56,8 @@ __all__ = [
     "DEFAULT_WATER_CLAMPS",
 ]
 
-InterpolationMethod = typing.Literal["linear", "cubic"]
-_INTERPOLATION_DEGREES: typing.Dict[str, int] = {"linear": 1, "cubic": 3}
+INTERPOLATION_DEGREES: typing.Dict[str, int] = {"linear": 1, "cubic": 3}
 
-QueryType = typing.Union[NDimensionalGrid, typing.List[typing.Any], float, np.floating]
 
 ########################
 # Default clamp ranges #
@@ -260,14 +264,14 @@ class PVTTable(StoreSerializable):
         :param clamps: Override per-property clamp ranges. Merged on top of
             phase-appropriate defaults. Pass `False` to disable clamping.
         :param pvt: Optional `PVT` carrying stock-tank
-            reference densities (`oil_density_sc`, `gas_density_sc`,
-            `water_density_sc`). When provided, missing `density_table` and
+            reference densities (`standard_oil_density`, `standard_gas_density`,
+            `standard_water_density`). When provided, missing `density_table` and
             `compressibility_table` entries are built automatically.
         """
-        if interpolation_method not in _INTERPOLATION_DEGREES:
+        if interpolation_method not in INTERPOLATION_DEGREES:
             raise ValidationError(
                 f"Invalid interpolation_method {interpolation_method!r}. "
-                f"Must be one of: {list(_INTERPOLATION_DEGREES.keys())}"
+                f"Must be one of: {list(INTERPOLATION_DEGREES.keys())}"
             )
         if not isinstance(data, PVTData):
             pvt_data = PVTData.from_file(data)  # type: ignore[assignment]
@@ -306,13 +310,13 @@ class PVTTable(StoreSerializable):
             self._check_physical_consistency(data)
 
         self._extrapolation_bounds: typing.Dict[str, typing.Tuple[float, float]] = {
-            "pressure": (float(data.pressures[0]), float(data.pressures[-1])),
-            "temperature": (float(data.temperatures[0]), float(data.temperatures[-1])),
+            "pressure": (data.pressures[0], data.pressures[-1]),
+            "temperature": (data.temperatures[0], data.temperatures[-1]),
         }
         if data.salinities is not None:
             self._extrapolation_bounds["salinity"] = (
-                float(data.salinities[0]),
-                float(data.salinities[-1]),
+                data.salinities[0],
+                data.salinities[-1],
             )
 
         self._bubble_point_ndim: typing.Optional[int] = None
@@ -320,7 +324,7 @@ class PVTTable(StoreSerializable):
             self._bubble_point_ndim = data.bubble_point_pressures.ndim
 
         self.default_salinity: typing.Optional[float] = (
-            float(data.salinities[0]) if data.salinities is not None else None
+            data.salinities[0] if data.salinities is not None else None
         )
         self._water_constant_salinity: bool = (
             data.phase == FluidPhase.WATER
@@ -335,7 +339,7 @@ class PVTTable(StoreSerializable):
                 self.dtype = get_dtype()
                 data.ensure_dtype(self.dtype, force=True)
         else:
-            self.dtype = dtype
+            self.dtype = np.dtype(dtype)
             data.ensure_dtype(self.dtype, force=False)
 
         # Potentially augment data with derived tables before building interpolators
@@ -344,7 +348,7 @@ class PVTTable(StoreSerializable):
         self._data = data
         self._interpolatants: typing.Dict[str, typing.Any] = {}
         self._derivative_interpolatants: typing.Dict[str, typing.Any] = {}
-        self._build_interpolatants(data)
+        self._build_interpolants(data)
 
         logger.debug(
             "PVTTable init: phase=%s, n_p=%d, n_t=%d, method=%r, "
@@ -376,7 +380,9 @@ class PVTTable(StoreSerializable):
         temperatures = data.temperatures
         n_p = len(pressures)
         n_t = len(temperatures)
-        p_grid, t_grid = np.meshgrid(pressures, temperatures, indexing="ij")
+        pressure_table, temperature_table = np.meshgrid(
+            pressures, temperatures, indexing="ij"
+        )
         dtype = self.dtype
 
         updates: typing.Dict[str, typing.Any] = {}
@@ -393,8 +399,8 @@ class PVTTable(StoreSerializable):
                 and solution_gor_table is not None
             ):
                 if pvt is not None:
-                    standard_oil_density = pvt.oil_api_gravity
-                    standard_gas_density = pvt.gas_gravity
+                    standard_oil_density = pvt.standard_gas_density
+                    standard_gas_density = pvt.standard_gas_density
                     if (
                         standard_oil_density is not None
                         and standard_gas_density is not None
@@ -456,8 +462,8 @@ class PVTTable(StoreSerializable):
             # Density: ρg = (ρg,SC + Rv·ρo,SC) / Bg  [wet] or ρg,SC / Bg [dry]
             if data.density_table is None and gas_fvf_table is not None:
                 if pvt is not None:
-                    standard_gas_density = getattr(pvt, "gas_density_sc", None)
-                    standard_oil_density = getattr(pvt, "oil_density_sc", None)
+                    standard_oil_density = pvt.standard_gas_density
+                    standard_gas_density = pvt.standard_gas_density
                     if standard_gas_density is not None:
                         if (
                             vaporized_oil_ratio_table is not None
@@ -479,8 +485,8 @@ class PVTTable(StoreSerializable):
                             else np.full((n_p, n_t), 0.65, dtype=dtype)
                         )
                         updates["density_table"] = compute_gas_density(
-                            pressure=p_grid,
-                            temperature=t_grid,
+                            pressure=pressure_table,
+                            temperature=temperature_table,
                             gas_gravity=specific_gravity_table,
                             gas_compressibility_factor=compressibility_factor_table,
                         )
@@ -496,7 +502,8 @@ class PVTTable(StoreSerializable):
                         dz_dp[:, j] = d(pressures)
 
                     gas_compressibility_table = (
-                        1.0 / p_grid - (1.0 / compressibility_factor_table) * dz_dp
+                        1.0 / pressure_table
+                        - (1.0 / compressibility_factor_table) * dz_dp
                     )
                     np.clip(
                         gas_compressibility_table,
@@ -535,7 +542,7 @@ class PVTTable(StoreSerializable):
             # Density: ρw = ρw,SC / Bw  (simplified; gas-free)
             if data.density_table is None and gas_free_water_fvf_table is not None:
                 if pvt is not None:
-                    standard_water_density = getattr(pvt, "water_density_sc", None)
+                    standard_water_density = pvt.standard_water_density
                     if standard_water_density is not None:
                         salinities = data.salinities
                         if salinities is not None:
@@ -619,6 +626,7 @@ class PVTTable(StoreSerializable):
                         f"`bubble_point_pressures` 1-D length {len(bubble_point_arr)} must "
                         f"match n_temperatures={n_t}."
                     )
+
             elif bubble_point_arr.ndim == 2:
                 rs_axis = data.solution_gas_to_oil_ratios
                 if rs_axis is None:
@@ -730,13 +738,13 @@ class PVTTable(StoreSerializable):
                 stacklevel=3,
             )
 
-    def _build_interpolatants(self, data: PVTData) -> None:
+    def _build_interpolants(self, data: PVTData) -> None:
         """Build scipy / PCHIP interpolators and their pressure-derivatives."""
         phase = typing.cast(FluidPhase, data.phase)
         pressures = data.pressures
         temperatures = data.temperatures
         salinities = data.salinities
-        k = _INTERPOLATION_DEGREES[self.interpolation_method]
+        k = INTERPOLATION_DEGREES[self.interpolation_method]
         use_pchip = self.interpolation_method == "cubic"
 
         def _register_2d(name: str, table: typing.Optional[npt.NDArray]) -> None:
@@ -898,9 +906,9 @@ class PVTTable(StoreSerializable):
 
     def _warn_extrapolation(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> None:
         if not self.warn_on_extrapolation:
             return
@@ -946,11 +954,11 @@ class PVTTable(StoreSerializable):
     def _pt_query(
         self,
         name: str,
-        pressure: QueryType,
-        temperature: QueryType,
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
         *,
         derivative: bool = False,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Evaluate a 2-D interpolator at `(pressure, temperature)` pairs.
 
@@ -971,7 +979,7 @@ class PVTTable(StoreSerializable):
         is_scalar = isinstance(pressure, (int, float, np.floating)) and isinstance(
             temperature, (int, float, np.floating)
         )
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         if is_scalar:
             raw = (
                 interp.ev(pressure, temperature)
@@ -980,7 +988,7 @@ class PVTTable(StoreSerializable):
                     np.atleast_1d(pressure), np.atleast_1d(temperature)
                 ).ravel()[0]
             )
-            result = dtype.type(raw)
+            result = dtype.type(raw)  # type: ignore[attr-defined]
         else:
             pressure_arr = np.atleast_1d(pressure)
             temperature_arr = np.atleast_1d(temperature)
@@ -1010,23 +1018,23 @@ class PVTTable(StoreSerializable):
                 if isinstance(result, np.ndarray):
                     np.clip(result, min_value, max_value, out=result, dtype=dtype)
                 else:
-                    result = dtype.type(np.clip(result, min_value, max_value))
+                    result = np.clip(result, min_value, max_value, dtype=dtype)  # type: ignore[assignment]
 
-        if isinstance(result, np.ndarray) and result.ndim == 0:
-            return dtype.type(result)
-        if isinstance(result, np.ndarray) and result.size == 1:
-            return dtype.type(result.flat[0])
-        return result
+        if (is_array := isinstance(result, np.ndarray)) and result.ndim == 0:
+            return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
+        elif is_array and result.size == 1:
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
+        return typing.cast(FloatArray[NDimension], result)
 
     def _pts_query(
         self,
         name: str,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: QueryType,
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: TableQuery[NDimension],
         *,
         derivative: bool = False,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Evaluate a 3-D interpolator at `(pressure, temperature, salinity)` points.
 
@@ -1049,16 +1057,18 @@ class PVTTable(StoreSerializable):
             return None
         self._warn_extrapolation(pressure, temperature, salinity)
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         pressure_arr = np.atleast_1d(pressure)
         temperature_arr = np.atleast_1d(temperature)
         salinity_arr = np.atleast_1d(salinity)
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [pressure_arr.ravel(), temperature_arr.ravel(), salinity_arr.ravel()]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         clamps = self.clamps
@@ -1067,12 +1077,14 @@ class PVTTable(StoreSerializable):
             np.clip(result, min_value, max_value, out=result, dtype=dtype)
 
         if result.ndim == 0:
-            return dtype.type(result)
+            return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
         if result.size == 1:
-            return dtype.type(result.flat[0])
-        return result
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
+        return typing.cast(FloatArray[NDimension], result)
 
-    def _resolve_salinity(self, salinity: typing.Optional[QueryType]) -> QueryType:
+    def _resolve_salinity(
+        self, salinity: typing.Optional[TableQuery[NDimension]]
+    ) -> TableQuery[NDimension]:
         if salinity is not None:
             return salinity
         if self.default_salinity is not None:
@@ -1084,12 +1096,12 @@ class PVTTable(StoreSerializable):
 
     def formation_volume_factor(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-        solution_gor: typing.Optional[QueryType] = None,
-        bubble_point_pressure: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+        solution_gor: typing.Optional[TableQuery[NDimension]] = None,
+        bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get formation volume factor `B` (bbl/STB for oil/water, ft³/scf for gas).
 
@@ -1133,7 +1145,7 @@ class PVTTable(StoreSerializable):
         if bubble_point_arr is None:
             return self._pt_query("formation_volume_factor", pressure, temperature)
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
         temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
         bubble_point_arr = np.atleast_1d(bubble_point_arr).astype(dtype, copy=False)
@@ -1183,14 +1195,17 @@ class PVTTable(StoreSerializable):
             min_value, max_value = self.clamps["formation_volume_factor"]
             np.clip(result, min_value, max_value, out=result, dtype=dtype)
 
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def formation_volume_factor_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂B/∂P` (psi⁻¹ · bbl/STB or psi⁻¹ · ft³/scf).
 
@@ -1215,12 +1230,12 @@ class PVTTable(StoreSerializable):
 
     def viscosity(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-        solution_gor: typing.Optional[QueryType] = None,
-        bubble_point_pressure: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+        solution_gor: typing.Optional[TableQuery[NDimension]] = None,
+        bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get fluid viscosity `μ` (cP).
 
@@ -1259,7 +1274,7 @@ class PVTTable(StoreSerializable):
         if bubble_point_arr is None:
             return self._pt_query("viscosity", pressure, temperature)
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
         temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
         bubble_point_arr = np.atleast_1d(bubble_point_arr).astype(dtype, copy=False)
@@ -1297,14 +1312,17 @@ class PVTTable(StoreSerializable):
             min_value, max_value = self.clamps["viscosity"]
             np.clip(result, min_value, max_value, out=result, dtype=dtype)
 
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def viscosity_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂μ/∂P` (cP/psi).
 
@@ -1325,10 +1343,10 @@ class PVTTable(StoreSerializable):
 
     def density(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get fluid density `ρ` (lbm/ft³).
 
@@ -1356,10 +1374,10 @@ class PVTTable(StoreSerializable):
 
     def density_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂ρ/∂P` (lbm/ft³/psi).
 
@@ -1380,10 +1398,10 @@ class PVTTable(StoreSerializable):
 
     def compressibility(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get fluid compressibility `c` (psi⁻¹).
 
@@ -1409,10 +1427,10 @@ class PVTTable(StoreSerializable):
 
     def compressibility_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂c/∂P` (psi⁻²).
 
@@ -1433,10 +1451,10 @@ class PVTTable(StoreSerializable):
 
     def specific_gravity(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get fluid specific gravity `γ` (dimensionless).
 
@@ -1456,10 +1474,10 @@ class PVTTable(StoreSerializable):
 
     def molecular_weight(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get fluid molecular weight `M` (lbm/lb-mol).
 
@@ -1479,11 +1497,11 @@ class PVTTable(StoreSerializable):
 
     def bubble_point_pressure(
         self,
-        temperature: QueryType,
-        solution_gor: typing.Optional[QueryType] = None,
-        pressure: typing.Optional[QueryType] = None,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        temperature: TableQuery[NDimension],
+        solution_gor: typing.Optional[TableQuery[NDimension]] = None,
+        pressure: typing.Optional[TableQuery[NDimension]] = None,
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get bubble-point pressure `bubble_point_arr` (psi).
 
@@ -1531,7 +1549,7 @@ class PVTTable(StoreSerializable):
                 "2-D bubble-point table requires the `solution_gor` argument."
             )
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         solution_gor_arr = np.atleast_1d(solution_gor).astype(dtype, copy=False)
         temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
         if solution_gor_arr.shape != temperature_arr.shape:
@@ -1548,13 +1566,16 @@ class PVTTable(StoreSerializable):
             if hasattr(interp, "ev")
             else interp(solution_gor_arr, temperature_arr)
         )
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def bubble_point_pressure_drs(
         self,
-        solution_gor: QueryType,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        solution_gor: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂Pb/∂Rs` (psi · STB/scf).
 
@@ -1572,7 +1593,7 @@ class PVTTable(StoreSerializable):
         if interp is None:
             return None
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         solution_gor_arr = np.atleast_1d(solution_gor).astype(dtype, copy=False)
         temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
         result = (
@@ -1580,15 +1601,18 @@ class PVTTable(StoreSerializable):
             if hasattr(interp, "ev")
             else interp(solution_gor_arr, temperature_arr)
         )
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def solution_gas_to_oil_ratio(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        solution_gor: typing.Optional[QueryType] = None,
-        bubble_point_pressure: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        solution_gor: typing.Optional[TableQuery[NDimension]] = None,
+        bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get solution gas-to-oil ratio `Rs` (scf/STB).
 
@@ -1605,7 +1629,7 @@ class PVTTable(StoreSerializable):
         if "solution_gor" not in self._interpolatants:
             return None
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         bubble_point_arr = (
             bubble_point_pressure
             if bubble_point_pressure is not None
@@ -1644,13 +1668,16 @@ class PVTTable(StoreSerializable):
             min_value, max_value = self.clamps["solution_gor"]
             np.clip(result, min_value, max_value, out=result, dtype=dtype)
 
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def solution_gas_to_oil_ratio_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂Rs/∂P` (scf/STB/psi). Oil phase only.
 
@@ -1664,10 +1691,10 @@ class PVTTable(StoreSerializable):
 
     def is_saturated(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        solution_gor: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[bool, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        solution_gor: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[typing.Union[Boolean, BooleanArray[NDimension]]]:
         """
         Determine whether conditions are saturated (P ≤ bubble_point_arr). Oil phase only.
 
@@ -1687,13 +1714,16 @@ class PVTTable(StoreSerializable):
         pressure_arr = np.atleast_1d(pressure)
         bubble_point_arr = np.atleast_1d(bubble_point_arr)
         result = pressure_arr <= bubble_point_arr
-        return bool(result) if result.size == 1 else result
+        return typing.cast(
+            typing.Union[Boolean, BooleanArray[NDimension]],
+            bool(result) if result.size == 1 else result,
+        )
 
     def compressibility_factor(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get gas z-factor `z` (dimensionless). Gas phase only.
 
@@ -1707,9 +1737,9 @@ class PVTTable(StoreSerializable):
 
     def compressibility_factor_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂z/∂P` (psi⁻¹).  Gas phase only.
 
@@ -1725,10 +1755,10 @@ class PVTTable(StoreSerializable):
 
     def vaporized_oil_ratio(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        dew_point_pressure: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        dew_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get vaporised oil ratio `Rv` (STB/Mscf).  Gas / condensate phase only.
 
@@ -1752,7 +1782,7 @@ class PVTTable(StoreSerializable):
             else self.dew_point_pressure(temperature=temperature)
         )
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
         temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
 
@@ -1781,13 +1811,16 @@ class PVTTable(StoreSerializable):
             min_value, max_value = self.clamps["vaporized_oil_ratio"]
             np.clip(result, min_value, max_value, out=result, dtype=dtype)
 
-        return dtype.type(result) if result.size == 1 else result
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+        )
 
     def vaporized_oil_ratio_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂Rv/∂P` (STB/Mscf/psi).  Gas / condensate phase only.
 
@@ -1803,8 +1836,8 @@ class PVTTable(StoreSerializable):
 
     def dew_point_pressure(
         self,
-        temperature: QueryType,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        temperature: TableQuery[NDimension],
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get gas dew-point pressure `Pdew(T)` (psi).  Gas phase only.
 
@@ -1818,16 +1851,16 @@ class PVTTable(StoreSerializable):
         if interp is None:
             return None
 
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         result = interp(temperature)
-        return dtype.type(result) if np.isscalar(temperature) else result
+        return dtype.type(result) if np.isscalar(temperature) else result  # type: ignore[attr-defined]
 
     def solubility_in_water(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Get gas solubility in water `Rsw` (scf/STB).  Gas phase only.
 
@@ -1847,10 +1880,10 @@ class PVTTable(StoreSerializable):
 
     def solubility_in_water_dp(
         self,
-        pressure: QueryType,
-        temperature: QueryType,
-        salinity: typing.Optional[QueryType] = None,
-    ) -> typing.Optional[typing.Union[float, npt.NDArray]]:
+        pressure: TableQuery[NDimension],
+        temperature: TableQuery[NDimension],
+        salinity: typing.Optional[TableQuery[NDimension]] = None,
+    ) -> typing.Optional[TableResult[NDimension]]:
         """
         Return `∂Rsw/∂P` (scf/STB/psi). Gas phase only.
 
@@ -1927,7 +1960,7 @@ class PVTTables(StoreSerializable):
         :param clamps: Per-phase property clamp overrides. Set to `False` to
             disable all clamping.
         :param pvt: Reference densities for derived table construction
-            (`oil_density_sc`, `gas_density_sc`, `water_density_sc`).
+            (`standard_oil_density`, `standard_gas_density`, `standard_water_density`).
         :returns: `PVTTables` ready for simulation.
         """
         base_kwargs: typing.Dict[str, typing.Any] = dict(
