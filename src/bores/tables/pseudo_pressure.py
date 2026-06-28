@@ -14,7 +14,7 @@ from bores.constants import c
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import NDimension, NumberOrArray
+from bores.typing import FloatArray, NDimension, Number, NumberOrArray
 
 logger = logging.getLogger(__name__)
 
@@ -352,77 +352,81 @@ def build_pchip_interpolants_from_points(
     number_of_base_points: int,
     number_of_endpoint_extra_points: int,
     minimum_scale_span: float = 1.0,
+    dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> typing.Tuple[PchipInterpolator, PchipInterpolator]:
     """
-    Build a PCHIP interpolant (and its analytical derivative) from arbitrary
+    Build a PCHIP interp (and its analytical derivative) from arbitrary
     monotonically increasing x-coordinates and corresponding values.
 
     When `number_of_base_points > 0` and the raw knot count is smaller than
     `number_of_base_points` and the x-range exceeds `minimum_scale_span`,
-    the knot grid is expanded to `number_of_base_points` base points (plus
+    the knot field/array is expanded to `number_of_base_points` base points (plus
     `number_of_endpoint_extra_points` extra knots in each boundary decade)
-    before fitting. The expanded grid is log-spaced when all x values are
+    before fitting. The expanded field/array is log-spaced when all x values are
     positive (appropriate for pressure), and linearly spaced otherwise.
 
     :param x: Monotonically increasing x-axis knots (e.g. pressure in psi).
     :param values: Function values at each knot.
-    :param number_of_base_points: Target number of base knots for grid expansion.
+    :param number_of_base_points: Target number of base knots for field/array expansion.
         Pass `0` to use the raw knots without expansion.
     :param number_of_endpoint_extra_points: Extra knots injected into the first
         and last 10 % of the x-range during expansion. Pass `0` to disable
         endpoint enrichment.
-    :param spacing: Grid spacing mode for the expanded base grid. `"cosine"`
+    :param spacing: Grid spacing mode for the expanded base field/array. `"cosine"`
         clusters points near the boundaries; `"linspace"` gives uniform spacing.
-    :param minimum_scale_span: Minimum x-range required before grid expansion is
+    :param minimum_scale_span: Minimum x-range required before field/array expansion is
         attempted. Defaults to `1.0`, which is appropriate for pressure axes
         measured in psi.
-    :return: Two-tuple `(interpolant, derivative_interpolant)` where
-        `derivative_interpolant` is the analytical first derivative of `interpolant`.
+    :return: Two-tuple `(interp, d_interp)` where
+        `d_interp` is the analytical first derivative of `interp`.
     """
     xs = x
     vals = values
 
-    span = float(xs[-1]) - float(xs[0])
+    span = xs[-1] - xs[0]
     should_scale = (
         number_of_base_points > 0
         and len(xs) < number_of_base_points
         and span > minimum_scale_span
     )
     if should_scale:
-        # Build expanded base grid, log-spaced for positive axes (pressure), linear otherwise
-        if float(xs[0]) > 0.0:
-            base_grid = np.logspace(
-                np.log10(float(xs[0])),
-                np.log10(float(xs[-1])),
+        # Build expanded base array, log-spaced for positive axes (pressure), linear otherwise
+        if xs[0] > 0.0:
+            base = np.logspace(
+                np.log10(xs[0]),
+                np.log10(xs[-1]),
                 number_of_base_points,
+                dtype=dtype,
             )
         else:
-            base_grid = np.linspace(float(xs[0]), float(xs[-1]), number_of_base_points)
+            base = np.linspace(xs[0], xs[-1], number_of_base_points, dtype=dtype)
 
         # Inject extra knots into each boundary decade
         if number_of_endpoint_extra_points > 0:
             decade_width = 0.10 * span
             lower_refinement = np.linspace(
-                float(xs[0]),
-                float(xs[0]) + decade_width,
+                xs[0],
+                xs[0] + decade_width,
                 number_of_endpoint_extra_points + 2,
+                dtype=dtype,
             )
             upper_refinement = np.linspace(
-                float(xs[-1]) - decade_width,
-                float(xs[-1]),
+                xs[-1] - decade_width,
+                xs[-1],
                 number_of_endpoint_extra_points + 2,
+                dtype=dtype,
             )
-            base_grid = np.unique(
-                np.concatenate((base_grid, lower_refinement, upper_refinement))
+            base = np.unique(
+                np.concatenate((base, lower_refinement, upper_refinement), dtype=dtype)
             )
 
-        source_pchip = PchipInterpolator(xs, vals)
-        vals = source_pchip(base_grid)
-        xs = base_grid
+        source_interp = PchipInterpolator(xs, vals)
+        vals = source_interp(base)
+        xs = base
 
-    interpolant = PchipInterpolator(xs, vals)
-    derivative_interpolant = interpolant.derivative(1)
-    return interpolant, derivative_interpolant
+    interp = PchipInterpolator(xs, vals)
+    d_interp = interp.derivative(1)
+    return interp, d_interp
 
 
 class PseudoPressureTable(
@@ -439,7 +443,7 @@ class PseudoPressureTable(
     """
     Pre-computed gas pseudo-pressure table for fast lookup during simulation.
 
-    Uses a PCHIP interpolant for C¹-continuous forward interpolation.
+    Uses a PCHIP interp for C¹-continuous forward interpolation.
 
     Two construction modes:
 
@@ -454,7 +458,7 @@ class PseudoPressureTable(
 
     When `number_of_base_points > 0` and the raw point count is smaller than
     `number_of_base_points`, the knot grid is expanded before fitting the PCHIP
-    interpolant. Extra knots near the pressure boundaries improve derivative accuracy
+    interp. Extra knots near the pressure boundaries improve derivative accuracy
     in the low and high-pressure tails where the pseudo-pressure integrand varies
     most rapidly. Pass `number_of_base_points=0` to disable scaling and use the
     raw pressure grid directly.
@@ -570,7 +574,7 @@ class PseudoPressureTable(
         )
         self.number_of_base_points = number_of_base_points
         self.number_of_endpoint_extra_points = number_of_endpoint_extra_points
-        self.dtype = dtype if dtype is not None else get_dtype()
+        self.dtype = np.dtype(dtype if dtype is not None else get_dtype())
 
         if value_mode:
             if pressures is None or pseudo_pressures is None:
@@ -631,12 +635,13 @@ class PseudoPressureTable(
             )
 
         # Build interpolants
-        self._pchip, self._dpchip = build_pchip_interpolants_from_points(
+        self._p_interp, self._dp_interp = build_pchip_interpolants_from_points(
             x=self.pressures,
             values=self.pseudo_pressures,
             number_of_base_points=self.number_of_base_points,
             number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
             minimum_scale_span=1.0,
+            dtype=dtype,
         )
 
     def interpolate(
@@ -654,11 +659,11 @@ class PseudoPressureTable(
         :return: Pseudo-pressure m(P) (psi²/cP).
         """
         is_scalar = np.isscalar(pressure)
-        dtype = np.dtype(self.dtype)
-        pressure_arr = np.atleast_1d(np.asarray(pressure, dtype=dtype))
-        min_pressure = self._pchip.x[0]
-        max_pressure = self._pchip.x[-1]
-        result = self._pchip(
+        dtype = self.dtype
+        pressure_arr = np.atleast_1d(pressure)
+        min_pressure = self._p_interp.x[0]
+        max_pressure = self._p_interp.x[-1]
+        result = self._p_interp(
             np.clip(pressure_arr, min_pressure, max_pressure, dtype=dtype)
         )
         result = np.where(pressure_arr < min_pressure, self.pseudo_pressures[0], result)
@@ -666,10 +671,8 @@ class PseudoPressureTable(
             pressure_arr > max_pressure, self.pseudo_pressures[-1], result
         )
         if is_scalar:
-            return dtype.type(result.item())
-        return typing.cast(
-            NumberOrArray[NDimension], result.reshape(pressure_arr.shape)
-        )
+            return typing.cast(Number, dtype.type(result.item()))
+        return typing.cast(FloatArray[NDimension], result.reshape(pressure_arr.shape))
 
     def inverse(
         self, pseudo_pressure: NumberOrArray[NDimension]
@@ -677,7 +680,7 @@ class PseudoPressureTable(
         """
         Inverse interpolate pressure at given pseudo-pressure.
 
-        Uses numerical inversion of the PCHIP interpolant (via Brent's method)
+        Uses numerical inversion of the PCHIP interp (via Brent's method)
         to guarantee consistency with `interpolate`.
 
         :param pseudo_pressure: Pseudo-pressure m(P) (psi²/cP) - scalar or array.
@@ -685,9 +688,9 @@ class PseudoPressureTable(
         """
         min_pseudo_pressure = self.pseudo_pressures[0]
         max_pseudo_pressure = self.pseudo_pressures[-1]
-        min_pressure = self._pchip.x[0]
-        max_pressure = self._pchip.x[-1]
-        dtype = np.dtype(self.dtype)
+        min_pressure = self._p_interp.x[0]
+        max_pressure = self._p_interp.x[-1]
+        dtype = self.dtype
 
         def _invert_scalar(pseudo_pressure: float) -> float:
             clamped_pseudo_pressure = np.clip(
@@ -698,7 +701,7 @@ class PseudoPressureTable(
             if abs(clamped_pseudo_pressure - max_pseudo_pressure) < 1e-10:
                 return max_pressure
             return brentq(
-                lambda p: self._pchip(p) - clamped_pseudo_pressure,
+                lambda p: self._p_interp(p) - clamped_pseudo_pressure,
                 min_pressure,
                 max_pressure,
                 xtol=1e-6,
@@ -710,9 +713,9 @@ class PseudoPressureTable(
         result = np.vectorize(_invert_scalar)(pseudo_pressure_arr)
 
         if is_scalar:
-            return dtype.type(result.item())
+            return typing.cast(Number, dtype.type(result.item()))
         return typing.cast(
-            NumberOrArray[NDimension], result.reshape(pseudo_pressure_arr.shape)
+            FloatArray[NDimension], result.reshape(pseudo_pressure_arr.shape)
         )
 
     def __call__(
@@ -743,21 +746,19 @@ class PseudoPressureTable(
         :return: dm/dP (psi/cP).
         """
         is_scalar = np.isscalar(pressure)
-        dtype = np.dtype(self.dtype)
+        dtype = self.dtype
         pressure_arr = np.atleast_1d(np.asarray(pressure, dtype=dtype))
-        min_pressure = self._dpchip.x[0]
-        max_pressure = self._dpchip.x[-1]
-        result = self._dpchip(
+        min_pressure = self._dp_interp.x[0]
+        max_pressure = self._dp_interp.x[-1]
+        result = self._dp_interp(
             np.clip(pressure_arr, min_pressure, max_pressure, dtype=dtype)
         )
         result = np.where(
             (pressure_arr < min_pressure) | (pressure_arr > max_pressure), 0.0, result
         )
         if is_scalar:
-            return dtype.type(result.item())
-        return typing.cast(
-            NumberOrArray[NDimension], result.reshape(pressure_arr.shape)
-        )
+            return typing.cast(Number, dtype.type(result.item()))
+        return typing.cast(FloatArray[NDimension], result.reshape(pressure_arr.shape))
 
 
 _PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(
