@@ -34,6 +34,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.core import DeckParseError
 from bores.deck.file import DeckFile
 from bores.errors import GridExportError, GridImportError
@@ -45,10 +46,9 @@ from bores.grids.factories.corner_point import (
     make_corner_point_grid,
     rederive_corner_point_arrays,
 )
-from bores.grids.utils import _get_length_conversion_factor, convert
 from bores.typing import (
-    FloatArray,
     IntArray,
+    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
@@ -97,13 +97,6 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     """
     Determine the grid geometry unit system from a parsed `DeckFile`.
 
-    Resolution order (highest to lowest priority):
-
-    1. `GRIDUNIT` keyword - explicit geometry unit declaration.
-    2. Bare section keywords `FIELD`, `METRIC`, `LAB`, `SI`
-       (detected in the raw deck text).
-    3. Default: `FIELD` (Eclipse default when no unit keyword is present).
-
     :param deck_file: Already-constructed `DeckFile`.
     :returns: The declared `bores.typing.UnitSystem`.
     """
@@ -114,12 +107,7 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
         if unit_system is not None:
             return unit_system
 
-    deck_text = deck_file.deck.text
-    for keyword, unit_system in _BARE_UNIT_KEYWORDS.items():
-        if re.search(r"(?<!\w)" + keyword + r"(?!\w)", deck_text, re.IGNORECASE):
-            return unit_system
-
-    return UnitSystem.FIELD
+    return deck_file.unit_system
 
 
 @attrs.define(frozen=True, slots=True)
@@ -137,16 +125,16 @@ class MapAxes:
         expressed.
     """
 
-    origin: FloatArray[OneDimension]
-    map_x_axis_point: FloatArray[OneDimension]
-    map_y_axis_point: FloatArray[OneDimension]
+    origin: NumberArray[OneDimension]
+    map_x_axis_point: NumberArray[OneDimension]
+    map_y_axis_point: NumberArray[OneDimension]
     unit_system: UnitSystem = UnitSystem.FIELD
-    rotation_matrix: FloatArray[ThreeDimensions] = attrs.field(init=False)
+    rotation_matrix: NumberArray[ThreeDimensions] = attrs.field(init=False)
 
     def __attrs_post_init__(self) -> None:
         object.__setattr__(self, "rotation_matrix", self._compute_rotation_matrix())
 
-    def _compute_rotation_matrix(self) -> FloatArray[TwoDimensions]:
+    def _compute_rotation_matrix(self) -> NumberArray[TwoDimensions]:
         origin = self.origin
         x_vec = self.map_x_axis_point - origin
         y_vec = self.map_y_axis_point - origin
@@ -158,32 +146,38 @@ class MapAxes:
                 "The map coordinate rotation will be skipped.",
                 stacklevel=3,
             )
-            return np.eye(2, dtype=np.float64)
+            return np.eye(2, dtype=np.float64)  # type: ignore[return-value]
 
         x_dir = x_vec / x_norm
         y_dir = y_vec / y_norm
-        return np.array(
+        return np.array(  # type: ignore[return-value]
             [[x_dir[0], y_dir[0]], [x_dir[1], y_dir[1]]],
             dtype=np.float64,
         )
 
-    def convert(self, to: UnitSystem) -> Self:
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
         """
-        Return a new `MapAxes` with all coordinates expressed in `to`.
+        Return a new `MapAxes` with all coordinates expressed in *target*.
 
-        :param to: Target `bores.typing.UnitSystem`.
+        :param target: Target `UnitSystem`.
         :returns: New `MapAxes` in the target unit system, or `self`
             if already in the target system.
         """
-        if self.unit_system == to:
+        if self.unit_system == target:
             return self
 
-        factor = _get_length_conversion_factor(self.unit_system, to)
+        factor = get_conversion_factors(self.unit_system, target, table=table)["length"]
         return self.__class__(
-            origin=self.origin * factor,
-            map_x_axis_point=self.map_x_axis_point * factor,
-            map_y_axis_point=self.map_y_axis_point * factor,
-            unit_system=to,
+            origin=self.origin * factor,  # type: ignore[arg-type]
+            map_x_axis_point=self.map_x_axis_point * factor,  # type: ignore[arg-type]
+            map_y_axis_point=self.map_y_axis_point * factor,  # type: ignore[arg-type]
+            unit_system=target,
         )
 
 
@@ -205,13 +199,12 @@ def _build_map_axes(deck_file: DeckFile) -> typing.Optional[MapAxes]:
     mapunits = deck_file.get("MAPUNITS") or deck_file.get("MAPUNIT")
     map_unit_str = str(mapunits.get("unit", "")).strip().upper() if mapunits else ""
     map_unit = _UNITS_MAP.get(map_unit_str, UnitSystem.FIELD)
-
-    return MapAxes(
-        origin=np.array([mapaxes["origin_x"], mapaxes["origin_y"]], dtype=np.float64),
-        map_x_axis_point=np.array(
+    return MapAxes(  # type: ignore[arg-type]
+        origin=np.array([mapaxes["origin_x"], mapaxes["origin_y"]], dtype=np.float64),  # type: ignore[arg-type]
+        map_x_axis_point=np.array(  # type: ignore[arg-type]
             [mapaxes["x_axis_x"], mapaxes["x_axis_y"]], dtype=np.float64
         ),
-        map_y_axis_point=np.array(
+        map_y_axis_point=np.array(  # type: ignore[arg-type]
             [mapaxes["y_axis_x"], mapaxes["y_axis_y"]], dtype=np.float64
         ),
         unit_system=map_unit,
@@ -225,7 +218,7 @@ def _build_nnc_arrays(
     nz: int,
 ) -> typing.Tuple[
     typing.Optional[IntArray[TwoDimensions]],
-    typing.Optional[FloatArray[OneDimension]],
+    typing.Optional[NumberArray[OneDimension]],
 ]:
     """
     Convert parsed `NNC` keyword records to flat cell-index arrays.
@@ -269,7 +262,7 @@ def _build_nnc_arrays(
 
     return (
         np.asarray(pairs, dtype=np.int32).reshape(-1, 2),
-        np.asarray(transmissibilities, dtype=np.float64),
+        np.asarray(transmissibilities, dtype=np.float64),  # type: ignore[arg-type]
     )
 
 
@@ -425,7 +418,7 @@ def load_grdecl(
             raise GridImportError(f"Failed to parse GRDECL deck: {exc}") from exc
 
     grid = _assemble_grid(deck_file, metadata=metadata)
-    return convert(grid, to=unit_system) if unit_system is not None else grid
+    return grid.convert(unit_system) if unit_system is not None else grid
 
 
 def dump_grdecl(
@@ -675,9 +668,9 @@ def _assemble_cartesian(
         nx=nx,
         ny=ny,
         nz=nz,
-        dx=dx_1d,
-        dy=dy_1d,
-        dz=dz_1d,
+        dx=dx_1d,  # type: ignore[arg-type]
+        dy=dy_1d,  # type: ignore[arg-type]
+        dz=dz_1d,  # type: ignore[arg-type]
         origin=(0.0, 0.0, z_top),
         unit_system=unit_system,
         metadata=meta,
@@ -694,9 +687,10 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
-    {"grdecl_corner_point", "grdecl_cartesian"}
-)
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
+    "grdecl_corner_point",
+    "grdecl_cartesian",
+})
 
 
 def _build_grdecl_text(
@@ -779,7 +773,7 @@ def _emit_actnum(
 def _emit_mult_array(
     lines: typing.List[str],
     keyword: str,
-    arr: FloatArray[OneDimension],
+    arr: NumberArray[OneDimension],
     nx: int,
     ny: int,
     nz: int,
@@ -788,7 +782,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64)
+        np
+        .asarray(arr, dtype=np.float64)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")

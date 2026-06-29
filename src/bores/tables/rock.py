@@ -15,7 +15,7 @@ import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator, interp1d
 from typing_extensions import Self
 
-from bores.constants import get_conversion_factors
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties import RockCompressibility
@@ -332,7 +332,13 @@ class RockCompressibilityTable(StoreSerializable):
         """
         return self._query(self._t_dp_interp, pressure)
 
-    def convert(self, target: UnitSystem) -> Self:
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
         """
         Return a new `RockCompressibilityTable` with pressures rescaled to
         *target*.
@@ -346,7 +352,7 @@ class RockCompressibilityTable(StoreSerializable):
         if target == self.unit_system:
             return self
 
-        factors = get_conversion_factors(self.unit_system, target)
+        factors = get_conversion_factors(self.unit_system, target, table=table)
         pressure_factor = factors["pressure"]
         return self.__class__(
             pressures=(self.pressures * pressure_factor).astype(self.dtype, copy=False),  # type: ignore[arg-type, operator]
@@ -822,6 +828,26 @@ class RockCompressibilityRegions(StoreSerializable):
                 CellArray, effective_compressibility.astype(dtype, copy=False)
             ),
             unit_system=target_unit_system,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `RockCompressibilityRegions` with all region tables converted to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `RockCompressibilityRegions` in *target* units.
+        """
+        return self.__class__(
+            regions={
+                rocknum: tables.convert(target, table=table)
+                for rocknum, tables in self.regions.items()
+            }
         )
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:

@@ -8,13 +8,13 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
-from bores.typing import FloatArray, IntArray, OneDimension
+from bores.typing import FloatArray, Number, OneDimension
 
 
 def resolve_temperature(
     deck_file: DeckFile,
     grid: Grid,
-    default: typing.Optional[float] = None,
+    default: typing.Optional[Number] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> FloatArray[OneDimension]:
     """
@@ -22,7 +22,7 @@ def resolve_temperature(
 
     :param deck_file: Parsed DataFile.
     :param grid: Grid providing cell centroid depths.
-    :param default: Fallback temperature (°F) when nothing is in deck. 
+    :param default: Fallback temperature (°F) when nothing is in deck.
         Will default to `c.STANDARD_TEMPERATURE_IMPERIAL` if not provided.
     :param dtype: NumPy floating dtype for output array. Defaults to `bores.get_dtype()`.
     :returns: (n_cells,) float64 temperature array.
@@ -34,7 +34,7 @@ def resolve_temperature(
     n_cells = grid.n_cells
     dtype = dtype if dtype is not None else get_dtype()
     if rtemp:
-        temperature = float(rtemp[0][0]["temperature"])
+        temperature = rtemp[0][0]["temperature"]
         return np.full(n_cells, temperature, dtype=dtype)
 
     return np.full(

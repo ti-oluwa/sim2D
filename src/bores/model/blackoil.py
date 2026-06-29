@@ -139,7 +139,7 @@ class BlackOilModel(
         "pvt": PVT,
         "state": State,
         "meta": typing.Optional[Meta],
-        "datum_depth": typing.Optional[float],
+        "datum_depth": typing.Optional[Number],
         "unit_system": typing.Optional[UnitSystem],
     },
 ):
@@ -158,7 +158,7 @@ class BlackOilModel(
         pvt: PVT,
         state: State,
         meta: typing.Optional[Meta] = None,
-        datum_depth: typing.Optional[float] = None,
+        datum_depth: typing.Optional[Number] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
@@ -209,28 +209,28 @@ class BlackOilModel(
         _validate_rock(rock, n_cells)
         _validate_state(state, n_cells)
 
-        self.grid: Grid = grid
+        self.grid = grid
         """The unstructured polyhedral grid with all geometry and topology."""
 
-        self.rock: Rock = rock
+        self.rock = rock
         """Static petrophysical properties in `unit_system`."""
 
-        self.pvt: PVT = pvt
+        self.pvt = pvt
         """Static PVT characterisation in `unit_system`."""
 
-        self.state: State = state
+        self.state = state
         """Dynamic per-cell simulation state in `unit_system`."""
 
-        self.meta: typing.Optional[Meta] = meta
+        self.meta = meta
         """Per-cell region assignments and simulation metadata."""
 
-        self.datum_depth: typing.Optional[float] = datum_depth
+        self.datum_depth = datum_depth
         """
         Reference depth (grid length units, positive downward) for pressure
         equilibration. `None` when no explicit datum is declared.
         """
 
-        self.unit_system: UnitSystem = target_unit_system
+        self.unit_system = target_unit_system
         """
         Unit system in which all property groups are expressed.
 
@@ -375,6 +375,7 @@ class BlackOilModel(
             grid=self.grid,
             rock=self.rock,
             pvt=self.pvt,
+            meta=self.meta,
             state=new_state,
             datum_depth=self.datum_depth,
             unit_system=self.unit_system,
@@ -410,16 +411,15 @@ class BlackOilModel(
         # Rebuild grid with updated `unit_system` declaration only
         new_grid = attrs.evolve(self.grid, unit_system=target)
         table = table or build_unit_conversion_table()
+        factors = get_conversion_factors(self.unit_system, target, table=table)
         new_model = self.__class__(
             grid=new_grid,
             rock=self.rock.convert(target, table=table),
             pvt=self.pvt.convert(target, table=table),
             state=self.state.convert(target, table=table),
+            meta=self.meta,
             datum_depth=(
-                self.datum_depth
-                * get_conversion_factors(self.unit_system, target, table=table)[
-                    "length"
-                ]
+                self.datum_depth * factors["length"]
                 if self.datum_depth is not None
                 else None
             ),

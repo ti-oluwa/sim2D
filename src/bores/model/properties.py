@@ -20,7 +20,7 @@ from bores.typing import (
     Number,
     UnitSystem,
 )
-from spe1 import reference_pressure
+from bores.utils import scale, scale_and_offset
 
 __all__ = [
     "PVT",
@@ -31,25 +31,6 @@ __all__ = [
     "State",
     "Meta",
 ]
-
-
-def _scale(arr: CellArray, factor: Number) -> CellArray:
-    """Return `arr * factor` as the same dtype; identity when factor == 1.0."""
-    if factor == 1.0:
-        return arr
-    return typing.cast(CellArray, (arr * factor).astype(arr.dtype))
-
-
-def _scale_non_empty(arr: CellArray, factor: Number) -> CellArray:
-    """Scale only if the optional EOR array is non-empty."""
-    return _scale(arr, factor) if arr.size > 0 else arr
-
-
-def _scale_and_offset(arr: CellArray, scale: Number, offset: Number) -> CellArray:
-    """Return `arr * scale + offset` as the same dtype; identity when trivial."""
-    if scale == 1.0 and offset == 0.0:
-        return arr
-    return typing.cast(CellArray, ((arr * scale) + offset).astype(arr.dtype))
 
 
 @attrs.frozen(slots=True)
@@ -114,15 +95,15 @@ class RockPermeability(StoreSerializable):
                     self, "mean", (self.x * self.y * self.z) ** (1.0 / 3.0)
                 )
 
-    def scale(self, factor: float) -> Self:
+    def scale(self, factor: Number) -> Self:
         """Return a new instance with all components multiplied by *factor*."""
         if factor == 1.0:
             return self
         return self.__class__(
-            x=_scale(self.x, factor),
-            y=_scale(self.y, factor),
-            z=_scale(self.z, factor),
-            mean=_scale(self.mean, factor),
+            x=scale(self.x, factor),
+            y=scale(self.y, factor),
+            z=scale(self.z, factor),
+            mean=scale(self.mean, factor),
         )
 
     def convert(
@@ -153,10 +134,10 @@ class RockPermeability(StoreSerializable):
             return self
 
         return self.__class__(
-            x=_scale(self.x, factor),
-            y=_scale(self.y, factor),
-            z=_scale(self.z, factor),
-            mean=_scale(self.mean, factor),
+            x=scale(self.x, factor),
+            y=scale(self.y, factor),
+            z=scale(self.z, factor),
+            mean=scale(self.mean, factor),
         )
 
 
@@ -205,12 +186,8 @@ class RockCompressibility(StoreSerializable):
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
-            reference_pressure=typing.cast(
-                CellArray, self.reference_pressure * factors["pressure"]
-            ),
-            compressibility=typing.cast(
-                CellArray, self.compressibility * factors["compressibility"]
-            ),
+            reference_pressure=scale(self.reference_pressure, factors["pressure"]),
+            compressibility=scale(self.compressibility, factors["compressibility"]),
             unit_system=target,
         )
 
@@ -355,10 +332,10 @@ class Rock(StoreSerializable):
             ),
             net_to_gross=self.net_to_gross,
             compressibility=self.compressibility.convert(target, table=table),
-            temperature=_scale_and_offset(
+            temperature=scale_and_offset(
                 self.temperature,
-                factors["temperature_scale"],
-                factors["temperature_offset"],
+                scale=factors["temperature_scale"],
+                offset=factors["temperature_offset"],
             ),
             connate_water_saturation=self.connate_water_saturation,
             irreducible_water_saturation=self.irreducible_water_saturation,
@@ -388,11 +365,11 @@ class PVT(StoreSerializable):
     unit system.
     """
 
-    reference_temperature: float
+    reference_temperature: Number
 
     # Oil
 
-    oil_specific_gravity: float
+    oil_specific_gravity: Number
     """
     Oil specific gravity relative to fresh water at 60 °F (dimensionless).
 
@@ -400,14 +377,14 @@ class PVT(StoreSerializable):
     stock-tank oil density: ρ_o,STC = oil_specific_gravity x ρ_water_STC.
     """
 
-    oil_api_gravity: float
+    oil_api_gravity: Number
     """
     Oil API gravity (°API), computed as 141.5 / SG - 131.5.
 
     Provided for convenience; redundant with `oil_specific_gravity`.
     """
 
-    oil_reference_fvf: float
+    oil_reference_fvf: Number
     """
     Oil formation volume factor at bubble-point (reference) pressure (Bo_ref).
 
@@ -415,7 +392,7 @@ class PVT(StoreSerializable):
     Used to initialise `PVTCache.oil_fvf` before the first Newton iteration.
     """
 
-    oil_reference_viscosity: float
+    oil_reference_viscosity: Number
     """
     Dead-oil viscosity at standard conditions.
 
@@ -424,7 +401,7 @@ class PVT(StoreSerializable):
     reservoir conditions is evaluated in `PVTCache`.
     """
 
-    oil_reference_compressibility: float
+    oil_reference_compressibility: Number
     """
     Oil compressibility at bubble-point (reference) pressure.
 
@@ -432,7 +409,7 @@ class PVT(StoreSerializable):
     Used for the undersaturated-oil compressibility term above bubble point.
     """
 
-    standard_oil_density: float
+    standard_oil_density: Number
     """
     Stock-tank oil density at standard conditions.
 
@@ -443,7 +420,7 @@ class PVT(StoreSerializable):
 
     # Water
 
-    water_salinity: float
+    water_salinity: Number
     """
     Formation water salinity (ppm NaCl).
 
@@ -451,7 +428,7 @@ class PVT(StoreSerializable):
     viscosity correlations (e.g. Batzle-Wang). Typical seawater: 35 000 ppm.
     """
 
-    water_reference_pressure: float
+    water_reference_pressure: Number
     """
     Reference pressure at which `water_reference_fvf` and
     `water_reference_compressibility` are defined.
@@ -461,7 +438,7 @@ class PVT(StoreSerializable):
     Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
     """
 
-    water_reference_fvf: float
+    water_reference_fvf: Number
     """
     Water formation volume factor at `water_reference_pressure` (Bw_ref).
 
@@ -469,7 +446,7 @@ class PVT(StoreSerializable):
     Approximately 1.00-1.08 depending on salinity and temperature.
     """
 
-    water_reference_viscosity: float
+    water_reference_viscosity: Number
     """
     Water viscosity at reference conditions (μw_ref).
 
@@ -477,7 +454,7 @@ class PVT(StoreSerializable):
     Approximately 0.3-1.0 cP at reservoir temperature.
     """
 
-    water_reference_compressibility: float
+    water_reference_compressibility: Number
     """
     Water compressibility at `water_reference_pressure` (cw_ref).
 
@@ -485,7 +462,7 @@ class PVT(StoreSerializable):
     Typically 3-5 x 10⁻⁶ psi⁻¹.
     """
 
-    standard_water_density: float
+    standard_water_density: Number
     """
     Stock-tank water density at standard conditions.
 
@@ -494,7 +471,7 @@ class PVT(StoreSerializable):
     Used in: ρw,res = standard_water_density / Bw
     """
 
-    standard_gas_density: float
+    standard_gas_density: Number
     """
     Stock-tank gas density at standard conditions.
 
@@ -504,7 +481,7 @@ class PVT(StoreSerializable):
             ρg,res = standard_gas_density / Bg                           [dry gas]
     """
 
-    water_viscosibility: float = 0.0
+    water_viscosibility: Number = 0.0
     """
     Water viscosibility - rate of change of water viscosity with pressure
     (d ln μw / dP), item 5 of the `PVTW` record.
@@ -523,7 +500,7 @@ class PVT(StoreSerializable):
     Used to select z-factor correlations and for documentation.
     """
 
-    gas_gravity: float = 0.6
+    gas_gravity: Number = 0.6
     """
     Gas specific gravity relative to air (dimensionless).
 
@@ -532,7 +509,7 @@ class PVT(StoreSerializable):
     viscosity.
     """
 
-    gas_molecular_weight: float = 16.04
+    gas_molecular_weight: Number = 16.04
     """
     Gas molecular weight (g/mol).
 
@@ -540,7 +517,7 @@ class PVT(StoreSerializable):
     Should satisfy MW ≈ 28.97 x gas_gravity.
     """
 
-    gas_reference_viscosity: float = 0.012
+    gas_reference_viscosity: Number = 0.012
     """
     Gas viscosity at reference (standard) conditions.
 
@@ -593,39 +570,44 @@ class PVT(StoreSerializable):
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
-            reference_temperature=(
-                self.reference_temperature * factors["temperature_scale"]
-            )
-            + factors["temperature_offset"],
+            reference_temperature=scale_and_offset(
+                self.reference_temperature,
+                scale=factors["temperature_scale"],
+                offset=factors["temperature_offset"],
+            ),
             oil_specific_gravity=self.oil_specific_gravity,
             oil_api_gravity=self.oil_api_gravity,
-            oil_reference_fvf=self.oil_reference_fvf * factors["liquid_fvf"],
-            oil_reference_viscosity=(
-                self.oil_reference_viscosity * factors["viscosity"]
+            oil_reference_fvf=scale(self.oil_reference_fvf, factors["liquid_fvf"]),
+            oil_reference_viscosity=scale(
+                self.oil_reference_viscosity, factors["viscosity"]
             ),
-            oil_reference_compressibility=(
-                self.oil_reference_compressibility * factors["compressibility"]
+            oil_reference_compressibility=scale(
+                self.oil_reference_compressibility, factors["compressibility"]
             ),
             water_salinity=self.water_salinity,
-            water_reference_pressure=(
-                self.water_reference_pressure * factors["pressure"]
+            water_reference_pressure=scale(
+                self.water_reference_pressure, factors["pressure"]
             ),
-            water_reference_fvf=self.water_reference_fvf * factors["liquid_fvf"],
-            water_reference_viscosity=(
-                self.water_reference_viscosity * factors["viscosity"]
+            water_reference_fvf=scale(self.water_reference_fvf, factors["liquid_fvf"]),
+            water_reference_viscosity=scale(
+                self.water_reference_viscosity, factors["viscosity"]
             ),
-            water_reference_compressibility=(
-                self.water_reference_compressibility * factors["compressibility"]
+            water_reference_compressibility=scale(
+                self.water_reference_compressibility, factors["compressibility"]
             ),
-            water_viscosibility=self.water_viscosibility * factors["compressibility"],
-            standard_oil_density=self.standard_oil_density * factors["density"],
-            standard_water_density=self.standard_water_density * factors["density"],
-            standard_gas_density=self.standard_gas_density * factors["density"],
+            water_viscosibility=scale(
+                self.water_viscosibility, factors["compressibility"]
+            ),
+            standard_oil_density=scale(self.standard_oil_density, factors["density"]),
+            standard_water_density=scale(
+                self.standard_water_density, factors["density"]
+            ),
+            standard_gas_density=scale(self.standard_gas_density, factors["density"]),
             reservoir_gas=self.reservoir_gas,
             gas_gravity=self.gas_gravity,
             gas_molecular_weight=self.gas_molecular_weight,
-            gas_reference_viscosity=(
-                self.gas_reference_viscosity * factors["viscosity"]
+            gas_reference_viscosity=scale(
+                self.gas_reference_viscosity, factors["viscosity"]
             ),
             miscibility_model=self.miscibility_model,
             unit_system=target,
@@ -1198,12 +1180,12 @@ class State(StoreSerializable):
 
         ```python
         new_state = state.evolve(
-            pressure=new_p,
-            oil_saturation=new_so,
-            water_saturation=new_sw,
-            gas_saturation=new_sg,
-            oil_mass=new_mo,
-            free_gas_mass=new_mg,
+            pressure=new_pressure,
+            oil_saturation=new_oil_saturation,
+            water_saturation=new_water_saturation,
+            gas_saturation=new_gas_Saturation,
+            oil_mass=new_oil_mass,
+            free_gas_mass=new_gas_mass,
         )
         ```
 
@@ -1237,33 +1219,34 @@ class State(StoreSerializable):
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        mass_factor: float = factors["density"] * (factors["length"] ** 3)
-        p_factor: float = factors["pressure"]
-        gor_factor: float = factors["gor"]
-
+        mass_factor = factors["density"] * (factors["length"] ** 3)
+        pressure_factor = factors["pressure"]
+        gor_factor = factors["gor"]
         return self.__class__(
-            pressure=_scale(self.pressure, p_factor),
+            pressure=scale(self.pressure, pressure_factor),
             oil_saturation=self.oil_saturation,
             water_saturation=self.water_saturation,
             gas_saturation=self.gas_saturation,
-            solution_gor=_scale(self.solution_gor, gor_factor),
-            oil_bubble_point_pressure=_scale(self.oil_bubble_point_pressure, p_factor),
-            vaporized_oil_ratio=_scale(self.vaporized_oil_ratio, gor_factor),
-            gas_dew_point_pressure=_scale(self.gas_dew_point_pressure, p_factor),
-            gas_solubility_in_water=_scale(self.gas_solubility_in_water, gor_factor),
-            water_bubble_point_pressure=_scale(
-                self.water_bubble_point_pressure, p_factor
+            solution_gor=scale(self.solution_gor, gor_factor),
+            oil_bubble_point_pressure=scale(
+                self.oil_bubble_point_pressure, pressure_factor
             ),
-            oil_mass=_scale(self.oil_mass, mass_factor),
-            water_mass=_scale(self.water_mass, mass_factor),
-            free_gas_mass=_scale(self.free_gas_mass, mass_factor),
-            dissolved_gas_mass_in_oil=_scale(
+            vaporized_oil_ratio=scale(self.vaporized_oil_ratio, gor_factor),
+            gas_dew_point_pressure=scale(self.gas_dew_point_pressure, pressure_factor),
+            gas_solubility_in_water=scale(self.gas_solubility_in_water, gor_factor),
+            water_bubble_point_pressure=scale(
+                self.water_bubble_point_pressure, pressure_factor
+            ),
+            oil_mass=scale(self.oil_mass, mass_factor),
+            water_mass=scale(self.water_mass, mass_factor),
+            free_gas_mass=scale(self.free_gas_mass, mass_factor),
+            dissolved_gas_mass_in_oil=scale(
                 self.dissolved_gas_mass_in_oil, mass_factor
             ),
-            dissolved_gas_mass_in_water=_scale(
+            dissolved_gas_mass_in_water=scale(
                 self.dissolved_gas_mass_in_water, mass_factor
             ),
-            vaporized_oil_mass_in_gas=_scale(
+            vaporized_oil_mass_in_gas=scale(
                 self.vaporized_oil_mass_in_gas, mass_factor
             ),
             solvent_concentration=self.solvent_concentration,

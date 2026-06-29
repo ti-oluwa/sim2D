@@ -10,7 +10,7 @@ from typing_extensions import NamedTuple
 from bores.grids.base import Grid
 from bores.model.properties import Rock
 from bores.precision import get_dtype
-from bores.typing import FloatArray, IntArray, Number, OneDimension, TwoDimensions
+from bores.typing import IntArray, Number, NumberArray, OneDimension, TwoDimensions
 
 __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
 
@@ -33,9 +33,9 @@ class ConnectionTransmissibilities(NamedTuple):
         `None` when the grid has no NNCs.
     """
 
-    interior: FloatArray[OneDimension]
-    boundary: FloatArray[OneDimension]
-    nnc: typing.Optional[FloatArray[OneDimension]]
+    interior: NumberArray[OneDimension]
+    boundary: NumberArray[OneDimension]
+    nnc: typing.Optional[NumberArray[OneDimension]]
 
 
 def get_face_transmissibility_map(
@@ -64,7 +64,7 @@ def compute_connection_transmissibilities(
     grid: Grid,
     rock: Rock,
     *,
-    net_to_gross: typing.Optional[FloatArray[OneDimension]] = None,
+    net_to_gross: typing.Optional[NumberArray[OneDimension]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> ConnectionTransmissibilities:
     """
@@ -133,9 +133,9 @@ def compute_connection_transmissibilities(
         face_areas=grid.face_areas,
         face_unit_normals=grid.face_unit_normals,
         cell_centroids=grid.cell_centroids,  # type: ignore[arg-type]
-        effective_kx=effective_kx,
-        effective_ky=effective_ky,
-        effective_kz=effective_kz,
+        effective_kx=effective_kx,  # type: ignore[arg-type]
+        effective_ky=effective_ky,  # type: ignore[arg-type]
+        effective_kz=effective_kz,  # type: ignore[arg-type]
         dtype=dtype,
     )
 
@@ -146,9 +146,9 @@ def compute_connection_transmissibilities(
         face_areas=grid.face_areas,
         face_unit_normals=grid.face_unit_normals,
         cell_centroids=grid.cell_centroids,  # type: ignore[arg-type]
-        effective_kx=effective_kx,
-        effective_ky=effective_ky,
-        effective_kz=effective_kz,
+        effective_kx=effective_kx,  # type: ignore[arg-type]
+        effective_ky=effective_ky,  # type: ignore[arg-type]
+        effective_kz=effective_kz,  # type: ignore[arg-type]
         dtype=dtype,
     )
 
@@ -170,22 +170,22 @@ def compute_connection_transmissibilities(
             )
         )
 
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None
     if grid.n_nnc > 0:
         assert grid.nnc_cell_indices is not None
         assert grid.nnc_connection_types is not None
 
         nnc_transmissibilities = _resolve_nnc_transmissibilities(
-            nnc_cell_indices=np.asarray(grid.nnc_cell_indices, dtype=np.int32),
-            nnc_transmissibilities=(
+            nnc_cell_indices=np.asarray(grid.nnc_cell_indices, dtype=np.int32),  # type: ignore[arg-type]
+            nnc_transmissibilities=(  # type: ignore[arg-type]
                 np.asarray(grid.nnc_transmissibilities, dtype=np.float64)
                 if grid.nnc_transmissibilities is not None
                 else np.full(grid.n_nnc, np.nan, dtype=np.float64)
             ),
             cell_centroids=grid.cell_centroids,  # type: ignore[arg-type]
-            effective_kx=effective_kx,
-            effective_ky=effective_ky,
-            effective_kz=effective_kz,
+            effective_kx=effective_kx,  # type: ignore[arg-type]
+            effective_ky=effective_ky,  # type: ignore[arg-type]
+            effective_kz=effective_kz,  # type: ignore[arg-type]
             dtype=dtype,
         )
 
@@ -227,15 +227,15 @@ def compute_connection_transmissibilities(
 def _compute_interior_tpfa_transmissibilities(
     interior_face_indices: IntArray[OneDimension],
     face_cell_indices: IntArray[TwoDimensions],
-    face_centroids: FloatArray[TwoDimensions],
-    face_areas: FloatArray[OneDimension],
-    face_unit_normals: FloatArray[TwoDimensions],
-    cell_centroids: FloatArray[TwoDimensions],
-    effective_kx: FloatArray[OneDimension],
-    effective_ky: FloatArray[OneDimension],
-    effective_kz: FloatArray[OneDimension],
+    face_centroids: NumberArray[TwoDimensions],
+    face_areas: NumberArray[OneDimension],
+    face_unit_normals: NumberArray[TwoDimensions],
+    cell_centroids: NumberArray[TwoDimensions],
+    effective_kx: NumberArray[OneDimension],
+    effective_ky: NumberArray[OneDimension],
+    effective_kz: NumberArray[OneDimension],
     dtype: npt.DTypeLike,
-) -> FloatArray[OneDimension]:
+) -> NumberArray[OneDimension]:
     """
     Harmonic-mean TPFA transmissibilities for all interior faces.
 
@@ -309,15 +309,15 @@ def _compute_interior_tpfa_transmissibilities(
 def _compute_boundary_half_transmissibilities(
     boundary_face_indices: IntArray[OneDimension],
     face_cell_indices: IntArray[TwoDimensions],
-    face_centroids: FloatArray[TwoDimensions],
-    face_areas: FloatArray[OneDimension],
-    face_unit_normals: FloatArray[TwoDimensions],
-    cell_centroids: FloatArray[TwoDimensions],
-    effective_kx: FloatArray[OneDimension],
-    effective_ky: FloatArray[OneDimension],
-    effective_kz: FloatArray[OneDimension],
+    face_centroids: NumberArray[TwoDimensions],
+    face_areas: NumberArray[OneDimension],
+    face_unit_normals: NumberArray[TwoDimensions],
+    cell_centroids: NumberArray[TwoDimensions],
+    effective_kx: NumberArray[OneDimension],
+    effective_ky: NumberArray[OneDimension],
+    effective_kz: NumberArray[OneDimension],
     dtype: npt.DTypeLike,
-) -> FloatArray[OneDimension]:
+) -> NumberArray[OneDimension]:
     """
     Owner half-transmissibilities for all boundary faces.
 
@@ -370,13 +370,13 @@ def _compute_boundary_half_transmissibilities(
 @numba.njit(parallel=True, cache=True)
 def _resolve_nnc_transmissibilities(
     nnc_cell_indices: IntArray[TwoDimensions],
-    nnc_transmissibilities: FloatArray[OneDimension],
-    cell_centroids: FloatArray[TwoDimensions],
-    effective_kx: FloatArray[OneDimension],
-    effective_ky: FloatArray[OneDimension],
-    effective_kz: FloatArray[OneDimension],
+    nnc_transmissibilities: NumberArray[OneDimension],
+    cell_centroids: NumberArray[TwoDimensions],
+    effective_kx: NumberArray[OneDimension],
+    effective_ky: NumberArray[OneDimension],
+    effective_kz: NumberArray[OneDimension],
     dtype: npt.DTypeLike,
-) -> FloatArray[OneDimension]:
+) -> NumberArray[OneDimension]:
     """
     Resolve final NNC transmissibilities.
 
@@ -454,19 +454,19 @@ def _resolve_nnc_transmissibilities(
 
 @numba.njit(cache=True)
 def _apply_directional_multipliers(
-    interior_transmissibilities: FloatArray[OneDimension],
-    boundary_transmissibilities: FloatArray[OneDimension],
+    interior_transmissibilities: NumberArray[OneDimension],
+    boundary_transmissibilities: NumberArray[OneDimension],
     interior_face_indices: IntArray[OneDimension],
     boundary_face_indices: IntArray[OneDimension],
     face_cell_indices: IntArray[TwoDimensions],
-    face_unit_normals: FloatArray,
-    positive_x_multipliers: typing.Optional[FloatArray[OneDimension]],
-    negative_x_multipliers: typing.Optional[FloatArray[OneDimension]],
-    positive_y_multipliers: typing.Optional[FloatArray[OneDimension]],
-    negative_y_multipliers: typing.Optional[FloatArray[OneDimension]],
-    positive_z_multipliers: typing.Optional[FloatArray[OneDimension]],
-    negative_z_multipliers: typing.Optional[FloatArray[OneDimension]],
-) -> typing.Tuple[FloatArray[OneDimension], FloatArray[OneDimension]]:
+    face_unit_normals: NumberArray,
+    positive_x_multipliers: typing.Optional[NumberArray[OneDimension]],
+    negative_x_multipliers: typing.Optional[NumberArray[OneDimension]],
+    positive_y_multipliers: typing.Optional[NumberArray[OneDimension]],
+    negative_y_multipliers: typing.Optional[NumberArray[OneDimension]],
+    positive_z_multipliers: typing.Optional[NumberArray[OneDimension]],
+    negative_z_multipliers: typing.Optional[NumberArray[OneDimension]],
+) -> typing.Tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
     """
     Scale face transmissibilities by per-cell directional MULT arrays (in-place).
 
@@ -547,13 +547,13 @@ def _apply_directional_multipliers(
 
 @numba.njit(cache=True)
 def _apply_fault_face_multipliers(
-    interior_transmissibilities: FloatArray[OneDimension],
-    boundary_transmissibilities: FloatArray[OneDimension],
+    interior_transmissibilities: NumberArray[OneDimension],
+    boundary_transmissibilities: NumberArray[OneDimension],
     interior_face_indices: IntArray[OneDimension],
     boundary_face_indices: IntArray[OneDimension],
     fault_face_indices: typing.Mapping[str, IntArray[OneDimension]],
-    fault_transmissibility_multipliers: typing.Mapping[str, float],
-) -> typing.Tuple[FloatArray[OneDimension], FloatArray[OneDimension]]:
+    fault_transmissibility_multipliers: typing.Mapping[str, Number],
+) -> typing.Tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
     """
     Apply `MULTFLT` multipliers to face-based fault connections (in-place).
 
@@ -592,10 +592,10 @@ def _apply_fault_face_multipliers(
 
 
 def _apply_nnc_fault_multipliers(
-    nnc_transmissibilities: FloatArray[OneDimension],
+    nnc_transmissibilities: NumberArray[OneDimension],
     nnc_fault_indices: typing.Mapping[str, IntArray[OneDimension]],
-    fault_transmissibility_multipliers: typing.Mapping[str, float],
-) -> FloatArray[OneDimension]:
+    fault_transmissibility_multipliers: typing.Mapping[str, Number],
+) -> NumberArray[OneDimension]:
     """
     Apply `MULTFLT` multipliers to fault NNCs using per-fault NNC index maps.
 

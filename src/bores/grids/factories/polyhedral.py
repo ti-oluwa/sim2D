@@ -12,7 +12,7 @@ from bores.grids.factories.base import (
     VertexCoordinates,
     build_csr_face_arrays,
 )
-from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
+from bores.typing import IntArray, NumberArray, OneDimension, TwoDimensions, UnitSystem
 
 __all__ = ["make_polyhedral_grid"]
 
@@ -25,24 +25,24 @@ def make_polyhedral_grid(
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
 ) -> Grid:
     """
@@ -141,7 +141,7 @@ def make_polyhedral_grid(
         raise ValidationError("No cells found across all provided cell blocks.")
 
     points, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(points, all_per_cell_faces)
+        build_csr_face_arrays(points, all_per_cell_faces)  # type: ignore[arg-type]
     )
     return Grid(
         vertex_coordinates=points,

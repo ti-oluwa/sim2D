@@ -9,12 +9,21 @@ from cachetools import LFUCache
 from scipy.integrate import cumulative_trapezoid, quad  # type: ignore[import-untyped]
 from scipy.interpolate import PchipInterpolator  # type: ignore[import-untyped]
 from scipy.optimize import brentq
+from typing_extensions import Self
 
-from bores.constants import c
+from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import FloatArray, NDimension, Number, NumberOrArray
+from bores.typing import (
+    FloatArray,
+    NDimension,
+    Number,
+    NumberArray,
+    NumberOrArray,
+    UnitSystem,
+)
+from bores.utils import scale
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +31,11 @@ __all__ = ["PseudoPressureTable", "build_pseudo_pressure_table"]
 
 
 def compute_gas_pseudo_pressure(
-    pressure: float,
-    z_factor_func: typing.Callable[[float], float],
-    viscosity_func: typing.Callable[[float], float],
-    reference_pressure: float = 14.7,
-) -> float:
+    pressure: Number,
+    z_factor_func: typing.Callable[[Number], Number],
+    viscosity_func: typing.Callable[[Number], Number],
+    reference_pressure: Number = 14.7,
+) -> Number:
     """
     Compute the gas pseudo-pressure using Al-Hussainy real-gas potential.
 
@@ -64,7 +73,7 @@ def compute_gas_pseudo_pressure(
         return 0.0
 
     # Define the integrand: 2*P / (μ*Z)
-    def integrand(P: float) -> float:
+    def integrand(P: Number) -> Number:
         """Integrand for pseudo-pressure calculation."""
         # Clamp pressure to avoid extrapolation issues
         P_clamped = max(1.0, P)  # Don't go below 1 psi
@@ -112,7 +121,7 @@ def compute_gas_pseudo_pressure(
         for i in range(len(split_points) - 1):
             try:
                 segment_result, _ = quad(
-                    func=integrand,
+                    func=integrand,  # type: ignore[arg-type]
                     a=split_points[i],
                     b=split_points[i + 1],
                     epsabs=1e-6,
@@ -134,7 +143,7 @@ def compute_gas_pseudo_pressure(
         # Single integration for small range
         try:
             result, _ = quad(
-                func=integrand,
+                func=integrand,  # type: ignore[arg-type]
                 a=min_pressure,
                 b=max_pressure,
                 epsabs=1e-6,
@@ -156,8 +165,12 @@ def compute_gas_pseudo_pressure(
 
 
 def _supports_vectorization(
-    z_factor_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    viscosity_func: typing.Callable[[NumberOrArray], NumberOrArray],
+    z_factor_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    viscosity_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
 ) -> bool:
     """
     Check if both z_factor and viscosity functions support vectorized operations.
@@ -172,12 +185,16 @@ def _supports_vectorization(
 
 
 def _build_pseudo_pressures_vectorized(
-    pressures: npt.NDArray,
-    z_factor_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    viscosity_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    reference_pressure: float,
+    pressures: NumberArray[NDimension],
+    z_factor_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    viscosity_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    reference_pressure: Number,
     dtype: typing.Optional[npt.DTypeLike] = None,
-) -> npt.NDArray:
+) -> NumberArray[NDimension]:
     """
     Build entire pseudo-pressure table values using vectorized operations.
 
@@ -196,8 +213,8 @@ def _build_pseudo_pressures_vectorized(
     clamped_pressures = np.maximum(pressures, 1.0)
 
     # Single vectorized call for all pressures
-    z_factor_arr = np.asarray(z_factor_func(clamped_pressures))
-    viscosity_arr = np.asarray(viscosity_func(clamped_pressures))
+    z_factor_arr = np.asarray(z_factor_func(clamped_pressures))  # type: ignore[arg-type]
+    viscosity_arr = np.asarray(viscosity_func(clamped_pressures))  # type: ignore[arg-type]
 
     # Validate shapes
     if z_factor_arr.shape != pressures.shape or viscosity_arr.shape != pressures.shape:
@@ -256,17 +273,17 @@ def _build_pseudo_pressures_vectorized(
         # Then we combine
         pseudo_pressures = np.concatenate([backward[:-1], forward])
 
-    return np.ascontiguousarray(pseudo_pressures, dtype=dtype)
+    return np.ascontiguousarray(pseudo_pressures, dtype=dtype)  # type: ignore[return-value]
 
 
 def _build_pseudo_pressures_scalar(
-    pressures: npt.NDArray,
-    z_factor_func: typing.Callable[[float], float],
-    viscosity_func: typing.Callable[[float], float],
-    reference_pressure: float,
+    pressures: NumberArray[NDimension],
+    z_factor_func: typing.Callable[[Number], Number],
+    viscosity_func: typing.Callable[[Number], Number],
+    reference_pressure: Number,
     max_workers: int,
     dtype: typing.Optional[npt.DTypeLike] = None,
-) -> npt.NDArray:
+) -> NumberArray[NDimension]:
     """
     Build pseudo-pressure table values using threaded scalar computation.
 
@@ -280,7 +297,7 @@ def _build_pseudo_pressures_scalar(
     :return: Array of pseudo-pressures
     """
 
-    def _compute(pressure: float) -> float:
+    def _compute(pressure: Number) -> Number:
         return compute_gas_pseudo_pressure(
             pressure=pressure,
             z_factor_func=z_factor_func,
@@ -290,17 +307,20 @@ def _build_pseudo_pressures_scalar(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         pseudo_pressures = list(executor.map(_compute, pressures))
-
-    return np.ascontiguousarray(pseudo_pressures, dtype=dtype)
+    return np.ascontiguousarray(pseudo_pressures, dtype=dtype)  # type: ignore[return-value]
 
 
 def build_pseudo_pressures(
-    pressures: npt.NDArray,
-    z_factor_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    viscosity_func: typing.Callable[[NumberOrArray], NumberOrArray],
-    reference_pressure: float,
+    pressures: NumberArray[NDimension],
+    z_factor_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    viscosity_func: typing.Callable[
+        [NumberOrArray[NDimension]], NumberOrArray[NDimension]
+    ],
+    reference_pressure: Number,
     dtype: typing.Optional[npt.DTypeLike] = None,
-) -> npt.NDArray:
+) -> NumberArray[NDimension]:
     """
     Build pseudo-pressure table values with automatic vectorization detection.
 
@@ -352,7 +372,7 @@ def build_pchip_interpolants_from_points(
     number_of_base_points: int,
     number_of_endpoint_extra_points: int,
     minimum_scale_span: float = 1.0,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = np.float64,
 ) -> typing.Tuple[PchipInterpolator, PchipInterpolator]:
     """
     Build a PCHIP interp (and its analytical derivative) from arbitrary
@@ -434,10 +454,11 @@ class PseudoPressureTable(
     fields={
         "pressures": npt.NDArray,
         "pseudo_pressures": npt.NDArray,
-        "reference_pressure": typing.Optional[float],
+        "reference_pressure": typing.Optional[Number],
         "number_of_base_points": int,
         "number_of_endpoint_extra_points": int,
-        "dtype": npt.DTypeLike,
+        "dtype": typing.Optional[npt.DTypeLike],
+        "unit_system": UnitSystem,
     },
 ):
     """
@@ -474,24 +495,26 @@ class PseudoPressureTable(
         viscosity_func: typing.Callable[
             [NumberOrArray[NDimension]], NumberOrArray[NDimension]
         ],
-        pressure_range: typing.Optional[typing.Tuple[float, float]] = ...,
+        pressure_range: typing.Optional[typing.Tuple[Number, Number]] = ...,
         points: typing.Optional[int] = ...,
-        reference_pressure: typing.Optional[float] = ...,
+        reference_pressure: typing.Optional[Number] = ...,
         number_of_base_points: int = ...,
         number_of_endpoint_extra_points: int = ...,
         dtype: typing.Optional[npt.DTypeLike] = ...,
+        unit_system: UnitSystem = ...,
     ) -> None: ...
 
     @typing.overload
     def __init__(
         self,
         *,
-        pressures: npt.NDArray,
-        pseudo_pressures: npt.NDArray,
-        reference_pressure: typing.Optional[float] = ...,
+        pressures: NumberArray[NDimension],
+        pseudo_pressures: NumberArray[NDimension],
+        reference_pressure: typing.Optional[Number] = ...,
         number_of_base_points: int = ...,
         number_of_endpoint_extra_points: int = ...,
         dtype: typing.Optional[npt.DTypeLike] = ...,
+        unit_system: UnitSystem = ...,
     ) -> None: ...
 
     def __init__(
@@ -502,14 +525,15 @@ class PseudoPressureTable(
         viscosity_func: typing.Optional[
             typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]]
         ] = None,
-        pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
+        pressure_range: typing.Optional[typing.Tuple[Number, Number]] = None,
         points: typing.Optional[int] = None,
-        pressures: typing.Optional[npt.NDArray] = None,
-        pseudo_pressures: typing.Optional[npt.NDArray] = None,
-        reference_pressure: typing.Optional[float] = None,
+        pressures: typing.Optional[NumberArray[NDimension]] = None,
+        pseudo_pressures: typing.Optional[NumberArray[NDimension]] = None,
+        reference_pressure: typing.Optional[Number] = None,
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
         dtype: typing.Optional[npt.DTypeLike] = None,
+        unit_system: UnitSystem = UnitSystem.FIELD,
     ):
         """
         Build pseudo-pressure lookup table.
@@ -575,6 +599,7 @@ class PseudoPressureTable(
         self.number_of_base_points = number_of_base_points
         self.number_of_endpoint_extra_points = number_of_endpoint_extra_points
         self.dtype = np.dtype(dtype if dtype is not None else get_dtype())
+        self.unit_system = unit_system
 
         if value_mode:
             if pressures is None or pseudo_pressures is None:
@@ -623,8 +648,8 @@ class PseudoPressureTable(
             logger.info("Building pseudo-pressure table with %d points...", n_points)
             self.pseudo_pressures = build_pseudo_pressures(
                 pressures=self.pressures,
-                z_factor_func=self.z_factor_func,
-                viscosity_func=self.viscosity_func,
+                z_factor_func=self.z_factor_func,  # type: ignore[arg-type]
+                viscosity_func=self.viscosity_func,  # type: ignore[arg-type]
                 reference_pressure=self.reference_pressure,
                 dtype=dtype,
             )
@@ -692,7 +717,7 @@ class PseudoPressureTable(
         max_pressure = self._p_interp.x[-1]
         dtype = self.dtype
 
-        def _invert_scalar(pseudo_pressure: float) -> float:
+        def _invert(pseudo_pressure: Number) -> Number:
             clamped_pseudo_pressure = np.clip(
                 pseudo_pressure, min_pseudo_pressure, max_pseudo_pressure, dtype=dtype
             )
@@ -710,7 +735,7 @@ class PseudoPressureTable(
 
         is_scalar = np.isscalar(pseudo_pressure)
         pseudo_pressure_arr = np.atleast_1d(pseudo_pressure)
-        result = np.vectorize(_invert_scalar)(pseudo_pressure_arr)
+        result = np.vectorize(_invert)(pseudo_pressure_arr)
 
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
@@ -759,6 +784,37 @@ class PseudoPressureTable(
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
         return typing.cast(FloatArray[NDimension], result.reshape(pressure_arr.shape))
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PseudoPressureTable` with pressure and pseudo-pressure axes
+        rescaled to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `PseudoPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        pressure_factor = factors["pressure"]
+        # pseudo-pressure unit is [pressure]² / [viscosity]
+        pressure_factor = (pressure_factor**2) / factors["viscosity"]
+        return self.__class__(
+            pressures=scale(self.pressures, pressure_factor),
+            pseudo_pressures=scale(self.pseudo_pressures, pressure_factor),
+            reference_pressure=scale(self.reference_pressure, pressure_factor),
+            number_of_base_points=self.number_of_base_points,
+            number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
+            dtype=self.dtype,
+            unit_system=target,
+        )
 
 
 _PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(

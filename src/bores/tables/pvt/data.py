@@ -1,7 +1,6 @@
 import logging
 import typing
 import warnings
-from collections.abc import Mapping
 from os import PathLike
 
 import attrs
@@ -9,24 +8,19 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.constants import c
-from bores.correlations.scalars import (
-    compute_gas_gravity,
-    compute_oil_api_gravity,
-)
-from bores.deck.file import DeckFile
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.errors import ValidationError
-from bores.model.properties import PVT
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.typing import (
-    FloatArray,
     FluidPhase,
-    NDimension,
+    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
+    UnitSystem,
 )
+from bores.utils import scale
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +82,10 @@ class PVTData(StoreSerializable):
     """Fluid phase this data describes."""
 
     # Coordinate grids
-    pressures: FloatArray[OneDimension]
+    pressures: NumberArray[OneDimension]
     """1-D array of pressures (psi), strictly increasing."""
 
-    temperatures: FloatArray[OneDimension]
+    temperatures: NumberArray[OneDimension]
     """
     1-D array of temperatures (°F), strictly increasing.
 
@@ -100,12 +94,12 @@ class PVTData(StoreSerializable):
     """
 
     # Water-only coordinate
-    salinities: typing.Optional[FloatArray[OneDimension]] = None
+    salinities: typing.Optional[NumberArray[OneDimension]] = None
     """1-D array of salinities (ppm NaCl), strictly increasing. Water phase only."""
 
     # Oil-only coordinates / meta
     bubble_point_pressures: typing.Optional[
-        typing.Union[FloatArray[OneDimension], FloatArray[TwoDimensions]]
+        typing.Union[NumberArray[OneDimension], NumberArray[TwoDimensions]]
     ] = None
     """
     Bubble-point pressures (psi).  Oil phase only.
@@ -114,7 +108,7 @@ class PVTData(StoreSerializable):
     - 2-D shape `(n_rs, n_t)` -> Pb(Rs, T); requires `solution_gas_to_oil_ratios`.
     """
 
-    solution_gas_to_oil_ratios: typing.Optional[FloatArray[OneDimension]] = None
+    solution_gas_to_oil_ratios: typing.Optional[NumberArray[OneDimension]] = None
     """
     1-D array of Rs values (scf/STB) for the first axis of a 2-D
     `bubble_point_pressures` table. Required when `bubble_point_pressures`
@@ -122,13 +116,13 @@ class PVTData(StoreSerializable):
     """
 
     # Gas-only: dew point and Rv
-    dew_point_pressures: typing.Optional[FloatArray[OneDimension]] = None
+    dew_point_pressures: typing.Optional[NumberArray[OneDimension]] = None
     """
     Dew-point pressures Pdew(T) (psi). Gas / condensate phase only.
     Shape `(n_t,)`.
     """
 
-    vaporized_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None
+    vaporized_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
     Vaporised oil ratio Rv(P, T) in STB/Mscf. Gas / condensate phase only.
     Shape `(n_p, n_t)`. Rv is capped at Rv_sat above dew point (analogous
@@ -137,12 +131,12 @@ class PVTData(StoreSerializable):
 
     # Shared primary tables (2-D for oil/gas; 3-D for water)
     viscosity_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """Viscosity μ(P, T) in cP. 2-D for oil/gas, 3-D for water."""
 
     formation_volume_factor_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
     Formation volume factor B(P, T).
@@ -152,7 +146,7 @@ class PVTData(StoreSerializable):
 
     # Shared derived tables (optional; built at PVTTable construction when absent)
     density_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
     Density ρ(P, T) in lbm/ft³.  2-D for oil/gas, 3-D for water.
@@ -169,7 +163,7 @@ class PVTData(StoreSerializable):
     """
 
     compressibility_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
     Compressibility c(P, T) in psi⁻¹.  2-D for oil/gas, 3-D for water.
@@ -183,7 +177,7 @@ class PVTData(StoreSerializable):
     """
 
     specific_gravity_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
     Specific gravity γ(P, T). Dimensionless. 2-D for oil/gas, 3-D for water.
@@ -193,29 +187,29 @@ class PVTData(StoreSerializable):
     """
 
     molecular_weight_table: typing.Optional[
-        typing.Union[FloatArray[TwoDimensions], FloatArray[ThreeDimensions]]
+        typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """Molecular weight M(P, T) in lbm/lb-mol. 2-D for oil/gas, 3-D for water."""
 
     # Oil-only primary
-    solution_gor_table: typing.Optional[FloatArray[TwoDimensions]] = None
+    solution_gor_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """Solution GOR Rs(P, T) in scf/STB. Oil phase only."""
 
     # Gas-only primary
-    compressibility_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None
+    compressibility_factor_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """Z-factor z(P, T), dimensionless. Gas phase only."""
 
-    solubility_in_water_table: typing.Optional[FloatArray[ThreeDimensions]] = None
+    solubility_in_water_table: typing.Optional[NumberArray[ThreeDimensions]] = None
     """
     Gas solubility in water Rsw(P, T, S) in scf/STB.
     Gas phase only. 3-D shape `(n_p, n_t, n_s)`; requires `salinities`.
     """
 
     # Water-only primary
-    bubble_point_pressure_table: typing.Optional[FloatArray[ThreeDimensions]] = None
+    bubble_point_pressure_table: typing.Optional[NumberArray[ThreeDimensions]] = None
     """Water bubble-point pressure Pbw(P, T, S) in psi. Water phase only."""
 
-    gas_free_water_fvf_table: typing.Optional[FloatArray[TwoDimensions]] = None
+    gas_free_water_fvf_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
     Gas-free water FVF Bw_gf(P, T) in bbl/STB. Water phase only.
 
@@ -224,30 +218,17 @@ class PVTData(StoreSerializable):
     """
     dtype: typing.Optional[npt.DTypeLike] = None
 
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Unit system in which all dimensional quantities in this data are expressed.
+
+    Pressure axes and density values in FIELD are in psi and lbm/ft³;
+    in METRIC they are bar and kg/m³; in LAB they are atm and g/cm³.
+    """
+
     def __attrs_post_init__(self) -> None:
-        self.ensure_dtype(self.dtype, force=True)
         self._warn_phase_mismatches()
-
-    def ensure_dtype(
-        self, dtype: typing.Optional[npt.DTypeLike] = None, force: bool = True
-    ) -> None:
-        if not force and self.dtype is not None and self.dtype == dtype:
-            return
-
-        dtype = dtype if dtype is not None else get_dtype()
-        for field in attrs.fields(type(self)):
-            value = getattr(self, field.name)
-            if (
-                value is not None
-                and isinstance(value, np.ndarray)
-                and value.dtype != dtype
-            ):
-                object.__setattr__(self, field.name, value.astype(dtype, copy=False))
-
-        if self.dtype != dtype:
-            object.__setattr__(
-                self, "dtype", np.dtype(dtype) if dtype is not None else None
-            )
+        self.ensure_dtype(self.dtype, force=True)
 
     def _warn_phase_mismatches(self) -> None:
         phase = typing.cast(FluidPhase, self.phase)
@@ -282,6 +263,80 @@ class PVTData(StoreSerializable):
                 f"{type(self).__name__}: 2-D `bubble_point_pressures` requires "
                 "`solution_gas_to_oil_ratios` to be provided."
             )
+
+    def ensure_dtype(
+        self, dtype: typing.Optional[npt.DTypeLike] = None, force: bool = True
+    ) -> None:
+        if not force and self.dtype is not None and self.dtype == np.dtype(dtype):
+            return
+
+        dtype = np.dtype(dtype if dtype is not None else get_dtype())
+        for field in attrs.fields(type(self)):
+            value = getattr(self, field.name)
+            if (
+                value is not None
+                and isinstance(value, np.ndarray)
+                and value.dtype != dtype
+            ):
+                object.__setattr__(self, field.name, value.astype(dtype, copy=False))
+
+        if self.dtype != dtype:
+            object.__setattr__(self, "dtype", dtype if dtype is not None else None)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PVTData` with all dimensional quantities rescaled to *target*.
+
+        Dimensionless properties (specific gravity, compressibility factor,
+        vaporized oil ratio, solution GOR ratio) and multiplier-type quantities
+        are copied unchanged. Pressure axes, densities, FVFs, and viscosities
+        are rescaled using appropriate factors.
+
+        :param target: Target `UnitSystem`.
+        :returns `PVTData`: New `PVTData` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        pressure_factor = factors["pressure"]
+        density_factor = factors["density"]
+        viscosity_factor = factors["viscosity"]
+        liquid_fvf_factor = factors["liquid_fvf"]
+        gas_fvf_factor = factors["gas_fvf"]
+        fvf_factor = (
+            gas_fvf_factor if self.phase == FluidPhase.GAS else liquid_fvf_factor
+        )
+        # Compressibility is 1/pressure
+        compressibility_factor = 1.0 / pressure_factor
+        return attrs.evolve(
+            self,
+            pressures=scale(self.pressures, pressure_factor),
+            bubble_point_pressures=scale(self.bubble_point_pressures, pressure_factor),
+            dew_point_pressures=scale(self.dew_point_pressures, pressure_factor),
+            formation_volume_factor_table=scale(
+                self.formation_volume_factor_table, fvf_factor
+            ),
+            viscosity_table=scale(self.viscosity_table, viscosity_factor),
+            density_table=scale(self.density_table, density_factor),
+            compressibility_table=scale(
+                self.compressibility_table, compressibility_factor
+            ),
+            gas_free_water_fvf_table=scale(
+                self.gas_free_water_fvf_table, liquid_fvf_factor
+            ),
+            # Others are dimensionless, so no scaling:
+            # compressibility_factor_table, specific_gravity_table,
+            # molecular_weight_table, solution_gor_table,
+            # vaporized_oil_ratio_table, solubility_in_water_table
+            unit_system=target,
+        )
 
 
 @attrs.frozen
@@ -322,6 +377,7 @@ class PVTDataSet(StoreSerializable):
         gas: typing.Optional[typing.Union[PathLike[str], str]] = None,
         water: typing.Optional[typing.Union[PathLike[str], str]] = None,
         dtype: typing.Optional[npt.DTypeLike] = None,
+        **load_kwargs: typing.Any,
     ) -> Self:
         """
         Load a `PVTDataSet` from individual per-phase files.
@@ -332,7 +388,34 @@ class PVTDataSet(StoreSerializable):
         :returns: `PVTDataSet` with the requested phases populated.
         """
         return cls(
-            oil=PVTData.from_file(oil, dtype=dtype) if oil is not None else None,
-            gas=PVTData.from_file(gas, dtype=dtype) if gas is not None else None,
-            water=PVTData.from_file(water, dtype=dtype) if water is not None else None,
+            oil=PVTData.from_file(oil, dtype=dtype, **load_kwargs)
+            if oil is not None
+            else None,
+            gas=PVTData.from_file(gas, dtype=dtype, **load_kwargs)
+            if gas is not None
+            else None,
+            water=PVTData.from_file(water, dtype=dtype, **load_kwargs)
+            if water is not None
+            else None,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PVTDataset` with all pvt data converted to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `PVTDataset` in *target* units.
+        """
+        return self.__class__(
+            oil=self.oil.convert(target, table=table) if self.oil is not None else None,
+            gas=self.gas.convert(target, table=table) if self.gas is not None else None,
+            water=self.water.convert(target, table=table)
+            if self.water is not None
+            else None,
         )

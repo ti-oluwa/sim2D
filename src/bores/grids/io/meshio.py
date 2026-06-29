@@ -15,7 +15,6 @@ from pathlib import Path
 
 import numpy as np
 
-from bores.grids.utils import convert
 from bores.typing import UnitSystem
 
 try:
@@ -40,16 +39,14 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 # `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
-_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
-    {
-        "tetra",
-        "hexahedron",
-        "wedge",
-        "pyramid",
-        "tetra10",  # quadratic - treated as linear (first 4 nodes)
-        "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
-    }
-)
+_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset({
+    "tetra",
+    "hexahedron",
+    "wedge",
+    "pyramid",
+    "tetra10",  # quadratic - treated as linear (first 4 nodes)
+    "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
+})
 
 # Map from `meshio` quadratic type to the linear equivalent and node count.
 _QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {
@@ -113,7 +110,7 @@ def load_mesh(
         the format is not recognised.
     """
     grid = _load(source, file_format=file_format, metadata=metadata)
-    return convert(grid, to=unit_system) if unit_system is not None else grid
+    return grid.convert(unit_system) if unit_system is not None else grid
 
 
 @typing.overload
@@ -211,13 +208,14 @@ def _load(
                 "file_format must be specified when loading from raw bytes "
                 "(e.g. file_format='vtk' or 'vtu')."
             )
-        buf = io.BytesIO(source)
+
+        buffer = io.BytesIO(source)
         try:
-            mesh = meshio.read(buf, file_format=file_format)
+            mesh = meshio.read(buffer, file_format=file_format)
         except Exception as exc:
             raise GridImportError(f"meshio failed to read bytes: {exc}") from exc
     else:
-        path = Path(source)
+        path = Path(source)  # type: ignore[arg-type]
         if not path.is_file():
             raise GridImportError(f"Mesh file not found: {path!r}")
         try:
@@ -272,7 +270,7 @@ def _mesh_to_grid(
         meta.update(metadata)
     try:
         return make_polyhedral_grid(
-            vertex_coordinates=points,
+            vertex_coordinates=points,  # type: ignore[arg-type]
             cell_blocks=cell_blocks,
             metadata=meta,
         )

@@ -14,6 +14,8 @@ from bores.grids.factories.base import (
 from bores.typing import (
     FloatArray,
     IntArray,
+    Number,
+    NumberArray,
     NumberOrArray,
     OneDimension,
     TwoDimensions,
@@ -31,32 +33,32 @@ def make_cartesian_grid(
     dx: NumberOrArray[OneDimension] = 1.0,
     dy: NumberOrArray[OneDimension] = 1.0,
     dz: NumberOrArray[OneDimension] = 1.0,
-    origin: typing.Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    origin: typing.Tuple[Number, Number, Number] = (0.0, 0.0, 0.0),
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
-        typing.Mapping[str, float]
+        typing.Mapping[str, Number]
     ] = None,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
 ) -> Grid:
     """
@@ -164,9 +166,11 @@ def make_cartesian_grid(
         fault_nnc_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append(
-            (fault_pairs, fault_nnc_connection_types, fault_nnc_transmissibilities)
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_nnc_connection_types,
+            fault_nnc_transmissibilities,
+        ))
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
         for local_idx, (_, _, name) in enumerate(fault_nnc_pairs):
             fault_nnc_indices.setdefault(name, []).append(fault_nnc_offset + local_idx)
@@ -181,9 +185,11 @@ def make_cartesian_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (user_nnc_pairs, user_nnc_connection_types, user_nnc_transmissibilities)
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -194,9 +200,9 @@ def make_cartesian_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8)
+        merged_nnc_connection_types = np.concatenate([
+            t for _, t, _ in all_nnc_parts
+        ]).astype(np.int8)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         merged_nnc_transmissibilities = (
             merged_transmissibilities
@@ -204,10 +210,13 @@ def make_cartesian_grid(
             else None
         )
         if fault_nnc_pairs:
-            merged_nnc_fault_indices = {
-                name: np.asarray(idxs, dtype=np.int32)
-                for name, idxs in fault_nnc_indices.items()
-            }
+            merged_nnc_fault_indices = typing.cast(
+                typing.Dict[str, IntArray[OneDimension]],
+                {
+                    name: np.asarray(idxs, dtype=np.int32)
+                    for name, idxs in fault_nnc_indices.items()
+                },
+            )
 
     return Grid(
         vertex_coordinates=vertex_coordinates.astype(np.float64, copy=False),
@@ -216,10 +225,10 @@ def make_cartesian_grid(
         face_cell_indices=face_cell_indices,
         unit_system=unit_system,
         metadata=metadata,
-        face_connection_types=face_connection_types,
-        nnc_cell_indices=merged_nnc_pairs,
-        nnc_connection_types=merged_nnc_connection_types,
-        nnc_transmissibilities=merged_nnc_transmissibilities,
+        face_connection_types=face_connection_types,  # type: ignore[arg-type]
+        nnc_cell_indices=merged_nnc_pairs,  # type: ignore[arg-type]
+        nnc_connection_types=merged_nnc_connection_types,  # type: ignore[arg-type]
+        nnc_transmissibilities=merged_nnc_transmissibilities,  # type: ignore[arg-type]
         nnc_fault_indices=merged_nnc_fault_indices,
         fault_face_indices=fault_face_indices,
         fault_transmissibility_multipliers=(
@@ -367,7 +376,7 @@ def _resolve_fault_face_indices(
             else:
                 result[record.name] = face_indices
 
-    return (
+    return (  # type: ignore[return-value]
         {
             name: np.unique(np.asarray(idxs, dtype=np.int32))
             for name, idxs in result.items()
@@ -434,7 +443,7 @@ def _build_vertex_coordinates(
     dx: FloatArray[OneDimension],
     dy: FloatArray[OneDimension],
     dz: FloatArray[OneDimension],
-    origin: typing.Tuple[float, float, float],
+    origin: typing.Tuple[Number, Number, Number],
 ) -> VertexCoordinates:
     """
     Build the `(n_vertices, 3)` vertex coordinate array via meshgrid.
@@ -450,12 +459,13 @@ def _build_vertex_coordinates(
     z_nodes = origin[2] + np.concatenate([[0.0], np.cumsum(dz)])
 
     xx, yy, zz = np.meshgrid(x_nodes, y_nodes, z_nodes, indexing="ij")
-    return np.column_stack(
-        [
+    return typing.cast(
+        VertexCoordinates,
+        np.column_stack([
             xx.ravel(order="F"),
             yy.ravel(order="F"),
             zz.ravel(order="F"),
-        ]
+        ]),
     )
 
 
@@ -572,4 +582,4 @@ def _build_face_arrays(
     face_vertex_offsets = np.arange(
         0, (n_total_faces + 1) * verts_per_face, verts_per_face, dtype=np.int32
     )
-    return all_face_vertices, face_vertex_offsets, all_face_cell_indices
+    return all_face_vertices, face_vertex_offsets, all_face_cell_indices  # type: ignore[return-value]

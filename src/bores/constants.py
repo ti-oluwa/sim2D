@@ -10,7 +10,7 @@ from typing_extensions import Self, TypedDict
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
-from bores.typing import UnitSystem
+from bores.typing import Number, UnitSystem
 
 __all__ = [
     "Constant",
@@ -1042,37 +1042,37 @@ def get_constant(name: str) -> typing.Optional[Constant]:
 
 
 class UnitConversionFactors(TypedDict):
-    pressure: float
+    pressure: Number
     """Pressure conversion factor."""
 
-    length: float
+    length: Number
     """Length conversion factor."""
 
-    density: float
+    density: Number
     """Density conversion factor."""
 
-    viscosity: float
+    viscosity: Number
     """Dynamic viscosity conversion factor."""
 
-    permeability: float
+    permeability: Number
     """Permeability conversion factor."""
 
-    compressibility: float
+    compressibility: Number
     """Compressibility conversion factor."""
 
-    liquid_fvf: float
+    liquid_fvf: Number
     """Liquid formation volume factor conversion factor."""
 
-    gaseous_fvf: float
+    gas_fvf: Number
     """Gas formation volume factor conversion factor."""
 
-    gor: float
+    gor: Number
     """Gas-oil ratio conversion factor."""
 
-    temperature_scale: float
+    temperature_scale: Number
     """Multiplicative temperature conversion factor."""
 
-    temperature_offset: float
+    temperature_offset: Number
     """Additive temperature conversion offset."""
 
 
@@ -1082,7 +1082,7 @@ UnitConversionTable = typing.Dict[
 """Mapping of unit system pairs `(from, target)` to unit conversion factors"""
 
 
-def _inverse(x: float) -> float:
+def _inverse(x: Number) -> Number:
     return 1.0 / x
 
 
@@ -1127,7 +1127,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=_inverse(psi_to_bar),
             liquid_fvf=1.0,
-            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
             temperature_scale=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
@@ -1140,7 +1140,7 @@ def build_unit_conversion_table(
             permeability=md_to_m2,
             compressibility=_inverse(psi_to_pa),
             liquid_fvf=1.0,
-            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
             temperature_scale=5.0 / 9.0,
             temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
@@ -1153,7 +1153,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=_inverse(psi_to_atm),
             liquid_fvf=1.0,
-            gaseous_fvf=scf_stb_to_sm3_sm3,
+            gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
             temperature_scale=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
@@ -1167,7 +1167,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=psi_to_bar,
             liquid_fvf=1.0,
-            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature_scale=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
@@ -1180,7 +1180,7 @@ def build_unit_conversion_table(
             permeability=md_to_m2,
             compressibility=_inverse(bar_to_pa),
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=273.15,  # °C -> K
@@ -1193,7 +1193,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=_inverse(bar_to_atm),
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=0.0,  # °C -> °C
@@ -1207,7 +1207,7 @@ def build_unit_conversion_table(
             permeability=_inverse(md_to_m2),
             compressibility=psi_to_pa,
             liquid_fvf=1.0,
-            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature_scale=9.0 / 5.0,
             temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
@@ -1220,7 +1220,7 @@ def build_unit_conversion_table(
             permeability=_inverse(md_to_m2),
             compressibility=bar_to_pa,
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=-273.15,  # K -> °C
@@ -1233,7 +1233,7 @@ def build_unit_conversion_table(
             permeability=_inverse(md_to_m2),
             compressibility=atm_to_pa,
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=-273.15,  # K -> °C
@@ -1247,7 +1247,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=psi_to_atm,
             liquid_fvf=1.0,
-            gaseous_fvf=_inverse(scf_stb_to_sm3_sm3),
+            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature_scale=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
@@ -1260,7 +1260,7 @@ def build_unit_conversion_table(
             permeability=1.0,
             compressibility=bar_to_atm,
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=0.0,  # °C -> °C
@@ -1273,7 +1273,7 @@ def build_unit_conversion_table(
             permeability=md_to_m2,
             compressibility=_inverse(atm_to_pa),
             liquid_fvf=1.0,
-            gaseous_fvf=1.0,
+            gas_fvf=1.0,
             gor=1.0,
             temperature_scale=1.0,
             temperature_offset=273.15,  # °C -> K
@@ -1290,7 +1290,7 @@ IDENTITY_FACTORS = UnitConversionFactors(
     permeability=1.0,
     compressibility=1.0,
     liquid_fvf=1.0,
-    gaseous_fvf=1.0,
+    gas_fvf=1.0,
     gor=1.0,
     temperature_scale=1.0,
     temperature_offset=0.0,
@@ -1330,7 +1330,7 @@ def get_conversion_factors(
     "permeability"     mD / mD / mD / m²
     "compressibility"  1/psi / 1/bar / 1/atm / 1/Pa
     "liquid_fvf"       bbl/STB -> m³/sm³ / scc/scc (ratio, usually 1.0)
-    "gaseous_fvf"      ft³/scf -> m³/sm³ / scc/scc
+    "gas_fvf"      ft³/scf -> m³/sm³ / scc/scc
     "gor"              scf/STB -> sm³/sm³ / scc/scc
     "mass"             lbm / kg / g / kg  (not stored; derived as
                         density_factor x length_factor³ by callers)

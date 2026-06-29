@@ -12,7 +12,7 @@ from scipy.optimize import brentq, root_scalar  # type: ignore[import-untyped]
 
 from bores.constants import c
 from bores.errors import ComputationError, ValidationError
-from bores.typing import NDimension, NumberOrArray, ZFactorMethod
+from bores.typing import NDimension, Number, NumberOrArray, ZFactorMethod
 from bores.utils import clip
 
 logger = logging.getLogger(__name__)
@@ -40,13 +40,13 @@ def validate_input_temperature(temperature: NumberOrArray[NDimension]) -> None:
     :param temperature: Temperature(s) in Kelvin (°F)
     :raises ValidationError: If any temperature is outside the valid range.
     """
-    temp_array = np.asarray(temperature)
-    invalid_mask = (temp_array < c.MINIMUM_VALID_TEMPERATURE) | (
-        temp_array > c.MAXIMUM_VALID_TEMPERATURE
+    temperature_arr = np.asarray(temperature)
+    invalid_mask = (temperature_arr < c.MINIMUM_VALID_TEMPERATURE) | (
+        temperature_arr > c.MAXIMUM_VALID_TEMPERATURE
     )
 
     if np.any(invalid_mask):
-        invalid: np.ndarray = temp_array[invalid_mask]
+        invalid: np.ndarray = temperature_arr[invalid_mask]
         raise ValidationError(
             f"Temperature(s) out of valid range [{c.MINIMUM_VALID_TEMPERATURE}, {c.MAXIMUM_VALID_TEMPERATURE}] K: "
             f"{invalid}"
@@ -156,7 +156,7 @@ def fahrenheit_to_rankine(
 ##################################################
 
 
-def compute_fluid_density(pressure: float, temperature: float, fluid: str) -> float:
+def compute_fluid_density(pressure: Number, temperature: Number, fluid: str) -> Number:
     """
     Compute fluid density from EOS using CoolProp.
 
@@ -167,7 +167,7 @@ def compute_fluid_density(pressure: float, temperature: float, fluid: str) -> fl
     """
     temperature_in_kelvin = fahrenheit_to_kelvin(temperature)  # type: ignore[arg-type]
     pressure_in_pascals = pressure * c.PSI_TO_PASCAL
-    density: float = PropsSI(
+    density = PropsSI(
         "D",
         "P",
         clip_pressure(pressure_in_pascals, fluid),
@@ -178,7 +178,9 @@ def compute_fluid_density(pressure: float, temperature: float, fluid: str) -> fl
     return density * c.KILOGRAM_PER_CUBIC_METER_TO_POUNDS_PER_CUBIC_FEET
 
 
-def compute_fluid_viscosity(pressure: float, temperature: float, fluid: str) -> float:
+def compute_fluid_viscosity(
+    pressure: Number, temperature: Number, fluid: str
+) -> Number:
     """
     Compute fluid dynamic viscosity from EOS using CoolProp.
 
@@ -201,8 +203,8 @@ def compute_fluid_viscosity(pressure: float, temperature: float, fluid: str) -> 
 
 
 def compute_fluid_compressibility_factor(
-    pressure: float, temperature: float, fluid: str
-) -> float:
+    pressure: Number, temperature: Number, fluid: str
+) -> Number:
     """
     Compute fluid compressibility factor Z from EOS using CoolProp.
 
@@ -224,10 +226,8 @@ def compute_fluid_compressibility_factor(
 
 
 def compute_fluid_compressibility(
-    pressure: float,
-    temperature: float,
-    fluid: str,
-) -> float:
+    pressure: Number, temperature: Number, fluid: str
+) -> Number:
     """
     Computes the isothermal compressibility of a fluid at a given pressure and temperature.
 
@@ -255,7 +255,7 @@ def compute_fluid_compressibility(
     )
 
 
-def compute_gas_gravity(gas: str) -> float:
+def compute_gas_gravity(gas: str) -> Number:
     """
     Computes the specific gravity of a gas at a given pressure and temperature.
 
@@ -279,10 +279,8 @@ def compute_gas_gravity(gas: str) -> float:
 
 
 def compute_gas_gravity_from_density(
-    pressure: float,
-    temperature: float,
-    density: float,
-) -> float:
+    pressure: Number, temperature: Number, density: Number
+) -> Number:
     """
     Computes the gas gravity from density.
 
@@ -305,13 +303,13 @@ def compute_gas_gravity_from_density(
 
 @numba.njit(cache=True)
 def compute_total_fluid_compressibility(
-    water_saturation: float,
-    oil_saturation: float,
-    water_compressibility: float,
-    oil_compressibility: float,
-    gas_saturation: typing.Optional[float] = None,
-    gas_compressibility: typing.Optional[float] = None,
-) -> float:
+    water_saturation: Number,
+    oil_saturation: Number,
+    water_compressibility: Number,
+    oil_compressibility: Number,
+    gas_saturation: typing.Optional[Number] = None,
+    gas_compressibility: typing.Optional[Number] = None,
+) -> Number:
     """
     Calculates the total fluid compressibility as a saturation-weighted average of
     individual phase compressibilities.
@@ -334,7 +332,7 @@ def compute_total_fluid_compressibility(
 
 
 @numba.njit(cache=True, inline="always")
-def compute_harmonic_mean(value1: float, value2: float) -> float:
+def compute_harmonic_mean(value1: Number, value2: Number) -> Number:
     """
     Computes the harmonic mean of two values.
 
@@ -349,11 +347,11 @@ def compute_harmonic_mean(value1: float, value2: float) -> float:
 
 
 def compute_oil_specific_gravity(
-    oil_density: float,
-    pressure: float,
-    temperature: float,
-    oil_compressibility: float,
-) -> float:
+    oil_density: Number,
+    pressure: Number,
+    temperature: Number,
+    oil_compressibility: Number,
+) -> Number:
     """
     Converts oil density (lbm/ft³) at given reservoir conditions to specific gravity (dimensionless)
     by adjusting for pressure and temperature effects using a linearized approximation.
@@ -398,8 +396,8 @@ def compute_oil_specific_gravity(
 
 @numba.njit(cache=True)
 def convert_surface_rate_to_reservoir(
-    surface_rate: float, formation_volume_factor: float
-) -> float:
+    surface_rate: Number, formation_volume_factor: Number
+) -> Number:
     """
     Converts a surface rate (e.g., STB/day) to reservoir conditions.
 
@@ -414,8 +412,8 @@ def convert_surface_rate_to_reservoir(
 
 @numba.njit(cache=True)
 def convert_reservoir_rate_to_surface(
-    reservoir_rate: float, formation_volume_factor: float
-) -> float:
+    reservoir_rate: Number, formation_volume_factor: Number
+) -> Number:
     """
     Converts a reservoir rate (e.g., bbl/day) to surface conditions.
 
@@ -430,11 +428,11 @@ def convert_reservoir_rate_to_surface(
 
 @numba.njit(cache=True)
 def compute_oil_formation_volume_factor_standing(
-    temperature: float,
-    oil_specific_gravity: float,
-    gas_gravity: float,
-    gas_to_oil_ratio: float,
-) -> float:
+    temperature: Number,
+    oil_specific_gravity: Number,
+    gas_gravity: Number,
+    gas_to_oil_ratio: Number,
+) -> Number:
     """
     Computes the oil formation volume factor (Bo) in m³ oil at reservoir conditions per m³ oil at standard conditions
     using the Standing correlation.
@@ -476,8 +474,8 @@ def compute_oil_formation_volume_factor_standing(
 
 @numba.njit(cache=True)
 def _get_vazquez_beggs_oil_fvf_coefficients(
-    oil_api_gravity: float,
-) -> typing.Tuple[float, float, float]:
+    oil_api_gravity: Number,
+) -> typing.Tuple[Number, Number, Number]:
     """
     Returns the coefficients a1, a2, a3 for the Vazquez and Beggs oil FVF correlation based on oil API gravity.
     """
@@ -488,11 +486,11 @@ def _get_vazquez_beggs_oil_fvf_coefficients(
 
 @numba.njit(cache=True)
 def compute_oil_formation_volume_factor_vazquez_and_beggs(
-    temperature: float,
-    oil_specific_gravity: float,
-    gas_gravity: float,
-    gas_to_oil_ratio: float,
-) -> float:
+    temperature: Number,
+    oil_specific_gravity: Number,
+    gas_gravity: Number,
+    gas_to_oil_ratio: Number,
+) -> Number:
     """
     Computes the oil formation volume factor (Bo) using the Vazquez and Beggs correlation.
 
@@ -533,11 +531,11 @@ def compute_oil_formation_volume_factor_vazquez_and_beggs(
 
 @numba.njit(cache=True)
 def correct_oil_fvf_for_pressure(
-    saturated_oil_fvf: float,
-    oil_compressibility: float,
-    bubble_point_pressure: float,
-    current_pressure: float,
-) -> float:
+    saturated_oil_fvf: Number,
+    oil_compressibility: Number,
+    bubble_point_pressure: Number,
+    current_pressure: Number,
+) -> Number:
     """
     Applies exponential shrinkage correction to oil FVF for pressures above bubble point.
 
@@ -560,14 +558,14 @@ def correct_oil_fvf_for_pressure(
 
 @numba.njit(cache=True)
 def compute_oil_formation_volume_factor(
-    pressure: float,
-    temperature: float,
-    bubble_point_pressure: float,
-    oil_specific_gravity: float,
-    gas_gravity: float,
-    gas_to_oil_ratio: float,
-    oil_compressibility: float,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    bubble_point_pressure: Number,
+    oil_specific_gravity: Number,
+    gas_gravity: Number,
+    gas_to_oil_ratio: Number,
+    oil_compressibility: Number,
+) -> Number:
     """
     Computes the oil formation volume factor (Bo) in bbl/STB of oil
     based on pressure and temperature deviations from reference conditions.
@@ -607,8 +605,8 @@ def compute_oil_formation_volume_factor(
 
 
 def compute_water_formation_volume_factor(
-    water_density: float, salinity: float
-) -> float:
+    water_density: Number, salinity: Number
+) -> Number:
     """
     Computes the water formation volume factor (B_w) in bbl/STB of water
     based on pressure and temperature deviations from reference conditions.
@@ -642,11 +640,11 @@ def compute_water_formation_volume_factor(
 
 @numba.njit(cache=True)
 def compute_water_formation_volume_factor_mccain(
-    pressure: float,
-    temperature: float,
-    salinity: float = 0.0,
-    gas_solubility: float = 0.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    salinity: Number = 0.0,
+    gas_solubility: Number = 0.0,
+) -> Number:
     """
     McCain water FVF correlation (more commonly used in industry).
 
@@ -690,10 +688,10 @@ def compute_water_formation_volume_factor_mccain(
 
 
 def compute_gas_formation_volume_factor(
-    pressure: float,
-    temperature: float,
-    gas_compressibility_factor: float,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_compressibility_factor: Number,
+) -> Number:
     """
     Computes the gas formation volume factor (B_g) in ft³/SCF, using the real gas law.
 
@@ -732,13 +730,13 @@ def compute_gas_formation_volume_factor(
 
 @numba.njit(cache=True)
 def compute_gas_compressibility_factor_papay(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
+) -> Number:
     """
     Computes gas compressibility factor using Papay's correlation,
     with corrections for sour gases using the Wichert-Aziz method.
@@ -820,15 +818,15 @@ def compute_gas_compressibility_factor_papay(
 
 @numba.njit(cache=True)
 def compute_gas_compressibility_factor_hall_yarborough(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
     maximum_iterations: int = 50,
-    tolerance: float = 1e-10,
-) -> float:
+    tolerance: Number = 1e-10,
+) -> Number:
     """
     Computes gas compressibility factor using Hall-Yarborough (1973) implicit correlation.
 
@@ -956,15 +954,15 @@ def compute_gas_compressibility_factor_hall_yarborough(
 
 @numba.njit(cache=True)
 def compute_gas_compressibility_factor_dranchuk_abou_kassem(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
     maximum_iterations: int = 50,
-    tolerance: float = 1e-10,
-) -> float:
+    tolerance: Number = 1e-10,
+) -> Number:
     """
     Computes gas compressibility factor using Dranchuk-Abou-Kassem (DAK, 1975) correlation.
 
@@ -1082,14 +1080,14 @@ def compute_gas_compressibility_factor_dranchuk_abou_kassem(
 
 @numba.njit(cache=True)
 def compute_gas_compressibility_factor(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
     method: ZFactorMethod = "dak",
-) -> float:
+) -> Number:
     """
     Computes (natural) gas compressibility factor.
 
@@ -1156,7 +1154,7 @@ def compute_gas_compressibility_factor(
 
 
 @numba.njit(cache=True)
-def compute_oil_api_gravity(oil_specific_gravity: float) -> float:
+def compute_oil_api_gravity(oil_specific_gravity: Number) -> Number:
     """
     Computes the API gravity (in degrees) from oil specific gravity.
 
@@ -1179,8 +1177,8 @@ def compute_oil_api_gravity(oil_specific_gravity: float) -> float:
 
 @numba.njit(cache=True)
 def _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(
-    oil_api_gravity: float,
-) -> typing.Tuple[float, float, float]:
+    oil_api_gravity: Number,
+) -> typing.Tuple[Number, Number, Number]:
     """
     Returns the empirical coefficients (C₁, C₂, C₃) used in the Vazquez-Beggs
     bubble point pressure correlation based on oil API gravity.
@@ -1202,11 +1200,11 @@ def _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(
 
 @numba.njit(cache=True)
 def compute_oil_bubble_point_pressure(
-    gas_gravity: float,
-    oil_api_gravity: float,
-    temperature: float,
-    gas_to_oil_ratio: float,
-) -> float:
+    gas_gravity: Number,
+    oil_api_gravity: Number,
+    temperature: Number,
+    gas_to_oil_ratio: Number,
+) -> Number:
     """
     Computes the bubble point pressure of oil using the Vazquez-Beggs correlation.
 
@@ -1341,7 +1339,7 @@ def compute_water_bubble_point_pressure(
     # This inversion finds the pressure at which gas solubility in water equals the specified value.
     # Though these models don't explicitly define a bubble point, this process yields the effective
     # bubble point pressure—i.e., the pressure where gas begins to come out of solution.
-    def residual(pressure: float) -> float:
+    def residual(pressure: Number) -> Number:
         return (
             compute_gas_solubility_in_water(
                 pressure=pressure, temperature=temperature, salinity=salinity, gas=gas
@@ -1361,13 +1359,13 @@ def compute_water_bubble_point_pressure(
 
 @numba.njit(cache=True)
 def compute_gas_to_oil_ratio(
-    pressure: float,
-    temperature: float,
-    bubble_point_pressure: float,
-    gas_gravity: float,
-    oil_api_gravity: float,
-    gor_at_bubble_point_pressure: typing.Optional[float] = None,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    bubble_point_pressure: Number,
+    gas_gravity: Number,
+    oil_api_gravity: Number,
+    gor_at_bubble_point_pressure: typing.Optional[Number] = None,
+) -> Number:
     """
     Computes the solution gas-to-oil ratio (Solution-GOR) using the Vazquez-Beggs correlation.
 
@@ -1410,7 +1408,7 @@ def compute_gas_to_oil_ratio(
         oil_api_gravity
     )
 
-    def compute_gor_vasquez_beggs(pressure: float) -> float:
+    def compute_gor_vasquez_beggs(pressure: Number) -> Number:
         """Implementation of the Vazquez-Beggs GOR correlation."""
         return (
             (pressure**c2)
@@ -1432,8 +1430,8 @@ def compute_gas_to_oil_ratio(
 
 @numba.njit(cache=True)
 def _compute_dead_oil_viscosity_modified_beggs(
-    temperature: float, oil_api_gravity: float
-) -> float:
+    temperature: Number, oil_api_gravity: Number
+) -> Number:
     if temperature <= 0:
         raise ValidationError("Temperature (°F) must be > 0 for this correlation.")
 
@@ -1450,9 +1448,9 @@ def _compute_dead_oil_viscosity_modified_beggs(
 
 
 def compute_dead_oil_viscosity_modified_beggs(
-    temperature: float,
-    oil_specific_gravity: float,
-) -> float:
+    temperature: Number,
+    oil_specific_gravity: Number,
+) -> Number:
     """
     Calculates the dead oil viscosity (mu_od) using the Modified Beggs correlation.
     Viscosity is in centipoise (cP), Labedi (1992).
@@ -1479,12 +1477,12 @@ def compute_dead_oil_viscosity_modified_beggs(
 
 @numba.njit(cache=True)
 def _compute_oil_viscosity(
-    pressure: float,
-    bubble_point_pressure: float,
-    dead_oil_viscosity: float,
-    gas_to_oil_ratio: float,
-    gor_at_bubble_point_pressure: float,
-) -> float:
+    pressure: Number,
+    bubble_point_pressure: Number,
+    dead_oil_viscosity: Number,
+    gas_to_oil_ratio: Number,
+    gor_at_bubble_point_pressure: Number,
+) -> Number:
     if pressure <= bubble_point_pressure:
         # Saturated case: compute viscosity using current GOR
         X = 10.715 * (gas_to_oil_ratio + 100) ** -0.515
@@ -1502,13 +1500,13 @@ def _compute_oil_viscosity(
 
 
 def compute_oil_viscosity(
-    pressure: float,
-    temperature: float,
-    bubble_point_pressure: float,
-    oil_specific_gravity: float,
-    gas_to_oil_ratio: float,
-    gor_at_bubble_point_pressure: float,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    bubble_point_pressure: Number,
+    oil_specific_gravity: Number,
+    gas_to_oil_ratio: Number,
+    gor_at_bubble_point_pressure: Number,
+) -> Number:
     """
     Computes oil viscosity (cP) using the Modified Beggs & Robinson correlation
     for dead, saturated, and undersaturated oil.
@@ -1564,7 +1562,7 @@ def compute_oil_viscosity(
     )
 
 
-def compute_gas_molecular_weight(gas_gravity: float) -> float:
+def compute_gas_molecular_weight(gas_gravity: Number) -> Number:
     """
     Computes the apparent molecular weight of a gas (g/mol) from its specific gravity relative to air.
 
@@ -1586,11 +1584,11 @@ def compute_gas_molecular_weight(gas_gravity: float) -> float:
 
 @numba.njit(cache=True)
 def compute_gas_pseudocritical_properties(
-    gas_gravity: float,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
-) -> typing.Tuple[float, float]:
+    gas_gravity: Number,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
+) -> typing.Tuple[Number, Number]:
     """
     Computes pseudocritical pressure and temperature of natural gas in psi and °F.
 
@@ -1656,11 +1654,11 @@ def compute_gas_pseudocritical_properties(
 
 
 def compute_gas_density(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    gas_compressibility_factor: float,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    gas_compressibility_factor: Number,
+) -> Number:
     """
     Calculates the gas density (lbm/ft³) using the real gas equation of state.
 
@@ -1683,10 +1681,10 @@ def compute_gas_density(
 
 
 def compute_gas_viscosity(
-    temperature: float,
-    gas_density: float,
-    gas_molecular_weight: float,
-) -> float:
+    temperature: Number,
+    gas_density: Number,
+    gas_molecular_weight: Number,
+) -> Number:
     """
     Calculates the gas viscosity (cP) using the Lee-Gonzalez-Eakin (LGE) correlation.
 
@@ -1742,11 +1740,11 @@ def compute_gas_viscosity(
 
 @numba.njit(cache=True)
 def _compute_water_viscosity(
-    temperature: float,
-    salinity: float,
-    pressure: float,
-    ppm_to_weight_fraction: float,
-) -> float:
+    temperature: Number,
+    salinity: Number,
+    pressure: Number,
+    ppm_to_weight_fraction: Number,
+) -> Number:
     salinity_fraction = salinity * ppm_to_weight_fraction
     A = 1.0 + 1.17 * salinity_fraction + 3.15e-6 * salinity_fraction**2
     B = 1.48e-3 - 1.8e-7 * salinity_fraction
@@ -1761,10 +1759,10 @@ def _compute_water_viscosity(
 
 
 def compute_water_viscosity(
-    temperature: float,
-    salinity: float = 0.0,
-    pressure: float = 14.7,
-) -> float:
+    temperature: Number,
+    salinity: Number = 0.0,
+    pressure: Number = 14.7,
+) -> Number:
     """
     Computes water viscosity using McCain's corrected correlation for reservoir conditions.
 
@@ -1828,15 +1826,15 @@ def compute_water_viscosity(
 
 @numba.njit(cache=True)
 def _compute_oil_compressibility_liberation_correction_term(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    oil_api_gravity: float,
-    bubble_point_pressure: float,
-    gas_formation_volume_factor: float,
-    oil_formation_volume_factor: float,
-    gor_at_bubble_point_pressure: float,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    oil_api_gravity: Number,
+    bubble_point_pressure: Number,
+    gas_formation_volume_factor: Number,
+    oil_formation_volume_factor: Number,
+    gor_at_bubble_point_pressure: Number,
+) -> Number:
     """
     Computes the liberation correction term for oil compressibility below bubble point pressure.
 
@@ -1895,15 +1893,15 @@ def _compute_oil_compressibility_liberation_correction_term(
 
 @numba.njit(cache=True)
 def compute_oil_compressibility(
-    pressure: float,
-    temperature: float,
-    bubble_point_pressure: float,
-    oil_api_gravity: float,
-    gas_gravity: float,
-    gor_at_bubble_point_pressure: float,
-    gas_formation_volume_factor: float = 1.0,
-    oil_formation_volume_factor: float = 1.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    bubble_point_pressure: Number,
+    oil_api_gravity: Number,
+    gas_gravity: Number,
+    gor_at_bubble_point_pressure: Number,
+    gas_formation_volume_factor: Number = 1.0,
+    oil_formation_volume_factor: Number = 1.0,
+) -> Number:
     """
     Calculates the oil compressibility (C_o) in psi⁻¹ using the Vasquez and Beggs (1980) correlation.
 
@@ -1959,7 +1957,7 @@ def compute_oil_compressibility(
             "All input parameters (P, Pb, T, Gas SG, API) must be positive."
         )
 
-    def compute_base_compressibility(pressure: float) -> float:
+    def compute_base_compressibility(pressure: Number) -> Number:
         current_gor = compute_gas_to_oil_ratio(
             pressure=pressure,
             temperature=temperature,
@@ -1996,14 +1994,14 @@ def compute_oil_compressibility(
 
 @numba.njit(cache=True)
 def compute_gas_compressibility(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float,
-    gas_compressibility_factor: typing.Optional[float] = None,
-    h2s_mole_fraction: float = 0.0,
-    co2_mole_fraction: float = 0.0,
-    n2_mole_fraction: float = 0.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number,
+    gas_compressibility_factor: typing.Optional[Number] = None,
+    h2s_mole_fraction: Number = 0.0,
+    co2_mole_fraction: Number = 0.0,
+    n2_mole_fraction: Number = 0.0,
+) -> Number:
     """
     alculates isothermal gas compressibility (C_g) in psi^-1 using a
     numerically consistent derivative of the Z-factor.
@@ -2086,10 +2084,10 @@ def compute_gas_compressibility(
 
 @numba.njit(cache=True)
 def _gas_solubility_in_water_mccain_methane(
-    pressure: float,
-    temperature: float,
-    salinity: float = 0.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    salinity: Number = 0.0,
+) -> Number:
     """
     Calculates gas solubility in water (Rsw) using McCain's correlation (1990).
 
@@ -2138,12 +2136,12 @@ def _gas_solubility_in_water_mccain_methane(
 
 @numba.njit(cache=True)
 def _gas_solubility_in_water_duan_sun_co2(
-    pressure: float,
-    temperature: float,
-    salinity: float = 0.0,
-    nacl_molecular_weight: float = 58.44,
-    psi_to_bar: float = 0.0689476,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    salinity: Number = 0.0,
+    nacl_molecular_weight: Number = 58.44,
+    psi_to_bar: Number = 0.0689476,
+) -> Number:
     """
     Calculates CO₂ solubility in water (Rsw) using the Duan and Sun (2003) model.
 
@@ -2265,13 +2263,13 @@ def _get_gas_symbol(gas_name: str) -> str:
 
 
 def _gas_solubility_in_water_henry_law(
-    pressure: float,
-    temperature: float,
+    pressure: Number,
+    temperature: Number,
     gas: str,
-    molar_masses: typing.Dict[str, float],
-    henry_coefficients: typing.Dict[str, typing.Tuple[float, float, float]],
-    salinity: float = 0.0,
-) -> float:
+    molar_masses: typing.Dict[str, Number],
+    henry_coefficients: typing.Dict[str, typing.Tuple[Number, Number, Number]],
+    salinity: Number = 0.0,
+) -> Number:
     """
     Estimates gas solubility in water using Henry's Law with Setschenow salinity correction.
 
@@ -2336,11 +2334,11 @@ def _gas_solubility_in_water_henry_law(
 
 
 def compute_gas_solubility_in_water(
-    pressure: float,
-    temperature: float,
-    salinity: float = 0.0,
+    pressure: Number,
+    temperature: Number,
+    salinity: Number = 0.0,
     gas: str = "methane",
-) -> float:
+) -> Number:
     """
     Computes gas solubility in water using McCain, Duan, or Henry's Law based on gas type and temperature.
 
@@ -2379,15 +2377,15 @@ def compute_gas_solubility_in_water(
         temperature=temperature,
         gas=gas,
         molar_masses=molar_masses,
-        henry_coefficients=HENRY_COEFFICIENTS,
+        henry_coefficients=HENRY_COEFFICIENTS,  # type: ignore[arg-type]
         salinity=salinity,
     )
 
 
 @numba.njit(cache=True)
 def compute_gas_free_water_formation_volume_factor(
-    pressure: float, temperature: float
-) -> float:
+    pressure: Number, temperature: Number
+) -> Number:
     """
     Calculates the Water Formation Volume Factor (Bw) for dissolved-gas-free water
     using McCain's correlation (based on Petroleum Office function BwMcCain_GasFree).
@@ -2422,7 +2420,7 @@ def compute_gas_free_water_formation_volume_factor(
 
 
 @numba.njit(cache=True)
-def _compute_dRsw_dP_mccain(temperature: float, salinity: float) -> float:
+def _compute_dRsw_dP_mccain(temperature: Number, salinity: Number) -> Number:
     """
     Calculates the derivative of gas solubility in water (Rsw) with respect to pressure,
     based on McCain's correlation for Rsw.
@@ -2442,7 +2440,7 @@ def _compute_dRsw_dP_mccain(temperature: float, salinity: float) -> float:
 
 
 @numba.njit(cache=True)
-def _compute_dBw_gas_free_dp_mccain(pressure: float, temperature: float) -> float:
+def _compute_dBw_gas_free_dp_mccain(pressure: Number, temperature: Number) -> Number:
     """
     Calculates the derivative of dissolved-gas-free Water Formation Volume Factor (Bw_gas_free)
     with respect to pressure, based on McCain's correlation.
@@ -2466,14 +2464,14 @@ def _compute_dBw_gas_free_dp_mccain(pressure: float, temperature: float) -> floa
 
 
 def compute_water_compressibility(
-    pressure: float,
-    temperature: float,
-    bubble_point_pressure: float,  # This Pwb is for the water's dissolved gas in water.
-    gas_formation_volume_factor: float,  # Bg in ft3/SCF
-    gas_solubility_in_water: float,  # Rsw in SCF/STB
-    gas_free_water_formation_volume_factor: float,  # Bw_gas_free in bbl/STB (output of compute_gas_free_water_formation_volume_factor)
-    salinity: float = 0.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    bubble_point_pressure: Number,  # This Pwb is for the water's dissolved gas in water.
+    gas_formation_volume_factor: Number,  # Bg in ft3/SCF
+    gas_solubility_in_water: Number,  # Rsw in SCF/STB
+    gas_free_water_formation_volume_factor: Number,  # Bw_gas_free in bbl/STB (output of compute_gas_free_water_formation_volume_factor)
+    salinity: Number = 0.0,
+) -> Number:
     """
     Calculates the isothermal water compressibility (C_w) using McCain's correlations.
     Distinguishes between undersaturated and saturated water conditions.
@@ -2537,11 +2535,11 @@ def compute_water_compressibility(
 
 
 def compute_live_oil_density(
-    api_gravity: float,
-    gas_gravity: float,
-    gas_to_oil_ratio: float,
-    formation_volume_factor: float,
-) -> float:
+    api_gravity: Number,
+    gas_gravity: Number,
+    gas_to_oil_ratio: Number,
+    formation_volume_factor: Number,
+) -> Number:
     """
     Estimates live oil density at reservoir conditions at the current pressure
     and temperature, considering dissolved gas and oil compressibility.
@@ -2584,8 +2582,8 @@ def compute_live_oil_density(
 
 
 def compute_water_density_mccain(
-    pressure: float, temperature: float, salinity: float = 0.0
-) -> float:
+    pressure: Number, temperature: Number, salinity: Number = 0.0
+) -> Number:
     """
     Computes the live water/brine density at reservoir conditions using McCain's correlation.
 
@@ -2627,8 +2625,8 @@ def compute_water_density_mccain(
 
 @numba.njit(cache=True)
 def compute_water_density_batzle(
-    pressure: float, temperature: float, salinity: float
-) -> float:
+    pressure: Number, temperature: Number, salinity: Number
+) -> Number:
     """
     Computes the live water/brine density using Batzle & Wang's correlation.
 
@@ -2684,13 +2682,13 @@ def compute_water_density_batzle(
 
 
 def compute_water_density(
-    pressure: float,
-    temperature: float,
-    gas_gravity: float = 0.0,
-    salinity: float = 0.0,
-    gas_solubility_in_water: float = 0.0,
-    gas_free_water_formation_volume_factor: float = 1.0,
-) -> float:
+    pressure: Number,
+    temperature: Number,
+    gas_gravity: Number = 0.0,
+    salinity: Number = 0.0,
+    gas_solubility_in_water: Number = 0.0,
+    gas_free_water_formation_volume_factor: Number = 1.0,
+) -> Number:
     """
     Calculates the live water/brine density at reservoir conditions
     using McCain's correlations.
@@ -2767,8 +2765,8 @@ def compute_water_density(
 
 @numba.njit(cache=True)
 def compute_gas_to_oil_ratio_standing(
-    pressure: float, oil_api_gravity: float, gas_gravity: float
-) -> float:
+    pressure: Number, oil_api_gravity: Number, gas_gravity: Number
+) -> Number:
     """
     Standing correlation to compute Rs (solution GOR) in scf/STB.
 
@@ -2808,10 +2806,10 @@ def compute_gas_to_oil_ratio_standing(
 
 
 def estimate_bubble_point_pressure_standing(
-    oil_api_gravity: float,
-    gas_gravity: float,
-    observed_gas_to_oil_ratio: float,
-) -> float:
+    oil_api_gravity: Number,
+    gas_gravity: Number,
+    observed_gas_to_oil_ratio: Number,
+) -> Number:
     """
     Estimate bubble point pressure (Pb) using Standing's correlation
     given observed Rs and known oil API gravity and gas gravity.
@@ -2845,7 +2843,7 @@ def estimate_bubble_point_pressure_standing(
             oil_api_gravity=oil_api_gravity,
             gas_gravity=gas_gravity,
         )
-        return gor - observed_gas_to_oil_ratio
+        return gor - observed_gas_to_oil_ratio  # type: ignore
 
     solver = root_scalar(residual, bracket=(14.696, 10000), method="brentq")
     if not solver.converged:
@@ -2857,11 +2855,11 @@ def estimate_bubble_point_pressure_standing(
 
 @numba.njit(cache=True)
 def _compute_bubble_point_pressure_vazquez_beggs(
-    gas_gravity: float,
-    oil_api_gravity: float,
-    temperature: float,
-    gas_to_oil_ratio: float,
-) -> float:
+    gas_gravity: Number,
+    oil_api_gravity: Number,
+    temperature: Number,
+    gas_to_oil_ratio: Number,
+) -> Number:
     """
     Internal njit version of bubble point pressure calculation using Vazquez-Beggs.
 
@@ -2890,8 +2888,8 @@ def _compute_bubble_point_pressure_vazquez_beggs(
 
 @numba.njit(cache=True)
 def _compute_gas_to_oil_ratio_standing_internal(
-    pressure: float, oil_api_gravity: float, gas_gravity: float
-) -> float:
+    pressure: Number, oil_api_gravity: Number, gas_gravity: Number
+) -> Number:
     """
     Internal njit version of Standing correlation for Rs.
 
@@ -2910,13 +2908,13 @@ def _compute_gas_to_oil_ratio_standing_internal(
 
 @numba.njit(cache=True)
 def estimate_solution_gor(
-    pressure: float,
-    temperature: float,
-    oil_api_gravity: float,
-    gas_gravity: float,
+    pressure: Number,
+    temperature: Number,
+    oil_api_gravity: Number,
+    gas_gravity: Number,
     maximum_iterations: int = 20,
-    tolerance: float = 1e-4,
-) -> float:
+    tolerance: Number = 1e-4,
+) -> Number:
     """
     Estimate solution gas-to-oil ratio Rs(P, T) iteratively.
 
@@ -3029,16 +3027,16 @@ def estimate_solution_gor(
 
 @numba.njit(cache=True)
 def compute_hydrocarbon_in_place(
-    area: float,
-    thickness: float,
-    porosity: float,
-    phase_saturation: float,
-    formation_volume_factor: float,
-    net_to_gross_ratio: float = 1.0,
+    area: Number,
+    thickness: Number,
+    porosity: Number,
+    phase_saturation: Number,
+    formation_volume_factor: Number,
+    net_to_gross_ratio: Number = 1.0,
     hydrocarbon_type: typing.Literal["oil", "gas", "water"] = "oil",
-    acre_ft_to_bbl: float = 7758.0,
-    acre_ft_to_ft3: float = 43560.0,
-) -> float:
+    acre_ft_to_bbl: Number = 7758.0,
+    acre_ft_to_ft3: Number = 43560.0,
+) -> Number:
     """
     Computes the (free) hydrocarbon (or free water) in place (HCIP or FWIP) in stock tank barrels (STB) or standard cubic feet (SCF)
     using the volumetric method.
@@ -3123,10 +3121,10 @@ def compute_hydrocarbon_in_place(
 
 @numba.njit(cache=True)
 def compute_miscibility_transition_factor(
-    pressure: float,
-    minimum_miscibility_pressure: float,
-    transition_width: float = 500.0,
-) -> float:
+    pressure: Number,
+    minimum_miscibility_pressure: Number,
+    transition_width: Number = 500.0,
+) -> Number:
     """
     Compute pressure-dependent miscibility transition factor.
 
@@ -3208,11 +3206,11 @@ def compute_miscibility_transition_factor(
 
 @numba.njit(cache=True)
 def compute_effective_todd_longstaff_omega(
-    pressure: float,
-    base_omega: float,
-    minimum_miscibility_pressure: float,
-    transition_width: float = 500.0,
-) -> float:
+    pressure: Number,
+    base_omega: Number,
+    minimum_miscibility_pressure: Number,
+    transition_width: Number = 500.0,
+) -> Number:
     """
     Compute pressure-dependent effective Todd-Longstaff omega parameter.
 
@@ -3255,11 +3253,11 @@ def compute_effective_todd_longstaff_omega(
 
 @numba.njit(cache=True)
 def compute_todd_longstaff_effective_viscosity(
-    oil_viscosity: float,
-    solvent_viscosity: float,
-    solvent_concentration: float,
-    omega: float = 0.67,
-) -> float:
+    oil_viscosity: Number,
+    solvent_viscosity: Number,
+    solvent_concentration: Number,
+    omega: Number = 0.67,
+) -> Number:
     """
     Compute effective viscosity using Todd-Longstaff mixing model.
 
@@ -3376,13 +3374,13 @@ def compute_todd_longstaff_effective_viscosity(
 
 @numba.njit(cache=True)
 def compute_todd_longstaff_effective_density(
-    oil_density: float,
-    solvent_density: float,
-    oil_viscosity: float,
-    solvent_viscosity: float,
-    solvent_concentration: float = 1.0,
-    omega: float = 0.67,
-) -> float:
+    oil_density: Number,
+    solvent_density: Number,
+    oil_viscosity: Number,
+    solvent_viscosity: Number,
+    solvent_concentration: Number = 1.0,
+    omega: Number = 0.67,
+) -> Number:
     """
     Compute effective density using Todd-Longstaff mixing model.
 

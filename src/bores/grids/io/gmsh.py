@@ -32,7 +32,6 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
-from bores.grids.utils import convert
 from bores.typing import UnitSystem
 
 __all__ = ["load_msh"]
@@ -106,7 +105,7 @@ def load_msh(
     """
     text = _resolve_source(source, encoding=encoding)
     grid = _parse_msh(text, metadata=metadata)
-    return convert(grid, to=unit_system) if unit_system is not None else grid
+    return grid.convert(unit_system) if unit_system is not None else grid
 
 
 def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
@@ -125,13 +124,14 @@ def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
             return source.read_text(encoding=encoding)
         except OSError as exc:
             raise GridImportError(f"Cannot read .msh file {source!r}: {exc}") from exc
-    candidate = Path(source)
+
+    candidate = Path(source)  # type: ignore[arg-type]
     if candidate.is_file():
         try:
             return candidate.read_text(encoding=encoding)
         except OSError as exc:
             raise GridImportError(f"Cannot read .msh file {source!r}: {exc}") from exc
-    return source
+    raise GridImportError(f"Invalid source: {source!r}")
 
 
 def _extract_section(text: str, section_name: str) -> typing.Optional[str]:
@@ -256,7 +256,7 @@ def _parse_msh(
         meta.update(metadata)
     try:
         return make_polyhedral_grid(
-            vertex_coordinates=vertex_coordinates,
+            vertex_coordinates=vertex_coordinates,  # type: ignore[arg-type]
             cell_blocks=cell_blocks,
             metadata=meta,
         )

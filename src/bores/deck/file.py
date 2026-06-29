@@ -1,4 +1,5 @@
 """Entry point for parsing Eclipse / GRDECL decks."""
+
 import typing
 from collections.abc import Collection
 
@@ -139,128 +140,126 @@ T = TypeVar("T")
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
 
-DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
-    {
-        ### RUNSPEC ###
-        DISGAS,
-        EQLDIMS,
-        FIELD,
-        GAS,
-        LAB,
-        METRIC,
-        NOSIM,
-        OIL,
-        REGDIMS,
-        START,
-        TABDIMS,
-        TITLE,
-        UNIFIN,
-        UNIFOUT,
-        VAPOIL,
-        WATER,
-        WELLDIMS,
-        ### GRID ###
-        ACTNUM,
-        COORD,
-        DIMENS,
-        DX,
-        DXV,
-        DY,
-        DYV,
-        DZ,
-        DZV,
-        FAULTS,
-        GRIDUNIT,
-        MAPAXES,
-        MAPUNIT,
-        MAPUNITS,
-        MULTFLT,
-        MULTX,
-        MULTX_MINUS,
-        MULTY,
-        MULTY_MINUS,
-        MULTZ,
-        MULTZ_MINUS,
-        NNC,
-        NTG,
-        PERMX,
-        PERMY,
-        PERMZ,
-        PINCH,
-        PINCHOUT,
-        PORO,
-        PORV,
-        SPECGRID,
-        TOPS,
-        ZCORN,
-        ### REGIONS ###
-        EQLNUM,
-        FIPNUM,
-        IMBNUM,
-        PVTNUM,
-        ROCKNUM,
-        SATNUM,
-        ### PROPS ###
-        DENSITY,
-        PVCO,
-        PVDG,
-        PVDO,
-        PVTG,
-        PVTO,
-        PVTW,
-        ROCK,
-        ROCKTAB,
-        SGFN,
-        SGOF,
-        SOF2,
-        SOF3,
-        SWFN,
-        SWOF,
-        ### SOLUTION ###
-        EQUIL,
-        PRESSURE,
-        RESTART,
-        RS,
-        RV,
-        SGAS,
-        SOIL,
-        SWAT,
-        RTEMP,
-        TEMPVD,
-        ### SCHEDULE ###
-        COMPDAT,
-        DATES,
-        GCONINJE,
-        GCONPROD,
-        GRUPTREE,
-        TSTEP,
-        WECON,
-        WELOPEN,
-        WELSPECS,
-        WELTARG,
-        WCONINJE,
-        WCONPROD,
-        WPIMULT,
-        WTEST,
-        ### SUMMARY ###
-        FGPR,
-        FGPT,
-        FOPR,
-        FOPT,
-        FWPR,
-        FWPT,
-        RGIP,
-        ROIP,
-        RPTRST,
-        RPTSCHED,
-        RWIP,
-        WBHP,
-        WGPR,
-        WOPR,
-        WTHP,
-        WWPR,
-    }
-)
+DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset({
+    ### RUNSPEC ###
+    DISGAS,
+    EQLDIMS,
+    FIELD,
+    GAS,
+    LAB,
+    METRIC,
+    NOSIM,
+    OIL,
+    REGDIMS,
+    START,
+    TABDIMS,
+    TITLE,
+    UNIFIN,
+    UNIFOUT,
+    VAPOIL,
+    WATER,
+    WELLDIMS,
+    ### GRID ###
+    ACTNUM,
+    COORD,
+    DIMENS,
+    DX,
+    DXV,
+    DY,
+    DYV,
+    DZ,
+    DZV,
+    FAULTS,
+    GRIDUNIT,
+    MAPAXES,
+    MAPUNIT,
+    MAPUNITS,
+    MULTFLT,
+    MULTX,
+    MULTX_MINUS,
+    MULTY,
+    MULTY_MINUS,
+    MULTZ,
+    MULTZ_MINUS,
+    NNC,
+    NTG,
+    PERMX,
+    PERMY,
+    PERMZ,
+    PINCH,
+    PINCHOUT,
+    PORO,
+    PORV,
+    SPECGRID,
+    TOPS,
+    ZCORN,
+    ### REGIONS ###
+    EQLNUM,
+    FIPNUM,
+    IMBNUM,
+    PVTNUM,
+    ROCKNUM,
+    SATNUM,
+    ### PROPS ###
+    DENSITY,
+    PVCO,
+    PVDG,
+    PVDO,
+    PVTG,
+    PVTO,
+    PVTW,
+    ROCK,
+    ROCKTAB,
+    SGFN,
+    SGOF,
+    SOF2,
+    SOF3,
+    SWFN,
+    SWOF,
+    ### SOLUTION ###
+    EQUIL,
+    PRESSURE,
+    RESTART,
+    RS,
+    RV,
+    SGAS,
+    SOIL,
+    SWAT,
+    RTEMP,
+    TEMPVD,
+    ### SCHEDULE ###
+    COMPDAT,
+    DATES,
+    GCONINJE,
+    GCONPROD,
+    GRUPTREE,
+    TSTEP,
+    WECON,
+    WELOPEN,
+    WELSPECS,
+    WELTARG,
+    WCONINJE,
+    WCONPROD,
+    WPIMULT,
+    WTEST,
+    ### SUMMARY ###
+    FGPR,
+    FGPT,
+    FOPR,
+    FOPT,
+    FWPR,
+    FWPT,
+    RGIP,
+    ROIP,
+    RPTRST,
+    RPTSCHED,
+    RWIP,
+    WBHP,
+    WGPR,
+    WOPR,
+    WTHP,
+    WWPR,
+})
 
 
 class DeckFile:
@@ -298,7 +297,14 @@ class DeckFile:
     ```
     """
 
-    __slots__ = ("_deck", "_keywords", "_cache", "_operations", "dimensions")
+    __slots__ = (
+        "_deck",
+        "_keywords",
+        "_cache",
+        "_operations",
+        "dimensions",
+        "unit_system",
+    )
 
     def __init__(
         self,
@@ -357,7 +363,7 @@ class DeckFile:
                 nz=int(parsed["nz"]),
             )
         return None
-    
+
     def _resolve_unit_system(self) -> UnitSystem:
         """
         Resolve the unit system from the RUNSPEC unit keywords.
@@ -395,7 +401,7 @@ class DeckFile:
             self._keywords[keyword.name] = keyword
             self._cache.pop(keyword.name, None)
 
-    def has(self, k: typing.Union[str, Keyword[typing.Any]],/) -> bool:
+    def has(self, k: typing.Union[str, Keyword[typing.Any]], /) -> bool:
         """Return whether `k` occurs anywhere in the deck."""
         if isinstance(k, Keyword):
             return self._deck.has(k.name)

@@ -13,7 +13,7 @@ from scipy.interpolate import (  # type: ignore[import-untyped]
 )
 from typing_extensions import Self
 
-from bores.constants import c
+from bores.constants import UnitConversionTable, c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties import PVT
@@ -24,9 +24,11 @@ from bores.tables.pvt.data import PVTData, PVTDataSet
 from bores.typing import (
     FloatArray,
     FluidPhase,
+    Number,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
+    UnitSystem,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,9 +131,29 @@ class PVTRegions(StoreSerializable):
         )
         return cls(regions=regions)
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PVTRegions` with all region tables converted to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `PVTRegions` in *target* units.
+        """
+        return self.__class__(
+            regions={
+                pvtnum: tables.convert(target, table=table)
+                for pvtnum, tables in self.regions.items()
+            }
+        )
+
 
 def _degenerate_temperature_axis(
-    temperature: float, dtype: npt.DTypeLike
+    temperature: Number, dtype: npt.DTypeLike
 ) -> npt.NDArray:
     """
     Build a minimal two-point temperature axis bracketing *temperature*.
@@ -167,9 +189,10 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
 
 def _build_oil_data_from_pvto(
     pvto_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, float]],
-    temperature: float,
+    density_record: typing.Optional[typing.Dict[str, Number]],
+    temperature: Number,
     pvt: typing.Optional[PVT],
+    unit_system: UnitSystem,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> PVTData:
     """
@@ -329,8 +352,8 @@ def _build_oil_data_from_pvto(
     ).astype(dtype)
 
     # Resolve reference densities: pvt takes precedence over DENSITY record
-    standard_oil_density: typing.Optional[float] = None
-    standard_gas_density: typing.Optional[float] = None
+    standard_oil_density: typing.Optional[Number] = None
+    standard_gas_density: typing.Optional[Number] = None
 
     if pvt is not None:
         standard_oil_density = pvt.standard_gas_density
@@ -377,14 +400,16 @@ def _build_oil_data_from_pvto(
             FloatArray[TwoDimensions], oil_compressibility_2d
         ),
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
 def _build_oil_data_from_pvdo(
     pvdo_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, float]],
-    temperature: float,
+    density_record: typing.Optional[typing.Dict[str, Number]],
+    temperature: Number,
     pvt: typing.Optional[PVT],
+    unit_system: UnitSystem,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> PVTData:
     """
@@ -427,7 +452,7 @@ def _build_oil_data_from_pvdo(
     # Dead oil: Rs = 0 everywhere
     solution_gor_2d = np.zeros((n_p, n_t), dtype=dtype)
 
-    standard_oil_density: typing.Optional[float] = None
+    standard_oil_density: typing.Optional[Number] = None
     if pvt is not None:
         standard_oil_density = pvt.standard_oil_density
     if standard_oil_density is None and density_record is not None:
@@ -462,14 +487,16 @@ def _build_oil_data_from_pvdo(
             FloatArray[TwoDimensions], oil_compressibility_2d
         ),
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
 def _build_gas_data_from_pvdg(
     pvdg_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, float]],
-    temperature: float,
+    density_record: typing.Optional[typing.Dict[str, Number]],
+    temperature: Number,
     pvt: typing.Optional[PVT],
+    unit_system: UnitSystem,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> PVTData:
     """
@@ -511,7 +538,7 @@ def _build_gas_data_from_pvdg(
     gas_fvf_2d = _broadcast_to_2d(gas_fvf_1d, n_t)
     gas_viscosity_2d = _broadcast_to_2d(gas_viscosity_1d, n_t)
 
-    standard_gas_density: typing.Optional[float] = None
+    standard_gas_density: typing.Optional[Number] = None
     if pvt is not None:
         standard_gas_density = pvt.standard_gas_density
     if standard_gas_density is None and density_record is not None:
@@ -545,14 +572,16 @@ def _build_gas_data_from_pvdg(
             FloatArray[TwoDimensions], gas_compressibility_2d
         ),
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
 def _build_gas_data_from_pvtg(
     pvtg_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, float]],
-    temperature: float,
+    density_record: typing.Optional[typing.Dict[str, Number]],
+    temperature: Number,
     pvt: typing.Optional[PVT],
+    unit_system: UnitSystem,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> PVTData:
     """
@@ -643,8 +672,8 @@ def _build_gas_data_from_pvtg(
             )(rv_values)
 
     # Resolve reference densities
-    standard_gas_density: typing.Optional[float] = None
-    standard_oil_density: typing.Optional[float] = None
+    standard_gas_density: typing.Optional[Number] = None
+    standard_oil_density: typing.Optional[Number] = None
 
     if pvt is not None:
         standard_oil_density = pvt.standard_gas_density
@@ -700,15 +729,17 @@ def _build_gas_data_from_pvtg(
             FloatArray[TwoDimensions], gas_compressibility_2d
         ),
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
 def _build_water_data_from_pvtw(
-    pvtw_record: typing.Dict[str, float],
-    density_record: typing.Optional[typing.Dict[str, float]],
-    temperature: float,
+    pvtw_record: typing.Dict[str, Number],
+    density_record: typing.Optional[typing.Dict[str, Number]],
+    temperature: Number,
     pvt: typing.Optional[PVT],
-    salinity: float = 0.0,
+    unit_system: UnitSystem,
+    salinity: Number = 0.0,
     n_pressure_points: int = 50,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> PVTData:
@@ -775,7 +806,7 @@ def _build_water_data_from_pvtw(
     water_fvf_3d = water_fvf_2d[:, :, np.newaxis].astype(dtype)
     water_viscosity_3d = water_viscosity_2d[:, :, np.newaxis].astype(dtype)
 
-    standard_water_density: typing.Optional[float] = None
+    standard_water_density: typing.Optional[Number] = None
     if pvt is not None:
         standard_water_density = pvt.standard_water_density
     if standard_water_density is None and density_record is not None:
@@ -809,12 +840,13 @@ def _build_water_data_from_pvtw(
         ),
         gas_free_water_fvf_table=typing.cast(FloatArray[TwoDimensions], water_fvf_2d),
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
 def load_pvt_regions(
     deck_file: DeckFile,
-    temperature: float,
+    temperature: Number,
     *,
     interpolation_method: InterpolationMethod = "linear",
     validate: bool = True,
@@ -868,7 +900,7 @@ def load_pvt_regions(
         for x in [pvto_all, pvdo_all, pvco_all, pvtg_all, pvdg_all, pvtw_all]
         if x is not None
     )
-
+    unit_system = deck_file.unit_system
     table_kwargs: typing.Dict[str, typing.Any] = dict(
         interpolation_method=interpolation_method,
         validate=validate,
@@ -882,7 +914,7 @@ def load_pvt_regions(
         pvtnum = region_idx + 1  # 1-based
 
         # Density record for this region
-        density_record: typing.Optional[typing.Dict[str, float]] = None
+        density_record: typing.Optional[typing.Dict[str, Number]] = None
         if density_all is not None and region_idx < len(density_all):
             # Each DENSITY region entry is a list containing one row dict
             region_rows = density_all[region_idx]
@@ -897,6 +929,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature,
                 pvt=pvt,
+                unit_system=unit_system,
                 dtype=dtype,
             )
         elif pvdo_all is not None and region_idx < len(pvdo_all):
@@ -905,6 +938,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature,
                 pvt=pvt,
+                unit_system=unit_system,
                 dtype=dtype,
             )
         elif pvco_all is not None and region_idx < len(pvco_all):
@@ -932,6 +966,7 @@ def load_pvt_regions(
                     density_record=density_record,
                     temperature=temperature,
                     pvt=pvt,
+                    unit_system=unit_system,
                     dtype=dtype,
                 )
 
@@ -943,6 +978,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature,
                 pvt=pvt,
+                unit_system=unit_system,
                 dtype=dtype,
             )
         elif pvdg_all is not None and region_idx < len(pvdg_all):
@@ -951,6 +987,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature,
                 pvt=pvt,
+                unit_system=unit_system,
                 dtype=dtype,
             )
 
@@ -965,6 +1002,7 @@ def load_pvt_regions(
                     density_record=density_record,
                     temperature=temperature,
                     pvt=pvt,
+                    unit_system=unit_system,
                     salinity=salinity,
                     dtype=dtype,
                 )

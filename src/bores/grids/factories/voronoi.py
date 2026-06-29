@@ -11,23 +11,30 @@ from typing_extensions import TypeAlias
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import FaceVertexIndices, build_csr_face_arrays
-from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions, UnitSystem
+from bores.typing import (
+    IntArray,
+    Number,
+    NumberArray,
+    OneDimension,
+    TwoDimensions,
+    UnitSystem,
+)
 
 __all__ = ["make_voronoi_grid"]
 
-SeedCoordinates2D: TypeAlias = FloatArray[TwoDimensions]
+SeedCoordinates2D: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_seeds, 2)` - (x, y) Voronoi generator / seed coordinates."""
 
-SeedCoordinates3D: TypeAlias = FloatArray[TwoDimensions]
+SeedCoordinates3D: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_seeds, 3)` - (x, y, z) Voronoi generator / seed coordinates."""
 
-BoundingBox2D: TypeAlias = typing.Tuple[float, float, float, float]
+BoundingBox2D: TypeAlias = typing.Tuple[Number, Number, Number, Number]
 """`(x_min, x_max, y_min, y_max)` axis-aligned bounding rectangle."""
 
-BoundingBox3D: TypeAlias = typing.Tuple[float, float, float, float, float, float]
+BoundingBox3D: TypeAlias = typing.Tuple[Number, Number, Number, Number, Number, Number]
 """`(x_min, x_max, y_min, y_max, z_min, z_max)` axis-aligned bounding box."""
 
-LayerThicknessArray: TypeAlias = FloatArray[OneDimension]
+LayerThicknessArray: TypeAlias = NumberArray[OneDimension]
 """Shape `(n_layers,)` - positive thickness of each vertical layer."""
 
 PerCellFaceLists: TypeAlias = typing.List[typing.List[FaceVertexIndices]]
@@ -42,29 +49,29 @@ def make_voronoi_grid(
     *,
     bounding_box: typing.Optional[typing.Union[BoundingBox2D, BoundingBox3D]] = None,
     # 2-D extruded parameters (ignored for 3-D seeds)
-    z_top: float = 0.0,
-    layer_thicknesses: typing.Union[float, npt.ArrayLike] = 1.0,
+    z_top: Number = 0.0,
+    layer_thicknesses: typing.Union[Number, npt.ArrayLike] = 1.0,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
 ) -> Grid:
     """
@@ -154,8 +161,8 @@ def make_voronoi_grid(
             face_vertex_offsets,
             face_cell_indices,
         ) = _make_2d_voronoi_grid(
-            seeds=seeds,
-            bounding_box=_resolve_2d_bounding_box(seeds, bounding_box),
+            seeds=seeds,  # type: ignore[arg-type]
+            bounding_box=_resolve_2d_bounding_box(seeds, bounding_box),  # type: ignore[arg-type]
             z_top=z_top,
             layer_thicknesses=_resolve_layer_thicknesses(layer_thicknesses),
         )
@@ -167,8 +174,8 @@ def make_voronoi_grid(
             face_vertex_offsets,
             face_cell_indices,
         ) = _make_3d_voronoi_grid(
-            seeds=seeds,
-            bounding_box=_resolve_3d_bounding_box(seeds, bounding_box),
+            seeds=seeds,  # type: ignore[arg-type]
+            bounding_box=_resolve_3d_bounding_box(seeds, bounding_box),  # type: ignore[arg-type]
         )
 
     return Grid(
@@ -192,10 +199,10 @@ def make_voronoi_grid(
 def _make_2d_voronoi_grid(
     seeds: SeedCoordinates2D,
     bounding_box: BoundingBox2D,
-    z_top: float,
+    z_top: Number,
     layer_thicknesses: LayerThicknessArray,
 ) -> typing.Tuple[
-    FloatArray[TwoDimensions],
+    NumberArray[TwoDimensions],
     IntArray[OneDimension],
     IntArray[OneDimension],
     IntArray[TwoDimensions],
@@ -354,7 +361,7 @@ def _make_2d_voronoi_grid(
             b_top = _global_vert(b_vert_idx, top_level)
             b_bottom = _global_vert(b_vert_idx, bottom_level)
 
-            signed_area = _signed_area_2d(a_xy, b_xy, owner_seed_xy)
+            signed_area = _signed_area_2d(a_xy, b_xy, owner_seed_xy)  # type: ignore[arg-type]
             if signed_area > 0:
                 lateral_face: FaceVertexIndices = [a_top, b_top, b_bottom, a_bottom]
             else:
@@ -417,7 +424,7 @@ def _make_2d_voronoi_grid(
 def _make_3d_voronoi_grid(
     seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
 ) -> typing.Tuple[
-    FloatArray[TwoDimensions],
+    NumberArray[TwoDimensions],
     IntArray[OneDimension],
     IntArray[OneDimension],
     IntArray[TwoDimensions],
@@ -481,7 +488,7 @@ def _make_3d_voronoi_grid(
         # Orient face vertices CCW from owner (normal pointing toward neighbour)
         oriented_vert_indices = _orient_face_vertices(
             vert_index_list=list(ridge_vert_indices),
-            face_verts_3d=face_verts_3d,
+            face_verts_3d=face_verts_3d,  # type: ignore[arg-type]
             direction_to_neighbour=direction_to_neighbour,
         )
 
@@ -535,7 +542,7 @@ def _build_2d_mirror_seeds(
 @numba.njit(cache=True)
 def _build_3d_mirror_seeds(
     seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
-) -> FloatArray[TwoDimensions]:
+) -> NumberArray[TwoDimensions]:
     """
     Build mirror seeds reflected across each face of a 3-D bounding box.
 
@@ -560,8 +567,8 @@ def _build_3d_mirror_seeds(
 
 def _orient_face_vertices(
     vert_index_list: FaceVertexIndices,
-    face_verts_3d: FloatArray[TwoDimensions],
-    direction_to_neighbour: FloatArray[TwoDimensions],
+    face_verts_3d: NumberArray[TwoDimensions],
+    direction_to_neighbour: NumberArray[TwoDimensions],
 ) -> FaceVertexIndices:
     """
     Return `vert_index_list`, possibly reversed, so Newell's normal aligns
@@ -585,8 +592,8 @@ def _orient_face_vertices(
 
 @numba.njit(cache=True)
 def _compute_newell_normal(
-    verts: FloatArray[TwoDimensions],
-) -> FloatArray[OneDimension]:
+    verts: NumberArray[TwoDimensions],
+) -> NumberArray[OneDimension]:
     """
     Compute the (unnormalised) Newell normal for a planar polygon.
 
@@ -602,14 +609,14 @@ def _compute_newell_normal(
         n[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])
         n[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])
     magnitude = np.linalg.norm(n)
-    return n / magnitude if magnitude > 0.0 else n
+    return n / magnitude if magnitude > 0.0 else n  # type: ignore[return-value]
 
 
 @numba.njit(cache=True)
 def _signed_area_2d(
-    a: FloatArray[OneDimension],
-    b: FloatArray[OneDimension],
-    point: FloatArray[OneDimension],
+    a: NumberArray[OneDimension],
+    b: NumberArray[OneDimension],
+    point: NumberArray[OneDimension],
 ) -> float:
     """
     Compute the 2-D signed area of triangle `(a, b, point)`.
@@ -628,9 +635,9 @@ def _signed_area_2d(
 
 
 def _compute_depth_nodes(
-    z_top: float,
+    z_top: Number,
     layer_thicknesses: LayerThicknessArray,
-) -> FloatArray[OneDimension]:
+) -> NumberArray[OneDimension]:
     """
     Compute the depth of every node surface from `z_top` downward.
 
@@ -638,11 +645,11 @@ def _compute_depth_nodes(
     :param layer_thicknesses: Shape `(n_layers,)` positive thickness per layer.
     :returns: Shape `(n_layers + 1,)` depth node array starting at `z_top`.
     """
-    return np.concatenate([[z_top], z_top + np.cumsum(layer_thicknesses)])
+    return np.concatenate([[z_top], z_top + np.cumsum(layer_thicknesses)])  # type: ignore[return-value]
 
 
 def _resolve_2d_bounding_box(
-    seeds: FloatArray[TwoDimensions],
+    seeds: NumberArray[TwoDimensions],
     bounding_box: typing.Optional[BoundingBox2D],
 ) -> BoundingBox2D:
     """
@@ -677,7 +684,7 @@ def _resolve_2d_bounding_box(
 
 
 def _resolve_3d_bounding_box(
-    seeds: FloatArray[TwoDimensions], bounding_box: typing.Optional[BoundingBox3D]
+    seeds: NumberArray[TwoDimensions], bounding_box: typing.Optional[BoundingBox3D]
 ) -> BoundingBox3D:
     """
     Resolve or infer a 3-D bounding box from seed extents.

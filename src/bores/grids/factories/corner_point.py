@@ -31,8 +31,8 @@ from bores.grids.factories.base import (
     _FaceRecord,
 )
 from bores.typing import (
-    FloatArray,
     IntArray,
+    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
@@ -42,10 +42,10 @@ from bores.typing import (
 __all__ = ["make_corner_point_grid"]
 
 
-CoordArray: typing.TypeAlias = FloatArray[ThreeDimensions]
+CoordArray: typing.TypeAlias = NumberArray[ThreeDimensions]
 """Corner-point COORD array, shape `(NY+1, NX+1, 6)`."""
 
-ZCornArray: typing.TypeAlias = FloatArray[ThreeDimensions]
+ZCornArray: typing.TypeAlias = NumberArray[ThreeDimensions]
 """Corner-point ZCORN array, shape `(NZ*2, NY*2, NX*2)`."""
 
 ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
@@ -84,28 +84,28 @@ def make_corner_point_grid(
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = None,
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
         typing.Mapping[str, float]
     ] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     positive_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
     negative_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = None,
 ) -> Grid:
     """
@@ -157,9 +157,9 @@ def make_corner_point_grid(
         )
 
     if actnum is None:
-        actnum_arr: ActNumArray = np.ones((nz, ny, nx), dtype=np.int32)
+        actnum_arr = typing.cast(ActNumArray, np.ones((nz, ny, nx), dtype=np.int32))
     else:
-        actnum_arr: ActNumArray = np.asarray(actnum, dtype=np.int32)
+        actnum_arr = typing.cast(ActNumArray, np.asarray(actnum, dtype=np.int32))
         if actnum_arr.shape != (nz, ny, nx):
             raise ValidationError(
                 f"actnum shape {actnum_arr.shape!r} does not match "
@@ -188,8 +188,8 @@ def make_corner_point_grid(
         cell_volumes,
         cell_centroids,
     ) = _compute_corner_point_geometry(
-        coord=coord_arr,
-        zcorn=zcorn_arr,
+        coord=coord_arr,  # type: ignore[arg-type]
+        zcorn=zcorn_arr,  # type: ignore[arg-type]
         actnum=actnum_arr,
         vertex_tolerance=vertex_tolerance,
         pinch_tolerance=pinch_tolerance,
@@ -234,13 +234,11 @@ def make_corner_point_grid(
 
     if geo_nnc_pairs is not None and len(geo_nnc_pairs) > 0:
         geo_transmissibilities = np.full(len(geo_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append(
-            (
-                np.asarray(geo_nnc_pairs, dtype=np.int32),
-                geo_nnc_connection_types,
-                geo_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            np.asarray(geo_nnc_pairs, dtype=np.int32),
+            geo_nnc_connection_types,
+            geo_transmissibilities,
+        ))
 
     fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
     if fault_nnc_pairs:
@@ -253,9 +251,11 @@ def make_corner_point_grid(
         fault_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append(
-            (fault_pairs, fault_connection_types, fault_transmissibilities)
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_connection_types,
+            fault_transmissibilities,
+        ))
         # Build nnc_fault_indices: fault name -> positions into the merged NNC array.
         # The offset is the total NNC count already accumulated before this block.
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
@@ -272,9 +272,11 @@ def make_corner_point_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (user_nnc_pairs, user_nnc_connection_types, user_nnc_transmissibilities)
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -285,9 +287,9 @@ def make_corner_point_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8)
+        merged_nnc_connection_types = np.concatenate([
+            t for _, t, _ in all_nnc_parts
+        ]).astype(np.int8)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         # Only store if at least one value is finite (avoids all-NaN array)
         merged_nnc_transmissibilities = (
@@ -296,7 +298,7 @@ def make_corner_point_grid(
             else None
         )
         if fault_nnc_pairs:
-            merged_nnc_fault_indices = {
+            merged_nnc_fault_indices = {  # type: ignore[arg-type]
                 name: np.asarray(idxs, dtype=np.int32)
                 for name, idxs in fault_nnc_indices.items()
             }
@@ -311,10 +313,10 @@ def make_corner_point_grid(
         unit_system=unit_system,
         metadata=metadata,
         cell_statuses=cell_statuses,
-        face_connection_types=face_connection_types,
-        nnc_cell_indices=merged_nnc_pairs,
-        nnc_connection_types=merged_nnc_connection_types,
-        nnc_transmissibilities=merged_nnc_transmissibilities,
+        face_connection_types=face_connection_types,  # type: ignore[arg-type]
+        nnc_cell_indices=merged_nnc_pairs,  # type: ignore[arg-type]
+        nnc_connection_types=merged_nnc_connection_types,  # type: ignore[arg-type]
+        nnc_transmissibilities=merged_nnc_transmissibilities,  # type: ignore[arg-type]
         nnc_fault_indices=merged_nnc_fault_indices,
         fault_face_indices=fault_face_indices,
         fault_transmissibility_multipliers=(
@@ -333,10 +335,10 @@ def make_corner_point_grid(
 
 @numba.njit(cache=True)
 def _interpolate_pillar_point(
-    pillar_top: FloatArray[OneDimension],
-    pillar_bottom: FloatArray[OneDimension],
+    pillar_top: NumberArray[OneDimension],
+    pillar_bottom: NumberArray[OneDimension],
     z: float,
-) -> FloatArray[OneDimension]:
+) -> NumberArray[OneDimension]:
     """
     Interpolate an (x, y, z) position along a pillar at depth `z`.
 
@@ -365,7 +367,7 @@ def _compute_active_cell_corner_coordinates(
     active_cells: IntArray[TwoDimensions],
     coord: CoordArray,
     zcorn: ZCornArray,
-) -> FloatArray[ThreeDimensions]:
+) -> NumberArray[ThreeDimensions]:
     """
     Compute all active-cell corner coordinates.
 
@@ -472,8 +474,8 @@ def _compute_corner_point_geometry(
     typing.Optional[npt.NDArray[np.int32]],
     npt.NDArray[np.int8],
     IntArray[TwoDimensions],
-    FloatArray[OneDimension],
-    FloatArray[TwoDimensions],
+    NumberArray[OneDimension],
+    NumberArray[TwoDimensions],
 ]:
     """
     Compute 3-D corner coordinates and build face arrays for a corner-point grid.
@@ -495,7 +497,7 @@ def _compute_corner_point_geometry(
         )
 
     corner_coordinates = _compute_active_cell_corner_coordinates(
-        active_cells=active_cells,
+        active_cells=active_cells,  # type: ignore[arg-type]
         coord=coord,
         zcorn=zcorn,
     )
@@ -521,7 +523,11 @@ def _compute_corner_point_geometry(
 
     for cell_idx in range(n_active):
         vtk_verts = [int(corner_global[cell_idx, vtk_to_corner[v]]) for v in range(8)]
-        pinched = _is_cell_pinched(vtk_verts, vertex_coordinates, pinch_tolerance)
+        pinched = _is_cell_pinched(
+            vtk_verts,
+            vertex_coordinates,  # type: ignore[arg-type]
+            pinch_tolerance,
+        )
         if pinched:
             n_pinched += 1
 
@@ -589,9 +595,10 @@ def _compute_corner_point_geometry(
             )
 
     cell_volumes, cell_centroids = _compute_hex_volumes_and_centroids(
-        vtk_corner_indices, vertex_coordinates
+        vtk_corner_indices,
+        vertex_coordinates,  # type: ignore[arg-type]
     )
-    return (
+    return (  # type: ignore[return-value]
         vertex_coordinates,
         np.asarray(flat_face_vertex_indices, dtype=np.int32),
         np.asarray(face_vertex_offsets, dtype=np.int32),
@@ -688,7 +695,7 @@ def _resolve_fault_face_indices(
             else:
                 result[record.name] = face_indices
 
-    return (
+    return (  # type: ignore[return-value]
         {
             name: np.unique(np.asarray(idxs, dtype=np.int32))
             for name, idxs in result.items()
@@ -699,15 +706,15 @@ def _resolve_fault_face_indices(
 
 @numba.njit(cache=True)
 def _accumulate_pillars(
-    cell_min_xyz: FloatArray[TwoDimensions],
-    cell_max_xyz: FloatArray[TwoDimensions],
+    cell_min_xyz: NumberArray[TwoDimensions],
+    cell_max_xyz: NumberArray[TwoDimensions],
     nx: int,
     ny: int,
     nz: int,
-    pillar_x: FloatArray[TwoDimensions],
-    pillar_y: FloatArray[TwoDimensions],
-    pillar_z_top: FloatArray[TwoDimensions],
-    pillar_z_bottom: FloatArray[TwoDimensions],
+    pillar_x: NumberArray[TwoDimensions],
+    pillar_y: NumberArray[TwoDimensions],
+    pillar_z_top: NumberArray[TwoDimensions],
+    pillar_z_bottom: NumberArray[TwoDimensions],
     pillar_count: IntArray[TwoDimensions],
 ) -> None:
     """
@@ -756,8 +763,8 @@ def _accumulate_pillars(
 
 @numba.njit(parallel=True, cache=True)
 def _fill_zcorn(
-    cell_min_xyz: FloatArray[TwoDimensions],
-    cell_max_xyz: FloatArray[TwoDimensions],
+    cell_min_xyz: NumberArray[TwoDimensions],
+    cell_max_xyz: NumberArray[TwoDimensions],
     nx: int,
     ny: int,
     nz: int,
@@ -791,9 +798,9 @@ def _fill_zcorn(
 
 @numba.njit(parallel=True, cache=True)
 def _compute_hex_volumes_and_centroids(
-    vtk_corner_indices: npt.NDArray[np.int32],
-    vertex_coordinates: FloatArray[TwoDimensions],
-) -> typing.Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    vtk_corner_indices: IntArray[TwoDimensions],
+    vertex_coordinates: NumberArray[TwoDimensions],
+) -> typing.Tuple[NumberArray[OneDimension], NumberArray[TwoDimensions]]:
     """
     Compute hexahedral cell volumes and centroids via 5-tetrahedron decomposition.
 

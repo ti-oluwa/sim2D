@@ -9,19 +9,11 @@ import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
 
 from bores.precision import get_dtype
+from bores.typing import CellArray, NDimension, Number, NumberArray, NumberOrArray
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "array",
-    "apply_mask",
-    "clip",
-    "clip_scalar",
-    "get_mask",
-    "is_array",
-    "max_",
-    "min_",
-]
+__all__ = ["array", "clip", "is_array"]
 
 
 def array(obj: typing.Any, **kwargs: typing.Any):
@@ -64,149 +56,149 @@ def is_array(x: typing.Any) -> bool:
 
 
 @numba.njit(cache=True)
-def _apply_mask_2d(arr: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
+def _apply_mask_2d(a: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
     """
     Apply values (scalar or array) to a 2D array where mask is True (in-place).
 
-    :param arr: 2D array to modify
-    :param mask: 2D boolean mask with same shape as arr
+    :param a: 2D array to modify
+    :param mask: 2D boolean mask with same shape as a
     :param values: scalar or 2D array of values to assign where mask is True
     """
-    nx, ny = arr.shape
+    nx, ny = a.shape
 
     for i in numba.prange(nx):  # type: ignore
         for j in range(ny):
             if mask[i, j]:
-                arr[i, j] = values[i, j]
+                a[i, j] = values[i, j]
 
 
 @numba.njit(cache=True)
-def _apply_mask_3d(arr: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
+def _apply_mask_3d(a: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
     """
     Apply values (scalar or array) to a 3D array where mask is True (in-place).
 
-    :param arr: 3D array to modify
-    :param mask: 3D boolean mask with same shape as arr
+    :param a: 3D array to modify
+    :param mask: 3D boolean mask with same shape as a
     :param values: scalar or 3D array of values to assign where mask is True
     """
-    nx, ny, nz = arr.shape
+    nx, ny, nz = a.shape
     for i in numba.prange(nx):  # type: ignore
         for j in range(ny):
             for k in range(nz):
                 if mask[i, j, k]:
-                    arr[i, j, k] = values[i, j, k]
+                    a[i, j, k] = values[i, j, k]
 
 
 @numba.njit(cache=True)
-def _apply_mask_nd(arr: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
+def _apply_mask_nd(a: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
     """
     Apply values (scalar or array) to an N-dimensional array where mask is True (in-place).
 
-    :param arr: N-dimensional array to modify
-    :param mask: N-dimensional boolean mask with same shape as arr
+    :param a: N-dimensional array to modify
+    :param mask: N-dimensional boolean mask with same shape as a
     :param values: scalar or N-dimensional array of values to assign where mask is True
     """
-    for idx in np.ndindex(arr.shape):
+    for idx in np.ndindex(a.shape):
         if mask[idx]:
-            arr[idx] = values[idx]
+            a[idx] = values[idx]
 
 
 @numba.njit(cache=True)
-def apply_mask(arr: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
+def apply_mask(a: npt.NDArray, mask: npt.NDArray, values: npt.NDArray) -> None:
     """
     Dispatcher to apply scalar or array values to an array where mask is True.
 
-    :param arr: Array to modify (2D, 3D, or N-dimensional)
-    :param mask: Boolean mask with same shape as arr
+    :param a: Array to modify (2D, 3D, or N-dimensional)
+    :param mask: Boolean mask with same shape as a
     :param values: scalar or array of values to assign where mask is True
     """
-    ndim = arr.ndim
+    ndim = a.ndim
     if ndim == 2:
-        _apply_mask_2d(arr, mask, values)
+        _apply_mask_2d(a, mask, values)
     elif ndim == 3:
-        _apply_mask_3d(arr, mask, values)
+        _apply_mask_3d(a, mask, values)
     else:
-        _apply_mask_nd(arr, mask, values)
+        _apply_mask_nd(a, mask, values)
 
 
 @numba.njit(cache=True)
-def _get_mask_2d(arr: npt.NDArray, mask: npt.NDArray, fill_value: float):
+def _get_mask_2d(a: npt.NDArray, mask: npt.NDArray, fill_value: float):
     """
     Return a new 2D array where values are kept if mask is True, otherwise replaced with fill_value.
 
-    :param arr: 2D input array
-    :param mask: 2D boolean mask with same shape as arr
+    :param a: 2D input array
+    :param mask: 2D boolean mask with same shape as a
     :param fill_value: Scalar value to fill where mask is False
     :return: 2D array with masked values applied
     """
-    nx, ny = arr.shape
-    out = np.empty_like(arr)
+    nx, ny = a.shape
+    out = np.empty_like(a)
     for i in numba.prange(nx):  # type: ignore
         for j in range(ny):
             if mask[i, j]:
-                out[i, j] = arr[i, j]
+                out[i, j] = a[i, j]
             else:
                 out[i, j] = fill_value
     return out
 
 
 @numba.njit(cache=True)
-def _get_mask_3d(arr: npt.NDArray, mask: npt.NDArray, fill_value: float):
+def _get_mask_3d(a: npt.NDArray, mask: npt.NDArray, fill_value: float):
     """
     Return a new 3D array where values are kept if mask is True, otherwise replaced with fill_value.
 
-    :param arr: 3D input array
-    :param mask: 3D boolean mask with same shape as arr
+    :param a: 3D input array
+    :param mask: 3D boolean mask with same shape as a
     :param fill_value: Scalar value to fill where mask is False
     :return: 3D array with masked values applied
     """
-    nx, ny, nz = arr.shape
-    out = np.empty_like(arr)
+    nx, ny, nz = a.shape
+    out = np.empty_like(a)
     for i in numba.prange(nx):  # type: ignore
         for j in range(ny):
             for k in range(nz):
                 if mask[i, j, k]:
-                    out[i, j, k] = arr[i, j, k]
+                    out[i, j, k] = a[i, j, k]
                 else:
                     out[i, j, k] = fill_value
     return out
 
 
 @numba.njit(cache=True)
-def _get_mask_nd(arr: npt.NDArray, mask: npt.NDArray, fill_value: float):
+def _get_mask_nd(a: npt.NDArray, mask: npt.NDArray, fill_value: float):
     """
     Return a new N-dimensional array where values are kept if mask is True, otherwise replaced with fill_value.
 
-    :param arr: N-dimensional input array
-    :param mask: N-dimensional boolean mask with same shape as arr
+    :param a: N-dimensional input array
+    :param mask: N-dimensional boolean mask with same shape as a
     :param fill_value: Scalar value to fill where mask is False
     :return: N-dimensional array with masked values applied
     """
-    out = np.empty_like(arr)
-    for idx in np.ndindex(arr.shape):
+    out = np.empty_like(a)
+    for idx in np.ndindex(a.shape):
         if mask[idx]:
-            out[idx] = arr[idx]
+            out[idx] = a[idx]
         else:
             out[idx] = fill_value
     return out
 
 
 @numba.njit(cache=True)
-def get_mask(arr: npt.NDArray, mask: npt.NDArray, fill_value: float = np.nan):
+def get_mask(a: npt.NDArray, mask: npt.NDArray, fill_value: float = np.nan):
     """
     Dispatcher to return a masked copy of an array.
 
-    :param arr: Input array (2D, 3D, or N-dimensional)
-    :param mask: Boolean mask with same shape as arr
+    :param a: Input array (2D, 3D, or N-dimensional)
+    :param mask: Boolean mask with same shape as a
     :param fill_value: Scalar value to fill where mask is False
     :return: Array with masked values applied
     """
-    ndim = arr.ndim
+    ndim = a.ndim
     if ndim == 2:
-        return _get_mask_2d(arr, mask, fill_value)
+        return _get_mask_2d(a, mask, fill_value)
     elif ndim == 3:
-        return _get_mask_3d(arr, mask, fill_value)
-    return _get_mask_nd(arr, mask, fill_value)
+        return _get_mask_3d(a, mask, fill_value)
+    return _get_mask_nd(a, mask, fill_value)
 
 
 # When used in pure-python, this called
@@ -287,9 +279,9 @@ def overload_to_1d(x, dtype=None):
     if isinstance(x, (numba.types.Float, numba.types.Integer)):
 
         def impl(x, dtype=None):
-            arr = np.empty(1, dtype=target_dtype)
-            arr[0] = x
-            return arr
+            a = np.empty(1, dtype=target_dtype)
+            a[0] = x
+            return a
 
         return impl
 
@@ -368,3 +360,84 @@ def _close_iter(iter: typing.Any) -> None:
 
 def is_scalar_like(value):
     return np.isscalar(value) or (isinstance(value, np.ndarray) and value.ndim == 0)
+
+
+@typing.overload
+def scale(a: NumberArray[NDimension], /, factor: Number) -> NumberArray[NDimension]: ...
+@typing.overload
+def scale(a: Number, /, factor: Number) -> Number: ...
+@typing.overload
+def scale(
+    a: typing.Optional[NumberArray[NDimension]], /, factor: Number
+) -> typing.Optional[NumberArray[NDimension]]: ...
+@typing.overload
+def scale(a: typing.Optional[Number], /, factor: Number) -> typing.Optional[Number]: ...
+
+
+def scale(
+    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
+) -> typing.Optional[NumberOrArray[NDimension]]:
+    """Return `a * factor` as the same dtype; identity when factor == 1.0."""
+    if a is None or factor == 1.0:
+        return a
+
+    result = a * factor
+    if isinstance(a, np.ndarray):
+        result = result.astype(a.dtype, copy=False)  # type: ignore[attr-defined]
+    return typing.cast(NumberOrArray[NDimension], result)
+
+
+@typing.overload
+def scale_non_empty(
+    a: NumberArray[NDimension], /, factor: Number
+) -> NumberArray[NDimension]: ...
+@typing.overload
+def scale_non_empty(a: Number, /, factor: Number) -> Number: ...
+@typing.overload
+def scale_non_empty(
+    a: typing.Optional[NumberArray[NDimension]], /, factor: Number
+) -> typing.Optional[NumberArray[NDimension]]: ...
+@typing.overload
+def scale_non_empty(
+    a: typing.Optional[Number], /, factor: Number
+) -> typing.Optional[Number]: ...
+
+
+def scale_non_empty(
+    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
+) -> typing.Optional[NumberOrArray[NDimension]]:
+    """Scale only if the optional array or float is non-empty and truthy."""
+    if isinstance(a, np.ndarray):
+        non_empty = a is not None and a.size > 0
+    else:
+        non_empty = bool(a)
+    return scale(a, factor) if non_empty else a
+
+
+@typing.overload
+def scale_and_offset(
+    a: NumberArray[NDimension], /, factor: Number, offset: Number
+) -> NumberArray[NDimension]: ...
+@typing.overload
+def scale_and_offset(a: Number, /, factor: Number, offset: Number) -> Number: ...
+@typing.overload
+def scale_and_offset(
+    a: typing.Optional[NumberArray[NDimension]], /, factor: Number, offset: Number
+) -> typing.Optional[NumberArray[NDimension]]: ...
+@typing.overload
+def scale_and_offset(
+    a: typing.Optional[Number], /, factor: Number, offset: Number
+) -> typing.Optional[Number]: ...
+
+
+def scale_and_offset(
+    a: typing.Optional[NumberOrArray[NDimension]], /, scale: Number, offset: Number
+) -> typing.Optional[NumberOrArray[NDimension]]:
+    """Return `a * scale + offset` as the same dtype; identity when trivial."""
+    if a is None or (scale == 1.0 and offset == 0.0):
+        return a
+
+    result = (a * scale) + offset
+    if isinstance(a, np.ndarray):
+        result = result.astype(a.dtype, copy=False)  # type: ignore[attr-defined]
+    return typing.cast(NumberOrArray[NDimension], result)

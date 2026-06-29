@@ -4,9 +4,9 @@ import numpy as np
 from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
-from bores.typing import FloatArray, IntArray, OneDimension, TwoDimensions
+from bores.typing import IntArray, NumberArray, OneDimension, TwoDimensions
 
-VertexCoordinates: TypeAlias = FloatArray[TwoDimensions]
+VertexCoordinates: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
 FaceVertexIndices: TypeAlias = typing.List[int]
@@ -106,7 +106,7 @@ def build_csr_face_arrays(
     vertex_coordinates: VertexCoordinates,
     per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexIndices]],
 ) -> typing.Tuple[
-    FloatArray[TwoDimensions],
+    VertexCoordinates,
     IntArray[OneDimension],
     IntArray[OneDimension],
     IntArray[TwoDimensions],
@@ -163,9 +163,15 @@ def build_csr_face_arrays(
 
     return (
         vertex_coordinates,
-        np.asarray(flat_face_vertex_indices, dtype=np.int32),
-        np.asarray(face_vertex_offsets, dtype=np.int32),
-        np.asarray(face_cell_pairs, dtype=np.int32),
+        typing.cast(
+            IntArray[OneDimension], np.asarray(flat_face_vertex_indices, dtype=np.int32)
+        ),
+        typing.cast(
+            IntArray[OneDimension], np.asarray(face_vertex_offsets, dtype=np.int32)
+        ),
+        typing.cast(
+            IntArray[TwoDimensions], np.asarray(face_cell_pairs, dtype=np.int32)
+        ),
     )
 
 
@@ -197,6 +203,11 @@ class FaultRecord(typing.NamedTuple):
     face_direction: str
 
 
-VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset(
-    {"I", "I-", "J", "J-", "K", "K-"}
-)
+VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset({
+    "I",
+    "I-",
+    "J",
+    "J-",
+    "K",
+    "K-",
+})

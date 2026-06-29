@@ -7,7 +7,9 @@ import attrs
 import numba
 import numpy as np
 from scipy.spatial import cKDTree
+from typing_extensions import Self
 
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.errors import (
     CellNotFoundError,
     InvalidFaceAreaError,
@@ -19,8 +21,9 @@ from bores.errors import (
 )
 from bores.serialization import Serializable
 from bores.typing import (
-    FloatArray,
     IntArray,
+    Number,
+    NumberArray,
     NumberOrArray,
     OneDimension,
     TwoDimensions,
@@ -132,11 +135,11 @@ _GEOMETRY_TOLERANCE: float = 1e-14
 def _compute_face_geometry(
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
-    vertex_coordinates: FloatArray[TwoDimensions],
+    vertex_coordinates: NumberArray[TwoDimensions],
 ) -> typing.Tuple[
-    FloatArray[TwoDimensions],
-    FloatArray[OneDimension],
-    FloatArray[TwoDimensions],
+    NumberArray[TwoDimensions],
+    NumberArray[OneDimension],
+    NumberArray[TwoDimensions],
 ]:
     """
     Compute face centroids, areas, and unit outward normals via Newell's method.
@@ -204,9 +207,9 @@ def _compute_cell_volumes_and_centroids(
     face_cell_indices: IntArray[TwoDimensions],
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
-    vertex_coordinates: FloatArray[TwoDimensions],
+    vertex_coordinates: NumberArray[TwoDimensions],
     n_cells: int,
-) -> typing.Tuple[FloatArray[OneDimension], FloatArray[TwoDimensions]]:
+) -> typing.Tuple[NumberArray[OneDimension], NumberArray[TwoDimensions]]:
     """
     Compute cell volumes and centroids via the divergence theorem.
 
@@ -287,9 +290,9 @@ def _compute_cell_bounding_boxes(
     face_cell_indices: IntArray[TwoDimensions],
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
-    vertex_coordinates: FloatArray[TwoDimensions],
+    vertex_coordinates: NumberArray[TwoDimensions],
     n_cells: int,
-) -> typing.Tuple[FloatArray[TwoDimensions], FloatArray[TwoDimensions]]:
+) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
     """
     Compute per-cell axis-aligned bounding boxes.
 
@@ -352,16 +355,16 @@ def _compute_cell_bounding_boxes(
 class Grid(
     Serializable,
     fields={
-        "vertex_coordinates": FloatArray[TwoDimensions],
+        "vertex_coordinates": NumberArray[TwoDimensions],
         "face_vertex_indices": IntArray[OneDimension],
         "face_vertex_offsets": IntArray[OneDimension],
         "face_cell_indices": IntArray[TwoDimensions],
         "unit_system": UnitSystem,
         "metadata": typing.Optional[typing.Mapping[str, typing.Any]],
-        "cell_volumes": typing.Optional[FloatArray[OneDimension]],
-        "cell_centroids": typing.Optional[FloatArray[TwoDimensions]],
+        "cell_volumes": typing.Optional[NumberArray[OneDimension]],
+        "cell_centroids": typing.Optional[NumberArray[TwoDimensions]],
         "nnc_cell_indices": typing.Optional[IntArray[TwoDimensions]],
-        "nnc_transmissibilities": typing.Optional[FloatArray[OneDimension]],
+        "nnc_transmissibilities": typing.Optional[NumberArray[OneDimension]],
         "nnc_connection_types": typing.Optional[IntArray[OneDimension]],
         "nnc_fault_indices": typing.Optional[
             typing.Mapping[str, IntArray[OneDimension]]
@@ -370,25 +373,25 @@ class Grid(
             typing.Mapping[str, IntArray[OneDimension]]
         ],
         "fault_transmissibility_multipliers": typing.Optional[
-            typing.Mapping[str, float]
+            typing.Mapping[str, Number]
         ],
         "positive_x_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
         "negative_x_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
         "positive_y_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
         "negative_y_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
         "positive_z_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
         "negative_z_transmissibility_multipliers": typing.Optional[
-            FloatArray[OneDimension]
+            NumberArray[OneDimension]
         ],
     },
 ):
@@ -421,7 +424,7 @@ class Grid(
         If any cell has a non-positive volume after construction.
     """
 
-    vertex_coordinates: FloatArray[TwoDimensions]
+    vertex_coordinates: NumberArray[TwoDimensions]
     """
     Shape `(n_vertices, 3)` - world (x, y, z) coordinates.
     z-axis is positive downward (reservoir depth convention).
@@ -466,13 +469,13 @@ class Grid(
     Factories that know about faults or pinchouts supply an explicit array.
     """
 
-    cell_volumes: typing.Optional[FloatArray[OneDimension]] = attrs.field(default=None)
+    cell_volumes: typing.Optional[NumberArray[OneDimension]] = attrs.field(default=None)
     """
     Shape `(n_cells,)` pre-computed cell volumes from the factory.
     When provided, the divergence-theorem computation is skipped.
     """
 
-    cell_centroids: typing.Optional[FloatArray[TwoDimensions]] = attrs.field(
+    cell_centroids: typing.Optional[NumberArray[TwoDimensions]] = attrs.field(
         default=None
     )
     """
@@ -497,7 +500,7 @@ class Grid(
     is provided but this is `None`.
     """
 
-    nnc_transmissibilities: typing.Optional[FloatArray[OneDimension]] = attrs.field(
+    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = attrs.field(
         default=None
     )
     """
@@ -526,7 +529,7 @@ class Grid(
     Populated from the GRDECL `FAULTS` keyword. `None` when absent.
     """
 
-    fault_transmissibility_multipliers: typing.Optional[typing.Mapping[str, float]] = (
+    fault_transmissibility_multipliers: typing.Optional[typing.Mapping[str, Number]] = (
         attrs.field(default=None)
     )
     """
@@ -535,32 +538,32 @@ class Grid(
     """
 
     positive_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTX multipliers. `None` when not supplied."""
 
     negative_x_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTX- multipliers. `None` when not supplied."""
 
     positive_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTY multipliers. `None` when not supplied."""
 
     negative_y_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTY- multipliers. `None` when not supplied."""
 
     positive_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTZ multipliers. `None` when not supplied."""
 
     negative_z_transmissibility_multipliers: typing.Optional[
-        FloatArray[OneDimension]
+        NumberArray[OneDimension]
     ] = attrs.field(default=None)
     """Shape `(n_cells,)` MULTZ- multipliers. `None` when not supplied."""
 
@@ -584,19 +587,19 @@ class Grid(
     interior_face_indices: IntArray[OneDimension] = attrs.field(init=False)
     """Indices of all interior faces."""
 
-    face_centroids: FloatArray[TwoDimensions] = attrs.field(init=False)
+    face_centroids: NumberArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - centroid of each face polygon."""
 
-    face_areas: FloatArray[OneDimension] = attrs.field(init=False)
+    face_areas: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_faces,)` - geometric area of each face."""
 
-    face_unit_normals: FloatArray[TwoDimensions] = attrs.field(init=False)
+    face_unit_normals: NumberArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_faces, 3)` - unit outward normal from the owner cell."""
 
-    cell_min_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
+    cell_min_xyz: NumberArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - AABB minimum corner per cell."""
 
-    cell_max_xyz: FloatArray[TwoDimensions] = attrs.field(init=False)
+    cell_max_xyz: NumberArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - AABB maximum corner per cell."""
 
     bounding_box: tuple[float, float, float, float, float, float] = attrs.field(
@@ -604,22 +607,22 @@ class Grid(
     )
     """Global AABB: `(x_min, x_max, y_min, y_max, z_min, z_max)`."""
 
-    cell_length_x: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_length_x: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - AABB extent in x."""
 
-    cell_length_y: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_length_y: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - AABB extent in y."""
 
-    cell_length_z: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_length_z: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - AABB extent in z (thickness)."""
 
-    cell_thickness: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_thickness: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - vertical thickness (alias for `cell_length_z`)."""
 
-    cell_center_depths: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_center_depths: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - depth of cell centroid (positive downward)."""
 
-    cell_center_elevations: FloatArray[OneDimension] = attrs.field(init=False)
+    cell_center_elevations: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - elevation of cell centroid (negation of depth)."""
 
     _spatial_index: typing.Optional[cKDTree] = attrs.field(init=False, default=None)
@@ -994,7 +997,7 @@ class Grid(
 
         start = self.cell_face_offsets[cell_index]
         end = self.cell_face_offsets[cell_index + 1]
-        return self.cell_face_indices[start:end]
+        return typing.cast(IntArray[OneDimension], self.cell_face_indices[start:end])
 
     def get_cell_neighbor_indices(self, cell_index: int) -> IntArray[OneDimension]:
         """
@@ -1011,9 +1014,13 @@ class Grid(
 
         start = self.cell_neighbor_offsets[cell_index]
         end = self.cell_neighbor_offsets[cell_index + 1]
-        return self.cell_neighbor_indices[start:end]
+        return typing.cast(
+            IntArray[OneDimension], self.cell_neighbor_indices[start:end]
+        )
 
-    def get_face_vertex_coordinates(self, face_index: int) -> FloatArray[TwoDimensions]:
+    def get_face_vertex_coordinates(
+        self, face_index: int
+    ) -> NumberArray[TwoDimensions]:
         """
         Return the vertex coordinates of a given face.
 
@@ -1022,7 +1029,10 @@ class Grid(
         """
         start = int(self.face_vertex_offsets[face_index])
         end = int(self.face_vertex_offsets[face_index + 1])
-        return self.vertex_coordinates[self.face_vertex_indices[start:end]]
+        return typing.cast(
+            NumberArray[TwoDimensions],
+            self.vertex_coordinates[self.face_vertex_indices[start:end]],
+        )
 
     def get_face_cell_indices(self, face_index: int) -> IntArray[OneDimension]:
         """
@@ -1036,11 +1046,11 @@ class Grid(
             raise IndexError(
                 f"Face index {face_index} is out of range [0, {self.n_faces - 1}]."
             )
-        return self.face_cell_indices[face_index]
+        return typing.cast(IntArray[OneDimension], self.face_cell_indices[face_index])
 
     def get_face_normal_for_cell(
         self, face_index: int, cell_index: int
-    ) -> FloatArray[OneDimension]:
+    ) -> NumberArray[OneDimension]:
         """
         Return the outward unit normal of a face relative to a specific cell.
 
@@ -1064,16 +1074,21 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate(
-            [owners[owners >= 0], neighbours[neighbours >= 0]]
+        all_boundary = np.concatenate([
+            owners[owners >= 0],
+            neighbours[neighbours >= 0],
+        ])
+        return typing.cast(
+            IntArray[OneDimension], np.unique(all_boundary).astype(np.int32)
         )
-        return np.unique(all_boundary).astype(np.int32)
 
     def get_interior_cell_indices(self) -> IntArray[OneDimension]:
         """Return sorted indices of all cells that have no boundary faces."""
         boundary_cells = self.get_boundary_cell_indices()
         all_cells = np.arange(self.n_cells, dtype=np.int32)
-        return np.setdiff1d(all_cells, boundary_cells)
+        return typing.cast(
+            IntArray[OneDimension], np.setdiff1d(all_cells, boundary_cells)
+        )
 
     def is_boundary_cell(self, cell_index: int) -> bool:
         """
@@ -1142,7 +1157,7 @@ class Grid(
             )
         return self.fault_face_indices[fault_name]
 
-    def get_fault_transmissibility_multiplier(self, fault_name: str) -> float:
+    def get_fault_transmissibility_multiplier(self, fault_name: str) -> Number:
         """
         Return the transmissibility multiplier for a named fault.
 
@@ -1162,7 +1177,7 @@ class Grid(
             )
         return self.fault_transmissibility_multipliers[fault_name]
 
-    def find_nearest_cell(self, x: float, y: float, z: float) -> int:
+    def find_nearest_cell(self, x: Number, y: Number, z: Number) -> int:
         """
         Find the cell whose centroid is nearest to `(x, y, z)`.
 
@@ -1177,7 +1192,7 @@ class Grid(
         return int(cell_index)
 
     def find_cells_in_radius(
-        self, x: float, y: float, z: float, radius: float
+        self, x: Number, y: Number, z: Number, radius: Number
     ) -> IntArray[OneDimension]:
         """
         Return all cell indices whose centroids fall within `radius` of a point.
@@ -1189,13 +1204,13 @@ class Grid(
         :returns: 1-D array of matching cell indices.
         """
         raw = self._spatial_index.query_ball_point([x, y, z], r=radius)  # type: ignore
-        return np.asarray(raw, dtype=np.int32)
+        return typing.cast(IntArray[OneDimension], np.asarray(raw, dtype=np.int32))
 
     def compute_pore_volume(
         self,
         porosity: NumberOrArray[OneDimension],
         net_to_gross: NumberOrArray[OneDimension],
-    ) -> FloatArray[OneDimension]:
+    ) -> NumberArray[OneDimension]:
         """
         Compute the pore volume for each cell.
 
@@ -1204,7 +1219,9 @@ class Grid(
         :returns: Pore volumes in the same units³ as `cell_volumes`.
         """
         assert self.cell_volumes is not None
-        return porosity * net_to_gross * self.cell_volumes
+        return typing.cast(
+            NumberArray[OneDimension], porosity * net_to_gross * self.cell_volumes
+        )
 
     def validate_geometry(self) -> None:
         """
@@ -1235,6 +1252,66 @@ class Grid(
                     "One or more face unit normals do not have unit magnitude "
                     f"(max deviation = {deviation.max():.3e})."
                 )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `Grid` with all coordinates expressed in the target unit system.
+
+
+        If `grid.unit_system == to` the original grid object is returned
+        unchanged (no copy, no allocation).
+
+        :param grid: Source grid. Must have a valid `unit_system` tag.
+        :param target: Target `bores.typing.UnitSystem`.
+        :returns: A new `Grid` with rescaled coordinates,
+            or the original `grid` if already in the target system.
+
+        Example:
+
+        ```python
+        from bores.grids.factories.cartesian import make_cartesian_grid
+        from bores.typing import UnitSystem
+
+        # Build a grid in field units (feet)
+        grid_ft = make_cartesian_grid(
+            nx=10, ny=10, nz=5,
+            dx=328.084, dy=328.084, dz=16.4042,   # ≈ 100 m cells
+            unit_system=UnitSystem.FIELD,
+        )
+
+        # Convert to metric (metres)
+        grid_m = grid_ft.convert(UnitSystem.METRIC)
+        assert grid_m.unit_system == UnitSystem.METRIC
+        # cell volume should now be ≈ 100 * 100 * 5 = 50,000 m³
+        ```
+        """
+        if self.unit_system == target:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        factor = factors["length"]
+        # Rescale vertex coordinates only.
+        # All other geometry is derived and will be recomputed on Grid initialization.
+        vertex_coordinates = self.vertex_coordinates * factor
+        cell_volumes = (
+            self.cell_volumes * (factor**3) if self.cell_volumes is not None else None
+        )
+        cell_centroids = (
+            self.cell_centroids * factor if self.cell_centroids is not None else None
+        )
+        return attrs.evolve(
+            self,
+            vertex_coordinates=vertex_coordinates,
+            cell_volumes=cell_volumes,
+            cell_centroids=cell_centroids,
+            unit_system=target,
+        )
 
     def __repr__(self) -> str:
         bb = self.bounding_box

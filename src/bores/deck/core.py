@@ -5,13 +5,7 @@ import typing
 import warnings
 from pathlib import Path
 
-__all__ = [
-    "GridDimensions",
-    "Record",
-    "Deck",
-    "DeckParseError",
-    "tokenise",
-]
+__all__ = ["GridDimensions", "Record", "Deck", "DeckParseError", "tokenise"]
 
 _TextOrPath = typing.Union[str, bytes, Path]
 
@@ -128,7 +122,7 @@ def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
         except OSError as exc:
             raise DeckParseError(f"Cannot read deck file {source!r}: {exc}") from exc
     else:
-        candidate = Path(source)
+        candidate = Path(source)  # type: ignore[arg-type]
         if candidate.is_file():
             source_dir = candidate.parent
             try:
@@ -138,7 +132,7 @@ def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
                     f"Cannot read deck file {source!r}: {exc}"
                 ) from exc
         else:
-            text = source
+            raise DeckParseError(f"Cannot read deck file. Invalid source: {source!r}")
 
     return _resolve_includes(text, source_dir)
 

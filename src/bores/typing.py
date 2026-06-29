@@ -79,14 +79,15 @@ Boolean: TypeAlias = typing.Union[bool, np.bool_]
 NDimensionalGrid: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 FloatArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 IntArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.integer]]
+NumberArray: TypeAlias = typing.Union[FloatArray[NDimension], IntArray[NDimension]]
 BooleanArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.bool_]]
 NumberOrArray: TypeAlias = typing.Union[
     Number, FloatArray[NDimension], IntArray[NDimension]
 ]
 
 
-CellArray: typing.TypeAlias = FloatArray[OneDimension]
-"""Shape (n_cells,) per-cell floating array."""
+CellArray: typing.TypeAlias = NumberArray[OneDimension]
+"""Shape (n_cells,) per-cell integer or floating array."""
 
 IntCellArray: typing.TypeAlias = IntArray[OneDimension]
 """Shape (n_cells,) per-cell integer array."""

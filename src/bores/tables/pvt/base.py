@@ -15,7 +15,7 @@ from scipy.interpolate import (  # type: ignore[import-untyped]
 )
 from typing_extensions import Self
 
-from bores.constants import c
+from bores.constants import UnitConversionTable, c
 from bores.correlations.arrays import (
     compute_gas_density,
     compute_live_oil_density,
@@ -44,6 +44,7 @@ from bores.typing import (
     ThreeDimensions,
     TwoDimensionalGrid,
     TwoDimensions,
+    UnitSystem,
 )
 
 logger = logging.getLogger(__name__)
@@ -900,6 +901,41 @@ class PVTTable(StoreSerializable):
         """Fluid phase this table describes."""
         return typing.cast(FluidPhase, self._phase)
 
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system of the underlying table data."""
+        return typing.cast(UnitSystem, self._data.unit_system)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PVTTable` with all dimensional quantities rescaled to *target*.
+
+        Dimensionless properties (specific gravity, compressibility factor,
+        vaporized oil ratio, solution GOR ratio) and multiplier-type quantities
+        are copied unchanged. Pressure axes, densities, FVFs, and viscosities
+        are rescaled using `get_conversion_factors`.
+
+        :param target: Target `UnitSystem`.
+        :returns `PVTTable`: New `PVTTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        return self.__class__(
+            data=self._data.convert(target, table=table),
+            interpolation_method=self.interpolation_method,
+            validate=False,  # already validated at construction
+            warn_on_extrapolation=self.warn_on_extrapolation,
+            clamps=False,  # caller's clamps are in old units; let them re-specify
+            dtype=self.dtype,
+        )
+
     def exists(self, name: str) -> bool:
         """Return `True` if an interpolator for *name* was built."""
         return name in self._interpolatants
@@ -912,6 +948,7 @@ class PVTTable(StoreSerializable):
     ) -> None:
         if not self.warn_on_extrapolation:
             return
+
         pressure_arr = np.atleast_1d(pressure)
         temperature_arr = np.atleast_1d(temperature)
         min_pressure, max_pressure = self._extrapolation_bounds["pressure"]
@@ -925,6 +962,7 @@ class PVTTable(StoreSerializable):
                 min_pressure,
                 max_pressure,
             )
+
         if np.any(temperature_arr < min_temperature) or np.any(
             temperature_arr > max_temperature
         ):
@@ -936,6 +974,7 @@ class PVTTable(StoreSerializable):
                 min_temperature,
                 max_temperature,
             )
+
         if salinity is not None and "salinity" in self._extrapolation_bounds:
             salinity_arr = np.atleast_1d(salinity)
             min_salinity, max_salinity = self._extrapolation_bounds["salinity"]
@@ -2013,6 +2052,7 @@ class PVTTables(StoreSerializable):
         ] = None,
         pvt: typing.Optional[PVT] = None,
         dtype: typing.Optional[npt.DTypeLike] = None,
+        **load_kwargs: typing.Any,
     ) -> Self:
         """
         Build a `PVTTables` bundle directly from per-phase data files.
@@ -2032,6 +2072,7 @@ class PVTTables(StoreSerializable):
             gas=gas,
             water=water,
             dtype=dtype,
+            **load_kwargs,
         )
         return cls.from_dataset(
             dataset,
@@ -2099,4 +2140,25 @@ class PVTTables(StoreSerializable):
             oil=self.oil._data if self.oil is not None else None,
             gas=self.gas._data if self.gas is not None else None,
             water=self.water._data if self.water is not None else None,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `PVTTables` with all phase tables converted to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `PVTTables` in *target* units.
+        """
+        return self.__class__(
+            oil=self.oil.convert(target, table=table) if self.oil is not None else None,
+            gas=self.gas.convert(target, table=table) if self.gas is not None else None,
+            water=self.water.convert(target, table=table)
+            if self.water is not None
+            else None,
         )

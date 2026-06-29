@@ -2,22 +2,21 @@
 
 import typing
 
-import attrs
 import numba
 import numpy as np
+import numpy.typing as npt
 
 from bores.grids.base import Grid
-from bores.typing import UnitSystem
 
-__all__ = ["as_pyvista_grid", "convert"]
+__all__ = ["as_pyvista_grid"]
 
 
 @numba.njit(parallel=True, cache=True)
 def _count_cell_entries(
-    cell_face_offsets: np.ndarray,
-    cell_face_indices: np.ndarray,
-    face_vertex_offsets: np.ndarray,
-) -> np.ndarray:
+    cell_face_offsets: npt.NDArray,
+    cell_face_indices: npt.NDArray,
+    face_vertex_offsets: npt.NDArray,
+) -> npt.NDArray:
     """
     Count the flat-buffer entries each cell contributes to the VTK polyhedron
     face stream (type 42).
@@ -66,12 +65,12 @@ def _count_cell_entries(
 
 @numba.njit(parallel=True, cache=True)
 def _fill_cell_entries(
-    cell_face_offsets: np.ndarray,
-    cell_face_indices: np.ndarray,
-    face_vertex_offsets: np.ndarray,
-    face_vertex_indices: np.ndarray,
-    cell_starts: np.ndarray,
-    out: np.ndarray,
+    cell_face_offsets: npt.NDArray,
+    cell_face_indices: npt.NDArray,
+    face_vertex_offsets: npt.NDArray,
+    face_vertex_indices: npt.NDArray,
+    cell_starts: npt.NDArray,
+    out: npt.NDArray,
 ) -> None:
     """
     Fill the pre-allocated VTK polyhedron face-stream buffer in parallel.
@@ -130,7 +129,7 @@ def _fill_cell_entries(
 def as_pyvista_grid(
     grid: Grid,
     *,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = None,
+    cell_data: typing.Optional[typing.Dict[str, npt.NDArray]] = None,
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `pyvista.UnstructuredGrid`.
@@ -204,7 +203,7 @@ def as_pyvista_grid(
             all_points[:, :2] = all_points[:, :2] @ rotation_matrix.T
 
     # Build VTK polyhedron face stream
-    # Step 1: count entries per cell (parallel)
+    # First, count entries per cell
     counts = _count_cell_entries(
         grid.cell_face_offsets.astype(np.int64),
         grid.cell_face_indices.astype(np.int64),
@@ -214,14 +213,15 @@ def as_pyvista_grid(
     # valid_cell_mask: cells that will appear in the PyVista mesh
     valid_cell_mask = counts > 0
 
-    # Step 2: exclusive prefix sum -> start positions for each cell
+    # Next, exclusive prefix sum -> start positions for each cell
     cell_starts = np.zeros(n_cells, dtype=np.int64)
-    cell_starts[valid_cell_mask] = np.concatenate(
-        [[0], np.cumsum(counts[valid_cell_mask])[:-1]]
-    )
+    cell_starts[valid_cell_mask] = np.concatenate([
+        [0],
+        np.cumsum(counts[valid_cell_mask])[:-1],
+    ])
     total_entries = int(counts.sum())
 
-    # Step 3: fill buffer (parallel, no locks)
+    # Lastly, fill buffer
     flat_cells = np.empty(total_entries, dtype=np.int64)
     _fill_cell_entries(
         grid.cell_face_offsets.astype(np.int64),
@@ -255,106 +255,3 @@ def as_pyvista_grid(
             pv_grid.cell_data[name] = arr[valid_cell_mask]
 
     return pv_grid
-
-
-_METRES_PER_LENGTH_UNIT: typing.Dict[UnitSystem, float] = {
-    UnitSystem.FIELD: 0.3048,  # 1 ft  = 0.3048 m
-    UnitSystem.METRIC: 1.0,  # 1 m   = 1 m
-    UnitSystem.LAB: 0.01,  # 1 cm  = 0.01 m
-    UnitSystem.SI: 1.0,  # 1 m   = 1 m  (SI length unit is metre)
-}
-
-
-def _get_length_conversion_factor(
-    from_system: UnitSystem, to_system: UnitSystem
-) -> float:
-    """
-    Return the multiplicative factor to convert a length value from one unit
-    system to another.
-
-    :param from_system: Source unit system.
-    :param to_system: Target unit system.
-    :returns: Conversion factor `f` such that `value_to = value_from * f`.
-    """
-    return _METRES_PER_LENGTH_UNIT[from_system] / _METRES_PER_LENGTH_UNIT[to_system]
-
-
-def convert(grid: Grid, *, to: UnitSystem) -> Grid:
-    """
-    Return a new `bores.grids.base.Grid` with all coordinates
-    expressed in the target unit system.
-
-    The `Grid` stores raw numbers and carries a declared
-    `bores.typing.UnitSystem` tag. This function rescales
-    `vertex_coordinates` by the appropriate length factor and constructs
-    a new `Grid` with `unit_system=to`. All derived geometry (face
-    areas, cell volumes, centroids, bounding boxes …) is recomputed
-    automatically after `Grid` initialization.
-
-    If `grid.unit_system == to` the original grid object is returned
-    unchanged (no copy, no allocation).
-
-    **Supported conversions** (any combination of FIELD ↔ METRIC ↔ LAB ↔ SI):
-
-    ``md
-    =========  =======  =========
-    From       To       Length
-    =========  =======  =========
-    FIELD      METRIC   0.3048
-    FIELD      LAB      30.48
-    FIELD      SI       0.3048
-    METRIC     FIELD    3.28084
-    METRIC     LAB      100.0
-    METRIC     SI       1.0
-    LAB        METRIC   0.01
-    LAB        FIELD    0.032808
-    SI         METRIC   1.0
-    =========  =======  =========
-    ``
-
-    :param grid: Source grid. Must have a valid `unit_system` tag.
-    :param to: Target `bores.typing.UnitSystem`.
-    :returns: A new `Grid` with rescaled coordinates and `unit_system=to`,
-        or the original `grid` if already in the target system.
-    :raises ValueError: If `grid.unit_system` is not a recognised `UnitSystem` member.
-
-    Example:
-
-    ``python
-    from bores.grids.factories.cartesian import make_cartesian_grid
-    from bores.grids.utils import convert
-    from bores.typing import UnitSystem
-
-    # Build a grid in field units (feet)
-    grid_ft = make_cartesian_grid(
-        nx=10, ny=10, nz=5,
-        dx=328.084, dy=328.084, dz=16.4042,   # ≈ 100 m cells
-        unit_system=UnitSystem.FIELD,
-    )
-
-    # Convert to metric (metres)
-    grid_m = convert(grid_ft, to=UnitSystem.METRIC)
-    assert grid_m.unit_system == UnitSystem.METRIC
-    # cell volume should now be ≈ 100 * 100 * 5 = 50,000 m³
-    ``
-    """
-    if grid.unit_system == to:
-        return grid
-
-    factor = _get_length_conversion_factor(grid.unit_system, to)
-    # Rescale vertex coordinates only.
-    # All other geometry is derived and will be recomputed on Grid initialization.
-    vertex_coordinates = grid.vertex_coordinates * factor
-    cell_volumes = (
-        grid.cell_volumes * (factor**3) if grid.cell_volumes is not None else None
-    )
-    cell_centroids = (
-        grid.cell_centroids * factor if grid.cell_centroids is not None else None
-    )
-    return attrs.evolve(
-        grid,
-        vertex_coordinates=vertex_coordinates,
-        cell_volumes=cell_volumes,
-        cell_centroids=cell_centroids,
-        unit_system=to,
-    )

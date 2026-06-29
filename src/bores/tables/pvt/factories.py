@@ -1,8 +1,6 @@
 import logging
 import typing
 import warnings
-from collections.abc import Mapping
-from os import PathLike
 
 import numpy as np
 import numpy.typing as npt
@@ -21,6 +19,7 @@ from bores.typing import (
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
+    UnitSystem,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,12 +30,6 @@ __all__ = [
     "build_pvt_dataset",
     "build_water_pvt_data",
 ]
-
-InterpolationMethod = typing.Literal["linear", "cubic"]
-
-# The _resolve_gas and _get_gas_tables_from_pvt_table helpers are unchanged
-# from the original implementation and are omitted here for space reasons.
-# They are imported from the original module in the actual codebase.
 
 
 def _resolve_gas(
@@ -148,6 +141,7 @@ def build_oil_pvt_data(
     standard_oil_density: typing.Optional[float] = None,
     standard_gas_density: typing.Optional[float] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
     """
@@ -320,7 +314,7 @@ def build_oil_pvt_data(
     if needs_fvf and needs_co:
         estimated_oil_compressibility = np.full((n_p, n_t), 1e-5, dtype=dtype)
         max_delta = 0.0
-        for _iter in range(10):
+        for _ in range(10):
             formation_volume_factor_table = arrays.compute_oil_formation_volume_factor(
                 pressure=pressure_table,
                 temperature=temperature_table,
@@ -410,7 +404,6 @@ def build_oil_pvt_data(
                 gor_at_bubble_point_pressure=gor_at_bubble_point_table,
             ),
         )
-
     return PVTData(
         phase=FluidPhase.OIL,
         pressures=pressures,
@@ -425,6 +418,7 @@ def build_oil_pvt_data(
         molecular_weight_table=molecular_weight_table,
         solution_gor_table=solution_gas_to_oil_ratio_table,
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
@@ -446,6 +440,7 @@ def build_gas_pvt_data(
     standard_oil_density: typing.Optional[float] = None,
     vaporized_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
     """
@@ -638,6 +633,7 @@ def build_gas_pvt_data(
         solubility_in_water_table=solubility_in_water_table,
         vaporized_oil_ratio_table=vaporized_oil_ratio_table,
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
@@ -658,6 +654,7 @@ def build_water_pvt_data(
     gas_free_water_fvf_table: typing.Optional[FloatArray[TwoDimensions]] = None,
     standard_water_density: typing.Optional[float] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
     """
@@ -854,6 +851,7 @@ def build_water_pvt_data(
         bubble_point_pressure_table=bubble_point_pressure_table,
         gas_free_water_fvf_table=gas_free_water_fvf_table,
         dtype=dtype,
+        unit_system=unit_system,
     )
 
 
@@ -877,6 +875,7 @@ def build_pvt_dataset(
     standard_gas_density: typing.Optional[float] = None,
     standard_water_density: typing.Optional[float] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTDataSet:
     """
@@ -907,7 +906,10 @@ def build_pvt_dataset(
     oil_kwargs: typing.Dict[str, typing.Any] = {}
     gas_kwargs: typing.Dict[str, typing.Any] = {}
     water_kwargs: typing.Dict[str, typing.Any] = {}
-    shared_kwargs: typing.Dict[str, typing.Any] = {"dtype": dtype}
+    shared_kwargs: typing.Dict[str, typing.Any] = {
+        "dtype": dtype,
+        "unit_system": unit_system,
+    }
 
     for key, val in kwargs.items():
         if key.startswith("oil_"):
