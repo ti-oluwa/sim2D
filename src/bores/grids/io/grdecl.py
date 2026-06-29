@@ -429,7 +429,7 @@ def dump_grdecl(
     encoding: str = "ascii",
 ) -> typing.Optional[str]:
     """
-    Serialise a `bores.grids.base.Grid` to GRDECL text format.
+    Serialise a `Grid` to GRDECL text format.
 
     Emits all keywords that can be reconstructed from the grid object.
     The full set that may appear in the output is:
@@ -687,12 +687,10 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
-    {
-        "grdecl_corner_point",
-        "grdecl_cartesian",
-    }
-)
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
+    "grdecl_corner_point",
+    "grdecl_cartesian",
+})
 
 
 def _build_grdecl_text(
@@ -784,7 +782,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64)
+        np
+        .asarray(arr, dtype=np.float64)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -968,7 +967,7 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
         return
 
     user_type = int(ConnectionType.USER_NNC)
-    has_t = grid.nnc_transmissibilities is not None and len(
+    has_transmissibility = grid.nnc_transmissibilities is not None and len(
         grid.nnc_transmissibilities
     ) == len(grid.nnc_cell_indices)
 
@@ -984,12 +983,18 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
             continue
         i1, j1, k1 = _flat_to_ijk(int(c1))
         i2, j2, k2 = _flat_to_ijk(int(c2))
-        if has_t:
-            t = float(grid.nnc_transmissibilities[idx])  # type: ignore
-            t_str = f"{t:.6e}" if not np.isnan(t) else "0.0 -- T unknown"
+        if has_transmissibility:
+            transmissibility = float(grid.nnc_transmissibilities[idx])  # type: ignore
+            transmissibility_str = (
+                f"{transmissibility:.6e}"
+                if not np.isnan(transmissibility)
+                else "0.0 -- T unknown"
+            )
         else:
-            t_str = "0.0 -- T unknown"
-        user_nnc_lines.append(f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {t_str}  /")
+            transmissibility_str = "0.0 -- T unknown"
+        user_nnc_lines.append(
+            f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {transmissibility_str}  /"
+        )
 
     if not user_nnc_lines:
         return

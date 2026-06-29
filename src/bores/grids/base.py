@@ -258,18 +258,18 @@ def _compute_cell_volumes_and_centroids(
                 cy = v2[1]
                 cz = v2[2]
 
-                signed_tet_volume = (
+                signed_tetrahedron_volume = (
                     ax * (by * cz - bz * cy)
                     + ay * (bz * cx - bx * cz)
                     + az * (bx * cy - by * cx)
                 ) / 6.0
-                cell_volumes[cell_idx] += sign * signed_tet_volume
+                cell_volumes[cell_idx] += sign * signed_tetrahedron_volume
 
                 x_bar = (ax + bx + cx) / 4.0
                 y_bar = (ay + by + cy) / 4.0
                 z_bar = (az + bz + cz) / 4.0
 
-                w = sign * signed_tet_volume
+                w = sign * signed_tetrahedron_volume
                 centroid_accumulators[cell_idx, 0] += w * x_bar
                 centroid_accumulators[cell_idx, 1] += w * y_bar
                 centroid_accumulators[cell_idx, 2] += w * z_bar

@@ -17,7 +17,7 @@ from bores.constants import (
 )
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.model.properties import PVT, Hysteresis, Meta, Rock, State
+from bores.model.properties import PVT, Hysteresis, Regions, Rock, State
 from bores.model.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,
@@ -138,7 +138,7 @@ class BlackOilModel(
         "rock": Rock,
         "pvt": PVT,
         "state": State,
-        "meta": typing.Optional[Meta],
+        "regions": typing.Optional[Regions],
         "datum_depth": typing.Optional[Number],
         "unit_system": typing.Optional[UnitSystem],
     },
@@ -157,7 +157,7 @@ class BlackOilModel(
         rock: Rock,
         pvt: PVT,
         state: State,
-        meta: typing.Optional[Meta] = None,
+        regions: typing.Optional[Regions] = None,
         datum_depth: typing.Optional[Number] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
@@ -168,7 +168,8 @@ class BlackOilModel(
         :param rock: Static petrophysical properties. Array lengths must equal `grid.n_cells`.
         :param pvt: Static PVT characterisation of the reservoir fluids.
         :param state: Initial (or current) dynamic simulation state. Array lengths must
-            equal `grid.n_cells`.
+            equal `grid.n_cells`. Should never be modified during simulation. 
+            If modification is necessary, create a copy.
         :param datum_depth: Reference depth (positive downward, grid length units) of the datum
             plane used for pressure initialisation by the equilibration routine.
             `None` means no explicit datum is declared.
@@ -221,8 +222,8 @@ class BlackOilModel(
         self.state = state
         """Dynamic per-cell simulation state in `unit_system`."""
 
-        self.meta = meta
-        """Per-cell region assignments and simulation metadata."""
+        self.regions = regions
+        """Per-cell region assignments metadata."""
 
         self.datum_depth = datum_depth
         """
@@ -375,7 +376,7 @@ class BlackOilModel(
             grid=self.grid,
             rock=self.rock,
             pvt=self.pvt,
-            meta=self.meta,
+            regions=self.regions,
             state=new_state,
             datum_depth=self.datum_depth,
             unit_system=self.unit_system,
@@ -417,7 +418,7 @@ class BlackOilModel(
             rock=self.rock.convert(target, table=table),
             pvt=self.pvt.convert(target, table=table),
             state=self.state.convert(target, table=table),
-            meta=self.meta,
+            regions=self.regions,
             datum_depth=(
                 self.datum_depth * factors["length"]
                 if self.datum_depth is not None

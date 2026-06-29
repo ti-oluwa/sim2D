@@ -14,6 +14,7 @@ from bores.grids.factories.base import VALID_FAULT_FACE_DIRECTIONS
 from bores.model.blackoil import BlackOilModel
 from bores.model.transmissibility import compute_connection_transmissibilities
 from bores.serialization import Serializable
+from bores.typing import Number
 
 __all__ = ["FaultRecord", "apply_faults", "remove_faults"]
 
@@ -51,7 +52,7 @@ class FaultRecord(Serializable):
     k1: int
     k2: int
     face_direction: str
-    transmissibility_multiplier: typing.Optional[float] = attrs.field(default=None)
+    transmissibility_multiplier: typing.Optional[Number] = attrs.field(default=None)
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
@@ -106,7 +107,7 @@ class FaultRecord(Serializable):
             raise ValidationError("No FAULTS keyword found in the provided data file.")
 
         multflt_records = deck_file.get("MULTFLT") or []
-        multflt_map: typing.Dict[str, float] = {
+        multflt_map: typing.Dict[str, Number] = {
             rec["name"]: rec["multiplier"] for rec in multflt_records
         }
 
@@ -212,10 +213,10 @@ def apply_faults(
             "At least one `FaultRecord` must be supplied to `apply_faults`."
         )
 
-    meta: typing.Mapping[str, typing.Any] = getattr(model.grid, "metadata", {}) or {}
-    nx: int = meta.get("nx", 0)
-    ny: int = meta.get("ny", 0)
-    nz: int = meta.get("nz", 0)
+    regions: typing.Mapping[str, typing.Any] = getattr(model.grid, "metadata", {}) or {}
+    nx: int = regions.get("nx", 0)
+    ny: int = regions.get("ny", 0)
+    nz: int = regions.get("nz", 0)
     if nx == 0 or ny == 0 or nz == 0:
         raise ValidationError(
             "Grid metadata does not contain `nx`, `ny`, `nz`. "
@@ -231,7 +232,7 @@ def apply_faults(
         rock=model.rock,
         pvt=model.pvt,
         state=model.state,
-        meta=model.meta,
+        regions=model.regions,
         datum_depth=model.datum_depth,
         unit_system=model.unit_system,
     )
@@ -289,7 +290,7 @@ def remove_faults(
         rock=model.rock,
         pvt=model.pvt,
         state=model.state,
-        meta=model.meta,
+        regions=model.regions,
         datum_depth=model.datum_depth,
         unit_system=model.unit_system,
     )
@@ -471,8 +472,8 @@ def _apply_faults_to_grid(
         if grid.nnc_connection_types is not None
         else []
     )
-    existing_nnc_transmissibilities: typing.List[float] = (
-        [float(t) for t in grid.nnc_transmissibilities]
+    existing_nnc_transmissibilities: typing.List[Number] = (
+        [t for t in grid.nnc_transmissibilities]
         if grid.nnc_transmissibilities is not None
         else [float("nan")] * len(existing_nnc_pairs)
     )
@@ -490,7 +491,7 @@ def _apply_faults_to_grid(
         old_to_new: typing.Dict[int, int] = {}
         new_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
         new_nnc_types: typing.List[int] = []
-        new_nnc_transmissibilities: typing.List[float] = []
+        new_nnc_transmissibilities: typing.List[Number] = []
         for old_idx, (pair, typ, t) in enumerate(
             zip(existing_nnc_pairs, existing_nnc_types, existing_nnc_transmissibilities)
         ):
@@ -550,7 +551,7 @@ def _apply_faults_to_grid(
             nnc_fault_indices_lists[fault.name] = nnc_list
 
     # Build updated fault_transmissibility_multipliers
-    updated_multipliers: typing.Dict[str, float] = dict(
+    updated_multipliers: typing.Dict[str, Number] = dict(
         grid.fault_transmissibility_multipliers or {}
     )
     for fault in faults:
@@ -645,11 +646,11 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
 
     # Compact remaining NNC arrays
     n_nnc = grid.n_nnc
-    has_nnc_t = grid.nnc_transmissibilities is not None
+    has_nnc_transmissibilities = grid.nnc_transmissibilities is not None
 
     surviving_pairs: typing.List[typing.Tuple[int, int]] = []
     surviving_types: typing.List[int] = []
-    surviving_t: typing.List[float] = []
+    surviving_transmissibilities: typing.List[Number] = []
     old_to_new: typing.Dict[int, int] = {}
 
     for old_idx in range(n_nnc):
@@ -659,15 +660,15 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
         old_to_new[old_idx] = new_idx
         assert grid.nnc_cell_indices is not None
         assert grid.nnc_connection_types is not None
-        surviving_pairs.append(
-            (
-                int(grid.nnc_cell_indices[old_idx, 0]),
-                int(grid.nnc_cell_indices[old_idx, 1]),
-            )
-        )
+        surviving_pairs.append((
+            int(grid.nnc_cell_indices[old_idx, 0]),
+            int(grid.nnc_cell_indices[old_idx, 1]),
+        ))
         surviving_types.append(int(grid.nnc_connection_types[old_idx]))
-        surviving_t.append(
-            float(grid.nnc_transmissibilities[old_idx]) if has_nnc_t else float("nan")  # type: ignore
+        surviving_transmissibilities.append(
+            grid.nnc_transmissibilities[old_idx]  # type: ignore
+            if has_nnc_transmissibilities
+            else float("nan")
         )
 
     # Updated fault maps (minus removed faults, minus any remapped nnc indices)
@@ -713,8 +714,8 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
             np.asarray(surviving_types, dtype=np.int8) if surviving_types else None
         ),
         nnc_transmissibilities=(
-            np.asarray(surviving_t, dtype=np.float64)
-            if has_nnc_t and surviving_t
+            np.asarray(surviving_transmissibilities, dtype=np.float64)
+            if has_nnc_transmissibilities and surviving_transmissibilities
             else None
         ),
         nnc_fault_indices=new_nnc_fault_indices or None,

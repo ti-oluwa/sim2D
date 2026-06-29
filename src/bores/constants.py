@@ -22,6 +22,7 @@ __all__ = [
     "get_constant",
     "get_conversion_factors",
     "build_unit_conversion_table",
+    "set_default_constants",
     "UNIT_CONVERSION_TABLE",
 ]
 
@@ -955,7 +956,7 @@ _constants_context: ContextVar[typing.Tuple[Constants, str]] = ContextVar(
 
 class ConstantsContext:
     """
-    Context manager for temporary global `Constants` overrides.
+    Context manager for temporary process-local `Constants` overrides.
 
     This context manager allows for temporary overrides of the global `Constants`
     instance within a specific context. Upon exiting the context, the previous

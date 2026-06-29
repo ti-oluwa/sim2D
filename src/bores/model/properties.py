@@ -29,7 +29,7 @@ __all__ = [
     "RockPermeability",
     "Rock",
     "State",
-    "Meta",
+    "Regions",
 ]
 
 
@@ -922,15 +922,6 @@ class State(StoreSerializable):
     - `dissolved_gas_mass_in_oil`, `dissolved_gas_mass_in_water`
     - `vaporized_oil_mass_in_gas`
 
-    **What is NOT here** (see `PVTCache`):
-
-    FVFs, viscosities, densities, z-factor, and compressibilities are all
-    derived from `pressure`, `solution_gor`, `vaporized_oil_ratio`,
-    and the PVT tables.  They are evaluated transiently each Newton iteration
-    and never checkpointed.  This mirrors how Eclipse manages its restart
-    files: only primary variables are written to `.UNRST`; everything else
-    is recomputed on load.
-
     **Temperature** lives on `Rock.temperature` because it is a
     static field (not a solver unknown) in standard isothermal black-oil.
 
@@ -1256,9 +1247,9 @@ class State(StoreSerializable):
 
 
 @attrs.frozen(slots=True)
-class Meta(StoreSerializable):
+class Regions(StoreSerializable):
     """
-    Per-cell region assignments and simulation metadata.
+    Per-cell region assignments metadata.
 
     Populated from the REGIONS section of an Eclipse deck, or supplied
     directly by the user. All region arrays are 1-based integer indices
@@ -1310,13 +1301,13 @@ class Meta(StoreSerializable):
     @classmethod
     def from_deck_file(cls, data_file: DeckFile, n_cells: int) -> Self:
         """
-        Build `Meta` from a parsed DeckFile.
+        Build `Regions` from a parsed DeckFile.
 
         Missing keywords default to None (region 1 is assumed by callers).
 
         :param data_file: Parsed DeckFile.
         :param n_cells: Number of active cells, for validation.
-        :returns: `Meta` object loaded from ECLIPSE deck.
+        :returns: `Regions` object loaded from ECLIPSE deck.
         """
 
         def _load(keyword: str) -> typing.Optional[IntCellArray]:
