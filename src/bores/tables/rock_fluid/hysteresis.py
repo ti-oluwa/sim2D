@@ -42,9 +42,10 @@ from bores.typing import (
     BooleanArray,
     CapillaryPressureDerivatives,
     CapillaryPressures,
-    FloatArray,
     FluidPhase,
     NDimension,
+    Number,
+    NumberArray,
     NumberOrArray,
     RelativePermeabilities,
     RelativePermeabilityDerivatives,
@@ -56,11 +57,11 @@ __all__ = ["KilloughCapillaryPressureTable", "KilloughLandRelPermTable"]
 
 @numba.njit(cache=True)
 def _compute_land_residual_saturation_scalar(
-    initial_non_wetting_saturation: float,
-    maximum_residual_saturation: float,
-    land_trapping_coefficient: float,
-    saturation_epsilon: float = 1e-12,
-) -> float:
+    initial_non_wetting_saturation: Number,
+    maximum_residual_saturation: Number,
+    land_trapping_coefficient: Number,
+    saturation_epsilon: Number = 1e-12,
+) -> Number:
     """
     Compute the dynamic residual non-wetting saturation via Land's model (scalar).
 
@@ -96,11 +97,11 @@ def _compute_land_residual_saturation_scalar(
 
 @numba.njit(cache=True, parallel=True)
 def _compute_land_residual_saturation_array(
-    initial_non_wetting_saturation: FloatArray[NDimension],
-    maximum_residual_saturation: float,
-    land_trapping_coefficient: float,
-    saturation_epsilon: float = 1e-12,
-) -> FloatArray[NDimension]:
+    initial_non_wetting_saturation: NumberArray[NDimension],
+    maximum_residual_saturation: Number,
+    land_trapping_coefficient: Number,
+    saturation_epsilon: Number = 1e-12,
+) -> NumberArray[NDimension]:
     """
     Compute the dynamic residual non-wetting saturation via Land's model (array).
 
@@ -125,14 +126,14 @@ def _compute_land_residual_saturation_array(
                 1.0 + land_trapping_coefficient * non_negative_initial
             )
             result.flat[flat_index] = min(dynamic_residual, non_negative_initial)
-    return typing.cast(FloatArray[NDimension], result)
+    return typing.cast(NumberArray[NDimension], result)
 
 
 def compute_land_residual_saturation(
     initial_non_wetting_saturation: NumberOrArray[NDimension],
-    maximum_residual_saturation: float,
-    land_trapping_coefficient: float,
-    saturation_epsilon: float = 1e-12,
+    maximum_residual_saturation: Number,
+    land_trapping_coefficient: Number,
+    saturation_epsilon: Number = 1e-12,
 ) -> NumberOrArray[NDimension]:
     """
     Compute the dynamic residual non-wetting saturation via Land's model.
@@ -164,15 +165,15 @@ def compute_land_residual_saturation(
 
 @numba.njit(cache=True)
 def _compute_killough_scanning_curve_scalar(
-    saturation: float,
-    drainage_curve_value: float,
-    imbibition_curve_value: float,
-    reversal_saturation: float,
-    maximum_historical_saturation: float,
-    is_imbibition: float,
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
-) -> float:
+    saturation: Number,
+    drainage_curve_value: Number,
+    imbibition_curve_value: Number,
+    reversal_saturation: Number,
+    maximum_historical_saturation: Number,
+    is_imbibition: Number,
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
+) -> Number:
     """
     Killough scanning-curve interpolation between primary drainage and
     imbibition curves (scalar).
@@ -232,9 +233,9 @@ def _compute_killough_scanning_curve_array(
     reversal_saturation: NumberOrArray[NDimension],
     maximum_historical_saturation: NumberOrArray[NDimension],
     is_imbibition: NumberOrArray[NDimension],
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
-) -> FloatArray[NDimension]:
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
+) -> NumberArray[NDimension]:
     """
     Killough scanning-curve interpolation between primary drainage and
     imbibition curves (array).
@@ -319,7 +320,7 @@ def _compute_killough_scanning_curve_array(
             result.flat[flat_index] = imbibition_value_array.flat[flat_index]
         else:
             result.flat[flat_index] = scanning_curve_value
-    return typing.cast(FloatArray[NDimension], result)
+    return typing.cast(NumberArray[NDimension], result)
 
 
 def compute_killough_scanning_curve(
@@ -329,8 +330,8 @@ def compute_killough_scanning_curve(
     reversal_saturation: NumberOrArray[NDimension],
     maximum_historical_saturation: NumberOrArray[NDimension],
     is_imbibition: NumberOrArray[NDimension],
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
 ) -> NumberOrArray[NDimension]:
     """
     Killough scanning-curve interpolation between primary drainage and
@@ -379,17 +380,17 @@ def compute_killough_scanning_curve(
 
 @numba.njit(cache=True, inline="always")
 def _compute_killough_scanning_curve_derivative_scalar(
-    saturation: float,
-    drainage_curve_value: float,
-    imbibition_curve_value: float,
-    drainage_curve_derivative: float,
-    imbibition_curve_derivative: float,
-    reversal_saturation: float,
-    maximum_historical_saturation: float,
-    is_imbibition: float,
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
-) -> float:
+    saturation: Number,
+    drainage_curve_value: Number,
+    imbibition_curve_value: Number,
+    drainage_curve_derivative: Number,
+    imbibition_curve_derivative: Number,
+    reversal_saturation: Number,
+    maximum_historical_saturation: Number,
+    is_imbibition: Number,
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
+) -> Number:
     """
     Analytical derivative of the Killough scanning-curve value with respect
     to the scanning saturation (scalar).
@@ -473,9 +474,9 @@ def _compute_killough_scanning_curve_derivative_array(
     reversal_saturation: NumberOrArray[NDimension],
     maximum_historical_saturation: NumberOrArray[NDimension],
     is_imbibition: NumberOrArray[NDimension],
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
-) -> FloatArray[NDimension]:
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
+) -> NumberArray[NDimension]:
     """
     Analytical derivative of the Killough scanning-curve value with respect
     to the scanning saturation (array).
@@ -535,7 +536,7 @@ def _compute_killough_scanning_curve_derivative_array(
             scanning_exponent=scanning_exponent,
             numerical_epsilon=numerical_epsilon,
         )
-    return typing.cast(FloatArray[NDimension], result)
+    return typing.cast(NumberArray[NDimension], result)
 
 
 def compute_killough_scanning_curve_derivative(
@@ -547,8 +548,8 @@ def compute_killough_scanning_curve_derivative(
     reversal_saturation: NumberOrArray[NDimension],
     maximum_historical_saturation: NumberOrArray[NDimension],
     is_imbibition: NumberOrArray[NDimension],
-    scanning_exponent: float = 1.0,
-    numerical_epsilon: float = 1e-12,
+    scanning_exponent: Number = 1.0,
+    numerical_epsilon: Number = 1e-12,
 ) -> NumberOrArray[NDimension]:
     """
     Analytical derivative of the Killough scanning-curve value with respect
@@ -1092,10 +1093,10 @@ class KilloughLandRelPermTable(
     gas_oil_imbibition_table: typing.Optional[RelativePermeabilityTable] = None
     """Primary imbibition table for the gas-oil system. Defaults to the drainage table."""
 
-    land_trapping_coefficient_water: float = 1.0
+    land_trapping_coefficient_water: Number = 1.0
     """Land trapping coefficient *C* for the oil-water system (>= 0)."""
 
-    land_trapping_coefficient_gas: float = 1.0
+    land_trapping_coefficient_gas: Number = 1.0
     """Land trapping coefficient *C* for the gas-oil system (>= 0)."""
 
     maximum_residual_oil_saturation_water: typing.Optional[float] = None
@@ -1116,7 +1117,7 @@ class KilloughLandRelPermTable(
     when `gas_oil_imbibition_table` is set.
     """
 
-    scanning_interpolation_exponent: float = 1.0
+    scanning_interpolation_exponent: Number = 1.0
     """Killough scanning curve interpolation exponent *n* (1 = linear)."""
 
     mixing_rule: typing.Union[MixingRule, str] = "eclipse_rule"
@@ -1188,15 +1189,15 @@ class KilloughLandRelPermTable(
         """
         return self.gas_oil_drainage_table.get_gas_oil_wetting_phase()
 
-    def get_oil_relperm_endpoint(self) -> float:
+    def get_oil_relperm_endpoint(self) -> Number:
         """Oil relative permeability endpoint from the primary drainage table."""
         return self.oil_water_drainage_table.get_oil_relperm_endpoint()
 
-    def get_water_relperm_endpoint(self) -> float:
+    def get_water_relperm_endpoint(self) -> Number:
         """Water relative permeability endpoint from the primary drainage table."""
         return self.oil_water_drainage_table.get_water_relperm_endpoint()
 
-    def get_gas_relperm_endpoint(self) -> float:
+    def get_gas_relperm_endpoint(self) -> Number:
         """Gas relative permeability endpoint from the primary drainage table."""
         return self.gas_oil_drainage_table.get_gas_relperm_endpoint()
 
@@ -1206,8 +1207,12 @@ class KilloughLandRelPermTable(
         gas_saturation: npt.NDArray,
         max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
         max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
-        water_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
-        gas_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
+        water_imbibition_flag: typing.Optional[
+            typing.Union[bool, BooleanArray[NDimension]]
+        ],
+        gas_imbibition_flag: typing.Optional[
+            typing.Union[bool, BooleanArray[NDimension]]
+        ],
         water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
         gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
     ) -> typing.Tuple[
@@ -1942,7 +1947,7 @@ class KilloughCapillaryPressureTable(
     ] = None
     """Primary imbibition Pc table for the gas-oil system. Defaults to the drainage table."""
 
-    scanning_interpolation_exponent: float = 1.0
+    scanning_interpolation_exponent: Number = 1.0
     """Killough interpolation exponent *n* (1 = linear)."""
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
@@ -2020,8 +2025,12 @@ class KilloughCapillaryPressureTable(
         gas_saturation: npt.NDArray,
         max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
         max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
-        water_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
-        gas_imbibition_flag: typing.Optional[typing.Union[bool, npt.NDArray]],
+        water_imbibition_flag: typing.Optional[
+            typing.Union[bool, BooleanArray[NDimension]]
+        ],
+        gas_imbibition_flag: typing.Optional[
+            typing.Union[bool, BooleanArray[NDimension]]
+        ],
         water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
         gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
     ) -> typing.Tuple[

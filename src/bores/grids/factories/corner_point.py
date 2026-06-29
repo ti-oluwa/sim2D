@@ -234,11 +234,13 @@ def make_corner_point_grid(
 
     if geo_nnc_pairs is not None and len(geo_nnc_pairs) > 0:
         geo_transmissibilities = np.full(len(geo_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append((
-            np.asarray(geo_nnc_pairs, dtype=np.int32),
-            geo_nnc_connection_types,
-            geo_transmissibilities,
-        ))
+        all_nnc_parts.append(
+            (
+                np.asarray(geo_nnc_pairs, dtype=np.int32),
+                geo_nnc_connection_types,
+                geo_transmissibilities,
+            )
+        )
 
     fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
     if fault_nnc_pairs:
@@ -251,11 +253,13 @@ def make_corner_point_grid(
         fault_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append((
-            fault_pairs,
-            fault_connection_types,
-            fault_transmissibilities,
-        ))
+        all_nnc_parts.append(
+            (
+                fault_pairs,
+                fault_connection_types,
+                fault_transmissibilities,
+            )
+        )
         # Build nnc_fault_indices: fault name -> positions into the merged NNC array.
         # The offset is the total NNC count already accumulated before this block.
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
@@ -272,11 +276,13 @@ def make_corner_point_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append((
-            user_nnc_pairs,
-            user_nnc_connection_types,
-            user_nnc_transmissibilities,
-        ))
+        all_nnc_parts.append(
+            (
+                user_nnc_pairs,
+                user_nnc_connection_types,
+                user_nnc_transmissibilities,
+            )
+        )
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -287,9 +293,9 @@ def make_corner_point_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate([
-            t for _, t, _ in all_nnc_parts
-        ]).astype(np.int8)
+        merged_nnc_connection_types = np.concatenate(
+            [t for _, t, _ in all_nnc_parts]
+        ).astype(np.int8)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         # Only store if at least one value is finite (avoids all-NaN array)
         merged_nnc_transmissibilities = (

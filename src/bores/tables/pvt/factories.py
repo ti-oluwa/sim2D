@@ -13,9 +13,10 @@ from bores.precision import get_dtype
 from bores.tables.pvt.base import PVTTable
 from bores.tables.pvt.data import PVTData, PVTDataSet
 from bores.typing import (
-    FloatArray,
     FluidPhase,
     NDimension,
+    Number,
+    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
@@ -34,8 +35,8 @@ __all__ = [
 
 def _resolve_gas(
     gas: typing.Optional[typing.Any],
-    gas_gravity: typing.Optional[float],
-) -> typing.Tuple[str, typing.Optional[float], typing.Optional[PVTTable]]:
+    gas_gravity: typing.Optional[Number],
+) -> typing.Tuple[str, typing.Optional[Number], typing.Optional[PVTTable]]:
     """
     Resolve the *gas* argument used across all three correlation builders.
 
@@ -65,12 +66,12 @@ def _resolve_gas(
             pvt_table = gas.pvt_table
 
     if gas_gravity is None and pvt_table is not None:
-        avg_pressure = float(np.mean(list(pvt_table._extrapolation_bounds["pressure"])))
-        avg_temperature = float(
-            np.mean(list(pvt_table._extrapolation_bounds["temperature"]))
+        avg_pressure = np.mean(list(pvt_table._extrapolation_bounds["pressure"]))
+        avg_temperature = np.mean(list(pvt_table._extrapolation_bounds["temperature"]))
+        specific_gravity = typing.cast(
+            Number, pvt_table.specific_gravity(avg_pressure, avg_temperature)
         )
-        specific_gravity = pvt_table.specific_gravity(avg_pressure, avg_temperature)
-        gas_gravity = float(specific_gravity) if specific_gravity is not None else None
+        gas_gravity = specific_gravity if specific_gravity is not None else None
 
     if gas_gravity is None:
         gas_gravity = scalars.compute_gas_gravity(gas=gas_name)
@@ -80,10 +81,10 @@ def _resolve_gas(
 
 def _get_gas_tables_from_pvt_table(
     pvt_table: PVTTable,
-    pressure: FloatArray[NDimension],
-    temperature: FloatArray[NDimension],
+    pressure: NumberArray[NDimension],
+    temperature: NumberArray[NDimension],
     dtype: typing.Optional[npt.DTypeLike] = None,
-) -> typing.Dict[str, typing.Optional[FloatArray[NDimension]]]:
+) -> typing.Dict[str, typing.Optional[NumberArray[NDimension]]]:
     """
     Evaluate a gas `PVTTable` on a `(P, T)` meshgrid.
 
@@ -96,7 +97,7 @@ def _get_gas_tables_from_pvt_table(
     flat_temperature = temperature.ravel()
     shape = pressure.shape
 
-    def _eval(method_name: str) -> typing.Optional[FloatArray[NDimension]]:
+    def _eval(method_name: str) -> typing.Optional[NumberArray[NDimension]]:
         method = getattr(pvt_table, method_name, None)
         if method is None:
             return None
@@ -105,7 +106,7 @@ def _get_gas_tables_from_pvt_table(
         if result is None:
             return None
         return typing.cast(
-            FloatArray[NDimension],
+            NumberArray[NDimension],
             np.asarray(result).reshape(shape).astype(dtype, copy=False),
         )
 
@@ -121,25 +122,25 @@ def _get_gas_tables_from_pvt_table(
 
 
 def build_oil_pvt_data(
-    pressures: FloatArray[OneDimension],
-    temperatures: FloatArray[OneDimension],
-    oil_specific_gravity: float = 0.85,
-    gas_gravity: typing.Optional[float] = None,
-    estimated_solution_gor: typing.Optional[float] = None,
+    pressures: NumberArray[OneDimension],
+    temperatures: NumberArray[OneDimension],
+    oil_specific_gravity: Number = 0.85,
+    gas_gravity: typing.Optional[Number] = None,
+    estimated_solution_gor: typing.Optional[Number] = None,
     bubble_point_pressures: typing.Optional[
-        typing.Union[FloatArray[OneDimension], FloatArray[TwoDimensions]]
+        typing.Union[NumberArray[OneDimension], NumberArray[TwoDimensions]]
     ] = None,
-    solution_gas_to_oil_ratios: typing.Optional[FloatArray[OneDimension]] = None,
+    solution_gas_to_oil_ratios: typing.Optional[NumberArray[OneDimension]] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    viscosity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    density_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    formation_volume_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    compressibility_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    specific_gravity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    molecular_weight_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    solution_gas_to_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    standard_oil_density: typing.Optional[float] = None,
-    standard_gas_density: typing.Optional[float] = None,
+    viscosity_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    density_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    compressibility_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    specific_gravity_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    molecular_weight_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    solution_gas_to_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    standard_oil_density: typing.Optional[Number] = None,
+    standard_gas_density: typing.Optional[Number] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
@@ -219,8 +220,8 @@ def build_oil_pvt_data(
 
     if molecular_weight_table is None:
         oil_api_gravity = scalars.compute_oil_api_gravity(oil_specific_gravity)
-        molecular_weight = float(
-            np.clip(6084.0 / max(oil_api_gravity - 5.9, 1.0), 10.0, 600.0)
+        molecular_weight = np.clip(
+            6084.0 / max(oil_api_gravity - 5.9, 1.0), 10.0, 600.0
         )
         molecular_weight_table = np.full((n_p, n_t), molecular_weight, dtype=dtype)
 
@@ -242,8 +243,8 @@ def build_oil_pvt_data(
         else:
             oil_api_gravity = scalars.compute_oil_api_gravity(oil_specific_gravity)
             if estimated_solution_gor is None:
-                estimated_solution_gor = float(
-                    np.clip(10 ** (0.0125 * oil_api_gravity) * 50.0, 50.0, 2000.0)
+                estimated_solution_gor = np.clip(
+                    10 ** (0.0125 * oil_api_gravity) * 50.0, 50.0, 2000.0
                 )
                 warnings.warn(
                     f"No `estimated_solution_gor` provided. Estimating Rs = "
@@ -282,6 +283,7 @@ def build_oil_pvt_data(
             ky=1,
         )
         temperatures_flat = np.broadcast_to(temperatures, (n_p, n_t))
+        assert solution_gas_to_oil_ratio_table is not None
         bubble_point_pressure_table = (
             pb_interp
             .ev(solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel())
@@ -334,8 +336,8 @@ def build_oil_pvt_data(
                 gas_formation_volume_factor=gas_fvf_table,
                 oil_formation_volume_factor=formation_volume_factor_table,
             )
-            max_delta = float(
-                np.max(np.abs(new_oil_compressibility - estimated_oil_compressibility))
+            max_delta = np.max(
+                np.abs(new_oil_compressibility - estimated_oil_compressibility)
             )
             estimated_oil_compressibility = new_oil_compressibility
             if max_delta < 1e-7:
@@ -394,7 +396,7 @@ def build_oil_pvt_data(
 
     if viscosity_table is None:
         viscosity_table = typing.cast(
-            FloatArray[TwoDimensions],
+            NumberArray[TwoDimensions],
             arrays.compute_oil_viscosity(
                 pressure=pressure_table,
                 temperature=temperature_table,
@@ -423,22 +425,22 @@ def build_oil_pvt_data(
 
 
 def build_gas_pvt_data(
-    pressures: FloatArray[OneDimension],
-    temperatures: FloatArray[OneDimension],
-    gas_gravity: typing.Optional[float] = None,
+    pressures: NumberArray[OneDimension],
+    temperatures: NumberArray[OneDimension],
+    gas_gravity: typing.Optional[Number] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    water_salinities: typing.Optional[FloatArray[OneDimension]] = None,
-    viscosity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    density_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    formation_volume_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    compressibility_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    compressibility_factor_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    specific_gravity_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    molecular_weight_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    solubility_in_water_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    standard_gas_density: typing.Optional[float] = None,
-    standard_oil_density: typing.Optional[float] = None,
-    vaporized_oil_ratio_table: typing.Optional[FloatArray[TwoDimensions]] = None,
+    water_salinities: typing.Optional[NumberArray[OneDimension]] = None,
+    viscosity_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    density_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    compressibility_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    compressibility_factor_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    specific_gravity_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    molecular_weight_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    solubility_in_water_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    standard_gas_density: typing.Optional[Number] = None,
+    standard_oil_density: typing.Optional[Number] = None,
+    vaporized_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
@@ -493,37 +495,37 @@ def build_gas_pvt_data(
 
         if viscosity_table is None:
             viscosity_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("viscosity_table"),
             )
         if density_table is None:
             density_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("density_table"),
             )
         if formation_volume_factor_table is None:
             formation_volume_factor_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("formation_volume_factor_table"),
             )
         if compressibility_table is None:
             compressibility_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("compressibility_table"),
             )
         if compressibility_factor_table is None:
             compressibility_factor_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("compressibility_factor_table"),
             )
         if specific_gravity_table is None:
             specific_gravity_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("specific_gravity_table"),
             )
         if molecular_weight_table is None:
             molecular_weight_table = typing.cast(
-                typing.Optional[FloatArray[TwoDimensions]],
+                typing.Optional[NumberArray[TwoDimensions]],
                 gas_tables.get("molecular_weight_table"),
             )
 
@@ -546,7 +548,7 @@ def build_gas_pvt_data(
 
     if formation_volume_factor_table is None:
         formation_volume_factor_table = typing.cast(
-            FloatArray[TwoDimensions],
+            NumberArray[TwoDimensions],
             arrays.compute_gas_formation_volume_factor(
                 pressure=pressure_table,
                 temperature=temperature_table,
@@ -578,14 +580,14 @@ def build_gas_pvt_data(
                 ).astype(dtype)
             else:
                 density_table = typing.cast(
-                    FloatArray[TwoDimensions],
+                    NumberArray[TwoDimensions],
                     (standard_gas_density / formation_volume_factor_table).astype(
                         dtype
                     ),
                 )
         else:
             density_table = typing.cast(
-                FloatArray[TwoDimensions],
+                NumberArray[TwoDimensions],
                 arrays.compute_gas_density(
                     pressure=pressure_table,
                     temperature=temperature_table,
@@ -596,7 +598,7 @@ def build_gas_pvt_data(
 
     if viscosity_table is None:
         viscosity_table = typing.cast(
-            FloatArray[TwoDimensions],
+            NumberArray[TwoDimensions],
             arrays.compute_gas_viscosity(
                 temperature=temperature_table,
                 gas_density=density_table,
@@ -609,7 +611,7 @@ def build_gas_pvt_data(
             pressures, temperatures, water_salinities, indexing="ij"
         )
         solubility_in_water_table = typing.cast(
-            FloatArray[ThreeDimensions],
+            NumberArray[ThreeDimensions],
             arrays.compute_gas_solubility_in_water(
                 pressure=pressure_table_3d,
                 temperature=temperature_table_3d,
@@ -638,21 +640,21 @@ def build_gas_pvt_data(
 
 
 def build_water_pvt_data(
-    pressures: FloatArray[OneDimension],
-    temperatures: FloatArray[OneDimension],
-    salinities: typing.Optional[FloatArray[OneDimension]] = None,
-    water_salinity: typing.Optional[float] = None,
-    gas_gravity: typing.Optional[float] = None,
+    pressures: NumberArray[OneDimension],
+    temperatures: NumberArray[OneDimension],
+    salinities: typing.Optional[NumberArray[OneDimension]] = None,
+    water_salinity: typing.Optional[Number] = None,
+    gas_gravity: typing.Optional[Number] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
-    viscosity_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    density_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    formation_volume_factor_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    compressibility_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    specific_gravity_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    molecular_weight_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    bubble_point_pressure_table: typing.Optional[FloatArray[ThreeDimensions]] = None,
-    gas_free_water_fvf_table: typing.Optional[FloatArray[TwoDimensions]] = None,
-    standard_water_density: typing.Optional[float] = None,
+    viscosity_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    density_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    formation_volume_factor_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    compressibility_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    specific_gravity_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    molecular_weight_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    bubble_point_pressure_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
+    gas_free_water_fvf_table: typing.Optional[NumberArray[TwoDimensions]] = None,
+    standard_water_density: typing.Optional[Number] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
@@ -700,7 +702,7 @@ def build_water_pvt_data(
             else c.DEFAULT_WATER_SALINITY_PPM
         )
         salinities = typing.cast(
-            FloatArray[OneDimension], np.array([salinity], dtype=dtype)
+            NumberArray[OneDimension], np.array([salinity], dtype=dtype)
         )
 
     gas, gas_gravity, pvt_table = _resolve_gas(gas, gas_gravity)
@@ -734,7 +736,7 @@ def build_water_pvt_data(
             gas_gravity=np.full((n_p, n_t), gas_gravity, dtype=dtype),
         )
         gas_fvf_table_2d = typing.cast(
-            FloatArray[TwoDimensions],
+            NumberArray[TwoDimensions],
             arrays.compute_gas_formation_volume_factor(
                 pressure=pressure_table_2d,
                 temperature=temperature_table_2d,
@@ -764,7 +766,7 @@ def build_water_pvt_data(
 
     if bubble_point_pressure_table is None:
         bubble_point_pressure_table = typing.cast(
-            FloatArray[ThreeDimensions],
+            NumberArray[ThreeDimensions],
             arrays.compute_water_bubble_point_pressure(
                 temperature=temperature_table_3d,
                 gas_solubility_in_water=gas_solubility_table_3d,
@@ -779,7 +781,7 @@ def build_water_pvt_data(
 
     if compressibility_table is None:
         compressibility_table = typing.cast(
-            FloatArray[ThreeDimensions],
+            NumberArray[ThreeDimensions],
             arrays.compute_water_compressibility(
                 pressure=pressure_table_3d,
                 temperature=temperature_table_3d,
@@ -799,7 +801,7 @@ def build_water_pvt_data(
             )
         else:
             density_table = typing.cast(
-                FloatArray[ThreeDimensions],
+                NumberArray[ThreeDimensions],
                 arrays.compute_water_density(
                     pressure=pressure_table_3d,
                     temperature=temperature_table_3d,
@@ -819,7 +821,7 @@ def build_water_pvt_data(
 
     if viscosity_table is None:
         viscosity_table = typing.cast(
-            FloatArray[ThreeDimensions],
+            NumberArray[ThreeDimensions],
             arrays.compute_water_viscosity(
                 temperature=temperature_table_3d,
                 salinity=salinity_table_3d,
@@ -856,24 +858,24 @@ def build_water_pvt_data(
 
 
 def build_pvt_dataset(
-    pressures: FloatArray[OneDimension],
-    temperatures: FloatArray[OneDimension],
-    oil_specific_gravity: float = 0.85,
-    gas_gravity: typing.Optional[float] = None,
-    water_salinity: typing.Optional[float] = None,
-    salinities: typing.Optional[FloatArray[OneDimension]] = None,
-    estimated_solution_gor: typing.Optional[float] = None,
+    pressures: NumberArray[OneDimension],
+    temperatures: NumberArray[OneDimension],
+    oil_specific_gravity: Number = 0.85,
+    gas_gravity: typing.Optional[Number] = None,
+    water_salinity: typing.Optional[Number] = None,
+    salinities: typing.Optional[NumberArray[OneDimension]] = None,
+    estimated_solution_gor: typing.Optional[Number] = None,
     bubble_point_pressures: typing.Optional[
-        typing.Union[FloatArray[OneDimension], FloatArray[TwoDimensions]]
+        typing.Union[NumberArray[OneDimension], NumberArray[TwoDimensions]]
     ] = None,
-    solution_gas_to_oil_ratios: typing.Optional[FloatArray[OneDimension]] = None,
+    solution_gas_to_oil_ratios: typing.Optional[NumberArray[OneDimension]] = None,
     gas: typing.Optional[typing.Union[str, typing.Any]] = None,
     build_oil_data: bool = True,
     build_gas_data: bool = True,
     build_water_data: bool = True,
-    standard_oil_density: typing.Optional[float] = None,
-    standard_gas_density: typing.Optional[float] = None,
-    standard_water_density: typing.Optional[float] = None,
+    standard_oil_density: typing.Optional[Number] = None,
+    standard_gas_density: typing.Optional[Number] = None,
+    standard_water_density: typing.Optional[Number] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,

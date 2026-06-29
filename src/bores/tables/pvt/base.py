@@ -30,20 +30,14 @@ from bores.tables.pvt.data import PVTData, PVTDataSet
 from bores.typing import (
     Boolean,
     BooleanArray,
-    FloatArray,
     FluidPhase,
     InterpolationMethod,
     NDimension,
-    NDimensionalGrid,
     Number,
+    NumberArray,
     OneDimension,
-    OneDimensionalGrid,
     TableQuery,
     TableResult,
-    ThreeDimensionalGrid,
-    ThreeDimensions,
-    TwoDimensionalGrid,
-    TwoDimensions,
     UnitSystem,
 )
 
@@ -105,12 +99,12 @@ PHASE_DEFAULT_CLAMPS: typing.Dict[
 
 
 def _build_pchip_2d_interpolator(
-    pressures: FloatArray[NDimension],
-    temperatures: FloatArray[NDimension],
-    table: FloatArray[NDimension],
+    pressures: NumberArray[NDimension],
+    temperatures: NumberArray[NDimension],
+    table: NumberArray[NDimension],
     dtype: npt.DTypeLike,
 ) -> typing.Callable[
-    [FloatArray[NDimension], FloatArray[NDimension]], FloatArray[OneDimension]
+    [NumberArray[NDimension], NumberArray[NDimension]], NumberArray[OneDimension]
 ]:
     """
     Build a two-stage PCHIP 2-D interpolator for a property table.
@@ -133,11 +127,12 @@ def _build_pchip_2d_interpolator(
     ]
 
     def _ev(
-        p: FloatArray[NDimension], t: FloatArray[NDimension]
-    ) -> FloatArray[OneDimension]:
-        p = np.asarray(p, dtype=dtype).ravel()  # type: ignore
-        t = np.asarray(t, dtype=dtype).ravel()  # type: ignore
+        p: NumberArray[NDimension], t: NumberArray[NDimension]
+    ) -> NumberArray[OneDimension]:
+        p = p.astype(dtype, copy=False).ravel()  # type: ignore
+        t = t.astype(dtype, copy=False).ravel()  # type: ignore
         n = len(p)
+
         p_interp_values = np.empty((len(temperatures), n), dtype=dtype)
         for j, interp in enumerate(_p_interps):
             p_interp_values[j] = interp(p)
@@ -153,12 +148,12 @@ def _build_pchip_2d_interpolator(
 
 
 def _build_pchip_2d_derivative_interpolator(
-    pressures: FloatArray[NDimension],
-    temperatures: FloatArray[NDimension],
-    table: FloatArray[NDimension],
+    pressures: NumberArray[NDimension],
+    temperatures: NumberArray[NDimension],
+    table: NumberArray[NDimension],
     dtype: npt.DTypeLike,
 ) -> typing.Callable[
-    [FloatArray[NDimension], FloatArray[NDimension]], FloatArray[OneDimension]
+    [NumberArray[NDimension], NumberArray[NDimension]], NumberArray[OneDimension]
 ]:
     """
     Build a two-stage PCHIP interpolator for `∂table/∂P`.
@@ -178,11 +173,12 @@ def _build_pchip_2d_derivative_interpolator(
     ]
 
     def _ev(
-        p: FloatArray[NDimension], t: FloatArray[NDimension]
-    ) -> FloatArray[OneDimension]:
-        p = np.asarray(p, dtype=dtype).ravel()  # type: ignore
-        t = np.asarray(t, dtype=dtype).ravel()  # type: ignore
+        p: NumberArray[NDimension], t: NumberArray[NDimension]
+    ) -> NumberArray[OneDimension]:
+        p = p.astype(dtype, copy=False).ravel()  # type: ignore
+        t = t.astype(dtype, copy=False).ravel()  # type: ignore
         n = len(p)
+
         vals = np.empty((len(temperatures), n), dtype=dtype)
         for j, d_interp in enumerate(_dp_interps):
             vals[j] = d_interp(p)
@@ -1063,7 +1059,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
         elif is_array and result.size == 1:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
-        return typing.cast(FloatArray[NDimension], result)
+        return typing.cast(NumberArray[NDimension], result)
 
     def _pts_query(
         self,
@@ -1119,7 +1115,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
         if result.size == 1:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
-        return typing.cast(FloatArray[NDimension], result)
+        return typing.cast(NumberArray[NDimension], result)
 
     def _resolve_salinity(
         self, salinity: typing.Optional[TableQuery[NDimension]]
@@ -1750,6 +1746,7 @@ class PVTTable(StoreSerializable):
         )
         if bubble_point_arr is None:
             return None
+        
         pressure_arr = np.atleast_1d(pressure)
         bubble_point_arr = np.atleast_1d(bubble_point_arr)
         result = pressure_arr <= bubble_point_arr

@@ -334,7 +334,7 @@ class Rock(StoreSerializable):
             compressibility=self.compressibility.convert(target, table=table),
             temperature=scale_and_offset(
                 self.temperature,
-                scale=factors["temperature_scale"],
+                scale=factors["temperature"],
                 offset=factors["temperature_offset"],
             ),
             connate_water_saturation=self.connate_water_saturation,
@@ -572,7 +572,7 @@ class PVT(StoreSerializable):
         return self.__class__(
             reference_temperature=scale_and_offset(
                 self.reference_temperature,
-                scale=factors["temperature_scale"],
+                scale=factors["temperature"],
                 offset=factors["temperature_offset"],
             ),
             oil_specific_gravity=self.oil_specific_gravity,

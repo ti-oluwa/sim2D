@@ -623,9 +623,9 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups → common Rv grid
-    all_rv = sorted({
-        float(row["rv"]) for rows in pressure_to_rows.values() for row in rows
-    })
+    all_rv = sorted(
+        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
+    )
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 

@@ -215,10 +215,12 @@ def as_pyvista_grid(
 
     # Next, exclusive prefix sum -> start positions for each cell
     cell_starts = np.zeros(n_cells, dtype=np.int64)
-    cell_starts[valid_cell_mask] = np.concatenate([
-        [0],
-        np.cumsum(counts[valid_cell_mask])[:-1],
-    ])
+    cell_starts[valid_cell_mask] = np.concatenate(
+        [
+            [0],
+            np.cumsum(counts[valid_cell_mask])[:-1],
+        ]
+    )
     total_entries = int(counts.sum())
 
     # Lastly, fill buffer

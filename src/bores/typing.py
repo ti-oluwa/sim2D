@@ -76,7 +76,6 @@ OneDimension: TypeAlias = typing.Tuple[int]
 
 Number: TypeAlias = typing.Union[int, float, np.floating, np.integer]
 Boolean: TypeAlias = typing.Union[bool, np.bool_]
-NDimensionalGrid: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 FloatArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 IntArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.integer]]
 NumberArray: TypeAlias = typing.Union[FloatArray[NDimension], IntArray[NDimension]]
@@ -96,6 +95,7 @@ BooleanCellArray: typing.TypeAlias = BooleanArray[OneDimension]
 """Shape (n_cells,) per-cell boolean array."""
 
 
+NDimensionalGrid: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 ThreeDimensionalGrid = NDimensionalGrid[ThreeDimensions]
 """3D grid type for simulation data, represented as a 3D NumPy array of floats"""
 TwoDimensionalGrid = NDimensionalGrid[TwoDimensions]
@@ -243,15 +243,15 @@ class MixingRuleFunc(typing.Protocol):
     def __call__(
         self,
         *,
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
-    ) -> NumberOrArray:
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+    ) -> NumberOrArray[NDimension]:
         """
         Compute the three-phase oil relative permeability.
 
@@ -329,24 +329,24 @@ class MixingRuleDFunc(typing.Protocol):
     def __call__(
         self,
         *,
-        kro_w: NumberOrArray,
-        kro_g: NumberOrArray,
-        krw: NumberOrArray,
-        krg: NumberOrArray,
-        kr_max: NumberOrArray,
-        water_saturation: NumberOrArray,
-        oil_saturation: NumberOrArray,
-        gas_saturation: NumberOrArray,
+        kro_w: NumberOrArray[NDimension],
+        kro_g: NumberOrArray[NDimension],
+        krw: NumberOrArray[NDimension],
+        krg: NumberOrArray[NDimension],
+        kr_max: NumberOrArray[NDimension],
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
     ) -> typing.Union[
         MixingRulePartialDerivatives,
         typing.Tuple[
-            NumberOrArray,
-            NumberOrArray,
-            NumberOrArray,
-            NumberOrArray,
-            NumberOrArray,
-            NumberOrArray,
-            NumberOrArray,
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
         ],
     ]:
         """

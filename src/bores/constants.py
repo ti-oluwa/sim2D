@@ -2,11 +2,13 @@
 
 import logging
 import typing
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from uuid import uuid4
 
 import attrs
 from typing_extensions import Self, TypedDict
 
+from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
@@ -945,8 +947,9 @@ class Constants(
         return constants
 
 
-_constants_context: ContextVar[Constants] = ContextVar(
-    "constants_context", default=Constants()
+_DEFAULT_CONTEXT_ID = uuid4().hex
+_constants_context: ContextVar[typing.Tuple[Constants, str]] = ContextVar(
+    "constants_context", default=(Constants(), _DEFAULT_CONTEXT_ID)
 )
 
 
@@ -959,22 +962,36 @@ class ConstantsContext:
     `Constants` instance is restored.
     """
 
+    __slots__ = ("_constants", "_id", "_token")
+
     def __init__(self, constants: Constants) -> None:
         """
         Initialize the context manager with a new `Constants` instance.
 
         :param constants: New `Constants` instance to use within the context
         """
-        self._new_constants = constants
-        self._token = None
+        self._constants = constants
+        self._id = uuid4().hex
+        self._token: typing.Optional[Token[typing.Tuple[Constants, str]]] = None
+
+    @property
+    def id(self) -> str:
+        """The context id"""
+        return self._id
+
+    @property
+    def constants(self) -> Constants:
+        """The context's `Constants`"""
+        return self._constants
 
     def __enter__(self) -> Constants:
-        """Enter the context, setting the new `Constants` instance.
+        """
+        Enter the context, setting the new `Constants` instance.
 
         :return: The new `Constants` instance
         """
-        self._token = _constants_context.set(self._new_constants)  # type: ignore[assignment]
-        return self._new_constants
+        self._token = _constants_context.set((self._constants, self._id))
+        return self._constants
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         """Exit the context, restoring the previous `Constants` instance."""
@@ -982,7 +999,8 @@ class ConstantsContext:
             _constants_context.reset(self._token)
 
 
-class _ConstantsProxy:
+@typing.final
+class __ConstantsProxy:
     """
     Proxy class to access the current context's `Constants` instance.
 
@@ -992,13 +1010,26 @@ class _ConstantsProxy:
     """
 
     @property
+    def context_id(self) -> str:
+        """
+        Get the current context's ID.
+
+        :return: `ConstantsContext` ID.
+        """
+        return _constants_context.get()[1]
+
+    @property
     def _constants(self) -> Constants:
         """
         Get the current context's `Constants` instance.
 
         :return: Current `Constants` instance
         """
-        return _constants_context.get()
+        return _constants_context.get()[0]
+
+    def in_default_context(self) -> bool:
+        """Returns `True` if we are the default (process local) `Constants` context"""
+        return self.context_id == _DEFAULT_CONTEXT_ID
 
     def __getattr__(self, name: str) -> typing.Any:
         """
@@ -1028,17 +1059,34 @@ class _ConstantsProxy:
         return self._constants._ipython_key_completions_()
 
 
-c = _ConstantsProxy()
+c = __ConstantsProxy()
 """Global proxy to access physical constants and conversion factors."""
 
 
 def get_constant(name: str) -> typing.Optional[Constant]:
-    """Get a `Constant` object by name from the global constants.
+    """
+    Get a `Constant` object by name from the global constants.
 
     :param name: Name of the constant
     :return: `Constant` object or None if not found
     """
     return c._constants.get_constant(name)
+
+
+def set_default_constants(constants: Constants, /) -> None:
+    """
+    Set/override the default (process local) `Constants` used.
+
+    Note: This method should not be called inside a `ConstantsContext`.
+        An error will be raise if called like so.
+
+    :param constants: The `Constants` object to set as default.
+    """
+    if c.context_id != _DEFAULT_CONTEXT_ID:
+        raise ValidationError(
+            "Cannot set constants. Are you in a `ConstantsContext`? Only call in default context"
+        )
+    _constants_context.set((constants, _DEFAULT_CONTEXT_ID))
 
 
 class UnitConversionFactors(TypedDict):
@@ -1069,7 +1117,7 @@ class UnitConversionFactors(TypedDict):
     gor: Number
     """Gas-oil ratio conversion factor."""
 
-    temperature_scale: Number
+    temperature: Number
     """Multiplicative temperature conversion factor."""
 
     temperature_offset: Number
@@ -1080,10 +1128,6 @@ UnitConversionTable = typing.Dict[
     typing.Tuple[UnitSystem, UnitSystem], UnitConversionFactors
 ]
 """Mapping of unit system pairs `(from, target)` to unit conversion factors"""
-
-
-def _inverse(x: Number) -> Number:
-    return 1.0 / x
 
 
 def build_unit_conversion_table(
@@ -1117,6 +1161,9 @@ def build_unit_conversion_table(
     kg_m3_to_g_cm3 = 1e-3
     lbm_ft3_to_g_cm3 = lbm_ft3_to_kg_m3 * kg_m3_to_g_cm3
 
+    def _inverse(x: Number) -> Number:
+        return 1.0 / x
+
     table: UnitConversionTable = {
         # FIELD -> *
         (UnitSystem.FIELD, UnitSystem.METRIC): UnitConversionFactors(
@@ -1129,7 +1176,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
-            temperature_scale=5.0 / 9.0,
+            temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
         ),
         (UnitSystem.FIELD, UnitSystem.SI): UnitConversionFactors(
@@ -1142,7 +1189,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
-            temperature_scale=5.0 / 9.0,
+            temperature=5.0 / 9.0,
             temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
         ),
         (UnitSystem.FIELD, UnitSystem.LAB): UnitConversionFactors(
@@ -1155,7 +1202,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=scf_stb_to_sm3_sm3,
             gor=scf_stb_to_sm3_sm3,
-            temperature_scale=5.0 / 9.0,
+            temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
         ),
         # METRIC -> *
@@ -1169,7 +1216,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature_scale=9.0 / 5.0,
+            temperature=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
         ),
         (UnitSystem.METRIC, UnitSystem.SI): UnitConversionFactors(
@@ -1182,7 +1229,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=273.15,  # °C -> K
         ),
         (UnitSystem.METRIC, UnitSystem.LAB): UnitConversionFactors(
@@ -1195,7 +1242,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=0.0,  # °C -> °C
         ),
         # SI -> *
@@ -1209,7 +1256,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature_scale=9.0 / 5.0,
+            temperature=9.0 / 5.0,
             temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
         ),
         (UnitSystem.SI, UnitSystem.METRIC): UnitConversionFactors(
@@ -1222,7 +1269,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=-273.15,  # K -> °C
         ),
         (UnitSystem.SI, UnitSystem.LAB): UnitConversionFactors(
@@ -1235,7 +1282,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=-273.15,  # K -> °C
         ),
         # LAB -> *
@@ -1249,7 +1296,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=_inverse(scf_stb_to_sm3_sm3),
             gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature_scale=9.0 / 5.0,
+            temperature=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
         ),
         (UnitSystem.LAB, UnitSystem.METRIC): UnitConversionFactors(
@@ -1262,7 +1309,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=0.0,  # °C -> °C
         ),
         (UnitSystem.LAB, UnitSystem.SI): UnitConversionFactors(
@@ -1275,7 +1322,7 @@ def build_unit_conversion_table(
             liquid_fvf=1.0,
             gas_fvf=1.0,
             gor=1.0,
-            temperature_scale=1.0,
+            temperature=1.0,
             temperature_offset=273.15,  # °C -> K
         ),
     }
@@ -1292,7 +1339,7 @@ IDENTITY_FACTORS = UnitConversionFactors(
     liquid_fvf=1.0,
     gas_fvf=1.0,
     gor=1.0,
-    temperature_scale=1.0,
+    temperature=1.0,
     temperature_offset=0.0,
 )
 """Identity unit conversion factors. All factors = 1."""
@@ -1316,7 +1363,7 @@ def get_conversion_factors(
     `to_system` by **multiplication**, except temperature which uses an
     affine map stored as two keys:
 
-    - "temperature_scale"  - multiplicative factor.
+    - "temperature"  - multiplicative factor.
     - "temperature_offset" - additive delta (in target units) applied
     *after* scaling: T_to = T_from * scale + offset.
 
@@ -1334,7 +1381,7 @@ def get_conversion_factors(
     "gor"              scf/STB -> sm³/sm³ / scc/scc
     "mass"             lbm / kg / g / kg  (not stored; derived as
                         density_factor x length_factor³ by callers)
-    "temperature_scale" / "temperature_offset" - see above.
+    "temperature" / "temperature_offset" - see above.
     ```
 
     :param from_system: Source `UnitSystem`.

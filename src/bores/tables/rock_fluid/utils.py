@@ -5,14 +5,14 @@ import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
 
-from bores.typing import Spacing
+from bores.typing import Number, Spacing
 
 
 @numba.njit(cache=True)
 def make_saturation_field(
     n_points: int = 200,
-    min_saturation: float = 0.0,
-    max_saturation: float = 1.0,
+    min_saturation: Number = 0.0,
+    max_saturation: Number = 1.0,
     spacing: Spacing = "cosine",
     dtype: npt.DTypeLike = np.float64,
 ) -> npt.NDArray:
@@ -42,16 +42,19 @@ def make_saturation_field(
     else:
         raise ValueError(f"`spacing` must be 'cosine' or 'linspace', got '{spacing}'")
 
-    return (min_saturation + unit * (max_saturation - min_saturation)).astype(dtype)
+    return (min_saturation + unit * (max_saturation - min_saturation)).astype(
+        dtype, copy=False
+    )
 
 
 @numba.njit(cache=True, inline="always")
 def make_min_span_saturation_field(
     number_of_points: int,
-    min_saturation: float,
-    max_saturation: float,
+    min_saturation: Number,
+    max_saturation: Number,
     spacing: Spacing,
-    minimum_span: float,
+    minimum_span: Number,
+    dtype: npt.DTypeLike = np.float64,
 ) -> npt.NDArray:
     """
     Build a saturation grid, enforcing a floor of `minimum_span` on the
@@ -75,14 +78,14 @@ def make_min_span_saturation_field(
                 min_saturation,
                 max(min_saturation + minimum_span, max_saturation),
             ],
-            dtype=np.float64,
+            dtype=dtype,
         )
     return make_saturation_field(
         n_points=number_of_points,
         min_saturation=min_saturation,
         max_saturation=max_saturation,
         spacing=spacing,
-        dtype=np.float64,
+        dtype=dtype,
     )
 
 
@@ -91,6 +94,7 @@ def pchip_resample(
     source_values: npt.NDArray,
     number_of_output_points: int,
     spacing: Spacing,
+    dtype: npt.DTypeLike = np.float64,
 ) -> typing.Tuple[npt.NDArray, npt.NDArray]:
     """
     Fit a PCHIP interpolant through (`source_saturations`, `source_values`),
@@ -105,10 +109,10 @@ def pchip_resample(
     interpolant = PchipInterpolator(source_saturations, source_values)
     resampled_saturations = make_saturation_field(
         n_points=number_of_output_points,
-        min_saturation=float(source_saturations[0]),
-        max_saturation=float(source_saturations[-1]),
+        min_saturation=source_saturations[0],
+        max_saturation=source_saturations[-1],
         spacing=spacing,
-        dtype=np.float64,
+        dtype=dtype,
     )
     return resampled_saturations, interpolant(resampled_saturations)
 
@@ -116,11 +120,12 @@ def pchip_resample(
 @numba.njit(cache=True)
 def build_saturation_reference_field(
     number_of_base_points: int,
-    saturation_lower_bound: float,
-    saturation_upper_bound: float,
+    saturation_lower_bound: Number,
+    saturation_upper_bound: Number,
     spacing: Spacing,
     number_of_endpoint_extra_points: int,
-    minimum_grid_span: float = 1e-6,
+    minimum_grid_span: Number = 1e-6,
+    dtype: npt.DTypeLike = np.float64,
 ) -> npt.NDArray:
     """
     Build a saturation reference field with optional endpoint refinement.
@@ -145,6 +150,7 @@ def build_saturation_reference_field(
         saturation_upper_bound,
         spacing,
         minimum_grid_span,
+        dtype=dtype,
     )
     saturation_span = saturation_upper_bound - saturation_lower_bound
     if saturation_span < minimum_grid_span or number_of_endpoint_extra_points <= 0:
@@ -155,15 +161,22 @@ def build_saturation_reference_field(
         saturation_lower_bound,
         saturation_lower_bound + endpoint_decade_width,
         number_of_endpoint_extra_points + 2,
+        dtype=dtype,
     )
     upper_endpoint_refinement = np.linspace(
         saturation_upper_bound - endpoint_decade_width,
         saturation_upper_bound,
         number_of_endpoint_extra_points + 2,
+        dtype=dtype,
     )
     return np.unique(
         np.concatenate(
-            (base_field, lower_endpoint_refinement, upper_endpoint_refinement)
+            (
+                base_field,
+                lower_endpoint_refinement,
+                upper_endpoint_refinement,
+            ),
+            dtype=dtype,
         )
     )
 
@@ -174,7 +187,8 @@ def build_pchip_interpolant(
     number_of_base_points: int,
     number_of_endpoint_extra_points: int,
     spacing: Spacing,
-    minimum_scale_span: float = 1e-6,
+    minimum_scale_span: Number = 1e-6,
+    dtype: npt.DTypeLike = np.float64,
 ) -> typing.Tuple[PchipInterpolator, PchipInterpolator]:
     """
     Build a PCHIP interpolant (and its derivative) for a two-phase kr or Pc
@@ -206,7 +220,7 @@ def build_pchip_interpolant(
     saturation_field = reference_saturation
     vals = values
 
-    span = float(saturation_field[-1]) - float(saturation_field[0])
+    span = saturation_field[-1] - saturation_field[0]
     should_scale = (
         number_of_base_points > 0
         and len(saturation_field) < number_of_base_points
@@ -215,10 +229,11 @@ def build_pchip_interpolant(
     if should_scale:
         expanded_saturation_field = build_saturation_reference_field(
             number_of_base_points=number_of_base_points,
-            saturation_lower_bound=float(saturation_field[0]),
-            saturation_upper_bound=float(saturation_field[-1]),
+            saturation_lower_bound=saturation_field[0],
+            saturation_upper_bound=saturation_field[-1],
             spacing=spacing,
             number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+            dtype=dtype,
         )
         # Fit a temporary PCHIP on the raw knots to resample onto the expanded field
         source_pchip = PchipInterpolator(saturation_field, vals)
