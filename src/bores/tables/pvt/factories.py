@@ -9,6 +9,7 @@ from scipy.interpolate import RectBivariateSpline  # type: ignore[import-untyped
 from bores.constants import c
 from bores.correlations import arrays, scalars
 from bores.errors import ValidationError
+from bores.fluids import Fluid
 from bores.precision import get_dtype
 from bores.tables.pvt.base import PVTTable
 from bores.tables.pvt.data import PVTData, PVTDataSet
@@ -51,8 +52,6 @@ def _resolve_gas(
     :param gas_gravity: Override gas gravity (air=1).
     :returns: Resolved 3-tuple.
     """
-    from bores.fluids import Fluid  # type: ignore[import]
-
     pvt_table: typing.Optional[PVTTable] = None
     gas_name: str = c.RESERVOIR_GAS
 

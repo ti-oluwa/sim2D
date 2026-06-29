@@ -7,23 +7,15 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.correlations.arrays import (
-    compute_gas_compressibility_factor as compute_gas_compressibility_factor_array,
-)
-from bores.correlations.arrays import (
-    compute_gas_density as compute_gas_density_array,
-)
-from bores.correlations.arrays import (
-    compute_gas_viscosity as compute_gas_viscosity_array,
-)
+from bores.correlations import arrays
 from bores.errors import ValidationError
 from bores.stores import StoreSerializable
 from bores.tables.pseudo_pressure import (
     PseudoPressureTable,
     build_pseudo_pressure_table,
 )
-from bores.tables.pvt import PVTTable
-from bores.typing import FluidPhase
+from bores.tables.pvt.base import PVTTable, PVTTables
+from bores.typing import FluidPhase, Number, UnitSystem
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +85,15 @@ class Fluid(StoreSerializable):
 
     def _build_pseudo_pressure_cache_key(
         self,
-        temperature: float,
-        reference_pressure: typing.Optional[float],
-        pressure_range: typing.Optional[typing.Tuple[float, float]],
+        temperature: Number,
+        reference_pressure: typing.Optional[Number],
+        pressure_range: typing.Optional[typing.Tuple[Number, Number]],
         points: typing.Optional[int],
-        pvt_tables: typing.Optional[typing.Any] = None,
+        number_of_base_points: int = 500,
+        number_of_endpoint_extra_points: int = 20,
+        pvt_tables: typing.Optional[PVTTables] = None,
+        dtype: typing.Optional[npt.DTypeLike] = None,
+        unit_system: UnitSystem = UnitSystem.FIELD,
     ) -> typing.Tuple[typing.Any, ...]:
         """Stable hashable cache key for pseudo-pressure table construction."""
         pvt_hash: typing.Optional[tuple] = None
@@ -143,17 +139,25 @@ class Fluid(StoreSerializable):
             if pressure_range is not None
             else None,
             points,
+            number_of_base_points,
+            number_of_endpoint_extra_points,
             pvt_hash,
             global_pvt_hash,
+            dtype,
+            unit_system,
         )
 
     def get_pseudo_pressure_table(
         self,
-        temperature: float,
-        reference_pressure: typing.Optional[float] = None,
-        pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
+        temperature: Number,
+        reference_pressure: typing.Optional[Number] = None,
+        pressure_range: typing.Optional[typing.Tuple[Number, Number]] = None,
         points: typing.Optional[int] = None,
-        pvt_tables: typing.Optional[typing.Any] = None,
+        number_of_base_points: int = 500,
+        number_of_endpoint_extra_points: int = 20,
+        pvt_tables: typing.Optional[PVTTables] = None,
+        dtype: typing.Optional[npt.DTypeLike] = None,
+        unit_system: UnitSystem = UnitSystem.FIELD,
         use_cache: bool = True,
     ) -> PseudoPressureTable:
         """
@@ -172,18 +176,18 @@ class Fluid(StoreSerializable):
            `self.specific_gravity` (available on `WellFluid` subclasses).
 
         Raises `ValidationError` if:
-        - `self.phase` is not ``gas``.
+        - `self.phase` is not `gas`.
         - None of the four sources above can supply Z-factor + viscosity functions.
 
         :param temperature: Reservoir temperature (°F).
         :param reference_pressure: Reference pressure (psi); defaults to 14.7.
-        :param pressure_range: ``(p_min, p_max)`` for table construction (psi).
+        :param pressure_range: `(p_min, p_max)` for table construction (psi).
         :param points: Number of integration points (default 200).
-        :param pvt_tables: Optional global :class:`~bores.tables.pvt.PVTTables`
-            bundle.  Its ``gas`` slot is consulted when ``self.pvt_table`` is
-            ``None`` or lacks the required interpolators.
+        :param pvt_tables: Optional global `PVTTables`
+            bundle.  Its `gas` slot is consulted when `self.pvt_table` is
+            `None` or lacks the required interpolators.
         :param use_cache: Use global pseudo-pressure table cache.
-        :return: :class:`~bores.tables.pseudo_pressure.PseudoPressureTable`.
+        :return: `PseudoPressureTable`.
         """
         if self.phase != FluidPhase.GAS:
             raise ValidationError(
@@ -265,12 +269,12 @@ class Fluid(StoreSerializable):
                     "is available. Provide one of the two, or set `pseudo_pressure_table` directly."
                 )
 
-            _specific_gravity = float(specific_gravity)
+            _specific_gravity = specific_gravity
 
             def z_factor_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
                 temperature_arr = np.full_like(pressure, temperature)
                 specific_gravity_arr = np.full_like(pressure, _specific_gravity)
-                return compute_gas_compressibility_factor_array(
+                return arrays.compute_gas_compressibility_factor(
                     pressure=pressure,
                     temperature=temperature_arr,
                     gas_gravity=specific_gravity_arr,
@@ -286,24 +290,24 @@ class Fluid(StoreSerializable):
                     "are available."
                 )
 
-            _specific_gravity = float(specific_gravity)
-            _molecular_weight = float(molecular_weight)
+            _specific_gravity = specific_gravity
+            _molecular_weight = molecular_weight
 
             def viscosity_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
                 temperature_arr = np.full_like(pressure, temperature)
                 specific_gravity_arr = np.full_like(pressure, _specific_gravity)
-                z_factor_arr = compute_gas_compressibility_factor_array(
+                z_factor_arr = arrays.compute_gas_compressibility_factor(
                     pressure=pressure,
                     temperature=temperature_arr,
                     gas_gravity=specific_gravity_arr,
                 )
-                density_arr = compute_gas_density_array(
+                density_arr = arrays.compute_gas_density(
                     pressure=pressure,
                     temperature=temperature_arr,
                     gas_gravity=specific_gravity_arr,
                     gas_compressibility_factor=z_factor_arr,
                 )
-                return compute_gas_viscosity_array(
+                return arrays.compute_gas_viscosity(
                     temperature=temperature_arr,
                     gas_density=density_arr,
                     gas_molecular_weight=np.full_like(pressure, _molecular_weight),
@@ -318,14 +322,21 @@ class Fluid(StoreSerializable):
                 reference_pressure=reference_pressure,
                 pressure_range=pressure_range,
                 points=points,
+                number_of_base_points=number_of_base_points,
+                number_of_endpoint_extra_points=number_of_endpoint_extra_points,
                 pvt_tables=pvt_tables,
+                dtype=dtype,
+                unit_system=unit_system,
             )
-
         return build_pseudo_pressure_table(
             z_factor_func=z_factor_func,  # type: ignore[arg-type]
             viscosity_func=viscosity_func,  # type: ignore[arg-type]
             reference_pressure=reference_pressure,
             pressure_range=pressure_range,
             points=points,
+            number_of_base_points=number_of_base_points,
+            number_of_endpoint_extra_points=number_of_endpoint_extra_points,
             cache_key=cache_key,
+            dtype=dtype,
+            unit_system=unit_system,
         )

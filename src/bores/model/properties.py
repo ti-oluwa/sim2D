@@ -884,7 +884,13 @@ class Hysteresis(StoreSerializable):
         return attrs.evolve(self, **kwargs)
 
 
-@attrs.frozen(slots=True)
+# We need `State` to be mutable as it is going to be used alot in the simulation solver
+# and we dont want to creating new objects (allocating/deallocating) in an hot path
+# when we can absolutely avoid it. We will only make a copy once (before simualtion start)
+# so we dont mutate the one on the model itself. Moreover, the PVTCache is what will
+# mostlikely be updated most frequently during the simulation. The `State` object will only
+# use to record or generated summary of each timestep.
+@attrs.define(slots=True)
 class State(StoreSerializable):
     """
     Dynamic per-cell simulation state, updated at every time step.

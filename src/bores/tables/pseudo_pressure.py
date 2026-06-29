@@ -72,37 +72,41 @@ def compute_gas_pseudo_pressure(
     if abs(pressure - reference_pressure) < 1e-6:
         return 0.0
 
-    # Define the integrand: 2*P / (μ*Z)
+    # Define the integrand: 2*P / (μ*z_factor)
     def integrand(P: Number) -> Number:
         """Integrand for pseudo-pressure calculation."""
         # Clamp pressure to avoid extrapolation issues
-        P_clamped = max(1.0, P)  # Don't go below 1 psi
+        clamped_P = max(1.0, P)  # Don't go below 1 psi
 
         try:
-            Z = z_factor_func(P_clamped)
-            mu = viscosity_func(P_clamped)
+            z_factor = z_factor_func(clamped_P)
+            viscosity = viscosity_func(clamped_P)
         except Exception as exc:
             logger.warning(
-                f"Failed to evaluate Z or μ at P={P_clamped} using ideal gas approximation as fallback: {exc}"
+                f"Failed to evaluate `z_factor` or μ at P={clamped_P} using ideal gas approximation as fallback: {exc}"
             )
             # Use ideal gas approximation as fallback
-            Z = 1.0
-            mu = 0.01  # Typical gas viscosity in cP
+            z_factor = 1.0
+            viscosity = 0.01  # Typical gas viscosity in cP
 
         # Protect against division by zero or negative values
-        if Z <= 0 or mu <= 0 or not np.isfinite(Z) or not np.isfinite(mu):
+        if (
+            z_factor <= 0
+            or viscosity <= 0
+            or not np.isfinite(z_factor)
+            or not np.isfinite(viscosity)
+        ):
             logger.warning(
-                f"Invalid Z={Z} or μ={mu} at P={P_clamped}. Using ideal gas approximation."
+                f"Invalid z_factor={z_factor} or μ={viscosity} at P={clamped_P}. Using ideal gas approximation."
             )
-            Z = max(Z, 0.01)  # Minimum reasonable Z
-            mu = max(mu, 0.001)  # Minimum reasonable μ (cP)
+            z_factor = max(z_factor, 0.01)  # Minimum reasonable z_factor
+            viscosity = max(viscosity, 0.001)  # Minimum reasonable μ (cP)
 
-        result = 2.0 * P_clamped / (mu * Z)
+        result = 2.0 * clamped_P / (viscosity * z_factor)
         # Sanity check on integrand value
         if not np.isfinite(result) or result < 0:
-            logger.warning("Invalid integrand %s at P=%.4e", result, P_clamped)
+            logger.warning("Invalid integrand %s at P=%.4e", result, clamped_P)
             return 0.0
-
         return result
 
     # Perform numerical integration with adaptive strategy
@@ -160,8 +164,7 @@ def compute_gas_pseudo_pressure(
     # Apply sign based on integration direction
     if pressure < reference_pressure:
         result = -result
-
-    return float(result)
+    return result
 
 
 def _supports_vectorization(
@@ -219,7 +222,7 @@ def _build_pseudo_pressures_vectorized(
     # Validate shapes
     if z_factor_arr.shape != pressures.shape or viscosity_arr.shape != pressures.shape:
         raise ValueError(
-            f"Shape mismatch: P={pressures.shape}, Z={z_factor_arr.shape}, μ={viscosity_arr.shape}"
+            f"Shape mismatch: P={pressures.shape}, z_factor={z_factor_arr.shape}, μ={viscosity_arr.shape}"
         )
 
     # Handle invalid values
@@ -236,7 +239,7 @@ def _build_pseudo_pressures_vectorized(
         )
         viscosity_arr = np.maximum(viscosity_arr, 0.001)
 
-    # Compute integrand: 2*P / (μ*Z)
+    # Compute integrand: 2*P / (μ*z_factor)
     integrand_array = 2.0 * clamped_pressures / (viscosity_arr * z_factor_arr)
 
     # Handle invalid integrand values
@@ -371,7 +374,7 @@ def build_pchip_interpolants_from_points(
     values: npt.NDArray,
     number_of_base_points: int,
     number_of_endpoint_extra_points: int,
-    minimum_scale_span: float = 1.0,
+    minimum_scale_span: Number = 1.0,
     dtype: npt.DTypeLike = np.float64,
 ) -> typing.Tuple[PchipInterpolator, PchipInterpolator]:
     """
@@ -449,6 +452,7 @@ def build_pchip_interpolants_from_points(
     return interp, d_interp
 
 
+@typing.final
 class PseudoPressureTable(
     StoreSerializable,
     fields={
@@ -833,9 +837,13 @@ def build_pseudo_pressure_table(
     viscosity_func: typing.Callable[
         [NumberOrArray[NDimension]], NumberOrArray[NDimension]
     ],
-    reference_pressure: typing.Optional[float] = None,
-    pressure_range: typing.Optional[typing.Tuple[float, float]] = None,
+    reference_pressure: typing.Optional[Number] = None,
+    pressure_range: typing.Optional[typing.Tuple[Number, Number]] = None,
     points: typing.Optional[int] = None,
+    number_of_base_points: int = 500,
+    number_of_endpoint_extra_points: int = 20,
+    dtype: typing.Optional[npt.DTypeLike] = None,
+    unit_system: UnitSystem = UnitSystem.FIELD,
     cache_key: typing.Optional[typing.Hashable] = None,
 ) -> PseudoPressureTable:
     """
@@ -860,6 +868,7 @@ def build_pseudo_pressure_table(
     - Whether PVT tables are used
 
     Example:
+
     ```python
     # Build cache key from fluid properties
     cache_key = (
@@ -871,6 +880,8 @@ def build_pseudo_pressure_table(
         (14.7, 5000),  # pressure range
         100,    # points
         None,   # pvt_tables (or hash of tables)
+        np.float64,  # dtype
+        UnitSystem.METRIC, # Unit system
     )
 
     table = build_pseudo_pressure_table(
@@ -913,6 +924,10 @@ def build_pseudo_pressure_table(
         reference_pressure=reference_pressure,
         pressure_range=pressure_range,
         points=points,
+        number_of_base_points=number_of_base_points,
+        number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+        dtype=dtype,
+        unit_system=unit_system,
     )
 
     # Cache if key provided
