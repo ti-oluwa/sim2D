@@ -1011,9 +1011,7 @@ class PVTTable(StoreSerializable):
         if not derivative:
             self._warn_extrapolation(pressure, temperature)
 
-        is_scalar = isinstance(pressure, (int, float, np.floating)) and isinstance(
-            temperature, (int, float, np.floating)
-        )
+        is_scalar = np.isscalar(pressure) and np.isscalar(temperature)
         dtype = self.dtype
         if is_scalar:
             raw = (
@@ -1059,7 +1057,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
         elif is_array and result.size == 1:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
-        return typing.cast(NumberArray[NDimension], result)
+        return typing.cast(NumberArray[NDimension], result.astype(dtype, copy=False))
 
     def _pts_query(
         self,
@@ -1115,7 +1113,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result))  # type: ignore[attr-defined]
         if result.size == 1:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
-        return typing.cast(NumberArray[NDimension], result)
+        return typing.cast(NumberArray[NDimension], result.astype(dtype, copy=False))
 
     def _resolve_salinity(
         self, salinity: typing.Optional[TableQuery[NDimension]]
@@ -1181,9 +1179,9 @@ class PVTTable(StoreSerializable):
             return self._pt_query("formation_volume_factor", pressure, temperature)
 
         dtype = self.dtype
-        pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
-        bubble_point_arr = np.atleast_1d(bubble_point_arr).astype(dtype, copy=False)
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
+        bubble_point_arr = np.atleast_1d(bubble_point_arr)
         pressure_arr, temperature_arr, bubble_point_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, bubble_point_arr
         )
@@ -1232,7 +1230,9 @@ class PVTTable(StoreSerializable):
 
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def formation_volume_factor_dp(
@@ -1310,9 +1310,9 @@ class PVTTable(StoreSerializable):
             return self._pt_query("viscosity", pressure, temperature)
 
         dtype = self.dtype
-        pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
-        bubble_point_arr = np.atleast_1d(bubble_point_arr).astype(dtype, copy=False)
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
+        bubble_point_arr = np.atleast_1d(bubble_point_arr)
         pressure_arr, temperature_arr, bubble_point_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, bubble_point_arr
         )
@@ -1349,7 +1349,9 @@ class PVTTable(StoreSerializable):
 
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def viscosity_dp(
@@ -1575,18 +1577,22 @@ class PVTTable(StoreSerializable):
         if interp is None:
             return None
 
+        dtype = self.dtype
         if self._bubble_point_ndim == 1:
             result = interp(temperature)
-            return float(result) if np.isscalar(temperature) else result
+            return (
+                dtype.type(result)  # type: ignore[attr-defined]
+                if np.isscalar(temperature)
+                else result.astype(dtype, copy=False)  # type: ignore[attr-defined]
+            )
 
         if solution_gor is None:
             raise ValidationError(
                 "2-D bubble-point table requires the `solution_gor` argument."
             )
 
-        dtype = self.dtype
-        solution_gor_arr = np.atleast_1d(solution_gor).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
+        solution_gor_arr = np.atleast_1d(solution_gor)
+        temperature_arr = np.atleast_1d(temperature)
         if solution_gor_arr.shape != temperature_arr.shape:
             if solution_gor_arr.size == 1:
                 solution_gor_arr = np.full_like(temperature_arr, solution_gor_arr[0])
@@ -1603,7 +1609,9 @@ class PVTTable(StoreSerializable):
         )
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def bubble_point_pressure_drs(
@@ -1629,8 +1637,8 @@ class PVTTable(StoreSerializable):
             return None
 
         dtype = self.dtype
-        solution_gor_arr = np.atleast_1d(solution_gor).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
+        solution_gor_arr = np.atleast_1d(solution_gor)
+        temperature_arr = np.atleast_1d(temperature)
         result = (
             interp.ev(solution_gor_arr, temperature_arr)
             if hasattr(interp, "ev")
@@ -1638,7 +1646,9 @@ class PVTTable(StoreSerializable):
         )
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def solution_gas_to_oil_ratio(
@@ -1672,13 +1682,13 @@ class PVTTable(StoreSerializable):
                 temperature=temperature, solution_gor=solution_gor
             )
         )
-        pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
 
         if bubble_point_arr is None:
             return self._pt_query("solution_gor", pressure_arr, temperature_arr)
 
-        bubble_point_arr = np.atleast_1d(bubble_point_arr).astype(dtype, copy=False)
+        bubble_point_arr = np.atleast_1d(bubble_point_arr)
         pressure_arr, temperature_arr, bubble_point_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, bubble_point_arr
         )
@@ -1705,7 +1715,9 @@ class PVTTable(StoreSerializable):
 
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def solution_gas_to_oil_ratio_dp(
@@ -1746,7 +1758,7 @@ class PVTTable(StoreSerializable):
         )
         if bubble_point_arr is None:
             return None
-        
+
         pressure_arr = np.atleast_1d(pressure)
         bubble_point_arr = np.atleast_1d(bubble_point_arr)
         result = pressure_arr <= bubble_point_arr
@@ -1819,13 +1831,13 @@ class PVTTable(StoreSerializable):
         )
 
         dtype = self.dtype
-        pressure_arr = np.atleast_1d(pressure).astype(dtype, copy=False)
-        temperature_arr = np.atleast_1d(temperature).astype(dtype, copy=False)
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
 
         if dew_point_pressure is None:
             return self._pt_query("vaporized_oil_ratio", pressure_arr, temperature_arr)
 
-        pdew_arr = np.atleast_1d(dew_point_pressure).astype(dtype, copy=False)
+        pdew_arr = np.atleast_1d(dew_point_pressure)
         pressure_arr, temperature_arr, pdew_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, pdew_arr
         )
@@ -1849,7 +1861,9 @@ class PVTTable(StoreSerializable):
 
         return typing.cast(
             TableResult[NDimension],
-            dtype.type(result) if result.size == 1 else result,  # type: ignore[attr-defined]
+            dtype.type(result)  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
         )
 
     def vaporized_oil_ratio_dp(
@@ -1889,7 +1903,11 @@ class PVTTable(StoreSerializable):
 
         dtype = self.dtype
         result = interp(temperature)
-        return dtype.type(result) if np.isscalar(temperature) else result  # type: ignore[attr-defined]
+        return (
+            dtype.type(result)  # type: ignore[attr-defined]
+            if np.isscalar(temperature)
+            else result.astype(dtype, copy=False)
+        )
 
     def solubility_in_water(
         self,

@@ -311,7 +311,7 @@ class TwoPhaseCapillaryPressureTable(
             return non_wetting_saturation
         return wetting_saturation
 
-    def _query_pchip(
+    def _query_interp(
         self,
         reference: NumberOrArray[NDimension],
     ) -> NumberOrArray[NDimension]:
@@ -323,19 +323,21 @@ class TwoPhaseCapillaryPressureTable(
         :return: Capillary pressure value(s).
         """
         is_scalar = np.isscalar(reference)
-        sat = np.atleast_1d(np.asarray(reference, dtype=np.float64))
+        sat = np.atleast_1d(reference)
         x_min = self._interp.x[0]
         x_max = self._interp.x[-1]
 
         result = self._interp(np.clip(sat, x_min, x_max))
-        result = np.where(sat < x_min, self.capillary_pressure[0]), result
-        result = np.where(sat > x_max, self.capillary_pressure[-1]), result
+        result = np.where(sat < x_min, self.capillary_pressure[0], result)
+        result = np.where(sat > x_max, self.capillary_pressure[-1], result)
 
         if is_scalar:
             return result.item()
-        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape))
+        return typing.cast(
+            NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
+        )
 
-    def _query_dpchip(
+    def _query_d_interp(
         self, reference: NumberOrArray[NDimension]
     ) -> NumberOrArray[NDimension]:
         """
@@ -346,7 +348,7 @@ class TwoPhaseCapillaryPressureTable(
         :return: Derivative value(s).
         """
         is_scalar = np.isscalar(reference)
-        sat = np.atleast_1d(np.asarray(reference, dtype=np.float64))
+        sat = np.atleast_1d(reference)
         x_min = self._d_interp.x[0]
         x_max = self._d_interp.x[-1]
 
@@ -355,7 +357,9 @@ class TwoPhaseCapillaryPressureTable(
 
         if is_scalar:
             return result.item()
-        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape))
+        return typing.cast(
+            NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
+        )
 
     def get_capillary_pressure(
         self,
@@ -379,7 +383,7 @@ class TwoPhaseCapillaryPressureTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        return self._query_pchip(ref)
+        return self._query_interp(ref)
 
     def get_capillary_pressure_derivative(
         self,
@@ -404,7 +408,7 @@ class TwoPhaseCapillaryPressureTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        return self._query_dpchip(ref)
+        return self._query_d_interp(ref)
 
     def __call__(
         self,

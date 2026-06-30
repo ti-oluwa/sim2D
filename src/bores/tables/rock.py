@@ -131,7 +131,7 @@ class RockCompressibilityTable(StoreSerializable):
 
         self._build_interpolants()
         logger.debug(
-            "RockCompressibilityTable init: n_p=%d, method=%r, unit_system=%r, "
+            "RockCompressibilityTable init: n_p=%d, method=%row, unit_system=%row, "
             "p_range=[%.1f, %.1f], p_ref=%.1f",
             len(self.pressures),
             interpolation_method,
@@ -572,15 +572,15 @@ class RockCompressibilityTable(StoreSerializable):
                 f"ROCKTAB requires at least 2 rows; got {len(rocktab_records)}."
             )
 
-        dtype = np.dtype(dtype if dtype is not None else get_dtype())
-        rows = sorted(rocktab_records, key=lambda r: r["pressure"])
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+        rows = sorted(rocktab_records, key=lambda row: row["pressure"])
 
-        pressures = np.array([r["pressure"] for r in rows], dtype=dtype)
+        pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
         pore_volume_multipliers = np.array(
-            [r["pore_volume_multiplier"] for r in rows], dtype=dtype
+            [row["pore_volume_multiplier"] for row in rows], dtype=dtype
         )
         transmissibility_multipliers = np.array(
-            [r.get("transimissibility_multiplier", 1.0) for r in rows], dtype=dtype
+            [row.get("transimissibility_multiplier", 1.0) for row in rows], dtype=dtype
         )
 
         # Reference pressure: row where pore_volume_multiplier is nearest to 1.0

@@ -2,15 +2,19 @@
 
 import threading
 import typing
+import warnings
 
 import attrs
 import numba
 import numpy as np
+import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
+from typing_extensions import Self
 
 from bores.constants import c
+from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.precision import get_floating_point_info
+from bores.precision import get_dtype, get_floating_point_info
 from bores.serialization import make_serializable_type_registrar
 from bores.stores import StoreSerializable
 from bores.tables.rock_fluid.relperm.mixing_rules import (
@@ -105,6 +109,7 @@ def _resolve_min_relperm(min_value: MinimumRelPerm) -> typing.Optional[Number]:
     return min_value
 
 
+# TODO: Add numba overload for the Number and NumberArray versions of this function
 @numba.njit(cache=True, inline="always")
 def _clamp_relperm(
     kr: NumberOrArray[NDimension],
@@ -141,12 +146,12 @@ def _clamp_relperm_derivative(
 
     When `min_value` is `None` the derivative is returned unchanged.
 
-    The derivative of `max(kr, min_value)` w.r.t. any variable is:
+    The derivative of `max(kr, min_value)` w.row.t. any variable is:
 
     - `dkr / d(var)`  when `kr > min_value`  (active region)
     - `kr / np.sqrt(kr**2 + min_value**2)`  when `kr <= min_value` (min_value / flat region)
 
-    :param dkr: Derivative of the raw (pre-min_value) kr w.r.t. some variable.
+    :param dkr: Derivative of the raw (pre-min_value) kr w.row.t. some variable.
     :param kr_raw: Raw (pre-min_value) kr value(s), used to identify min_value cells.
     :param min_value: Resolved min_value/minimum value or `None`.
     :return: Derivative with min_value cells zeroed out.
@@ -154,8 +159,10 @@ def _clamp_relperm_derivative(
     if min_value is None:
         return dkr
     return np.where(  # type: ignore[return-value]
-        kr_raw > min_value, dkr, kr_raw / np.sqrt(kr_raw**2 + min_value**2)
-    ).astype(dkr.dtype)
+        kr_raw > min_value,
+        dkr,
+        kr_raw / np.sqrt(kr_raw**2 + min_value**2),  # type: ignore[operator]
+    ).astype(dkr.dtype)  # type: ignore[attr-defined]
 
 
 @attrs.frozen
@@ -419,7 +426,15 @@ class TwoPhaseRelPermTable(
     `"auto"` derives the min_value from the active floating-point dtype:
     `max(4 * machine_epsilon, 1e-8)`. `None` disables the min_value (kr can
     reach zero exactly).
+
+    **dtype**:
+
+    All stored arrays and all returned scalars / arrays use `dtype`. Query
+    methods always cast their output to `dtype` before returning. Defaults to
+    `get_dtype()` when not specified.
     """
+
+    __type__ = "two_phase_relperm_table"
 
     wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
     """The wetting fluid phase, e.g. WATER (oil-water) or OIL (gas-oil)."""
@@ -427,21 +442,17 @@ class TwoPhaseRelPermTable(
     non_wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
     """The non-wetting fluid phase, e.g. OIL (oil-water) or GAS (gas-oil)."""
 
-    reference_saturation: NumberArray[OneDimension] = attrs.field(converter=bores_array)
+    reference_saturation: NumberArray[OneDimension]
     """
     Saturation values used as the x-axis for interpolation, monotonically
     increasing. May represent either the wetting or non-wetting phase
     saturation depending on `reference_phase`.
     """
 
-    wetting_phase_relative_permeability: NumberArray[OneDimension] = attrs.field(
-        converter=bores_array
-    )
+    wetting_phase_relative_permeability: NumberArray[OneDimension]
     """Relative permeability values for the wetting phase at each reference saturation."""
 
-    non_wetting_phase_relative_permeability: NumberArray[OneDimension] = attrs.field(
-        converter=bores_array
-    )
+    non_wetting_phase_relative_permeability: NumberArray[OneDimension]
     """Relative permeability values for the non-wetting phase at each reference saturation."""
 
     reference_phase: typing.Literal["wetting", "non_wetting"] = attrs.field(
@@ -449,14 +460,14 @@ class TwoPhaseRelPermTable(
     )
     """
     Which phase the `reference_saturation` axis represents.
- 
+
     - `"wetting"` - `reference_saturation` holds wetting phase saturation
       values.  krw increases and krnw decreases as `reference_saturation`
       increases.
     - `"non_wetting"` - `reference_saturation` holds non-wetting phase
       saturation values.  krnw increases and krw decreases as
       `reference_saturation` increases.
- 
+
     This does not change the interpolation mechanics. It only records which
     physical saturation the caller must supply when querying the table, so
     that `ThreePhaseRelPermTable` (and any other consumer) can dispatch the
@@ -466,11 +477,11 @@ class TwoPhaseRelPermTable(
     min_wetting_relperm: MinimumRelPerm = None
     """
     Minimum min_value for the wetting-phase relative permeability.
- 
+
     `"auto"` - `max(4 * machine_epsilon, 1e-8)` (dtype-aware).
     `None` - no min_value; kr can reach zero exactly.
     `Number` - explicit user-supplied min_value value.
- 
+
     The min_value is applied to the interpolated kr value, and the derivative is
     zeroed out in the min_value region so that the Jacobian is consistent with
     the kr value (no MBE from mismatched kr/derivative pairs).
@@ -479,7 +490,7 @@ class TwoPhaseRelPermTable(
     min_non_wetting_relperm: MinimumRelPerm = None
     """
     Minimum min_value for the non-wetting-phase relative permeability.
- 
+
     Same semantics as `min_wetting_relperm`.
     """
 
@@ -487,7 +498,7 @@ class TwoPhaseRelPermTable(
     """
     Target number of base knot points used when expanding the raw saturation
     grid before fitting the PCHIP interpolant.
- 
+
     When the number of raw knots is already >= `number_of_base_points`, no
     expansion is performed and the raw knots are used as-is.
     Pass `0` to disable grid scaling entirely.
@@ -497,7 +508,7 @@ class TwoPhaseRelPermTable(
     """
     Number of extra knots injected into the first and last 10 % of the
     saturation range during grid expansion (see `number_of_base_points`).
- 
+
     These additional knots improve derivative accuracy near residual
     saturations where kr curves vary most rapidly.
     Pass `0` to disable endpoint enrichment.
@@ -506,9 +517,21 @@ class TwoPhaseRelPermTable(
     spacing: Spacing = attrs.field(default="cosine")
     """
     Grid spacing mode used when building the expanded knot grid.
- 
+
     Typical values are `"cosine"` (default, clusters points near endpoints) and
     `"linspace"` (uniform).
+    """
+
+    dtype: typing.Optional[npt.DTypeLike] = attrs.field(default=None)
+    """
+    Array dtype for all stored arrays and all query return values.
+
+    All three saturation/kr arrays are cast to this dtype in `__attrs_post_init__`.
+    Query methods (`_query_interp`, `_query_d_interp`) cast their outputs to this
+    dtype before returning, including the zero arrays returned for derivatives
+    outside the saturation range and for absent phases.
+
+    Defaults to `get_dtype()` when `None`.
     """
 
     _wetting_interp: PchipInterpolator = attrs.field(init=False, repr=False)
@@ -545,29 +568,54 @@ class TwoPhaseRelPermTable(
                 "`reference_saturation` must be monotonically increasing"
             )
 
+        # Resolve and enforce dtype on all stored arrays
+        dtype = np.dtype(self.dtype) if self.dtype is not None else get_dtype()
+        object.__setattr__(self, "dtype", dtype)
+        object.__setattr__(
+            self,
+            "reference_saturation",
+            np.asarray(self.reference_saturation, dtype=dtype, copy=False),
+        )
+        object.__setattr__(
+            self,
+            "wetting_phase_relative_permeability",
+            np.asarray(
+                self.wetting_phase_relative_permeability, dtype=dtype, copy=False
+            ),
+        )
+        object.__setattr__(
+            self,
+            "non_wetting_phase_relative_permeability",
+            np.asarray(
+                self.non_wetting_phase_relative_permeability, dtype=dtype, copy=False
+            ),
+        )
+
         # Validate min_value sentinels eagerly so errors surface at construction time
         _resolve_min_relperm(self.min_wetting_relperm)
         _resolve_min_relperm(self.min_non_wetting_relperm)
 
         # Build interpolants
-        wetting_pchip, wetting_dpchip = build_pchip_interpolant(
+        wetting_interp, wetting_d_interp = build_pchip_interpolant(
             reference_saturation=self.reference_saturation,
             values=self.wetting_phase_relative_permeability,
             number_of_base_points=self.number_of_base_points,
             number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
             spacing=self.spacing,
+            dtype=dtype,
         )
-        non_wetting_pchip, non_wetting_dpchip = build_pchip_interpolant(
+        non_wetting_interp, non_wetting_d_interp = build_pchip_interpolant(
             reference_saturation=self.reference_saturation,
             values=self.non_wetting_phase_relative_permeability,
             number_of_base_points=self.number_of_base_points,
             number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
             spacing=self.spacing,
+            dtype=dtype,
         )
-        object.__setattr__(self, "_wetting_interp", wetting_pchip)
-        object.__setattr__(self, "_wetting_d_interp", wetting_dpchip)
-        object.__setattr__(self, "_non_wetting_interp", non_wetting_pchip)
-        object.__setattr__(self, "_non_wetting_d_interp", non_wetting_dpchip)
+        object.__setattr__(self, "_wetting_interp", wetting_interp)
+        object.__setattr__(self, "_wetting_d_interp", wetting_d_interp)
+        object.__setattr__(self, "_non_wetting_interp", non_wetting_interp)
+        object.__setattr__(self, "_non_wetting_d_interp", non_wetting_d_interp)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         return typing.cast(FluidPhase, self.wetting_phase)
@@ -591,7 +639,7 @@ class TwoPhaseRelPermTable(
             return non_wetting_saturation
         return wetting_saturation
 
-    def _query_pchip(
+    def _query_interp(
         self,
         interpolant: PchipInterpolator,
         reference: NumberOrArray[NDimension],
@@ -600,51 +648,63 @@ class TwoPhaseRelPermTable(
     ) -> NumberOrArray[NDimension]:
         """
         Evaluate a pre-built PCHIP interpolant at `reference`, applying
-        constant extrapolation at the boundaries.
+        constant extrapolation at the boundaries. Result is cast to `self.dtype`.
 
         :param interpolant: Pre-built `PchipInterpolator` instance.
         :param reference: Query saturation value(s) - scalar or array.
         :param extrapolate_left: Constant returned for values below the knot range.
         :param extrapolate_right: Constant returned for values above the knot range.
-        :return: Interpolated value(s) with the same shape as `reference`.
+        :return: Interpolated value(s) cast to `self.dtype`, with the same shape as `reference`.
         """
+        dtype = self.dtype
         is_scalar = np.isscalar(reference)
-        sat = np.atleast_1d(np.asarray(reference, dtype=np.float64))
+        sat = np.atleast_1d(reference)
         x_min = interpolant.x[0]
         x_max = interpolant.x[-1]
 
         result = interpolant(np.clip(sat, x_min, x_max))
         result = np.where(sat < x_min, extrapolate_left, result)
         result = np.where(sat > x_max, extrapolate_right, result)
+        result = result.astype(dtype, copy=False)
 
         if is_scalar:
-            return result.item()
-        return result.reshape(sat.shape)
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore
+        return typing.cast(
+            NumberArray[NDimension], result.reshape(sat.shape, copy=False)
+        )
 
-    def _query_dpchip(
+    def _query_d_interp(
         self,
         d_interpolant: PchipInterpolator,
         reference: NumberOrArray[NDimension],
     ) -> NumberOrArray[NDimension]:
         """
         Evaluate a pre-built PCHIP derivative interpolant at `reference`,
-        returning zero outside the knot range (constant extrapolation = zero slope).
+        returning zero (in `self.dtype`) outside the knot range.
 
         :param d_interpolant: Pre-built derivative `PchipInterpolator`.
         :param reference: Query saturation value(s) - scalar or array.
-        :return: Derivative value(s) with the same shape as `reference`.
+        :return: Derivative value(s) cast to `self.dtype`, with the same shape as `reference`.
         """
+        dtype = self.dtype
         is_scalar = np.isscalar(reference)
-        sat = np.atleast_1d(np.asarray(reference, dtype=np.float64))
+        sat = np.atleast_1d(reference)
         x_min = d_interpolant.x[0]
         x_max = d_interpolant.x[-1]
 
         result = d_interpolant(np.clip(sat, x_min, x_max))
-        result = np.where((sat < x_min) | (sat > x_max), 0.0, result)
+        result = np.where(
+            (sat < x_min) | (sat > x_max),
+            dtype.type(0),  # type: ignore
+            result,
+        )
+        result = result.astype(dtype, copy=False)
 
         if is_scalar:
-            return result.item()
-        return result.reshape(sat.shape)
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore
+        return typing.cast(
+            NumberArray[NDimension], result.reshape(sat.shape, copy=False)
+        )
 
     def get_wetting_phase_relative_permeability(
         self,
@@ -658,11 +718,12 @@ class TwoPhaseRelPermTable(
         needed. When `reference_phase="non_wetting"`, `non_wetting_saturation` must be supplied.
 
         The `min_wetting_relperm` min_value (if set) is applied to the result.
+        The returned value is always cast to `self.dtype`.
 
         :param wetting_saturation: Wetting phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Relative permeability value(s).
+        :return: Relative permeability value(s) in `self.dtype`.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -670,7 +731,7 @@ class TwoPhaseRelPermTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        kr = self._query_pchip(
+        kr = self._query_interp(
             self._wetting_interp,
             ref,
             extrapolate_left=self.wetting_phase_relative_permeability[0],
@@ -691,11 +752,12 @@ class TwoPhaseRelPermTable(
         needed. When `reference_phase="non_wetting"`, `non_wetting_saturation` must be supplied.
 
         The `min_non_wetting_relperm` min_value (if set) is applied to the result.
+        The returned value is always cast to `self.dtype`.
 
         :param wetting_saturation: Wetting phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Relative permeability value(s).
+        :return: Relative permeability value(s) in `self.dtype`.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -703,7 +765,7 @@ class TwoPhaseRelPermTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        kr = self._query_pchip(
+        kr = self._query_interp(
             self._non_wetting_interp,
             ref,
             extrapolate_left=self.non_wetting_phase_relative_permeability[0],
@@ -723,7 +785,7 @@ class TwoPhaseRelPermTable(
         :param wetting_saturation: Wetting phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Tuple of `(wetting_kr, non_wetting_kr)`.
+        :return: Tuple of `(wetting_kr, non_wetting_kr)` in `self.dtype`.
         """
         kr_wetting = self.get_wetting_phase_relative_permeability(
             wetting_saturation, non_wetting_saturation
@@ -743,8 +805,8 @@ class TwoPhaseRelPermTable(
         the reference saturation axis of this table, evaluated from the
         analytical PCHIP derivative.
 
-        The derivative is zero outside the tabulated saturation range
-        (constant extrapolation = zero slope).
+        The derivative is zero (in `self.dtype`) outside the tabulated saturation
+        range (constant extrapolation = zero slope).
 
         Where the `min_wetting_relperm` min_value is active (raw kr ≤ min_value),
         the derivative is zeroed out to be consistent with the min_value
@@ -753,7 +815,7 @@ class TwoPhaseRelPermTable(
         :param wetting_saturation: Wetting-phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Derivative value(s) with the same shape as the input.
+        :return: Derivative value(s) in `self.dtype` with the same shape as the input.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -761,13 +823,12 @@ class TwoPhaseRelPermTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        dkr = self._query_dpchip(self._wetting_d_interp, ref)
+        dkr = self._query_d_interp(self._wetting_d_interp, ref)
         min_value = _resolve_min_relperm(self.min_wetting_relperm)
         if min_value is None:
             return dkr
 
-        # Need raw kr to decide where min_value is active
-        kr_raw = self._query_pchip(
+        kr_raw = self._query_interp(
             self._wetting_interp,
             ref,
             extrapolate_left=self.wetting_phase_relative_permeability[0],
@@ -785,8 +846,8 @@ class TwoPhaseRelPermTable(
         to the reference saturation axis of this table, evaluated from the
         analytical PCHIP derivative.
 
-        The derivative is zero outside the tabulated saturation range
-        (constant extrapolation = zero slope).
+        The derivative is zero (in `self.dtype`) outside the tabulated saturation
+        range (constant extrapolation = zero slope).
 
         Where the `min_non_wetting_relperm` min_value is active (raw kr ≤
         min_value), the derivative is zeroed out to be consistent with the min_value
@@ -795,7 +856,7 @@ class TwoPhaseRelPermTable(
         :param wetting_saturation: Wetting-phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Derivative value(s) with the same shape as the input.
+        :return: Derivative value(s) in `self.dtype` with the same shape as the input.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -803,12 +864,12 @@ class TwoPhaseRelPermTable(
             if non_wetting_saturation is not None
             else wetting_saturation,
         )
-        dkr = self._query_dpchip(self._non_wetting_d_interp, ref)
+        dkr = self._query_d_interp(self._non_wetting_d_interp, ref)
         min_value = _resolve_min_relperm(self.min_non_wetting_relperm)
         if min_value is None:
             return dkr
 
-        kr_raw = self._query_pchip(
+        kr_raw = self._query_interp(
             self._non_wetting_interp,
             ref,
             extrapolate_left=self.non_wetting_phase_relative_permeability[0],
@@ -826,7 +887,7 @@ class TwoPhaseRelPermTable(
     def get_water_relperm_endpoint(self) -> Number:
         phases = {self.wetting_phase, self.non_wetting_phase}
         if FluidPhase.WATER not in phases:
-            return 1.0  # gas-oil table, water not represented
+            return 1.0
         if self.wetting_phase == FluidPhase.WATER:
             return np.max(self.wetting_phase_relative_permeability)
         return np.max(self.non_wetting_phase_relative_permeability)
@@ -834,7 +895,7 @@ class TwoPhaseRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         phases = {self.wetting_phase, self.non_wetting_phase}
         if FluidPhase.GAS not in phases:
-            return 1.0  # oil-water table, gas not represented
+            return 1.0
         if self.wetting_phase == FluidPhase.GAS:
             return np.max(self.wetting_phase_relative_permeability)
         return np.max(self.non_wetting_phase_relative_permeability)
@@ -849,14 +910,14 @@ class TwoPhaseRelPermTable(
         """
         Compute relative permeabilities for all three phases from a two-phase table.
 
-        The absent phase always returns zero. The reference saturation dispatched
-        to the underlying PCHIP interpolant is chosen by inspecting which phases
-        this table covers and what `reference_phase` is declared:
+        The absent phase always returns zero (in `self.dtype`). The reference saturation
+        dispatched to the underlying PCHIP interpolant is chosen by inspecting which
+        phases this table covers and what `reference_phase` is declared:
 
         - **Oil-water table** (phases are OIL and WATER): krg = 0. Sw or So is
-        forwarded to the interpolant according to `reference_phase`.
+          forwarded to the interpolant according to `reference_phase`.
         - **Gas-oil table** (phases are GAS and OIL): krw = 0. So or Sg is
-        forwarded according to `reference_phase`.
+          forwarded according to `reference_phase`.
 
         Minimum relperm min_values declared on the table are applied automatically
         inside the underlying query methods and propagate transparently.
@@ -866,6 +927,7 @@ class TwoPhaseRelPermTable(
         :param gas_saturation: Gas saturation (fraction) - scalar or array.
         :return: `RelativePermeabilities` dict with keys `"water"`, `"oil"`, `"gas"`.
         """
+        dtype = self.dtype
         is_scalar = (
             np.isscalar(water_saturation)
             and np.isscalar(oil_saturation)
@@ -875,8 +937,7 @@ class TwoPhaseRelPermTable(
         so = np.atleast_1d(oil_saturation)
         sg = np.atleast_1d(gas_saturation)
         sw, so, sg = np.broadcast_arrays(sw, so, sg)
-        zeros = np.zeros_like(sw)
-
+        zeros = np.zeros(sw.shape, dtype=dtype)
         phases = {self.wetting_phase, self.non_wetting_phase}
 
         if phases == {FluidPhase.OIL, FluidPhase.WATER}:
@@ -896,9 +957,9 @@ class TwoPhaseRelPermTable(
                 )
             if is_scalar:
                 return RelativePermeabilities(
-                    water=krw.item(),  # type: ignore
-                    oil=kro.item(),  # type: ignore
-                    gas=0.0,
+                    water=dtype.type(krw.item()),  # type: ignore
+                    oil=dtype.type(kro.item()),  # type: ignore
+                    gas=dtype.type(0),  # type: ignore
                 )
             return RelativePermeabilities(water=krw, oil=kro, gas=zeros)  # type: ignore[typeddict-item]
 
@@ -919,9 +980,9 @@ class TwoPhaseRelPermTable(
                 )
             if is_scalar:
                 return RelativePermeabilities(
-                    water=0.0,
-                    oil=kro.item(),  # type: ignore
-                    gas=krg.item(),  # type: ignore
+                    water=dtype.type(0),  # type: ignore
+                    oil=dtype.type(kro.item()),  # type: ignore
+                    gas=dtype.type(krg.item()),  # type: ignore
                 )
             return RelativePermeabilities(water=zeros, oil=kro, gas=krg)  # type: ignore[typeddict-item]
 
@@ -942,9 +1003,9 @@ class TwoPhaseRelPermTable(
         Compute the nine partial derivatives of three-phase relative permeabilities
         for a two-phase table.
 
-        The absent phase contributes zero to every derivative. The two active
-        phases contribute only along their natural saturation axis; all cross
-        derivatives (e.g. dkrw/dSg for an oil-water table) are zero.
+        The absent phase contributes zero (in `self.dtype`) to every derivative.
+        The two active phases contribute only along their natural saturation axis;
+        all cross derivatives (e.g. dkrw/dSg for an oil-water table) are zero.
 
         Where a minimum relperm min_value is active on this table (raw kr ≤ min_value),
         the corresponding derivative is zeroed out by the underlying query method,
@@ -959,42 +1020,36 @@ class TwoPhaseRelPermTable(
         :param water_saturation: Water saturation (fraction, 0 to 1).
         :param oil_saturation: Oil saturation (fraction, 0 to 1).
         :param gas_saturation: Gas saturation (fraction, 0 to 1).
-        :return: `RelativePermeabilityDerivatives` dictionary.
+        :return: `RelativePermeabilityDerivatives` dictionary with all values in `self.dtype`.
         """
+        dtype = self.dtype
         sw = np.atleast_1d(water_saturation)
         so = np.atleast_1d(oil_saturation)
         sg = np.atleast_1d(gas_saturation)
         sw, so, sg = np.broadcast_arrays(sw, so, sg)
-        zeros = np.zeros_like(sw)
+        zeros = np.zeros(sw.shape, dtype=dtype)
         is_scalar = (
             np.isscalar(water_saturation)
             and np.isscalar(oil_saturation)
             and np.isscalar(gas_saturation)
         )
-
         phases = {self.wetting_phase, self.non_wetting_phase}
 
         if phases == {FluidPhase.OIL, FluidPhase.WATER}:
-            # krg = 0 everywhere; all krg derivatives are zero
             if self.wetting_phase == FluidPhase.WATER:
-                # reference: wetting=Sw or non_wetting=So depending on reference_phase
                 d_krw = self.get_wetting_phase_relative_permeability_derivative(
                     sw, non_wetting_saturation=so
                 )
                 d_kro = self.get_non_wetting_phase_relative_permeability_derivative(
                     sw, non_wetting_saturation=so
                 )
-                # Both curves live on the same reference axis
                 if self.reference_phase == "wetting":
-                    # reference is Sw: d/dSw is non-zero, d/dSo and d/dSg are zero
                     d_krw_d_sw, d_krw_d_so, d_krw_d_sg = d_krw, zeros, zeros
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = d_kro, zeros, zeros
                 else:
-                    # reference is So: d/dSo is non-zero
                     d_krw_d_sw, d_krw_d_so, d_krw_d_sg = zeros, d_krw, zeros
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = zeros, d_kro, zeros
             else:
-                # wetting phase is OIL
                 d_kro = self.get_wetting_phase_relative_permeability_derivative(
                     so, non_wetting_saturation=sw
                 )
@@ -1008,7 +1063,6 @@ class TwoPhaseRelPermTable(
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = d_kro, zeros, zeros
                     d_krw_d_sw, d_krw_d_so, d_krw_d_sg = d_krw, zeros, zeros
 
-            # Repack into the 9-tuple order expected by RelativePermeabilityDerivatives
             results = (
                 d_krw_d_sw,
                 d_kro_d_sw,
@@ -1021,7 +1075,7 @@ class TwoPhaseRelPermTable(
                 zeros,
             )
             if is_scalar:
-                results = tuple(r.item() for r in results)  # type: ignore
+                results = tuple(dtype.type(row.item()) for row in results)  # type: ignore
             return RelativePermeabilityDerivatives(
                 dKrw_dSw=results[0],
                 dKro_dSw=results[1],
@@ -1035,7 +1089,6 @@ class TwoPhaseRelPermTable(
             )
 
         if phases == {FluidPhase.OIL, FluidPhase.GAS}:
-            # krw = 0 everywhere; all krw derivatives are zero
             if self.wetting_phase == FluidPhase.OIL:
                 d_kro = self.get_wetting_phase_relative_permeability_derivative(
                     so, non_wetting_saturation=sg
@@ -1044,15 +1097,12 @@ class TwoPhaseRelPermTable(
                     so, non_wetting_saturation=sg
                 )
                 if self.reference_phase == "wetting":
-                    # reference is So
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = zeros, d_kro, zeros
                     d_krg_d_sw, d_krg_d_so, d_krg_d_sg = zeros, d_krg, zeros
                 else:
-                    # reference is Sg
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = zeros, zeros, d_kro
                     d_krg_d_sw, d_krg_d_so, d_krg_d_sg = zeros, zeros, d_krg
             else:
-                # wetting phase is GAS
                 d_krg = self.get_wetting_phase_relative_permeability_derivative(
                     sg, non_wetting_saturation=so
                 )
@@ -1060,11 +1110,9 @@ class TwoPhaseRelPermTable(
                     sg, non_wetting_saturation=so
                 )
                 if self.reference_phase == "wetting":
-                    # reference is Sg
                     d_krg_d_sw, d_krg_d_so, d_krg_d_sg = zeros, zeros, d_krg
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = zeros, zeros, d_kro
                 else:
-                    # reference is So
                     d_krg_d_sw, d_krg_d_so, d_krg_d_sg = zeros, d_krg, zeros
                     d_kro_d_sw, d_kro_d_so, d_kro_d_sg = zeros, d_kro, zeros
 
@@ -1080,7 +1128,7 @@ class TwoPhaseRelPermTable(
                 d_krg_d_sg,
             )
             if is_scalar:
-                results = tuple(r.item() for r in results)  # type: ignore
+                results = tuple(dtype.type(row.item()) for row in results)  # type: ignore
             return RelativePermeabilityDerivatives(
                 dKrw_dSw=results[0],
                 dKro_dSw=results[1],
@@ -1097,6 +1145,229 @@ class TwoPhaseRelPermTable(
             f"Cannot dispatch three-phase derivatives to a two-phase table with phases "
             f"{self.wetting_phase!r} / {self.non_wetting_phase!r}. "
             f"Expected OIL+WATER or OIL+GAS."
+        )
+
+    @classmethod
+    def from_deck_file(
+        cls,
+        deck_file: DeckFile,
+        region_index: int = 0,
+        *,
+        system: typing.Literal["oil_water", "gas_oil"],
+        keyword_family: typing.Literal["first", "second"] = "first",
+        number_of_base_points: int = 200,
+        number_of_endpoint_extra_points: int = 20,
+        spacing: Spacing = "cosine",
+        min_wetting_relperm: MinimumRelPerm = None,
+        min_non_wetting_relperm: MinimumRelPerm = None,
+        dtype: typing.Optional[npt.DTypeLike] = None,
+    ) -> Self:
+        """
+        Build a `TwoPhaseRelPermTable` for one saturation region from a `DeckFile`.
+
+        **First keyword family** (`SWOF` / `SGOF`):
+
+        The first family packs both relperm curves and capillary pressure into a
+        single keyword. Only the relperm columns are consumed here; capillary
+        pressure is handled by `TwoPhaseCapillaryPressureTable.from_deck_file`.
+
+        - Oil-water: reads `SWOF` -> `(sw, krw, krow)`. Reference phase is `"wetting"`
+          (Sw axis), wetting phase is WATER, non-wetting is OIL.
+        - Gas-oil:   reads `SGOF` -> `(sg, krg, krog)`. Reference phase is `"non_wetting"`
+          (Sg axis), wetting phase is OIL, non-wetting is GAS.
+
+        **Second keyword family** (`SWFN` / `SGFN` + `SOF2` / `SOF3`):
+
+        The second family separates water/gas curves from the oil curve.
+
+        - Oil-water: reads `SWFN` -> `(sw, krw)` for krw. For krow, reads `SOF2`
+          (two-phase) or `SOF3` (three-phase, takes `krow` column). The So axis of
+          `SOF2`/`SOF3` is inverted to Sw using `Sw = 1 - So` before building the
+          table, so the final table is indexed by Sw matching the `SWFN` convention.
+        - Gas-oil:   reads `SGFN` -> `(sg, krg)` for krg. For krog, reads `SOF3`
+          (takes `krog` column). The So axis of `SOF3` is inverted to Sg using
+          `Sg = 1 - Sw_connate - So`.
+
+        When `SOF3` is absent but `SOF2` is present and `system="gas_oil"`, a
+        warning is raised and `krog` defaults to the `kro` column of `SOF2`.
+
+        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param region_index: 0-based saturation region index (default 0 -> region 1).
+        :param system: `"oil_water"` or `"gas_oil"`.
+        :param keyword_family: `"first"` (SWOF/SGOF) or `"second"` (SWFN/SGFN+SOF).
+        :param number_of_base_points: Passed to PCHIP grid scaling.
+        :param number_of_endpoint_extra_points: Passed to PCHIP endpoint enrichment.
+        :param spacing: Grid spacing mode for PCHIP scaling.
+        :param min_wetting_relperm: Min-value sentinel for wetting phase kr.
+        :param min_non_wetting_relperm: Min-value sentinel for non-wetting phase kr.
+        :param dtype: Array dtype for all stored arrays and query returns.
+        :returns: `TwoPhaseRelPermTable` for the specified region and system.
+        :raises ValidationError: When required keywords are missing or the region
+            index is out of range.
+        """
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+
+        def _rows(keyword: str) -> typing.List[typing.Dict[str, typing.Any]]:
+            """Extract rows for `region_index` from a deck keyword, or return []."""
+            all_regions = deck_file.get(keyword)
+            if all_regions is None:
+                return []
+            if region_index >= len(all_regions):
+                return []
+            return all_regions[region_index]
+
+        def _require(keyword: str) -> typing.List[typing.Dict[str, typing.Any]]:
+            rows = _rows(keyword)
+            if not rows:
+                raise ValidationError(
+                    f"Keyword `{keyword}` not found or region index {region_index} "
+                    f"is out of range in the provided DeckFile."
+                )
+            return rows
+
+        if system == "oil_water":
+            if keyword_family == "first":
+                # SWOF: (sw, krw, krow, pcow) - take sw, krw, krow
+                rows = _require("SWOF")
+                sw = np.array([row["sw"] for row in rows], dtype=dtype)
+                krw = np.array([row["krw"] for row in rows], dtype=dtype)
+                krow = np.array([row["krow"] for row in rows], dtype=dtype)
+                return cls(
+                    wetting_phase=FluidPhase.WATER,
+                    non_wetting_phase=FluidPhase.OIL,
+                    reference_saturation=sw,  # type: ignore[arg-type]
+                    wetting_phase_relative_permeability=krw,  # type: ignore[arg-type]
+                    non_wetting_phase_relative_permeability=krow,  # type: ignore[arg-type]
+                    reference_phase="wetting",
+                    min_wetting_relperm=min_wetting_relperm,
+                    min_non_wetting_relperm=min_non_wetting_relperm,
+                    number_of_base_points=number_of_base_points,
+                    number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                    spacing=spacing,
+                    dtype=dtype,
+                )
+            else:
+                # Second family: SWFN for krw, SOF3 (preferred) or SOF2 for krow
+                swfn_rows = _require("SWFN")
+                sw = np.array([row["sw"] for row in swfn_rows], dtype=dtype)
+                krw = np.array([row["krw"] for row in swfn_rows], dtype=dtype)
+
+                sof3_rows = _rows("SOF3")
+                sof2_rows = _rows("SOF2")
+
+                if sof3_rows:
+                    # SOF3: (so, krow, krog) - take krow column, invert So -> Sw
+                    so = np.array([row["so"] for row in sof3_rows], dtype=dtype)
+                    krow = np.array([row["krow"] for row in sof3_rows], dtype=dtype)
+                elif sof2_rows:
+                    so = np.array([row["so"] for row in sof2_rows], dtype=dtype)
+                    krow = np.array([row["kro"] for row in sof2_rows], dtype=dtype)
+                else:
+                    raise ValidationError(
+                        "Second saturation-function family requires SOF2 or SOF3 for "
+                        "the oil relative permeability column (krow). "
+                        "Neither was found in the DeckFile."
+                    )
+
+                # Invert So -> Sw: Sw = 1 - So, then reverse arrays so Sw is ascending
+                sw_from_so = (dtype.type(1) - so)[::-1]  # type: ignore[attr-defined]
+                krow_on_sw = krow[::-1]
+
+                # Interpolate krow onto the SWFN Sw axis
+                krow_interp = np.interp(sw, sw_from_so, krow_on_sw).astype(
+                    dtype, copy=False
+                )
+                return cls(
+                    wetting_phase=FluidPhase.WATER,
+                    non_wetting_phase=FluidPhase.OIL,
+                    reference_saturation=sw,  # type: ignore[arg-type]
+                    wetting_phase_relative_permeability=krw,  # type: ignore[arg-type]
+                    non_wetting_phase_relative_permeability=krow_interp,  # type: ignore[arg-type]
+                    reference_phase="wetting",
+                    min_wetting_relperm=min_wetting_relperm,
+                    min_non_wetting_relperm=min_non_wetting_relperm,
+                    number_of_base_points=number_of_base_points,
+                    number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                    spacing=spacing,
+                    dtype=dtype,
+                )
+
+        elif system == "gas_oil":
+            if keyword_family == "first":
+                # SGOF: (sg, krg, krog, pcog) - take sg, krg, krog
+                rows = _require("SGOF")
+                sg = np.array([row["sg"] for row in rows], dtype=dtype)
+                krg = np.array([row["krg"] for row in rows], dtype=dtype)
+                krog = np.array([row["krog"] for row in rows], dtype=dtype)
+                # SGOF is indexed by Sg: wetting is OIL, non-wetting is GAS,
+                # reference_phase="non_wetting" because the axis is Sg
+                return cls(
+                    wetting_phase=FluidPhase.OIL,
+                    non_wetting_phase=FluidPhase.GAS,
+                    reference_saturation=sg,  # type: ignore[arg-type]
+                    wetting_phase_relative_permeability=krog,  # type: ignore[arg-type]
+                    non_wetting_phase_relative_permeability=krg,  # type: ignore[arg-type]
+                    reference_phase="non_wetting",
+                    min_wetting_relperm=min_wetting_relperm,
+                    min_non_wetting_relperm=min_non_wetting_relperm,
+                    number_of_base_points=number_of_base_points,
+                    number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                    spacing=spacing,
+                    dtype=dtype,
+                )
+            else:
+                # Second family: SGFN for krg, SOF3 (preferred) or SOF2 for krog
+                sgfn_rows = _require("SGFN")
+                sg = np.array([row["sg"] for row in sgfn_rows], dtype=dtype)
+                krg = np.array([row["krg"] for row in sgfn_rows], dtype=dtype)
+
+                sof3_rows = _rows("SOF3")
+                sof2_rows = _rows("SOF2")
+
+                if sof3_rows:
+                    so = np.array([row["so"] for row in sof3_rows], dtype=dtype)
+                    krog = np.array([row["krog"] for row in sof3_rows], dtype=dtype)
+                elif sof2_rows:
+                    warnings.warn(
+                        "SOF3 not found; using SOF2 `kro` column for `krog` in gas-oil "
+                        "table. This is only appropriate for two-phase (gas-oil) runs.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    so = np.array([row["so"] for row in sof2_rows], dtype=dtype)
+                    krog = np.array([row["kro"] for row in sof2_rows], dtype=dtype)
+                else:
+                    raise ValidationError(
+                        "Second saturation-function family requires SOF3 for the gas-oil "
+                        "krog column. SOF3 (and fallback SOF2) not found in the DeckFile."
+                    )
+
+                # Invert So -> Sg: Sg = 1 - Swc - So
+                # Without Swc available here, use Sg = 1 - So as an approximation.
+                # Callers that know Swc should build the table manually or pass connate
+                # water saturation as a column offset.
+                sg_from_so = (dtype.type(1) - so)[::-1]  # type: ignore[attr-defined]
+                krog_on_sg = krog[::-1]
+
+                krog_interp = np.interp(sg, sg_from_so, krog_on_sg).astype(
+                    dtype, copy=False
+                )
+                return cls(
+                    wetting_phase=FluidPhase.OIL,
+                    non_wetting_phase=FluidPhase.GAS,
+                    reference_saturation=sg,  # type: ignore[arg-type]
+                    wetting_phase_relative_permeability=krog_interp,  # type: ignore[arg-type]
+                    non_wetting_phase_relative_permeability=krg,  # type: ignore[arg-type]
+                    reference_phase="non_wetting",
+                    min_wetting_relperm=min_wetting_relperm,
+                    min_non_wetting_relperm=min_non_wetting_relperm,
+                    number_of_base_points=number_of_base_points,
+                    number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                    spacing=spacing,
+                    dtype=dtype,
+                )
+        raise ValidationError(
+            f"`system` must be 'oil_water' or 'gas_oil'; got {system!r}."
         )
 
 
@@ -1120,9 +1391,16 @@ class ThreePhaseRelPermTable(
     "non_wetting"), so the correct saturation is dispatched automatically -
     no assumptions are hard-coded about whether a table is indexed by So or Sg.
 
+    **dtype**:
+
+    The `oil_water_table` and `gas_oil_table` must share the same dtype.
+    This is validated at construction time. All outputs (kr values and
+    derivatives) are cast to that shared dtype. The mixing rule result is
+    also cast to the shared dtype before being returned.
+
     Minimum relperm min_values on the two-phase tables propagate automatically
     into this three-phase table since the two-phase table methods apply the
-    min_value before returning.  For the mixing-rule chain rule the min_value
+    min_value before returning. For the mixing-rule chain rule the min_value
     derivative (zeroed in the flat region) is also used consistently, so the
     assembled Jacobian never disagrees with the kr values.
 
@@ -1145,7 +1423,7 @@ class ThreePhaseRelPermTable(
         rule(kro_w, kro_g, krw, krg, kr_max,
              water_saturation, oil_saturation, gas_saturation) -> kro
 
-    If None, falls back to min(kro_w, kro_g).
+    If `None`, falls back to `min(kro_w, kro_g)`.
     """
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
@@ -1166,15 +1444,29 @@ class ThreePhaseRelPermTable(
         } != {FluidPhase.OIL, FluidPhase.GAS}:
             raise ValidationError("`gas_oil_table` must be between oil and gas phases.")
 
+        # Validate matching dtype between the two sub-tables
+        ow_dtype = np.dtype(self.oil_water_table.dtype)
+        go_dtype = np.dtype(self.gas_oil_table.dtype)
+        if ow_dtype != go_dtype:
+            raise ValidationError(
+                f"`oil_water_table` dtype ({ow_dtype}) and `gas_oil_table` dtype "
+                f"({go_dtype}) must match. Convert one of the tables before combining."
+            )
+
         mixing_rule = self.mixing_rule
         if isinstance(mixing_rule, str):
             object.__setattr__(self, "mixing_rule", get_mixing_rule(mixing_rule))
 
+    @property
+    def dtype(self) -> np.dtype:
+        """Shared `dtype` of the two underlying two-phase tables."""
+        return np.dtype(self.oil_water_table.dtype)
+
     def get_oil_water_wetting_phase(self) -> FluidPhase:
-        return self.oil_water_table.wetting_phase  # type:ignore[return-value]  # ty:ignore[invalid-return-type]
+        return self.oil_water_table.wetting_phase  # type: ignore[return-value]
 
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
-        return self.gas_oil_table.wetting_phase  # type:ignore[return-value]    # ty:ignore[invalid-return-type]
+        return self.gas_oil_table.wetting_phase  # type: ignore[return-value]
 
     def get_oil_relperm_endpoint(self) -> Number:
         return self.oil_water_table.get_oil_relperm_endpoint()
@@ -1196,18 +1488,21 @@ class ThreePhaseRelPermTable(
         Compute relative permeabilities for water, oil, and gas.
 
         Each two-phase table is queried using its declared `reference_phase`:
-        - `reference_phase="wetting"` - the wetting phase saturation is passed
-        - `reference_phase="non_wetting"` - the non-wetting phase saturation is passed
+
+        - `reference_phase="wetting"` - the wetting phase saturation is passed.
+        - `reference_phase="non_wetting"` - the non-wetting phase saturation is passed.
 
         Minimum relperm min_values declared on the two-phase tables are applied
         automatically inside the table query methods and propagate into the
-        mixing-rule inputs transparently.
+        mixing-rule inputs transparently. All returned values are cast to the
+        shared `self.dtype`.
 
         :param water_saturation: Water saturation (fraction) - scalar or array.
         :param oil_saturation: Oil saturation (fraction) - scalar or array.
         :param gas_saturation: Gas saturation (fraction) - scalar or array.
-        :return: `RelativePermeabilities` dict with keys "water", "oil", "gas".
+        :return: `RelativePermeabilities` dict with keys `"water"`, `"oil"`, `"gas"` in `self.dtype`.
         """
+        dtype = self.dtype
         sw = np.atleast_1d(water_saturation)
         so = np.atleast_1d(oil_saturation)
         sg = np.atleast_1d(gas_saturation)
@@ -1220,10 +1515,12 @@ class ThreePhaseRelPermTable(
 
         if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
             raise ValidationError(
-                f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
+                f"Saturations must be between 0 and 1. "
+                f"Sw: {_show_invalid_saturation(sw)}, "
+                f"So: {_show_invalid_saturation(so)}, "
+                f"Sg: {_show_invalid_saturation(sg)}"
             )
 
-        # Normalize if saturations do not sum to 1
         total_saturation = sw + so + sg
         needs_norm = (np.abs(total_saturation - 1.0) > 1e-6) & (total_saturation > 0.0)
         if np.any(needs_norm):
@@ -1231,7 +1528,6 @@ class ThreePhaseRelPermTable(
             so = np.where(needs_norm, so / total_saturation, so)
             sg = np.where(needs_norm, sg / total_saturation, sg)
 
-        # For Oil-water table
         if self.oil_water_table.wetting_phase == FluidPhase.WATER:
             krw = self.oil_water_table.get_wetting_phase_relative_permeability(
                 sw, non_wetting_saturation=so
@@ -1240,7 +1536,6 @@ class ThreePhaseRelPermTable(
                 sw, non_wetting_saturation=so
             )
         else:
-            # Oil is wetting phase
             kro_w = self.oil_water_table.get_wetting_phase_relative_permeability(
                 so, non_wetting_saturation=sw
             )
@@ -1248,7 +1543,6 @@ class ThreePhaseRelPermTable(
                 so, non_wetting_saturation=sw
             )
 
-        # For Gas-oil table
         if self.gas_oil_table.wetting_phase == FluidPhase.OIL:
             kro_g = self.gas_oil_table.get_wetting_phase_relative_permeability(
                 so, non_wetting_saturation=sg
@@ -1257,7 +1551,6 @@ class ThreePhaseRelPermTable(
                 so, non_wetting_saturation=sg
             )
         else:
-            # Gas is wetting phase
             krg = self.gas_oil_table.get_wetting_phase_relative_permeability(
                 sg, non_wetting_saturation=so
             )
@@ -1266,8 +1559,6 @@ class ThreePhaseRelPermTable(
             )
 
         kr_max = self.get_oil_relperm_endpoint()
-
-        # Three-phase oil mixing rule
         if self.mixing_rule is not None:
             kro = self.mixing_rule(  # type: ignore
                 kro_w=kro_w,
@@ -1282,13 +1573,20 @@ class ThreePhaseRelPermTable(
         else:
             kro = np.minimum(kro_w, kro_g)
 
+        # Cast mixing rule output to shared dtype
+        kro = kro.astype(dtype, copy=False)  # type: ignore[attr-defined]
+
         if is_scalar:
             return RelativePermeabilities(
-                water=krw.item(),  # type: ignore
-                oil=kro.item(),  # type: ignore
-                gas=krg.item(),  # type: ignore
+                water=dtype.type(krw.item()),  # type: ignore[attr-defined]
+                oil=dtype.type(kro.item()),
+                gas=dtype.type(krg.item()),  # type: ignore[attr-defined]
             )
-        return RelativePermeabilities(water=krw, oil=kro, gas=krg)  # type: ignore[typeddict-item]
+        return RelativePermeabilities(
+            water=krw.astype(dtype, copy=False),  # type: ignore[attr-defined]
+            oil=kro,
+            gas=krg.astype(dtype, copy=False),  # type: ignore[attr-defined]
+        )
 
     def get_relative_permeability_derivatives(
         self,
@@ -1303,14 +1601,13 @@ class ThreePhaseRelPermTable(
         gas saturation.
 
         Returns a dictionary containing:
-        `
-        (dkrw/dSw, dkrw/dSo, dkrw/dSg,
-        dkro/dSw, dkro/dSo, dkro/dSg,
-        dkrg/dSw, dkrg/dSo, dkrg/dSg)
-        ``
+
+            dKrw_dSw, dKro_dSw, dKrg_dSw,
+            dKrw_dSo, dKro_dSo, dKrg_dSo,
+            dKrw_dSg, dKro_dSg, dKrg_dSg
 
         Water and gas relative permeability derivatives are computed analytically
-        from the slopes of the underlying two-phase lookup tables.  Where a
+        from the slopes of the underlying two-phase lookup tables. Where a
         minimum relperm min_value is active on a two-phase table, the derivative
         returned by that table is already zeroed out in the min_value region,
         so the assembled nine-derivative Jacobian is automatically consistent
@@ -1318,33 +1615,31 @@ class ThreePhaseRelPermTable(
 
         Oil relative permeability derivatives use the full extended chain rule
         through the three-phase mixing rule:
-        ``
-        dkro/dSalpha = (d_kro/d_kro_w) * (d_kro_w/d_Salpha)
-                     + (d_kro/d_kro_g) * (d_kro_g/d_Salpha)
-                     + (d_kro/d_krw)   * (d_krw/d_Salpha)
-                     + (d_kro/d_krg)   * (d_krg/d_Salpha)
-                     + (d_kro/d_Salpha)_explicit_in_mixing_rule
-        ``
 
-        The `d_kro/d_krw` and `d_kro/d_krg` terms are non-zero only for
-        rules that use the actual two-phase water/gas kr values (e.g. the full
-        Stone II rule); they are zero for all other built-in rules.
+            dkro/dSalpha = (d_kro/d_kro_w) * (d_kro_w/d_Salpha)
+                         + (d_kro/d_kro_g) * (d_kro_g/d_Salpha)
+                         + (d_kro/d_krw)   * (d_krw/d_Salpha)
+                         + (d_kro/d_krg)   * (d_krg/d_Salpha)
+                         + (d_kro/d_Salpha)_explicit_in_mixing_rule
+
+        All returned values are cast to `self.dtype`.
 
         :param water_saturation: Water saturation (fraction, 0 to 1).
         :param oil_saturation: Oil saturation (fraction, 0 to 1).
         :param gas_saturation: Gas saturation (fraction, 0 to 1).
-        :return: `RelativePermeabilityDerivatives` dictionary.
+        :return: `RelativePermeabilityDerivatives` dictionary with all values in `self.dtype`.
         """
+        dtype = self.dtype
         is_scalar = (
             np.isscalar(water_saturation)
             and np.isscalar(oil_saturation)
             and np.isscalar(gas_saturation)
         )
-        sw = np.atleast_1d(np.asarray(water_saturation, dtype=np.float64))
-        so = np.atleast_1d(np.asarray(oil_saturation, dtype=np.float64))
-        sg = np.atleast_1d(np.asarray(gas_saturation, dtype=np.float64))
+        sw = np.atleast_1d(water_saturation)
+        so = np.atleast_1d(oil_saturation)
+        sg = np.atleast_1d(gas_saturation)
         sw, so, sg = np.broadcast_arrays(sw, so, sg)
-        zeros = np.zeros_like(sw)
+        zeros = np.zeros(sw.shape, dtype=dtype)
 
         oil_water_table = self.oil_water_table
         gas_oil_table = self.gas_oil_table
@@ -1354,140 +1649,98 @@ class ThreePhaseRelPermTable(
             if oil_water_table.reference_phase == "wetting":
                 d_krw_d_sw = (
                     oil_water_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=sw,
-                        non_wetting_saturation=so,
+                        sw, non_wetting_saturation=so
                     )
                 )
-                d_krw_d_so = zeros.copy()
-                d_krw_d_sg = zeros.copy()
-
+                d_krw_d_so, d_krw_d_sg = zeros.copy(), zeros.copy()
                 d_kro_w_d_sw = oil_water_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=sw,
-                    non_wetting_saturation=so,
+                    sw, non_wetting_saturation=so
                 )
-                d_kro_w_d_so = zeros.copy()
-                d_kro_w_d_sg = zeros.copy()
+                d_kro_w_d_so, d_kro_w_d_sg = zeros.copy(), zeros.copy()
             else:
-                d_krw_d_sw = zeros.copy()
+                d_krw_d_sw, d_krw_d_sg = zeros.copy(), zeros.copy()
                 d_krw_d_so = (
                     oil_water_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=sw,
-                        non_wetting_saturation=so,
+                        sw, non_wetting_saturation=so
                     )
                 )
-                d_krw_d_sg = zeros.copy()
-
-                d_kro_w_d_sw = zeros.copy()
+                d_kro_w_d_sw, d_kro_w_d_sg = zeros.copy(), zeros.copy()
                 d_kro_w_d_so = oil_water_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=sw,
-                    non_wetting_saturation=so,
+                    sw, non_wetting_saturation=so
                 )
-                d_kro_w_d_sg = zeros.copy()
         else:
-            # Oil is wetting phase (oil-wet system)
             if oil_water_table.reference_phase == "wetting":
-                d_krw_d_sw = zeros.copy()
+                d_krw_d_sw, d_krw_d_sg = zeros.copy(), zeros.copy()
                 d_krw_d_so = oil_water_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=so,
-                    non_wetting_saturation=sw,
+                    so, non_wetting_saturation=sw
                 )
-                d_krw_d_sg = zeros.copy()
-
-                d_kro_w_d_sw = zeros.copy()
+                d_kro_w_d_sw, d_kro_w_d_sg = zeros.copy(), zeros.copy()
                 d_kro_w_d_so = (
                     oil_water_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=so,
-                        non_wetting_saturation=sw,
+                        so, non_wetting_saturation=sw
                     )
                 )
-                d_kro_w_d_sg = zeros.copy()
             else:
+                d_krw_d_so, d_krw_d_sg = zeros.copy(), zeros.copy()
                 d_krw_d_sw = oil_water_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=so,
-                    non_wetting_saturation=sw,
+                    so, non_wetting_saturation=sw
                 )
-                d_krw_d_so = zeros.copy()
-                d_krw_d_sg = zeros.copy()
-
+                d_kro_w_d_so, d_kro_w_d_sg = zeros.copy(), zeros.copy()
                 d_kro_w_d_sw = (
                     oil_water_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=so,
-                        non_wetting_saturation=sw,
+                        so, non_wetting_saturation=sw
                     )
                 )
-                d_kro_w_d_so = zeros.copy()
-                d_kro_w_d_sg = zeros.copy()
 
         # Gas-oil table derivatives: krg and kro_g
         if gas_oil_table.wetting_phase == FluidPhase.OIL:
             if gas_oil_table.reference_phase == "wetting":
-                d_krg_d_sw = zeros.copy()
+                d_krg_d_sw, d_krg_d_sg = zeros.copy(), zeros.copy()
                 d_krg_d_so = gas_oil_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=so,
-                    non_wetting_saturation=sg,
+                    so, non_wetting_saturation=sg
                 )
-                d_krg_d_sg = zeros.copy()
-
-                d_kro_g_d_sw = zeros.copy()
+                d_kro_g_d_sw, d_kro_g_d_sg = zeros.copy(), zeros.copy()
                 d_kro_g_d_so = (
                     gas_oil_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=so,
-                        non_wetting_saturation=sg,
+                        so, non_wetting_saturation=sg
                     )
                 )
-                d_kro_g_d_sg = zeros.copy()
             else:
-                d_krg_d_sw = zeros.copy()
-                d_krg_d_so = zeros.copy()
+                d_krg_d_sw, d_krg_d_so = zeros.copy(), zeros.copy()
                 d_krg_d_sg = gas_oil_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=so,
-                    non_wetting_saturation=sg,
+                    so, non_wetting_saturation=sg
                 )
-
-                d_kro_g_d_sw = zeros.copy()
-                d_kro_g_d_so = zeros.copy()
+                d_kro_g_d_sw, d_kro_g_d_so = zeros.copy(), zeros.copy()
                 d_kro_g_d_sg = (
                     gas_oil_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=so,
-                        non_wetting_saturation=sg,
+                        so, non_wetting_saturation=sg
                     )
                 )
         else:
-            # Gas is wetting phase (uncommon)
             if gas_oil_table.reference_phase == "wetting":
-                d_krg_d_sw = zeros.copy()
-                d_krg_d_so = zeros.copy()
+                d_krg_d_sw, d_krg_d_so = zeros.copy(), zeros.copy()
                 d_krg_d_sg = (
                     gas_oil_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=sg,
-                        non_wetting_saturation=so,
+                        sg, non_wetting_saturation=so
                     )
                 )
-
-                d_kro_g_d_sw = zeros.copy()
-                d_kro_g_d_so = zeros.copy()
+                d_kro_g_d_sw, d_kro_g_d_so = zeros.copy(), zeros.copy()
                 d_kro_g_d_sg = gas_oil_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=sg,
-                    non_wetting_saturation=so,
+                    sg, non_wetting_saturation=so
                 )
             else:
-                d_krg_d_sw = zeros.copy()
+                d_krg_d_sw, d_krg_d_sg = zeros.copy(), zeros.copy()
                 d_krg_d_so = (
                     gas_oil_table.get_wetting_phase_relative_permeability_derivative(
-                        wetting_saturation=sg,
-                        non_wetting_saturation=so,
+                        sg, non_wetting_saturation=so
                     )
                 )
-                d_krg_d_sg = zeros.copy()
-
-                d_kro_g_d_sw = zeros.copy()
+                d_kro_g_d_sw, d_kro_g_d_sg = zeros.copy(), zeros.copy()
                 d_kro_g_d_so = gas_oil_table.get_non_wetting_phase_relative_permeability_derivative(
-                    wetting_saturation=sg,
-                    non_wetting_saturation=so,
+                    sg, non_wetting_saturation=so
                 )
-                d_kro_g_d_sg = zeros.copy()
 
-        # Forward two-phase oil/water/gas kr values for mixing rule call
+        # Forward two-phase kr values for mixing rule
         if oil_water_table.wetting_phase == FluidPhase.WATER:
             kro_w = oil_water_table.get_non_wetting_phase_relative_permeability(
                 sw, non_wetting_saturation=so
@@ -1519,15 +1772,11 @@ class ThreePhaseRelPermTable(
             )
 
         kr_max = self.get_oil_relperm_endpoint()
-
-        # Three-phase oil mixing rule derivatives
+        # Mixing rule partial derivatives
         mixing_rule = typing.cast(typing.Optional[MixingRule], self.mixing_rule)
         if mixing_rule is None:
-            # Fallback: kro = min(kro_w, kro_g)
-            kro_w_arr = np.asarray(kro_w, dtype=np.float64)
-            kro_g_arr = np.asarray(kro_g, dtype=np.float64)
-            d_kro_d_kro_w = np.where(kro_w_arr <= kro_g_arr, 1.0, 0.0)
-            d_kro_d_kro_g = np.where(kro_g_arr <= kro_w_arr, 1.0, 0.0)
+            d_kro_d_kro_w = np.where(kro_w <= kro_g, 1.0, 0.0)
+            d_kro_d_kro_g = np.where(kro_g <= kro_w, 1.0, 0.0)
             d_kro_d_krw = zeros.copy()
             d_kro_d_krg = zeros.copy()
             d_kro_d_sw_explicit = zeros.copy()
@@ -1554,47 +1803,43 @@ class ThreePhaseRelPermTable(
             d_kro_d_so_explicit = derivatives["d_kro_d_so_explicit"]
             d_kro_d_sg_explicit = derivatives["d_kro_d_sg_explicit"]
 
-        # Extended chain rule:
-        # dkro/dSalpha = (d_kro/d_kro_w) * (d_kro_w/d_Salpha)
-        #              + (d_kro/d_kro_g) * (d_kro_g/d_Salpha)
-        #              + (d_kro/d_krw)   * (d_krw/d_Salpha)
-        #              + (d_kro/d_krg)   * (d_krg/d_Salpha)
-        #              + (d_kro/d_Salpha)_explicit
+        # Extended chain rule - cast all results to shared dtype
         d_kro_d_sw = (
             d_kro_d_kro_w * d_kro_w_d_sw
             + d_kro_d_kro_g * d_kro_g_d_sw
             + d_kro_d_krw * d_krw_d_sw
             + d_kro_d_krg * d_krg_d_sw
-            + d_kro_d_sw_explicit
-        )
+            + d_kro_d_sw_explicit,
+        ).astype(dtype, copy=False)  # type: ignore[attr-defined]
         d_kro_d_so = (
             d_kro_d_kro_w * d_kro_w_d_so
             + d_kro_d_kro_g * d_kro_g_d_so
             + d_kro_d_krw * d_krw_d_so
             + d_kro_d_krg * d_krg_d_so
-            + d_kro_d_so_explicit
-        )
+            + d_kro_d_so_explicit,
+        ).astype(dtype, copy=False)  # type: ignore[attr-defined]
         d_kro_d_sg = (
             d_kro_d_kro_w * d_kro_w_d_sg
             + d_kro_d_kro_g * d_kro_g_d_sg
             + d_kro_d_krw * d_krw_d_sg
             + d_kro_d_krg * d_krg_d_sg
-            + d_kro_d_sg_explicit
-        )
+            + d_kro_d_sg_explicit,
+        ).astype(dtype, copy=False)  # type: ignore[attr-defined]
 
         results = (
-            d_krw_d_sw,
+            d_krw_d_sw.astype(dtype, copy=False),  # type: ignore[attr-defined]
             d_kro_d_sw,
-            d_krg_d_sw,
-            d_krw_d_so,
+            d_krg_d_sw.astype(dtype, copy=False),  # type: ignore[attr-defined]
+            d_krw_d_so.astype(dtype, copy=False),  # type: ignore[attr-defined]
             d_kro_d_so,
-            d_krg_d_so,
-            d_krw_d_sg,
+            d_krg_d_so.astype(dtype, copy=False),  # type: ignore[attr-defined]
+            d_krw_d_sg.astype(dtype, copy=False),  # type: ignore[attr-defined]
             d_kro_d_sg,
-            d_krg_d_sg,
+            d_krg_d_sg.astype(dtype, copy=False),  # type: ignore[attr-defined]
         )
+
         if is_scalar:
-            results = tuple(r.item() for r in results)  # type: ignore
+            results = tuple(dtype.type(row.item()) for row in results)  # type: ignore
             return RelativePermeabilityDerivatives(
                 dKrw_dSw=results[0],
                 dKro_dSw=results[1],
@@ -1608,13 +1853,167 @@ class ThreePhaseRelPermTable(
             )
 
         return RelativePermeabilityDerivatives(
-            dKrw_dSw=d_krw_d_sw,
-            dKro_dSw=d_kro_d_sw,
-            dKrg_dSw=d_krg_d_sw,
-            dKrw_dSo=d_krw_d_so,
-            dKro_dSo=d_kro_d_so,
-            dKrg_dSo=d_krg_d_so,
-            dKrw_dSg=d_krw_d_sg,
-            dKro_dSg=d_kro_d_sg,
-            dKrg_dSg=d_krg_d_sg,
+            dKrw_dSw=results[0],
+            dKro_dSw=results[1],
+            dKrg_dSw=results[2],
+            dKrw_dSo=results[3],
+            dKro_dSo=results[4],
+            dKrg_dSo=results[5],
+            dKrw_dSg=results[6],
+            dKro_dSg=results[7],
+            dKrg_dSg=results[8],
+        )
+
+    @classmethod
+    def from_deck_file(
+        cls,
+        deck_file: DeckFile,
+        region_index: int = 0,
+        *,
+        mixing_rule: typing.Optional[typing.Union[MixingRule, str]] = None,
+        keyword_family: typing.Literal["first", "second", "auto"] = "auto",
+        number_of_base_points: int = 200,
+        number_of_endpoint_extra_points: int = 20,
+        spacing: Spacing = "cosine",
+        min_wetting_relperm: MinimumRelPerm = None,
+        min_non_wetting_relperm: MinimumRelPerm = None,
+        dtype: typing.Optional[npt.DTypeLike] = None,
+    ) -> "ThreePhaseRelPermTable":
+        """
+        Build a `ThreePhaseRelPermTable` for one saturation region from a `DeckFile`.
+
+        Detects which Eclipse saturation-function keyword family is present and
+        builds the oil-water and gas-oil two-phase sub-tables automatically:
+
+        **First family** (detected when `SWOF` or `SGOF` is present):
+
+        `SWOF` supplies the oil-water system `(sw, krw, krow)`.
+        `SGOF` supplies the gas-oil system `(sg, krg, krog)`.
+
+        Both keywords must be present for a three-phase table. If only one
+        is found a warning is issued and a `TwoPhaseRelPermTable` should be
+        used instead.
+
+        **Second family** (detected when `SWFN` or `SGFN` is present):
+
+        `SWFN` + `SOF3` supplies the oil-water system.
+        `SGFN` + `SOF3` supplies the gas-oil system.
+
+        `SOF3` must be present and provide both `krow` and `krog` columns.
+        Falls back to `SOF2` for the oil-water krow column with a warning.
+
+        **`auto` detection** (default):
+
+        Checks for `SWOF`/`SGOF` first (first family), then `SWFN`/`SGFN`
+        (second family). Raises `ValidationError` when neither is found.
+
+        When the deck does not contain enough keywords for a full three-phase
+        table (e.g. only `SWOF` without `SGOF`), a warning is emitted
+        explaining which keyword is missing and how to build a two-phase table
+        instead.
+
+        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param region_index: 0-based saturation region index (default 0 -> region 1).
+        :param mixing_rule: Three-phase oil mixing rule (name or callable).
+            `None` falls back to `min(kro_w, kro_g)`.
+        :param keyword_family: `"first"`, `"second"`, or `"auto"` (default).
+        :param number_of_base_points: Passed to PCHIP grid scaling.
+        :param number_of_endpoint_extra_points: Passed to PCHIP endpoint enrichment.
+        :param spacing: Grid spacing mode for PCHIP scaling.
+        :param min_wetting_relperm: Min-value sentinel for wetting phase kr in
+            both sub-tables.
+        :param min_non_wetting_relperm: Min-value sentinel for non-wetting phase kr
+            in both sub-tables.
+        :param dtype: Array dtype shared by both sub-tables and all query returns.
+        :returns: `ThreePhaseRelPermTable` for the specified region.
+        :raises ValidationError: When required keywords are missing.
+        """
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+
+        def _has(keyword: str) -> bool:
+            all_regions = deck_file.get(keyword)
+            if all_regions is None:
+                return False
+            return region_index < len(all_regions) and bool(all_regions[region_index])
+
+        shared_kwargs: typing.Dict[str, typing.Any] = dict(
+            region_index=region_index,
+            number_of_base_points=number_of_base_points,
+            number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+            spacing=spacing,
+            min_wetting_relperm=min_wetting_relperm,
+            min_non_wetting_relperm=min_non_wetting_relperm,
+            dtype=dtype,
+        )
+
+        # Resolve keyword family
+        family: typing.Literal["first", "second"]
+        if keyword_family == "auto":
+            if _has("SWOF") or _has("SGOF"):
+                family = "first"
+            elif _has("SWFN") or _has("SGFN"):
+                family = "second"
+            else:
+                raise ValidationError(
+                    "No recognised saturation-function keywords found in the DeckFile "
+                    f"for region index {region_index}. Expected one of: "
+                    "SWOF, SGOF (first family) or SWFN, SGFN (second family)."
+                )
+        else:
+            family = keyword_family  # type: ignore[assignment]
+
+        # Check availability of both systems and warn clearly when one is missing
+        if family == "first":
+            has_oil_water_table = _has("SWOF")
+            has_gas_oil_table = _has("SGOF")
+        else:
+            has_oil_water_table = _has("SWFN") and (_has("SOF3") or _has("SOF2"))
+            has_gas_oil_table = _has("SGFN") and _has("SOF3")
+
+        if not has_oil_water_table:
+            oil_water_keyword = "SWOF" if family == "first" else "SWFN + SOF3/SOF2"
+            warnings.warn(
+                f"Oil-water keyword(s) `{oil_water_keyword}` not found for region index "
+                f"{region_index}. Cannot build a three-phase table. "
+                "Use `TwoPhaseRelPermTable.from_deck_file(..., system='gas_oil')` "
+                "to build a gas-oil only table.",
+                UserWarning,
+                stacklevel=2,
+            )
+            raise ValidationError(
+                f"Oil-water keyword(s) `{oil_water_keyword}` required for ThreePhaseRelPermTable "
+                f"not found at region index {region_index}."
+            )
+
+        if not has_gas_oil_table:
+            gas_oil_keyword = "SGOF" if family == "first" else "SGFN + SOF3"
+            warnings.warn(
+                f"Gas-oil keyword(s) `{gas_oil_keyword}` not found for region index "
+                f"{region_index}. Cannot build a three-phase table. "
+                "Use `TwoPhaseRelPermTable.from_deck_file(..., system='oil_water')` "
+                "to build an oil-water only table.",
+                UserWarning,
+                stacklevel=2,
+            )
+            raise ValidationError(
+                f"Gas-oil keyword(s) `{gas_oil_keyword}` required for ThreePhaseRelPermTable "
+                f"not found at region index {region_index}."
+            )
+
+        oil_water_table = TwoPhaseRelPermTable.from_deck_file(
+            deck_file=deck_file,
+            system="oil_water",
+            keyword_family=family,
+            **shared_kwargs,
+        )
+        gas_oil_table = TwoPhaseRelPermTable.from_deck_file(
+            deck_file=deck_file,
+            system="gas_oil",
+            keyword_family=family,
+            **shared_kwargs,
+        )
+        return cls(
+            oil_water_table=oil_water_table,
+            gas_oil_table=gas_oil_table,
+            mixing_rule=mixing_rule,
         )

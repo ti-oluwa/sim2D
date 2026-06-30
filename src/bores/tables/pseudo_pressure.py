@@ -159,7 +159,7 @@ def compute_gas_pseudo_pressure(
             # Fallback to simple trapezoidal rule
             p_points = np.linspace(min_pressure, max_pressure, 100)
             y_points = np.array([integrand(p) for p in p_points])
-            result = float(np.trapezoid(y=y_points, x=p_points))
+            result = typing.cast(Number, np.trapezoid(y=y_points, x=p_points))
 
     # Apply sign based on integration direction
     if pressure < reference_pressure:
@@ -701,7 +701,9 @@ class PseudoPressureTable(
         )
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
-        return typing.cast(FloatArray[NDimension], result.reshape(pressure_arr.shape))
+        return typing.cast(
+            FloatArray[NDimension], result.reshape(pressure_arr.shape, copy=False)
+        )
 
     def inverse(
         self, pseudo_pressure: NumberOrArray[NDimension]
@@ -744,7 +746,8 @@ class PseudoPressureTable(
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
         return typing.cast(
-            FloatArray[NDimension], result.reshape(pseudo_pressure_arr.shape)
+            FloatArray[NDimension],
+            result.reshape(pseudo_pressure_arr.shape, copy=False),
         )
 
     def __call__(
@@ -787,7 +790,9 @@ class PseudoPressureTable(
         )
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
-        return typing.cast(FloatArray[NDimension], result.reshape(pressure_arr.shape))
+        return typing.cast(
+            FloatArray[NDimension], result.reshape(pressure_arr.shape, copy=False)
+        )
 
     def convert(
         self,
