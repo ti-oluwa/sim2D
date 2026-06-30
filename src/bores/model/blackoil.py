@@ -168,7 +168,7 @@ class BlackOilModel(
         :param rock: Static petrophysical properties. Array lengths must equal `grid.n_cells`.
         :param pvt: Static PVT characterisation of the reservoir fluids.
         :param state: Initial (or current) dynamic simulation state. Array lengths must
-            equal `grid.n_cells`. Should never be modified during simulation. 
+            equal `grid.n_cells`. Should never be modified during simulation.
             If modification is necessary, create a copy.
         :param datum_depth: Reference depth (positive downward, grid length units) of the datum
             plane used for pressure initialisation by the equilibration routine.

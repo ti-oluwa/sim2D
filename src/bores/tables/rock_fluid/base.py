@@ -4,21 +4,23 @@ import attrs
 import numba
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import Self
 
+from bores.constants import UnitConversionTable
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization import Serializable
-from bores.tables.rock_fluid.capillary_pressure import (
+from bores.stores import StoreSerializable
+from bores.tables.rock_fluid.capillary_pressure.base import (
     CapillaryPressureTable,
     ThreePhaseCapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
 )
-from bores.tables.rock_fluid.relperm import (
-    MixingRule,
+from bores.tables.rock_fluid.relperm.base import (
     RelativePermeabilityTable,
     ThreePhaseRelPermTable,
     TwoPhaseRelPermTable,
 )
+from bores.tables.rock_fluid.relperm.mixing_rules import MixingRule
 from bores.tables.rock_fluid.utils import (
     build_saturation_reference_field,
     pchip_resample,
@@ -28,9 +30,12 @@ from bores.typing import (
     FluidPhase,
     NDimension,
     Number,
+    NumberArray,
     NumberOrArray,
+    OneDimension,
     RelativePermeabilities,
     Spacing,
+    UnitSystem,
 )
 
 __all__ = [
@@ -40,17 +45,16 @@ __all__ = [
 ]
 
 
-@typing.final
 @attrs.frozen
-class RockFluidTables(Serializable):
+class RockFluidTables(StoreSerializable):
     """
-    Models/Tables defining rock-fluid interactions in the reservoir.
+    Saturation function table(s) defining rock-fluid interactions in the reservoir.
 
     Made up of a relative permeability table and an optional capillary pressure table.
     """
 
-    relative_permeability_table: RelativePermeabilityTable
-    capillary_pressure_table: typing.Optional[CapillaryPressureTable] = None
+    relative_permeability: RelativePermeabilityTable
+    capillary_pressure: typing.Optional[CapillaryPressureTable] = None
 
     def get_relative_permeabilities(
         self,
@@ -68,7 +72,7 @@ class RockFluidTables(Serializable):
         :param kwargs: Additional keyword arguments required by the relative permeability table/table
         :return: `RelativePermeabilities` dictionary.
         """
-        return self.relative_permeability_table.get_relative_permeabilities(
+        return self.relative_permeability.get_relative_permeabilities(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -93,13 +97,36 @@ class RockFluidTables(Serializable):
         :param permeability: Optional override for permeability - scalar or array.
         :return: `CapillaryPressures` dictionary.
         """
-        if self.capillary_pressure_table is None:
+        if self.capillary_pressure is None:
             raise ValidationError("Capillary pressure table is not defined.")
-        return self.capillary_pressure_table.get_capillary_pressures(
+        return self.capillary_pressure.get_capillary_pressures(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `RockFluidTables` with capillary pressure in every
+        region rescaled to *target*.
+
+        Relative permeability is dimensionless and is unaffected.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `RockFluidTables` in *target* units.
+        """
+        if self.capillary_pressure is None:
+            return self
+        return self.__class__(
+            relative_permeability=self.relative_permeability,
+            capillary_pressure=self.capillary_pressure.convert(target, table=table),
         )
 
 
@@ -681,7 +708,9 @@ def as_three_phase_relperm_table(
     :param mixing_rule: Three-phase oil relative permeability mixing rule.
     :return: `ThreePhaseRelPermTable` with piecewise-linear sub-tables.
     """
-    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    dtype = np.dtype(
+        dtype if dtype is not None else getattr(table, "dtype", get_dtype())
+    )
     resolved_irreducible_water_saturation = _resolve_saturation_endpoint(
         arg_value=irreducible_water_saturation,
         table=table,
@@ -833,23 +862,36 @@ def as_three_phase_relperm_table(
     oil_water_table = TwoPhaseRelPermTable(
         wetting_phase=oil_water_wetting_phase_resolved,
         non_wetting_phase=oil_water_non_wetting_phase,
-        reference_saturation=oil_water_reference_saturations,
-        wetting_phase_relative_permeability=oil_water_wetting_phase_kr,
-        non_wetting_phase_relative_permeability=oil_water_non_wetting_phase_kr,
+        reference_saturation=typing.cast(
+            NumberArray[OneDimension], oil_water_reference_saturations
+        ),
+        wetting_phase_relative_permeability=typing.cast(
+            NumberArray[OneDimension], oil_water_wetting_phase_kr
+        ),
+        non_wetting_phase_relative_permeability=typing.cast(
+            NumberArray[OneDimension], oil_water_non_wetting_phase_kr
+        ),
         reference_phase=oil_water_reference_phase,
+        dtype=dtype,
     )
     gas_oil_table = TwoPhaseRelPermTable(
         wetting_phase=gas_oil_wetting_phase_resolved,
         non_wetting_phase=gas_oil_non_wetting_phase,
-        reference_saturation=gas_oil_reference_saturations,
-        wetting_phase_relative_permeability=gas_oil_wetting_phase_kr,
-        non_wetting_phase_relative_permeability=gas_oil_non_wetting_phase_kr,
+        reference_saturation=typing.cast(
+            NumberArray[OneDimension], gas_oil_reference_saturations
+        ),
+        wetting_phase_relative_permeability=typing.cast(
+            NumberArray[OneDimension], gas_oil_wetting_phase_kr
+        ),
+        non_wetting_phase_relative_permeability=typing.cast(
+            NumberArray[OneDimension], gas_oil_non_wetting_phase_kr
+        ),
         reference_phase=gas_oil_reference_phase,
+        dtype=dtype,
     )
 
     if mixing_rule is None:
         mixing_rule = getattr(table, "mixing_rule", "eclipse_rule")
-
     return ThreePhaseRelPermTable(
         oil_water_table=oil_water_table,
         gas_oil_table=gas_oil_table,
@@ -874,6 +916,7 @@ def as_three_phase_capillary_pressure_table(
     spacing: Spacing = "cosine",
     oil_water_reference_saturation: typing.Optional[npt.ArrayLike] = None,
     gas_oil_reference_saturation: typing.Optional[npt.ArrayLike] = None,
+    unit_system: typing.Optional[UnitSystem] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> ThreePhaseCapillaryPressureTable:
     """
@@ -909,7 +952,16 @@ def as_three_phase_capillary_pressure_table(
         sub-table. Overrides the auto-generated field when supplied.
     :return: `ThreePhaseCapillaryPressureTable` backed by piecewise-linear sub-tables.
     """
-    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    dtype = np.dtype(
+        dtype if dtype is not None else getattr(table, "dtype", get_dtype())
+    )
+    current_unit_system = table.unit_system
+    if current_unit_system is None:
+        raise ValidationError(
+            "Cannot determine the unit sytem of the provide table. Pass `unit_system`."
+        )
+    should_convert = unit_system is not None and current_unit_system != unit_system
+
     resolved_irreducible_water_saturation = _resolve_saturation_endpoint(
         arg_value=irreducible_water_saturation,
         table=table,
@@ -1056,17 +1108,32 @@ def as_three_phase_capillary_pressure_table(
     oil_water_table = TwoPhaseCapillaryPressureTable(
         wetting_phase=oil_water_wetting_phase_resolved,
         non_wetting_phase=oil_water_non_wetting_phase,
-        reference_saturation=oil_water_reference_saturations,
-        capillary_pressure=oil_water_capillary_pressure_values,
+        reference_saturation=typing.cast(
+            NumberArray[OneDimension], oil_water_reference_saturations
+        ),
+        capillary_pressure=typing.cast(
+            NumberArray[OneDimension], oil_water_capillary_pressure_values
+        ),
         reference_phase=oil_water_reference_phase,
+        dtype=dtype,
+        unit_system=current_unit_system,
     )
     gas_oil_table = TwoPhaseCapillaryPressureTable(
         wetting_phase=gas_oil_wetting_phase_resolved,
         non_wetting_phase=gas_oil_non_wetting_phase,
-        reference_saturation=gas_oil_reference_saturations,
-        capillary_pressure=gas_oil_capillary_pressure_values,
+        reference_saturation=typing.cast(
+            NumberArray[OneDimension], gas_oil_reference_saturations
+        ),
+        capillary_pressure=typing.cast(
+            NumberArray[OneDimension], gas_oil_capillary_pressure_values
+        ),
         reference_phase=gas_oil_reference_phase,
+        dtype=dtype,
+        unit_system=current_unit_system,
     )
-    return ThreePhaseCapillaryPressureTable(
+    three_phase_table = ThreePhaseCapillaryPressureTable(
         oil_water_table=oil_water_table, gas_oil_table=gas_oil_table
     )
+    if should_convert:
+        return three_phase_table.convert(unit_system)  # type: ignore[arg-type]
+    return three_phase_table

@@ -714,9 +714,7 @@ class RockCompressibilityRegions(StoreSerializable):
         return table
 
     @classmethod
-    def single_region(
-        cls, table: RockCompressibilityTable
-    ) -> "RockCompressibilityRegions":
+    def single_region(cls, table: RockCompressibilityTable) -> Self:
         """
         Wrap a single `RockCompressibilityTable` as region 1.
 
@@ -732,7 +730,7 @@ class RockCompressibilityRegions(StoreSerializable):
         *,
         interpolation_method: InterpolationMethod = "linear",
         dtype: typing.Optional[npt.DTypeLike] = None,
-    ) -> "RockCompressibilityRegions":
+    ) -> Self:
         """
         Build all rock compressibility regions from a `DeckFile`.
 

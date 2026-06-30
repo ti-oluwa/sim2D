@@ -2,14 +2,18 @@
 
 import threading
 import typing
+import warnings
 
 import attrs
-import numba
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
+from typing_extensions import Self
 
+from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.deck.file import DeckFile
 from bores.errors import ValidationError
+from bores.precision import get_dtype
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
 from bores.tables.rock_fluid.utils import build_pchip_interpolant
@@ -18,12 +22,14 @@ from bores.typing import (
     CapillaryPressures,
     FluidPhase,
     NDimension,
+    Number,
     NumberArray,
     NumberOrArray,
     OneDimension,
     Spacing,
+    SupportsUnitSystem,
+    UnitSystem,
 )
-from bores.utils import array as bores_array
 
 __all__ = [
     "ThreePhaseCapillaryPressureTable",
@@ -32,7 +38,7 @@ __all__ = [
 ]
 
 
-class CapillaryPressureTable(StoreSerializable):
+class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
     """
     Protocol for a capillary pressure model that computes
     capillary pressures based on fluid saturations.
@@ -173,6 +179,7 @@ def get_capillary_pressure_table(name: str) -> typing.Type[CapillaryPressureTabl
         return _CAPILLARY_PRESSURE_TABLES[name]
 
 
+@capillary_pressure_table
 @attrs.frozen
 class TwoPhaseCapillaryPressureTable(
     Serializable,
@@ -197,7 +204,22 @@ class TwoPhaseCapillaryPressureTable(
     typically unbounded near residual saturation, making endpoint fidelity
     especially important for implicit convergence. Pass `number_of_base_points=0`
     to disable scaling.
+
+    **dtype**:
+
+    All stored arrays and all returned scalars / arrays use `dtype`. Query
+    methods always cast their output to `dtype` before returning. Defaults to
+    `get_dtype()` when not specified.
+
+    **unit_system**:
+
+    `capillary_pressure` is dimensional (pressure units) and is stored in
+    `unit_system`. `reference_saturation` is always dimensionless and is
+    unaffected by unit conversion. Use `convert(target)` to produce a copy of
+    this table rescaled to a different `UnitSystem`.
     """
+
+    __type__ = "two_phase_capillary_pressure_table"
 
     wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
     """The wetting fluid phase, e.g. WATER (oil-water system) or OIL (gas-oil system)."""
@@ -205,17 +227,18 @@ class TwoPhaseCapillaryPressureTable(
     non_wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
     """The non-wetting fluid phase, e.g. OIL (oil-water system) or GAS (gas-oil system)."""
 
-    reference_saturation: NumberArray[OneDimension] = attrs.field(converter=bores_array)
+    reference_saturation: NumberArray[OneDimension]
     """
     Saturation values used as the x-axis for interpolation, monotonically
     increasing. May represent either the wetting or non-wetting phase
-    saturation depending on `reference_phase`.
+    saturation depending on `reference_phase`. Dimensionless.
     """
 
-    capillary_pressure: NumberArray[OneDimension] = attrs.field(converter=bores_array)
+    capillary_pressure: NumberArray[OneDimension]
     """
     Capillary pressure values `Pc = P_non_wetting - P_wetting` corresponding
-    to each `reference_saturation` point.
+    to each `reference_saturation` point. Units follow `unit_system`
+    (psi / bar / atm / Pa).
     """
 
     reference_phase: typing.Literal["wetting", "non_wetting"] = attrs.field(
@@ -223,13 +246,13 @@ class TwoPhaseCapillaryPressureTable(
     )
     """
     Which phase the `reference_saturation` axis represents.
- 
+
     - `"wetting"` - the x-axis holds wetting-phase saturation values.
       This is the standard convention for oil-water tables (Sw axis) and for
       gas-oil tables indexed by So.
     - `"non_wetting"` - the x-axis holds non-wetting-phase saturation
       values.  Use this for gas-oil tables indexed by Sg.
- 
+
     This attribute does not change the interpolation mechanics. It only
     records which physical saturation must be supplied by the caller so that
     `ThreePhaseCapillaryPressureTable` (and any other consumer) can dispatch
@@ -240,7 +263,7 @@ class TwoPhaseCapillaryPressureTable(
     """
     Target number of base knot points used when expanding the raw saturation
     grid before fitting the PCHIP interpolant.
- 
+
     Pass `0` to disable grid scaling and use the raw knots directly.
     """
 
@@ -248,13 +271,33 @@ class TwoPhaseCapillaryPressureTable(
     """
     Number of extra knots injected into the first and last 10 % of the
     saturation range during grid expansion (see `number_of_base_points`).
- 
+
     The higher default of 30 (vs 20 for relperm) reflects that Pc curves vary
     most steeply near residual saturations. Pass `0` to disable.
     """
 
     spacing: Spacing = attrs.field(default="cosine")
     """Grid spacing mode used when building the expanded knot grid."""
+
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Unit system in which `capillary_pressure` is expressed.
+
+    `reference_saturation` is dimensionless and is unaffected by unit
+    conversion. Use `convert(target)` to rescale `capillary_pressure`
+    (and the derivative interpolant) to another `UnitSystem`.
+    """
+
+    dtype: typing.Optional[npt.DTypeLike] = attrs.field(default=None)
+    """
+    Array dtype for all stored arrays and all query return values.
+
+    Both `reference_saturation` and `capillary_pressure` are cast to this
+    dtype in `__attrs_post_init__`. Query methods (`_query_interp`,
+    `_query_d_interp`) cast their outputs to this dtype before returning.
+
+    Defaults to `get_dtype()` when `None`.
+    """
 
     _interp: PchipInterpolator = attrs.field(init=False, repr=False)
     _d_interp: PchipInterpolator = attrs.field(init=False, repr=False)
@@ -278,16 +321,31 @@ class TwoPhaseCapillaryPressureTable(
                 "`reference_saturation` must be monotonically increasing."
             )
 
+        # Resolve and enforce dtype on both stored arrays
+        dtype = np.dtype(self.dtype) if self.dtype is not None else get_dtype()
+        object.__setattr__(self, "dtype", dtype)
+        object.__setattr__(
+            self,
+            "reference_saturation",
+            np.asarray(self.reference_saturation, dtype=dtype, copy=False),
+        )
+        object.__setattr__(
+            self,
+            "capillary_pressure",
+            np.asarray(self.capillary_pressure, dtype=dtype, copy=False),
+        )
+
         # Build interpolant
-        pchip, dpchip = build_pchip_interpolant(
+        interp, d_interp = build_pchip_interpolant(
             reference_saturation=self.reference_saturation,
             values=self.capillary_pressure,
             number_of_base_points=self.number_of_base_points,
             number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
             spacing=self.spacing,
+            dtype=dtype,
         )
-        object.__setattr__(self, "_interp", pchip)
-        object.__setattr__(self, "_d_interp", dpchip)
+        object.__setattr__(self, "_interp", interp)
+        object.__setattr__(self, "_d_interp", d_interp)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         return typing.cast(FluidPhase, self.wetting_phase)
@@ -317,11 +375,13 @@ class TwoPhaseCapillaryPressureTable(
     ) -> NumberOrArray[NDimension]:
         """
         Evaluate the capillary pressure PCHIP interpolant at `reference`,
-        applying constant extrapolation at the boundaries.
+        applying constant extrapolation at the boundaries. Result is cast
+        to `self.dtype`.
 
         :param reference: Query saturation value(s) - scalar or array.
-        :return: Capillary pressure value(s).
+        :return: Capillary pressure value(s) cast to `self.dtype`.
         """
+        dtype = self.dtype
         is_scalar = np.isscalar(reference)
         sat = np.atleast_1d(reference)
         x_min = self._interp.x[0]
@@ -330,9 +390,10 @@ class TwoPhaseCapillaryPressureTable(
         result = self._interp(np.clip(sat, x_min, x_max))
         result = np.where(sat < x_min, self.capillary_pressure[0], result)
         result = np.where(sat > x_max, self.capillary_pressure[-1], result)
+        result = result.astype(dtype, copy=False)
 
         if is_scalar:
-            return result.item()
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore
         return typing.cast(
             NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
         )
@@ -342,21 +403,27 @@ class TwoPhaseCapillaryPressureTable(
     ) -> NumberOrArray[NDimension]:
         """
         Evaluate the analytical PCHIP derivative at `reference`, returning
-        zero outside the knot range.
+        zero (in `self.dtype`) outside the knot range.
 
         :param reference: Query saturation value(s) - scalar or array.
-        :return: Derivative value(s).
+        :return: Derivative value(s) cast to `self.dtype`.
         """
+        dtype = self.dtype
         is_scalar = np.isscalar(reference)
         sat = np.atleast_1d(reference)
         x_min = self._d_interp.x[0]
         x_max = self._d_interp.x[-1]
 
         result = self._d_interp(np.clip(sat, x_min, x_max))
-        result = np.where((sat < x_min) | (sat > x_max), 0.0, result)
+        result = np.where(
+            (sat < x_min) | (sat > x_max),
+            dtype.type(0),  # type: ignore
+            result,
+        )
+        result = result.astype(dtype, copy=False)
 
         if is_scalar:
-            return result.item()
+            return typing.cast(Number, dtype.type(result.item()))  # type: ignore
         return typing.cast(
             NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
         )
@@ -375,7 +442,7 @@ class TwoPhaseCapillaryPressureTable(
         :param wetting_saturation: Wetting-phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Capillary pressure value(s) matching the input shape.
+        :return: Capillary pressure value(s) in `self.dtype`, matching the input shape.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -394,13 +461,13 @@ class TwoPhaseCapillaryPressureTable(
         Derivative of capillary pressure with respect to the reference
         saturation axis of this table: `dPc / d(reference_saturation)`.
 
-        Evaluated from the analytical PCHIP derivative. Zero outside the
-        tabulated range (constant extrapolation = zero slope).
+        Evaluated from the analytical PCHIP derivative. Zero (in `self.dtype`)
+        outside the tabulated range (constant extrapolation = zero slope).
 
         :param wetting_saturation: Wetting-phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Derivative value(s) with the same shape as the input.
+        :return: Derivative value(s) in `self.dtype` with the same shape as the input.
         """
         ref = self._resolve_reference(
             wetting_saturation,
@@ -422,9 +489,155 @@ class TwoPhaseCapillaryPressureTable(
         :param wetting_saturation: Wetting-phase saturation (scalar or array).
         :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
             Required when `reference_phase="non_wetting"`.
-        :return: Capillary pressure value(s).
+        :return: Capillary pressure value(s) in `self.dtype`.
         """
         return self.get_capillary_pressure(wetting_saturation, non_wetting_saturation)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `TwoPhaseCapillaryPressureTable` with `capillary_pressure`
+        rescaled to *target*.
+
+        `reference_saturation` is dimensionless and is copied unchanged.
+        The PCHIP interpolant is rebuilt from the rescaled values at
+        construction time of the new instance.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `TwoPhaseCapillaryPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        pressure_factor = factors["pressure"]
+        return self.__class__(
+            wetting_phase=self.wetting_phase,
+            non_wetting_phase=self.non_wetting_phase,
+            reference_saturation=self.reference_saturation.copy(),
+            capillary_pressure=(self.capillary_pressure * pressure_factor).astype(  # type: ignore[arg-type]
+                self.dtype, copy=False
+            ),
+            reference_phase=self.reference_phase,
+            number_of_base_points=self.number_of_base_points,
+            number_of_endpoint_extra_points=self.number_of_endpoint_extra_points,
+            spacing=self.spacing,
+            unit_system=target,
+            dtype=self.dtype,
+        )
+
+    @classmethod
+    def from_deck_file(
+        cls,
+        deck_file: DeckFile,
+        region_index: int = 0,
+        *,
+        system: typing.Literal["oil_water", "gas_oil"],
+        keyword_family: typing.Literal["first", "second"] = "first",
+        number_of_base_points: int = 200,
+        number_of_endpoint_extra_points: int = 30,
+        spacing: Spacing = "cosine",
+        dtype: typing.Optional[npt.DTypeLike] = None,
+    ) -> "TwoPhaseCapillaryPressureTable":
+        """
+        Build a `TwoPhaseCapillaryPressureTable` for one saturation region from a `DeckFile`.
+
+        Capillary pressure is only available in the **first** saturation-function
+        family (`SWOF` / `SGOF`); the **second** family (`SWFN` / `SGFN`) also
+        carries a Pc column, so both families are supported here, unlike
+        `TwoPhaseRelPermTable.from_deck_file` which needs `SOF2`/`SOF3` for the
+        second family's oil curve.
+
+        **First keyword family** (`SWOF` / `SGOF`):
+
+        - Oil-water: reads `SWOF` -> `(sw, pcow)`. Reference phase `"wetting"`
+          (Sw axis), wetting phase WATER, non-wetting OIL.
+        - Gas-oil:   reads `SGOF` -> `(sg, pcog)`. Reference phase `"non_wetting"`
+          (Sg axis), wetting phase OIL, non-wetting GAS.
+
+        **Second keyword family** (`SWFN` / `SGFN`):
+
+        - Oil-water: reads `SWFN` -> `(sw, pcow)`. Same axis/phase convention
+          as the first family.
+        - Gas-oil:   reads `SGFN` -> `(sg, pcog)`. Same axis/phase convention
+          as the first family.
+
+        The unit system is read from `deck_file.unit_system` automatically.
+
+        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param region_index: 0-based saturation region index (default 0 -> region 1).
+        :param system: `"oil_water"` or `"gas_oil"`.
+        :param keyword_family: `"first"` (SWOF/SGOF) or `"second"` (SWFN/SGFN).
+        :param number_of_base_points: Passed to PCHIP grid scaling.
+        :param number_of_endpoint_extra_points: Passed to PCHIP endpoint enrichment.
+        :param spacing: Grid spacing mode for PCHIP scaling.
+        :param dtype: Array dtype for all stored arrays and query returns.
+        :returns: `TwoPhaseCapillaryPressureTable` for the specified region and system.
+        :raises ValidationError: When the required keyword is missing or the region
+            index is out of range.
+        """
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+        unit_system = deck_file.unit_system
+
+        def _require(keyword: str) -> typing.List[typing.Dict[str, typing.Any]]:
+            all_regions = deck_file.get(keyword)
+            if all_regions is None or region_index >= len(all_regions):
+                raise ValidationError(
+                    f"Keyword `{keyword}` not found or region index {region_index} "
+                    f"is out of range in the provided DeckFile."
+                )
+
+            rows = all_regions[region_index]
+            if not rows:
+                raise ValidationError(
+                    f"Keyword `{keyword}` region index {region_index} has no rows."
+                )
+            return rows
+
+        if system == "oil_water":
+            keyword = "SWOF" if keyword_family == "first" else "SWFN"
+            rows = _require(keyword)
+            sw = np.array([row["sw"] for row in rows], dtype=dtype)
+            pcow = np.array([row["pcow"] for row in rows], dtype=dtype)
+            return cls(
+                wetting_phase=FluidPhase.WATER,
+                non_wetting_phase=FluidPhase.OIL,
+                reference_saturation=sw,  # type: ignore[arg-type]
+                capillary_pressure=pcow,  # type: ignore[arg-type]
+                reference_phase="wetting",
+                number_of_base_points=number_of_base_points,
+                number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                spacing=spacing,
+                unit_system=unit_system,
+                dtype=dtype,
+            )
+
+        elif system == "gas_oil":
+            keyword = "SGOF" if keyword_family == "first" else "SGFN"
+            rows = _require(keyword)
+            sg = np.array([row["sg"] for row in rows], dtype=dtype)
+            pcog = np.array([row["pcog"] for row in rows], dtype=dtype)
+            return cls(
+                wetting_phase=FluidPhase.OIL,
+                non_wetting_phase=FluidPhase.GAS,
+                reference_saturation=sg,  # type: ignore[arg-type]
+                capillary_pressure=pcog,  # type: ignore[arg-type]
+                reference_phase="non_wetting",
+                number_of_base_points=number_of_base_points,
+                number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+                spacing=spacing,
+                unit_system=unit_system,
+                dtype=dtype,
+            )
+
+        raise ValidationError(
+            f"`system` must be 'oil_water' or 'gas_oil'; got {system!r}."
+        )
 
 
 @capillary_pressure_table
@@ -442,6 +655,19 @@ class ThreePhaseCapillaryPressureTable(
 
     Pcow = Po - Pw (oil-water capillary pressure)
     Pcgo = Pg - Po (gas-oil capillary pressure)
+
+    **dtype**:
+
+    The `oil_water_table` and `gas_oil_table` must share the same dtype.
+    This is validated at construction time. All returned derivative values
+    are cast to that shared dtype.
+
+    **unit_system**:
+
+    The `oil_water_table` and `gas_oil_table` must share the same
+    `unit_system`. This is validated at construction time. Use `convert(target)`
+    to produce a copy of this table (and both sub-tables) rescaled to another
+    `UnitSystem`.
     """
 
     __type__ = "three_phase_capillary_pressure_table"
@@ -484,6 +710,33 @@ class ThreePhaseCapillaryPressureTable(
                 "Wetting phase of `oil_water_table` cannot be the same as non-wetting phase of `gas_oil_table`."
             )
 
+        # Validate matching dtype between the two sub-tables
+        ow_dtype = np.dtype(self.oil_water_table.dtype)
+        go_dtype = np.dtype(self.gas_oil_table.dtype)
+        if ow_dtype != go_dtype:
+            raise ValidationError(
+                f"`oil_water_table` dtype ({ow_dtype}) and `gas_oil_table` dtype "
+                f"({go_dtype}) must match. Convert one of the tables before combining."
+            )
+
+        # Validate matching unit_system between the two sub-tables
+        if self.oil_water_table.unit_system != self.gas_oil_table.unit_system:
+            raise ValidationError(
+                f"`oil_water_table` unit_system ({self.oil_water_table.unit_system.value!r}) "
+                f"and `gas_oil_table` unit_system ({self.gas_oil_table.unit_system.value!r}) "
+                f"must match. Convert one of the tables before combining."
+            )
+
+    @property
+    def dtype(self) -> np.dtype:
+        """Shared `dtype` of the two underlying two-phase tables."""
+        return np.dtype(self.oil_water_table.dtype)
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Shared `unit_system` of the two underlying two-phase tables."""
+        return self.oil_water_table.unit_system
+
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         return typing.cast(FluidPhase, self.oil_water_table.wetting_phase)
 
@@ -510,6 +763,8 @@ class ThreePhaseCapillaryPressureTable(
         For the gas-oil table the wetting phase is always OIL, but the table may
         be indexed by So (`reference_phase="wetting"`) or by Sg
         (`reference_phase="non_wetting"`).
+
+        Returned values are in the shared `self.dtype` and `self.unit_system`.
 
         :param water_saturation: Water saturation (fraction, 0-1).
         :param oil_saturation: Oil saturation (fraction, 0-1).
@@ -573,14 +828,15 @@ class ThreePhaseCapillaryPressureTable(
 
         At most one of `dPcow_dSw` / `dPcow_dSo` is non-zero, and at most one
         of `dPcgo_dSo` / `dPcgo_dSg` is non-zero, for a given table
-        configuration.  All derivatives are exact piecewise-linear slopes from the
-        underlying two-phase tables.
+        configuration. All derivatives are exact PCHIP slopes from the
+        underlying two-phase tables, cast to the shared `self.dtype`.
 
         :param water_saturation: Water saturation (scalar or array).
         :param oil_saturation: Oil saturation (scalar or array).
         :param gas_saturation: Gas saturation (scalar or array).
-        :return: `CapillaryPressureDerivatives` dictionary.
+        :return: `CapillaryPressureDerivatives` dictionary in `self.dtype`.
         """
+        dtype = self.dtype
         oil_water_table = self.oil_water_table
         gas_oil_table = self.gas_oil_table
 
@@ -589,7 +845,8 @@ class ThreePhaseCapillaryPressureTable(
             and np.isscalar(oil_saturation)
             and np.isscalar(gas_saturation)
         )
-        zero = 0.0 if is_scalar else np.zeros_like(water_saturation)
+        sw = np.atleast_1d(water_saturation)
+        zero = dtype.type(0) if is_scalar else np.zeros(sw.shape, dtype=dtype)  # type: ignore
 
         # Oil-water derivatives
         if oil_water_table.wetting_phase == FluidPhase.WATER:
@@ -668,3 +925,153 @@ class ThreePhaseCapillaryPressureTable(
             dPcgo_dSo=d_pcgo_d_so,
             dPcgo_dSg=d_pcgo_d_sg,
         )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `ThreePhaseCapillaryPressureTable` with both sub-tables
+        rescaled to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `ThreePhaseCapillaryPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        return self.__class__(
+            oil_water_table=self.oil_water_table.convert(target, table=table),
+            gas_oil_table=self.gas_oil_table.convert(target, table=table),
+        )
+
+    @classmethod
+    def from_deck_file(
+        cls,
+        deck_file: DeckFile,
+        region_index: int = 0,
+        *,
+        keyword_family: typing.Literal["first", "second", "auto"] = "auto",
+        number_of_base_points: int = 200,
+        number_of_endpoint_extra_points: int = 30,
+        spacing: Spacing = "cosine",
+        dtype: typing.Optional[npt.DTypeLike] = None,
+    ) -> Self:
+        """
+        Build a `ThreePhaseCapillaryPressureTable` for one saturation region from
+        a `DeckFile`.
+
+        Detects which Eclipse saturation-function keyword family is present and
+        builds the oil-water and gas-oil two-phase sub-tables automatically:
+
+        **First family** (detected when `SWOF` or `SGOF` is present):
+
+        `SWOF` supplies the oil-water capillary pressure `(sw, pcow)`.
+        `SGOF` supplies the gas-oil capillary pressure `(sg, pcog)`.
+
+        **Second family** (detected when `SWFN` or `SGFN` is present):
+
+        `SWFN` supplies the oil-water capillary pressure `(sw, pcow)`.
+        `SGFN` supplies the gas-oil capillary pressure `(sg, pcog)`.
+
+        Unlike `ThreePhaseRelPermTable.from_deck_file`, the second family does
+        not need `SOF2`/`SOF3` here since capillary pressure has no oil-relative
+        component — both `SWFN` and `SGFN` already carry their own Pc column.
+
+        Both keywords (oil-water and gas-oil) must be present for a three-phase
+        table. If only one is found a warning is issued and a
+        `TwoPhaseCapillaryPressureTable` should be used instead.
+
+        The unit system is read from `deck_file.unit_system` automatically and
+        is shared by both sub-tables.
+
+        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param region_index: 0-based saturation region index (default 0 -> region 1).
+        :param keyword_family: `"first"`, `"second"`, or `"auto"` (default).
+        :param number_of_base_points: Passed to PCHIP grid scaling.
+        :param number_of_endpoint_extra_points: Passed to PCHIP endpoint enrichment.
+        :param spacing: Grid spacing mode for PCHIP scaling.
+        :param dtype: Array dtype shared by both sub-tables and all query returns.
+        :returns: `ThreePhaseCapillaryPressureTable` for the specified region.
+        :raises ValidationError: When required keywords are missing.
+        """
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+
+        def _has(keyword: str) -> bool:
+            all_regions = deck_file.get(keyword)
+            if all_regions is None:
+                return False
+            return region_index < len(all_regions) and bool(all_regions[region_index])
+
+        shared_kwargs: typing.Dict[str, typing.Any] = dict(
+            region_index=region_index,
+            number_of_base_points=number_of_base_points,
+            number_of_endpoint_extra_points=number_of_endpoint_extra_points,
+            spacing=spacing,
+            dtype=dtype,
+        )
+
+        family: typing.Literal["first", "second"]
+        if keyword_family == "auto":
+            if _has("SWOF") or _has("SGOF"):
+                family = "first"
+            elif _has("SWFN") or _has("SGFN"):
+                family = "second"
+            else:
+                raise ValidationError(
+                    "No recognised saturation-function keywords found in the DeckFile "
+                    f"for region index {region_index}. Expected one of: "
+                    "SWOF, SGOF (first family) or SWFN, SGFN (second family)."
+                )
+        else:
+            family = keyword_family  # type: ignore[assignment]
+
+        oil_water_keyword = "SWOF" if family == "first" else "SWFN"
+        gas_oil_keyword = "SGOF" if family == "first" else "SGFN"
+        has_oil_water_table = _has(oil_water_keyword)
+        has_gas_oil_table = _has(gas_oil_keyword)
+
+        if not has_oil_water_table:
+            warnings.warn(
+                f"Oil-water keyword `{oil_water_keyword}` not found for region index "
+                f"{region_index}. Cannot build a three-phase capillary pressure table. "
+                "Use `TwoPhaseCapillaryPressureTable.from_deck_file(..., system='gas_oil')` "
+                "to build a gas-oil only table.",
+                UserWarning,
+                stacklevel=2,
+            )
+            raise ValidationError(
+                f"Oil-water keyword `{oil_water_keyword}` required for "
+                f"ThreePhaseCapillaryPressureTable not found at region index {region_index}."
+            )
+
+        if not has_gas_oil_table:
+            warnings.warn(
+                f"Gas-oil keyword `{gas_oil_keyword}` not found for region index "
+                f"{region_index}. Cannot build a three-phase capillary pressure table. "
+                "Use `TwoPhaseCapillaryPressureTable.from_deck_file(..., system='oil_water')` "
+                "to build an oil-water only table.",
+                UserWarning,
+                stacklevel=2,
+            )
+            raise ValidationError(
+                f"Gas-oil keyword `{gas_oil_keyword}` required for "
+                f"ThreePhaseCapillaryPressureTable not found at region index {region_index}."
+            )
+
+        oil_water_table = TwoPhaseCapillaryPressureTable.from_deck_file(
+            deck_file=deck_file,
+            system="oil_water",
+            keyword_family=family,
+            **shared_kwargs,
+        )
+        gas_oil_table = TwoPhaseCapillaryPressureTable.from_deck_file(
+            deck_file=deck_file,
+            system="gas_oil",
+            keyword_family=family,
+            **shared_kwargs,
+        )
+        return cls(oil_water_table=oil_water_table, gas_oil_table=gas_oil_table)

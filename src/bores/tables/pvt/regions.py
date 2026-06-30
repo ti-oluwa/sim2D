@@ -1,10 +1,7 @@
 import logging
 import typing
 import warnings
-from collections.abc import Mapping
-from os import PathLike
 
-import attrs
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import (  # type: ignore[import-untyped]
@@ -36,8 +33,6 @@ logger = logging.getLogger(__name__)
 __all__ = ["PVTRegions", "load_pvt_regions"]
 
 
-@typing.final
-@attrs.frozen
 class PVTRegions(StoreSerializable):
     """
     Multi-region PVT tables keyed by 1-based `PVTNUM` region index.
@@ -58,8 +53,21 @@ class PVTRegions(StoreSerializable):
     ```
     """
 
-    regions: typing.Dict[int, PVTTables]
-    """Mapping from 1-based PVTNUM index to `PVTTables`."""
+    __abstract_serializable__ = True
+
+    def __init__(
+        self,
+        regions: typing.Dict[int, PVTTables],
+    ) -> None:
+        """
+        Build a `PVTRegions` from a pre-built regions dict.
+
+        :param regions: Mapping from 1-based PVTNUM index to `PVTTables`.
+        :raises ValidationError: If *regions* is empty.
+        """
+        if not regions:
+            raise ValidationError("`regions` must contain at least one entry.")
+        self.regions = regions
 
     def for_region(self, pvtnum: int) -> PVTTables:
         """
@@ -150,6 +158,22 @@ class PVTRegions(StoreSerializable):
                 for pvtnum, tables in self.regions.items()
             }
         )
+
+    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+        return {
+            "regions": {
+                str(pvtnum): tables.dump(recurse)
+                for pvtnum, tables in self.regions.items()
+            }
+        }
+
+    @classmethod
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
+        regions = {
+            int(pvtnum): PVTTables.load(table_data)
+            for pvtnum, table_data in data["regions"].items()
+        }
+        return cls(regions=regions)
 
 
 def _degenerate_temperature_axis(

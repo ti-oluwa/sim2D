@@ -6,13 +6,13 @@ from contextvars import ContextVar, Token
 from uuid import uuid4
 
 import attrs
-from typing_extensions import Self, TypedDict
+from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
-from bores.typing import Number, UnitSystem
+from bores.typing import Number, UnitConversionFactors, UnitConversionTable, UnitSystem
 
 __all__ = [
     "Constant",
@@ -1090,52 +1090,11 @@ def set_default_constants(constants: Constants, /) -> None:
     _constants_context.set((constants, _DEFAULT_CONTEXT_ID))
 
 
-class UnitConversionFactors(TypedDict):
-    pressure: Number
-    """Pressure conversion factor."""
-
-    length: Number
-    """Length conversion factor."""
-
-    density: Number
-    """Density conversion factor."""
-
-    viscosity: Number
-    """Dynamic viscosity conversion factor."""
-
-    permeability: Number
-    """Permeability conversion factor."""
-
-    compressibility: Number
-    """Compressibility conversion factor."""
-
-    liquid_fvf: Number
-    """Liquid formation volume factor conversion factor."""
-
-    gas_fvf: Number
-    """Gas formation volume factor conversion factor."""
-
-    gor: Number
-    """Gas-oil ratio conversion factor."""
-
-    temperature: Number
-    """Multiplicative temperature conversion factor."""
-
-    temperature_offset: Number
-    """Additive temperature conversion offset."""
-
-
-UnitConversionTable = typing.Dict[
-    typing.Tuple[UnitSystem, UnitSystem], UnitConversionFactors
-]
-"""Mapping of unit system pairs `(from, target)` to unit conversion factors"""
-
-
 def build_unit_conversion_table(
     constants: typing.Optional[Constants] = None,
 ) -> UnitConversionTable:
     """
-    Build a unit conversion table from the bores constants registry.
+    Build a unit conversion table from the (BORES) constants registry.
 
     All numeric values come from `c.*` so
     they stay in sync with any application-level constant overrides.

@@ -1,12 +1,11 @@
 import enum
 import typing
-from typing import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 from scipy.sparse import csr_array, csr_matrix  # type: ignore[import-untyped]
 from scipy.sparse.linalg import LinearOperator  # type: ignore[import-untyped]
-from typing_extensions import TypedDict
+from typing_extensions import Self, TypeAlias, TypedDict
 
 __all__ = [
     "ArrayLike",
@@ -428,3 +427,58 @@ Vcon = typing.TypeVar("Vcon", contravariant=True)
 
 
 ZFactorMethod = typing.Literal["papay", "hall-yarborough", "dak"]
+
+
+class UnitConversionFactors(TypedDict):
+    pressure: Number
+    """Pressure conversion factor."""
+
+    length: Number
+    """Length conversion factor."""
+
+    density: Number
+    """Density conversion factor."""
+
+    viscosity: Number
+    """Dynamic viscosity conversion factor."""
+
+    permeability: Number
+    """Permeability conversion factor."""
+
+    compressibility: Number
+    """Compressibility conversion factor."""
+
+    liquid_fvf: Number
+    """Liquid formation volume factor conversion factor."""
+
+    gas_fvf: Number
+    """Gas formation volume factor conversion factor."""
+
+    gor: Number
+    """Gas-oil ratio conversion factor."""
+
+    temperature: Number
+    """Multiplicative temperature conversion factor."""
+
+    temperature_offset: Number
+    """Additive temperature conversion offset."""
+
+
+UnitConversionTable = typing.Dict[
+    typing.Tuple[UnitSystem, UnitSystem], UnitConversionFactors
+]
+"""Mapping of unit system pairs `(from, target)` to unit conversion factors"""
+
+
+class SupportsUnitSystem(typing.Protocol):
+    """Protocol defining `UnitSystem` support."""
+
+    unit_system: UnitSystem
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self: ...

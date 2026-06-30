@@ -660,10 +660,12 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
         old_to_new[old_idx] = new_idx
         assert grid.nnc_cell_indices is not None
         assert grid.nnc_connection_types is not None
-        surviving_pairs.append((
-            int(grid.nnc_cell_indices[old_idx, 0]),
-            int(grid.nnc_cell_indices[old_idx, 1]),
-        ))
+        surviving_pairs.append(
+            (
+                int(grid.nnc_cell_indices[old_idx, 0]),
+                int(grid.nnc_cell_indices[old_idx, 1]),
+            )
+        )
         surviving_types.append(int(grid.nnc_connection_types[old_idx]))
         surviving_transmissibilities.append(
             grid.nnc_transmissibilities[old_idx]  # type: ignore
