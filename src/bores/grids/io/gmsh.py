@@ -164,9 +164,9 @@ def _parse_msh(
         malformed or no 3-D elements are found.
     """
     # $MeshFormat
-    mf_section = _extract_section(text, "MeshFormat")
-    if mf_section is not None:
-        version_str = mf_section.split()[0]
+    mesh_format_section = _extract_section(text, "MeshFormat")
+    if mesh_format_section is not None:
+        version_str = mesh_format_section.split()[0]
         major = int(version_str.split(".")[0])
         if major != 2:
             raise UnsupportedGridFormatError(
@@ -203,12 +203,13 @@ def _parse_msh(
     vertex_coordinates = np.array(coords, dtype=np.float64)
 
     # $Elements
-    elem_section = _extract_section(text, "Elements")
-    if elem_section is None:
+    elements_section = _extract_section(text, "Elements")
+    if elements_section is None:
         raise GridImportError("Gmsh .msh file is missing the $Elements section.")
-    elem_lines = elem_section.splitlines()
+
+    elements_lines = elements_section.splitlines()
     try:
-        n_elements = int(elem_lines[0].strip())
+        n_elements = int(elements_lines[0].strip())
     except (IndexError, ValueError) as exc:
         raise GridImportError(
             f"Cannot read element count from $Elements section: {exc}"
@@ -216,30 +217,31 @@ def _parse_msh(
 
     # Accumulate cells grouped by type
     cell_blocks_by_type: typing.Dict[str, typing.List[typing.List[int]]] = {}
-    for line in elem_lines[1 : n_elements + 1]:
+    for line in elements_lines[1 : n_elements + 1]:
         parts = line.split()
         if len(parts) < 3:
             continue
-        elem_type_id = int(parts[1])
-        if elem_type_id not in _GMSH_ELEM_TYPES:
+
+        element_type_id = int(parts[1])
+        if element_type_id not in _GMSH_ELEM_TYPES:
             continue  # skip 2-D/1-D elements silently
 
-        n_verts, type_name = _GMSH_ELEM_TYPES[elem_type_id]
+        n_vertices, type_name = _GMSH_ELEM_TYPES[element_type_id]
         n_tags = int(parts[2])
         node_start = 3 + n_tags
-        node_ids = [int(p) for p in parts[node_start : node_start + n_verts]]
-        if len(node_ids) != n_verts:
+        node_ids = [int(p) for p in parts[node_start : node_start + n_vertices]]
+        if len(node_ids) != n_vertices:
             raise GridImportError(
-                f"Element has {len(node_ids)} node IDs but expected {n_verts} "
+                f"Element has {len(node_ids)} node IDs but expected {n_vertices} "
                 f"for type {type_name!r}."
             )
         # Convert to 0-based indices
         try:
-            vert_indices = [node_id_to_index[nid] for nid in node_ids]
+            vertex_indices = [node_id_to_index[node_id] for node_id in node_ids]
         except KeyError as exc:
             raise GridImportError(f"Element references unknown node ID {exc}.") from exc
 
-        cell_blocks_by_type.setdefault(type_name, []).append(vert_indices)
+        cell_blocks_by_type.setdefault(type_name, []).append(vertex_indices)
 
     if not cell_blocks_by_type:
         raise GridImportError(

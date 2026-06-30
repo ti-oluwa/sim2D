@@ -142,7 +142,7 @@ def make_voronoi_grid(
     )
     ```
     """
-    seeds = np.asarray(seed_coordinates, dtype=np.float64)
+    seeds = np.asarray(seed_coordinates, dtype=np.float64, copy=False)
     if seeds.ndim != 2 or seeds.shape[1] not in (2, 3):
         raise ValidationError(
             f"seed_coordinates must be shape (N, 2) or (N, 3); got {seeds.shape!r}."
@@ -738,7 +738,7 @@ def _resolve_layer_thicknesses(
     :returns: Shape `(n_layers,)` positive float64 array.
     :raises ValidationError: If any thickness is non-positive.
     """
-    arr = np.atleast_1d(np.asarray(layer_thicknesses, dtype=np.float64)).ravel()
+    arr = np.atleast_1d(layer_thicknesses).astype(np.float64, copy=False).ravel()
     if np.any(arr <= 0.0):
         raise ValidationError(
             f"All `layer_thicknesses` must be strictly positive; got min={arr.min():.6g}."

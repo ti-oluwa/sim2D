@@ -79,12 +79,12 @@ RV = GridArrayKeyword("RV", dtype=np.float64, default_value=0.0)
 EQUIL = RepeatedRecordKeyword[float](
     "EQUIL",
     fields=[
-        Field("datum_depth", float),
-        Field("datum_pressure", float),
-        Field("woc_depth", float, required=False, default=0.0),
-        Field("pcow_woc", float, required=False, default=0.0),
-        Field("goc_depth", float, required=False, default=0.0),
-        Field("pcog_goc", float, required=False, default=0.0),
+        Field("datum_depth", np.float64),
+        Field("datum_pressure", np.float64),
+        Field("woc_depth", np.float64, required=False, default=0.0),
+        Field("pcow_woc", np.float64, required=False, default=0.0),
+        Field("goc_depth", np.float64, required=False, default=0.0),
+        Field("pcog_goc", np.float64, required=False, default=0.0),
         Field("rsvd_table", int, required=False, default=0),
         Field("rvvd_table", int, required=False, default=0),
         Field("accuracy_flag", int, required=False, default=0),

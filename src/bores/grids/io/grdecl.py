@@ -239,10 +239,10 @@ def _build_nnc_arrays(
     pairs: typing.List[typing.Tuple[int, int]] = []
     transmissibilities: typing.List[float] = []
 
-    for idx, rec in enumerate(nnc_records):
-        i1, j1, k1 = rec["i1"], rec["j1"], rec["k1"]
-        i2, j2, k2 = rec["i2"], rec["j2"], rec["k2"]
-        t = rec["transmissibility"]
+    for idx, record in enumerate(nnc_records):
+        i1, j1, k1 = record["i1"], record["j1"], record["k1"]
+        i2, j2, k2 = record["i2"], record["j2"], record["k2"]
+        t = record["transmissibility"]
 
         for label, i, j, k in [("first", i1, j1, k1), ("second", i2, j2, k2)]:
             if not (1 <= i <= nx and 1 <= j <= ny and 1 <= k <= nz):
@@ -279,16 +279,16 @@ def _build_fault_records(deck_file: DeckFile) -> typing.List[FaultRecord]:
 
     return [
         FaultRecord(
-            name=rec["name"],
-            i1=rec["i1"],
-            i2=rec["i2"],
-            j1=rec["j1"],
-            j2=rec["j2"],
-            k1=rec["k1"],
-            k2=rec["k2"],
-            face_direction=rec["face"],
+            name=record["name"],
+            i1=record["i1"],
+            i2=record["i2"],
+            j1=record["j1"],
+            j2=record["j2"],
+            k1=record["k1"],
+            k2=record["k2"],
+            face_direction=record["face"],
         )
-        for rec in faults
+        for record in faults
     ]
 
 
@@ -304,7 +304,7 @@ def _build_multflt(
     multflt_records = deck_file.get("MULTFLT")
     if not multflt_records:
         return None
-    return {rec["name"]: rec["multiplier"] for rec in multflt_records}
+    return {record["name"]: record["multiplier"] for record in multflt_records}
 
 
 def _resolve_vector_spacing(
@@ -687,12 +687,10 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
-    {
-        "grdecl_corner_point",
-        "grdecl_cartesian",
-    }
-)
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
+    "grdecl_corner_point",
+    "grdecl_cartesian",
+})
 
 
 def _build_grdecl_text(
@@ -784,7 +782,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64)
+        np
+        .asarray(arr, dtype=np.float64)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")

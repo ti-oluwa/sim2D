@@ -39,6 +39,8 @@ file order alongside the `DATES`/`TSTEP` timeline.
 
 import typing
 
+import numpy as np
+
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
 from bores.deck.keywords.base import DatesKeyword, Field, Keyword, RepeatedRecordKeyword
 from bores.deck.operators import Operation
@@ -133,9 +135,9 @@ WELSPECS = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("group", str),
         Field("i", int),
         Field("j", int),
-        Field("ref_depth", float, required=False, default=None),
+        Field("ref_depth", np.float64, required=False, default=None),
         Field("phase", str, required=False, default="OIL"),
-        Field("drainage_radius", float, required=False, default=0.0),
+        Field("drainage_radius", np.float64, required=False, default=0.0),
         Field("inflow_eq", str, required=False, default="STD"),
         Field("auto_shut", str, required=False, default="SHUT"),
         Field("crossflow", str, required=False, default="YES"),
@@ -183,13 +185,13 @@ COMPDAT = RepeatedRecordKeyword[typing.Union[str, float]](
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
         Field("sat_table", int, required=False, default=0),
-        Field("connection_factor", float, required=False, default=None),
-        Field("diameter", float, required=False, default=0.0),
-        Field("kh", float, required=False, default=None),
-        Field("skin", float, required=False, default=0.0),
-        Field("d_factor", float, required=False, default=0.0),
+        Field("connection_factor", np.float64, required=False, default=None),
+        Field("diameter", np.float64, required=False, default=0.0),
+        Field("kh", np.float64, required=False, default=None),
+        Field("skin", np.float64, required=False, default=0.0),
+        Field("d_factor", np.float64, required=False, default=0.0),
         Field("direction", str, required=False, default="Z"),
-        Field("perm_thickness_mult", float, required=False, default=1.0),
+        Field("perm_thickness_mult", np.float64, required=False, default=1.0),
     ],
 )
 """
@@ -233,13 +235,13 @@ WCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
         Field("control_mode", str, required=False, default=None),
-        Field("orat", float, required=False, default=0.0),
-        Field("wrat", float, required=False, default=0.0),
-        Field("grat", float, required=False, default=0.0),
-        Field("lrat", float, required=False, default=0.0),
-        Field("resv", float, required=False, default=0.0),
-        Field("bhp", float, required=False, default=None),
-        Field("thp", float, required=False, default=None),
+        Field("orat", np.float64, required=False, default=0.0),
+        Field("wrat", np.float64, required=False, default=0.0),
+        Field("grat", np.float64, required=False, default=0.0),
+        Field("lrat", np.float64, required=False, default=0.0),
+        Field("resv", np.float64, required=False, default=0.0),
+        Field("bhp", np.float64, required=False, default=None),
+        Field("thp", np.float64, required=False, default=None),
         Field("vfp_table", int, required=False, default=0),
     ],
 )
@@ -276,10 +278,10 @@ WCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
         Field("control_mode", str, required=False, default=None),
-        Field("rate", float, required=False, default=0.0),
-        Field("resv", float, required=False, default=0.0),
-        Field("bhp", float, required=False, default=None),
-        Field("thp", float, required=False, default=None),
+        Field("rate", np.float64, required=False, default=0.0),
+        Field("resv", np.float64, required=False, default=0.0),
+        Field("bhp", np.float64, required=False, default=None),
+        Field("thp", np.float64, required=False, default=None),
         Field("vfp_table", int, required=False, default=0),
     ],
 )
@@ -340,7 +342,7 @@ WELTARG = RepeatedRecordKeyword[typing.Union[str, float]](
     fields=[
         Field("well", str),
         Field("control_mode", str),
-        Field("value", float),
+        Field("value", np.float64),
     ],
 )
 """
@@ -359,7 +361,7 @@ WPIMULT = RepeatedRecordKeyword[typing.Union[str, float]](
     "WPIMULT",
     fields=[
         Field("well", str),
-        Field("multiplier", float),
+        Field("multiplier", np.float64),
         Field("i", int, required=False, default=0),
         Field("j", int, required=False, default=0),
         Field("k", int, required=False, default=0),
@@ -404,10 +406,10 @@ GCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
     fields=[
         Field("group", str),
         Field("control_mode", str),
-        Field("orat", float, required=False, default=0.0),
-        Field("wrat", float, required=False, default=0.0),
-        Field("grat", float, required=False, default=0.0),
-        Field("lrat", float, required=False, default=0.0),
+        Field("orat", np.float64, required=False, default=0.0),
+        Field("wrat", np.float64, required=False, default=0.0),
+        Field("grat", np.float64, required=False, default=0.0),
+        Field("lrat", np.float64, required=False, default=0.0),
         Field("exceed_action", str, required=False, default="NONE"),
     ],
 )
@@ -432,8 +434,8 @@ GCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("group", str),
         Field("injector_type", str),
         Field("control_mode", str),
-        Field("rate", float, required=False, default=0.0),
-        Field("resv", float, required=False, default=0.0),
+        Field("rate", np.float64, required=False, default=0.0),
+        Field("resv", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -456,10 +458,10 @@ WECON = RepeatedRecordKeyword[typing.Union[str, float]](
     "WECON",
     fields=[
         Field("well", str),
-        Field("min_orat", float, required=False, default=0.0),
-        Field("max_wcut", float, required=False, default=None),
-        Field("max_gor", float, required=False, default=None),
-        Field("max_wgr", float, required=False, default=None),
+        Field("min_orat", np.float64, required=False, default=0.0),
+        Field("max_wcut", np.float64, required=False, default=None),
+        Field("max_gor", np.float64, required=False, default=None),
+        Field("max_wgr", np.float64, required=False, default=None),
         Field("workover_action", str, required=False, default="WELL"),
         Field("end_run_flag", str, required=False, default="NO"),
     ],
@@ -489,7 +491,7 @@ WTEST = RepeatedRecordKeyword[typing.Union[str, float]](
     "WTEST",
     fields=[
         Field("well", str),
-        Field("interval", float),
+        Field("interval", np.float64),
         Field("reason", str, required=False, default="PEW"),
     ],
 )

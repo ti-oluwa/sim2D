@@ -172,12 +172,12 @@ ZCORN = ZCornKeyword()
 MAPAXES = RecordKeyword[float](
     "MAPAXES",
     fields=[
-        Field("y_axis_x", float),
-        Field("y_axis_y", float),
-        Field("origin_x", float),
-        Field("origin_y", float),
-        Field("x_axis_x", float),
-        Field("x_axis_y", float),
+        Field("y_axis_x", np.float64),
+        Field("y_axis_y", np.float64),
+        Field("origin_x", np.float64),
+        Field("origin_y", np.float64),
+        Field("x_axis_x", np.float64),
+        Field("x_axis_y", np.float64),
     ],
 )
 """
@@ -229,7 +229,7 @@ present in the deck, `False` otherwise.
 PINCH = RecordKeyword[typing.Union[str, float]](
     "PINCH",
     fields=[
-        Field("thickness", float, required=False, default=1e-6),
+        Field("thickness", np.float64, required=False, default=1e-6),
         Field("gap_mode", str, required=False, default="GAP"),
         Field("pinchout_option", str, required=False, default="TOPBOT"),
         Field("multz_option", str, required=False, default="TOP"),
@@ -268,7 +268,7 @@ DZ = GridArrayKeyword("DZ", dtype=np.float64, default_value=0.0)
 """`DZ` - cell size in the z direction (one value per cell)."""
 
 
-class VectorDimsKeyword(Keyword[typing.List[float]]):
+class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
     """
     Shared implementation for `DXV` / `DYV` / `DZV`: a flat list of
     per-column or per-layer cell sizes along one structured axis, given
@@ -301,7 +301,7 @@ class VectorDimsKeyword(Keyword[typing.List[float]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
-    ) -> typing.Optional[typing.List[float]]:
+    ) -> typing.Optional[typing.List[np.float64]]:
         if dims is None:
             raise DeckParseError(
                 f"Cannot parse {self.name!r} without resolved grid "
@@ -315,7 +315,7 @@ class VectorDimsKeyword(Keyword[typing.List[float]]):
         tokens = tokenise(record.body)
         expected = self._axis_extent(dims)
         try:
-            values = [float(tok) for tok in tokens]
+            values = [np.float64(token) for token in tokens]
         except ValueError as exc:
             raise DeckParseError(
                 f"{self.name} contains a non-numeric value: {exc}"
@@ -421,7 +421,7 @@ PERMZ = GridArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
-class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[float, str]]):
+class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
     """
     `MULTFLT 'NAME' MULTIPLIER / ... /`
     - per-fault transmissibility multiplier.
@@ -436,7 +436,7 @@ class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[float, str]]):
             "MULTFLT",
             fields=[
                 Field("name", str),
-                Field("multiplier", float),
+                Field("multiplier", np.float64),
             ],
         )
 
@@ -506,7 +506,7 @@ NNC = RepeatedRecordKeyword[float](
         Field("i2", int),
         Field("j2", int),
         Field("k2", int),
-        Field("transmissibility", float),
+        Field("transmissibility", np.float64),
     ],
 )
 """

@@ -85,7 +85,7 @@ PVTW = PVTTableKeyword(
         Field("bw", np.float64),
         Field("cw", np.float64),
         Field("viscosity", np.float64),
-        Field("cv", float, required=False, default=0.0),
+        Field("cv", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -155,7 +155,7 @@ PVCO = PVTTableKeyword(
         Field("bo", np.float64),
         Field("co", np.float64),
         Field("viscosity", np.float64),
-        Field("cv", float, required=False, default=0.0),
+        Field("cv", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -240,7 +240,7 @@ ROCKTAB = PVTTableKeyword(
     columns=[
         Field("pressure", np.float64),
         Field("pv_mult", np.float64),
-        Field("trans_mult", float, required=False, default=1.0),
+        Field("trans_mult", np.float64, required=False, default=1.0),
     ],
 )
 """

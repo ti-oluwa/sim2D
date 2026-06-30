@@ -1265,7 +1265,6 @@ class Grid(
         """
         Return a new `Grid` with all coordinates expressed in the target unit system.
 
-
         If `grid.unit_system == to` the original grid object is returned
         unchanged (no copy, no allocation).
 

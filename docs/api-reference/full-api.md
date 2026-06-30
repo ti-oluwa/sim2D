@@ -663,14 +663,14 @@ The constants system provides named, documented physical constants with unit inf
 | `Constants` | class | Container for all simulation constants. Access individual constants as attributes. |
 | `Constant` | class | A single constant with value, unit, and description. |
 | `ConstantsContext` | class | Context manager for temporarily modifying constant values. |
-| `c` | object | The global `Constants` instance. Access constants as `bores.c.STANDARD_PRESSURE`, `bores.c.GAS_CONSTANT`, etc. |
+| `c` | object | The global `Constants` instance. Access constants as `bores.c.STANDARD_PRESSURE_SI`, `bores.c.GAS_CONSTANT`, etc. |
 | `get_constant()` | function | Retrieve a constant by name string. |
 
 ```python
 import bores
 
-print(bores.c.STANDARD_PRESSURE)      # 14.696 psi
-print(bores.c.STANDARD_TEMPERATURE)   # 60.0 F
+print(bores.c.STANDARD_PRESSURE_SI)      # 14.696 psi
+print(bores.c.STANDARD_TEMPERATURE_SI)   # 60.0 F
 print(bores.c.GAS_CONSTANT)           # 10.7316 psi*ft³/(lbmol*R)
 ```
 

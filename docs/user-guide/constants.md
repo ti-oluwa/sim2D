@@ -53,9 +53,9 @@ if const is not None:
 
 | Constant | Value | Unit | Description |
 |---|---|---|---|
-| `STANDARD_PRESSURE` | 101325 | Pa | Standard atmospheric pressure (SI) |
+| `STANDARD_PRESSURE_SI` | 101325 | Pa | Standard atmospheric pressure (SI) |
 | `STANDARD_PRESSURE_IMPERIAL` | 14.696 | psi | Standard atmospheric pressure (Imperial) |
-| `STANDARD_TEMPERATURE` | 288.7056 | K | Standard temperature 15.6C (SI) |
+| `STANDARD_TEMPERATURE_SI` | 288.7056 | K | Standard temperature 15.6C (SI) |
 | `STANDARD_TEMPERATURE_IMPERIAL` | 60.0 | F | Standard temperature (Imperial) |
 | `STANDARD_TEMPERATURE_RANKINE` | 518.67 | R | Standard temperature (Rankine) |
 | `STANDARD_TEMPERATURE_CELSIUS` | 15.6 | C | Standard temperature (Celsius) |
@@ -64,9 +64,9 @@ if const is not None:
 
 | Constant | Value | Unit | Description |
 |---|---|---|---|
-| `STANDARD_WATER_DENSITY` | 998.2 | kg/m³ | Water density at standard conditions (SI) |
+| `STANDARD_WATER_DENSITY_SI` | 998.2 | kg/m³ | Water density at standard conditions (SI) |
 | `STANDARD_WATER_DENSITY_IMPERIAL` | 62.37 | lb/ft³ | Water density at standard conditions (Imperial) |
-| `STANDARD_AIR_DENSITY` | 1.225 | kg/m³ | Air density at standard conditions (SI) |
+| `STANDARD_AIR_DENSITY_SI` | 1.225 | kg/m³ | Air density at standard conditions (SI) |
 | `STANDARD_AIR_DENSITY_IMPERIAL` | 0.0765 | lb/ft³ | Air density at standard conditions (Imperial) |
 
 ### Molecular Weights

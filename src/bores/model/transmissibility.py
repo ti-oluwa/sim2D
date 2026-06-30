@@ -235,7 +235,7 @@ def compute_connection_transmissibilities(
         assert grid.nnc_connection_types is not None
 
         nnc_transmissibilities = _resolve_nnc_transmissibilities(
-            nnc_cell_indices=np.asarray(grid.nnc_cell_indices, dtype=np.int32),  # type: ignore[arg-type]
+            nnc_cell_indices=grid.nnc_cell_indices.astype(np.int32, copy=False),  # type: ignore[arg-type]
             nnc_transmissibilities=(  # type: ignore[arg-type]
                 grid.nnc_transmissibilities
                 if grid.nnc_transmissibilities is not None
@@ -472,9 +472,9 @@ def _resolve_nnc_transmissibilities(
     result = np.zeros(n_nnc, dtype=dtype)
 
     for idx in numba.prange(n_nnc):  # type: ignore
-        t_stored = nnc_transmissibilities[idx]
-        if t_stored == t_stored:  # NaN check: NaN != NaN
-            result[idx] = t_stored
+        stored_transmissibility = nnc_transmissibilities[idx]
+        if stored_transmissibility == stored_transmissibility:  # NaN check: NaN != NaN
+            result[idx] = stored_transmissibility
             continue
 
         cell_a = nnc_cell_indices[idx, 0]
@@ -506,7 +506,6 @@ def _resolve_nnc_transmissibilities(
             + abs_dz * effective_kz[cell_b]
         )
         k_mean = 0.5 * (k_a + k_b)
-
         result[idx] = k_mean / d
 
     return result

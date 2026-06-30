@@ -733,7 +733,7 @@ class ThreePhaseCapillaryPressureTable(
         return np.dtype(self.oil_water_table.dtype)
 
     @property
-    def unit_system(self) -> UnitSystem:
+    def unit_system(self) -> UnitSystem:  # type: ignore[override]
         """Shared `unit_system` of the two underlying two-phase tables."""
         return self.oil_water_table.unit_system
 

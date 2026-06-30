@@ -255,8 +255,8 @@ def _build_oil_data_from_pvto(
     # Group records by Rs value
     solution_gor_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
     for row in pvto_records:
-        solution_gor_val = float(row["rs"])
-        solution_gor_to_rows.setdefault(solution_gor_val, []).append(row)
+        solution_gor = float(row["rs"])
+        solution_gor_to_rows.setdefault(solution_gor, []).append(row)
 
     if len(solution_gor_to_rows) < 2:
         raise ValidationError(
@@ -271,10 +271,8 @@ def _build_oil_data_from_pvto(
     saturated_oil_fvf = np.empty(n_rs, dtype=dtype)
     saturated_oil_viscosity = np.empty(n_rs, dtype=dtype)
 
-    for i, solution_gor_val in enumerate(solution_gor_values):
-        rows = sorted(
-            solution_gor_to_rows[solution_gor_val], key=lambda r: r["pressure"]
-        )
+    for i, solution_gor in enumerate(solution_gor_values):
+        rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
         sat_row = rows[0]
         bubble_point_pressure_values[i] = float(sat_row["pressure"])
         saturated_oil_fvf[i] = float(sat_row["bo"])
@@ -302,10 +300,8 @@ def _build_oil_data_from_pvto(
     oil_fvf_interps: typing.List[interp1d] = []
     oil_viscosity_interps: typing.List[interp1d] = []
 
-    for solution_gor_val in solution_gor_values:
-        rows = sorted(
-            solution_gor_to_rows[solution_gor_val], key=lambda r: r["pressure"]
-        )
+    for solution_gor in solution_gor_values:
+        rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
         pressure_arr = np.array([r["pressure"] for r in rows], dtype=dtype)
         oil_fvf_arr = np.array([r["bo"] for r in rows], dtype=dtype)
         oil_viscosity_arr = np.array([r["viscosity"] for r in rows], dtype=dtype)
@@ -647,9 +643,9 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups → common Rv grid
-    all_rv = sorted(
-        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
-    )
+    all_rv = sorted({
+        float(row["rv"]) for rows in pressure_to_rows.values() for row in rows
+    })
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 

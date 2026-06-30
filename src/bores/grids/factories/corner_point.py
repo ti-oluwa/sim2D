@@ -133,8 +133,15 @@ def make_corner_point_grid(
     :raises ValidationError: On array shape mismatches or inconsistent NNC lengths.
     :raises InvalidGridError: If no active cells are found.
     """
-    coord_arr = np.asarray(coord, dtype=np.float64)
-    zcorn_arr = np.asarray(zcorn, dtype=np.float64)
+    if nnc_cell_indices is not None and nnc_transmissibilities is not None:
+        if len(nnc_cell_indices) != len(nnc_transmissibilities):
+            raise ValidationError(
+                f"`nnc_cell_indices` has {len(nnc_cell_indices)} rows but "
+                f"`nnc_transmissibilities` has {len(nnc_transmissibilities)} entries."
+            )
+
+    coord_arr = np.asarray(coord, dtype=np.float64, copy=False)
+    zcorn_arr = np.asarray(zcorn, dtype=np.float64, copy=False)
 
     if coord_arr.ndim != 3 or coord_arr.shape[2] != 6:
         raise ValidationError(
@@ -159,7 +166,9 @@ def make_corner_point_grid(
     if actnum is None:
         actnum_arr = typing.cast(ActNumArray, np.ones((nz, ny, nx), dtype=np.int32))
     else:
-        actnum_arr = typing.cast(ActNumArray, np.asarray(actnum, dtype=np.int32))
+        actnum_arr = typing.cast(
+            ActNumArray, np.asarray(actnum, dtype=np.int32, copy=False)
+        )
         if actnum_arr.shape != (nz, ny, nx):
             raise ValidationError(
                 f"actnum shape {actnum_arr.shape!r} does not match "
@@ -168,13 +177,6 @@ def make_corner_point_grid(
 
     if pinch_tolerance is None:
         pinch_tolerance = float((metadata or {}).get("pinch", None) or 0.0)
-
-    if nnc_cell_indices is not None and nnc_transmissibilities is not None:
-        if len(nnc_cell_indices) != len(nnc_transmissibilities):
-            raise ValidationError(
-                f"`nnc_cell_indices` has {len(nnc_cell_indices)} rows but "
-                f"`nnc_transmissibilities` has {len(nnc_transmissibilities)} entries."
-            )
 
     (
         vertex_coordinates,
@@ -234,13 +236,11 @@ def make_corner_point_grid(
 
     if geo_nnc_pairs is not None and len(geo_nnc_pairs) > 0:
         geo_transmissibilities = np.full(len(geo_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append(
-            (
-                np.asarray(geo_nnc_pairs, dtype=np.int32),
-                geo_nnc_connection_types,
-                geo_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            np.asarray(geo_nnc_pairs, dtype=np.int32, copy=False),
+            geo_nnc_connection_types,
+            geo_transmissibilities,
+        ))
 
     fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
     if fault_nnc_pairs:
@@ -253,13 +253,11 @@ def make_corner_point_grid(
         fault_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append(
-            (
-                fault_pairs,
-                fault_connection_types,
-                fault_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_connection_types,
+            fault_transmissibilities,
+        ))
         # Build nnc_fault_indices: fault name -> positions into the merged NNC array.
         # The offset is the total NNC count already accumulated before this block.
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
@@ -276,13 +274,11 @@ def make_corner_point_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (
-                user_nnc_pairs,
-                user_nnc_connection_types,
-                user_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -293,9 +289,9 @@ def make_corner_point_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8)
+        merged_nnc_connection_types = np.concatenate([
+            t for _, t, _ in all_nnc_parts
+        ]).astype(np.int8, copy=False)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         # Only store if at least one value is finite (avoids all-NaN array)
         merged_nnc_transmissibilities = (
@@ -509,7 +505,7 @@ def _compute_corner_point_geometry(
     )
 
     flat_corners = corner_coordinates.reshape(-1, 3)
-    quantized = np.round(flat_corners / vertex_tolerance).astype(np.int64)
+    quantized = np.round(flat_corners / vertex_tolerance).astype(np.int64, copy=False)
     _, unique_indices, inverse = np.unique(
         quantized, axis=0, return_index=True, return_inverse=True
     )
@@ -528,9 +524,11 @@ def _compute_corner_point_geometry(
     n_degenerate = 0
 
     for cell_idx in range(n_active):
-        vtk_verts = [int(corner_global[cell_idx, vtk_to_corner[v]]) for v in range(8)]
+        vtk_vertices = [
+            int(corner_global[cell_idx, vtk_to_corner[v]]) for v in range(8)
+        ]
         pinched = _is_cell_pinched(
-            vtk_verts,
+            vtk_vertices,
             vertex_coordinates,  # type: ignore[arg-type]
             pinch_tolerance,
         )
@@ -538,7 +536,7 @@ def _compute_corner_point_geometry(
             n_pinched += 1
 
         for local_idx, local_face in enumerate(_HEXAHEDRON_FACES_ZDOWN):
-            face_vertex_indices = [vtk_verts[v] for v in local_face]
+            face_vertex_indices = [vtk_vertices[v] for v in local_face]
 
             if len(set(face_vertex_indices)) < len(face_vertex_indices):
                 n_degenerate += 1
@@ -575,7 +573,7 @@ def _compute_corner_point_geometry(
     flat_face_vertex_indices: typing.List[int] = []
     face_vertex_offsets: typing.List[int] = [0]
     face_cell_pairs: typing.List[typing.Tuple[int, int]] = []
-    face_connection_types_list: typing.List[int] = []
+    face_connection_types: typing.List[int] = []
 
     for record in face_registry.values():
         flat_face_vertex_indices.extend(record.face_vertex_indices)
@@ -583,9 +581,9 @@ def _compute_corner_point_geometry(
         face_cell_pairs.append((record.owner_cell_index, record.neighbour_cell_index))
 
         if record.neighbour_cell_index < 0:
-            face_connection_types_list.append(int(ConnectionType.BOUNDARY_FACE))
+            face_connection_types.append(int(ConnectionType.BOUNDARY_FACE))
         else:
-            face_connection_types_list.append(int(ConnectionType.INTERIOR_FACE))
+            face_connection_types.append(int(ConnectionType.INTERIOR_FACE))
 
     nnc_array: typing.Optional[npt.NDArray[np.int32]] = None
     nnc_connection_types_array: npt.NDArray[np.int8] = np.empty(0, dtype=np.int8)
@@ -609,7 +607,7 @@ def _compute_corner_point_geometry(
         np.asarray(flat_face_vertex_indices, dtype=np.int32),
         np.asarray(face_vertex_offsets, dtype=np.int32),
         np.asarray(face_cell_pairs, dtype=np.int32),
-        np.asarray(face_connection_types_list, dtype=np.int8),
+        np.asarray(face_connection_types, dtype=np.int8),
         nnc_array,
         nnc_connection_types_array,
         active_cells,
@@ -741,29 +739,29 @@ def _accumulate_pillars(
         for j in range(ny):
             for i in range(nx):
                 cell_idx = i + j * nx + k * nx * ny
-                lx = cell_min_xyz[cell_idx, 0]
-                ly = cell_min_xyz[cell_idx, 1]
-                lz = cell_min_xyz[cell_idx, 2]
-                hx = cell_max_xyz[cell_idx, 0]
-                hy = cell_max_xyz[cell_idx, 1]
-                hz = cell_max_xyz[cell_idx, 2]
+                min_x = cell_min_xyz[cell_idx, 0]
+                min_y = cell_min_xyz[cell_idx, 1]
+                min_z = cell_min_xyz[cell_idx, 2]
+                max_x = cell_max_xyz[cell_idx, 0]
+                max_y = cell_max_xyz[cell_idx, 1]
+                max_z = cell_max_xyz[cell_idx, 2]
 
                 for corner in range(4):
                     if corner == 0:
-                        pj, pi, px, py = j, i, lx, ly
+                        pj, pi, px, py = j, i, min_x, min_y
                     elif corner == 1:
-                        pj, pi, px, py = j, i + 1, hx, ly
+                        pj, pi, px, py = j, i + 1, max_x, min_y
                     elif corner == 2:
-                        pj, pi, px, py = j + 1, i, lx, hy
+                        pj, pi, px, py = j + 1, i, min_x, max_y
                     else:
-                        pj, pi, px, py = j + 1, i + 1, hx, hy
+                        pj, pi, px, py = j + 1, i + 1, max_x, max_y
 
                     pillar_x[pj, pi] += px
                     pillar_y[pj, pi] += py
-                    if lz < pillar_z_top[pj, pi]:
-                        pillar_z_top[pj, pi] = lz
-                    if hz > pillar_z_bottom[pj, pi]:
-                        pillar_z_bottom[pj, pi] = hz
+                    if min_z < pillar_z_top[pj, pi]:
+                        pillar_z_top[pj, pi] = min_z
+                    if max_z > pillar_z_bottom[pj, pi]:
+                        pillar_z_bottom[pj, pi] = max_z
                     pillar_count[pj, pi] += 1
 
 
@@ -872,31 +870,31 @@ def _compute_hex_volumes_and_centroids(
             cross_x = by * cz - bz * cy
             cross_y = bz * cx - bx * cz
             cross_z = bx * cy - by * cx
-            tet_vol = abs(ax * cross_x + ay * cross_y + az * cross_z) / 6.0
+            tetrahedron_volume = abs(ax * cross_x + ay * cross_y + az * cross_z) / 6.0
 
-            tet_cx = (
+            tetrahedron_cx = (
                 x0
                 + vertex_coordinates[g1, 0]
                 + vertex_coordinates[g2, 0]
                 + vertex_coordinates[g3, 0]
             ) * 0.25
-            tet_cy = (
+            tetrahedron_cy = (
                 y0
                 + vertex_coordinates[g1, 1]
                 + vertex_coordinates[g2, 1]
                 + vertex_coordinates[g3, 1]
             ) * 0.25
-            tet_cz = (
+            tetrahedron_cz = (
                 z0
                 + vertex_coordinates[g1, 2]
                 + vertex_coordinates[g2, 2]
                 + vertex_coordinates[g3, 2]
             ) * 0.25
 
-            total_volume += tet_vol
-            wcx += tet_vol * tet_cx
-            wcy += tet_vol * tet_cy
-            wcz += tet_vol * tet_cz
+            total_volume += tetrahedron_volume
+            wcx += tetrahedron_volume * tetrahedron_cx
+            wcy += tetrahedron_volume * tetrahedron_cy
+            wcz += tetrahedron_volume * tetrahedron_cz
 
         cell_volumes[cell_idx] = total_volume
         if total_volume > 0.0:
@@ -938,6 +936,7 @@ def rederive_corner_point_arrays(
                     found = True
             if found:
                 break
+
         if not found or (nx * ny * nz) != n_cells:  # type: ignore
             raise GridExportError(
                 f"Cannot determine (nx, ny, nz) factorisation for "
@@ -961,16 +960,16 @@ def rederive_corner_point_arrays(
     pillar_count = np.zeros((ny + 1, nx + 1), dtype=np.int32)
 
     _accumulate_pillars(
-        grid.cell_min_xyz,
-        grid.cell_max_xyz,
-        nx,
-        ny,
-        nz,
-        pillar_x,
-        pillar_y,
-        pillar_z_top,
-        pillar_z_bottom,
-        pillar_count,
+        cell_min_xyz=grid.cell_min_xyz,
+        cell_max_xyz=grid.cell_max_xyz,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        pillar_x=pillar_x,
+        pillar_y=pillar_y,
+        pillar_z_top=pillar_z_top,
+        pillar_z_bottom=pillar_z_bottom,
+        pillar_count=pillar_count,
     )
     nonzero = pillar_count > 0
     pillar_x[nonzero] /= pillar_count[nonzero]
@@ -985,5 +984,12 @@ def rederive_corner_point_arrays(
     coord[:, :, 5] = pillar_z_bottom
 
     zcorn = np.empty((nz * 2, ny * 2, nx * 2), dtype=np.float64)
-    _fill_zcorn(grid.cell_min_xyz, grid.cell_max_xyz, nx, ny, nz, zcorn)
+    _fill_zcorn(
+        cell_min_xyz=grid.cell_min_xyz,
+        cell_max_xyz=grid.cell_max_xyz,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        zcorn=zcorn,
+    )
     return coord, zcorn, nx, ny, nz

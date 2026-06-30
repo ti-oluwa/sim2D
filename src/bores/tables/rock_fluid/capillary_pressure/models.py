@@ -5,8 +5,9 @@ import typing
 import attrs
 import numba
 import numpy as np
+from typing_extensions import Self
 
-from bores.constants import c
+from bores.constants import c, get_conversion_factors
 from bores.errors import ValidationError
 from bores.tables.rock_fluid.capillary_pressure.base import (
     CapillaryPressureTable,
@@ -20,6 +21,8 @@ from bores.typing import (
     Number,
     NumberArray,
     NumberOrArray,
+    UnitConversionTable,
+    UnitSystem,
     Wettability,
 )
 from bores.utils import atleast_1d
@@ -767,10 +770,10 @@ class BrooksCoreyCapillaryPressureTable(
     """Default residual gas saturation (Sgr). Can be overridden per call."""
 
     oil_water_entry_pressure_water_wet: Number = 5.0
-    """Entry pressure for oil-water in water-wet system (psi)."""
+    """Entry pressure for oil-water in water-wet system. Units: [pressure] in `unit_system`."""
 
     oil_water_entry_pressure_oil_wet: Number = 5.0
-    """Entry pressure for oil-water in oil-wet system (psi)."""
+    """Entry pressure for oil-water in oil-wet system. Units: [pressure] in `unit_system`."""
 
     oil_water_pore_size_distribution_index_water_wet: Number = 2.0
     """Pore size distribution index (λ) for oil-water in water-wet system."""
@@ -779,7 +782,7 @@ class BrooksCoreyCapillaryPressureTable(
     """Pore size distribution index (λ) for oil-water in oil-wet system."""
 
     gas_oil_entry_pressure: Number = 1.0
-    """Entry pressure for gas-oil (psi)."""
+    """Entry pressure for gas-oil. Units: [pressure] in `unit_system`."""
 
     gas_oil_pore_size_distribution_index: Number = 2.0
     """Pore size distribution index (λ) for gas-oil."""
@@ -789,6 +792,20 @@ class BrooksCoreyCapillaryPressureTable(
 
     mixed_wet_water_fraction: Number = 0.5
     """Fraction of pore space that is water-wet in mixed-wet systems (0-1)."""
+
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Unit system in which the pressure parameters of this model are expressed.
+
+    All entry pressures (`oil_water_entry_pressure_water_wet`,
+    `oil_water_entry_pressure_oil_wet`, `gas_oil_entry_pressure`) and the
+    resulting capillary pressure outputs are in this unit system.
+    Saturation parameters, pore-size distribution indices, and
+    dimensionless ratios are unaffected by unit conversion.
+
+    Use `convert(target)` to produce a copy of this model rescaled to
+    another `UnitSystem`.
+    """
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
     """Flag indicating support for array inputs."""
@@ -1021,6 +1038,42 @@ class BrooksCoreyCapillaryPressureTable(
             dPcow_dSo=d_pcow_d_so,
             dPcgo_dSg=d_pcgo_d_sg,
             dPcgo_dSo=d_pcgo_d_so,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `BrooksCoreyCapillaryPressureTable` with all pressure
+        parameters rescaled to *target*.
+
+        Entry pressures (`oil_water_entry_pressure_water_wet`,
+        `oil_water_entry_pressure_oil_wet`, `gas_oil_entry_pressure`) are
+        multiplied by the pressure conversion factor from `self.unit_system`
+        to *target*.  Saturation parameters, pore-size distribution indices,
+        wettability, and `mixed_wet_water_fraction` are dimensionless and
+        are copied unchanged.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `BrooksCoreyCapillaryPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        pressure_factor = factors["pressure"]
+        return attrs.evolve(
+            self,
+            oil_water_entry_pressure_water_wet=self.oil_water_entry_pressure_water_wet
+            * pressure_factor,
+            oil_water_entry_pressure_oil_wet=self.oil_water_entry_pressure_oil_wet
+            * pressure_factor,
+            gas_oil_entry_pressure=self.gas_oil_entry_pressure * pressure_factor,
+            unit_system=target,
         )
 
 
@@ -1859,10 +1912,10 @@ class VanGenuchtenCapillaryPressureTable(
     """Default residual gas saturation (Sgr). Can be overridden per call."""
 
     oil_water_alpha_water_wet: Number = 0.01
-    """van Genuchten α parameter for oil-water (water-wet) [1/psi]."""
+    """van Genuchten α parameter for oil-water (water-wet). Units: 1/[pressure] in `unit_system`."""
 
     oil_water_alpha_oil_wet: Number = 0.01
-    """van Genuchten α parameter for oil-water (oil-wet) [1/psi]."""
+    """van Genuchten α parameter for oil-water (oil-wet). Units: 1/[pressure] in `unit_system`."""
 
     oil_water_n_water_wet: Number = 2.0
     """van Genuchten n parameter for oil-water (water-wet)."""
@@ -1871,7 +1924,7 @@ class VanGenuchtenCapillaryPressureTable(
     """van Genuchten n parameter for oil-water (oil-wet)."""
 
     gas_oil_alpha: Number = 0.01
-    """van Genuchten α parameter for gas-oil [1/psi]."""
+    """van Genuchten α parameter for gas-oil. Units: 1/[pressure] in `unit_system`."""
 
     gas_oil_n: Number = 2.0
     """van Genuchten n parameter for gas-oil."""
@@ -1881,6 +1934,19 @@ class VanGenuchtenCapillaryPressureTable(
 
     mixed_wet_water_fraction: Number = 0.5
     """Fraction of pore space that is water-wet in mixed-wet systems (0-1)."""
+
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Unit system in which the pressure parameters of this model are expressed.
+
+    All entry pressures (`oil_water_alpha_water_wet`,
+    `oil_water_alpha_oil_wet`, `gas_oil_alpha`) and the
+    resulting capillary pressure outputs are in this unit system.
+    Saturation parameters and dimensionless ratios are unaffected by unit conversion.
+
+    Use `convert(target)` to produce a copy of this model rescaled to
+    another `UnitSystem`.
+    """
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
     """Flag indicating support for array inputs."""
@@ -2091,6 +2157,40 @@ class VanGenuchtenCapillaryPressureTable(
             dPcgo_dSo=d_pcgo_d_so,
         )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `VanGenuchtenCapillaryPressureTable` with all pressure
+        parameters rescaled to *target*.
+
+        The alpha parameters have units of `1/[pressure]`, so they are
+        divided by the pressure conversion factor (equivalently, multiplied
+        by `1 / pressure_factor`).  The `n` parameters and saturation
+        parameters are dimensionless and are copied unchanged.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `VanGenuchtenCapillaryPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        pressure_factor = factors["pressure"]
+        # alpha has units 1/pressure -> divide by pressure_factor
+        alpha_factor = 1.0 / pressure_factor
+        return attrs.evolve(
+            self,
+            oil_water_alpha_water_wet=self.oil_water_alpha_water_wet * alpha_factor,
+            oil_water_alpha_oil_wet=self.oil_water_alpha_oil_wet * alpha_factor,
+            gas_oil_alpha=self.gas_oil_alpha * alpha_factor,
+            unit_system=target,
+        )
+
 
 @numba.njit(cache=True)
 def _compute_leverett_j_capillary_pressures_scalar(
@@ -2113,7 +2213,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
     wettability: Wettability = Wettability.WATER_WET,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[Number, Number]:
     """
     Scalar variant of Leverett J-function capillary pressure computation.
@@ -2194,7 +2294,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
         )
         pc_ow = (
             oil_water_interfacial_tension
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
             * np.cos(theta_ow_rad)
             * leverett_factor
             * j_value_ow
@@ -2225,7 +2325,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
         )
         gas_oil_capillary_pressure = (
             gas_oil_interfacial_tension
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
             * np.cos(theta_go_rad)
             * leverett_factor
             * j_value_go
@@ -2255,7 +2355,7 @@ def _compute_leverett_j_capillary_pressures_array(
     wettability: Wettability = Wettability.WATER_WET,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[NumberArray[NDimension], NumberArray[NDimension]]:
     """
     Array variant of Leverett J-function capillary pressure computation.
@@ -2361,7 +2461,7 @@ def _compute_leverett_j_capillary_pressures_array(
             * np.cos(theta_ow_rad)
             * leverett_factor
             * j_value_ow
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
         )
         pc_ow = pc_ow.astype(dtype)
 
@@ -2394,7 +2494,7 @@ def _compute_leverett_j_capillary_pressures_array(
             * np.cos(theta_go_rad)
             * leverett_factor
             * j_value_go
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
         )
         pcgo = pcgo.astype(dtype)
         gas_oil_capillary_pressure = np.where(valid_gas, pcgo, zero)
@@ -2422,7 +2522,7 @@ def compute_leverett_j_capillary_pressures(
     wettability: Wettability = Wettability.WATER_WET,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for Leverett J-function capillary pressure computation.
@@ -2464,7 +2564,7 @@ def compute_leverett_j_capillary_pressures(
             wettability=wettability,
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
-            dyne_per_cm_to_psi=dyne_per_cm_to_psi,
+            dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
         )
     return _compute_leverett_j_capillary_pressures_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
@@ -2486,7 +2586,7 @@ def compute_leverett_j_capillary_pressures(
         wettability=wettability,
         saturation_epsilon=saturation_epsilon,
         minimum_mobile_pore_space=minimum_mobile_pore_space,
-        dyne_per_cm_to_psi=dyne_per_cm_to_psi,
+        dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
     )
 
 
@@ -2510,7 +2610,7 @@ def _compute_leverett_j_derivatives_scalar(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[Number, Number, Number, Number]:
     """
     Scalar variant of Leverett J-function capillary pressure derivatives.
@@ -2535,7 +2635,7 @@ def _compute_leverett_j_derivatives_scalar(
     :param mixed_wet_water_fraction: Fraction of pore space that is water-wet (0-1).
     :param saturation_epsilon: Small value to avoid division by zero.
     :param minimum_mobile_pore_space: Minimum mobile pore space threshold.
-    :param dyne_per_cm_to_psi: Conversion factor from dyne/cm to psi.
+    :param dyne_per_cm_to_pressure_unit: Conversion factor from dyne/cm to psi.
     :return: Tuple of (dPcow_dSw, dPcow_dSo, dPcgo_dSg, dPcgo_dSo).
     """
     sw = water_saturation
@@ -2574,7 +2674,7 @@ def _compute_leverett_j_derivatives_scalar(
         cos_ow = np.cos(np.deg2rad(oil_water_contact_angle))
         ow_scale = (
             oil_water_interfacial_tension
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
             * cos_ow
             * leverett_rock_factor
         )
@@ -2610,7 +2710,7 @@ def _compute_leverett_j_derivatives_scalar(
         cos_go = np.cos(np.deg2rad(gas_oil_contact_angle))
         go_scale = (
             gas_oil_interfacial_tension
-            * dyne_per_cm_to_psi
+            * dyne_per_cm_to_pressure_unit
             * cos_go
             * leverett_rock_factor
         )
@@ -2641,7 +2741,7 @@ def _compute_leverett_j_derivatives_array(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[
     NumberArray[NDimension],
     NumberArray[NDimension],
@@ -2672,7 +2772,7 @@ def _compute_leverett_j_derivatives_array(
     :param mixed_wet_water_fraction: Fraction of pore space that is water-wet (0-1).
     :param saturation_epsilon: Small value to avoid division by zero.
     :param minimum_mobile_pore_space: Minimum mobile pore space threshold.
-    :param dyne_per_cm_to_psi: Conversion factor from dyne/cm to psi.
+    :param dyne_per_cm_to_pressure_unit: Conversion factor from dyne/cm to psi.
     :return: Tuple of (dPcow_dSw, dPcow_dSo, dPcgo_dSg, dPcgo_dSo) as NDArrays.
     """
     sw = atleast_1d(water_saturation)
@@ -2713,7 +2813,7 @@ def _compute_leverett_j_derivatives_array(
     cos_ow = np.cos(np.deg2rad(dtype(oil_water_contact_angle)))
     ow_scale = (
         dtype(oil_water_interfacial_tension)
-        * dtype(dyne_per_cm_to_psi)
+        * dtype(dyne_per_cm_to_pressure_unit)
         * cos_ow
         * leverett_rock_factor
     )
@@ -2749,7 +2849,7 @@ def _compute_leverett_j_derivatives_array(
     cos_go = np.cos(np.deg2rad(dtype(gas_oil_contact_angle)))
     go_scale = (
         dtype(gas_oil_interfacial_tension)
-        * dtype(dyne_per_cm_to_psi)
+        * dtype(dyne_per_cm_to_pressure_unit)
         * cos_go
         * leverett_rock_factor
     )
@@ -2759,7 +2859,6 @@ def _compute_leverett_j_derivatives_array(
         np.zeros_like(sg),
     )
     d_pcgo_d_so = np.zeros_like(sg)
-
     return (
         typing.cast(NumberArray[NDimension], d_pcow_d_sw),
         typing.cast(NumberArray[NDimension], d_pcow_d_so),
@@ -2787,7 +2886,7 @@ def compute_leverett_j_derivatives(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-    dyne_per_cm_to_psi: Number = 4.725e-4,
+    dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
 ) -> typing.Tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -2831,7 +2930,7 @@ def compute_leverett_j_derivatives(
             mixed_wet_water_fraction=mixed_wet_water_fraction,
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
-            dyne_per_cm_to_psi=dyne_per_cm_to_psi,
+            dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
         )
     return _compute_leverett_j_derivatives_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
@@ -2852,8 +2951,16 @@ def compute_leverett_j_derivatives(
         mixed_wet_water_fraction=mixed_wet_water_fraction,
         saturation_epsilon=saturation_epsilon,
         minimum_mobile_pore_space=minimum_mobile_pore_space,
-        dyne_per_cm_to_psi=dyne_per_cm_to_psi,
+        dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
     )
+
+
+def _get_dyne_per_cm_to_pressure_unit(unit_system: UnitSystem) -> Number:
+    dyne_per_cm_to_psi = c.DYNE_PER_CENTIMETER_TO_PSI
+    if unit_system == UnitSystem.FIELD:
+        return dyne_per_cm_to_psi
+    factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
+    return dyne_per_cm_to_psi * factors["pressure"]
 
 
 @capillary_pressure_table
@@ -2916,6 +3023,16 @@ class LeverettJCapillaryPressureTable(
 
     j_function_exponent: Number = 0.5
     """Empirical exponent 'b' in J(Se) = a * Se^(-b). Fit to core data (can be tuned to match experimental data)."""
+
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
+    """
+    Unit system in which the dimensioned parameters of this model are expressed.
+
+    Saturation parameters and dimensionless ratios are unaffected by unit conversion.
+
+    Use `convert(target)` to produce a copy of this model rescaled to
+    another `UnitSystem`.
+    """
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
     """Flag indicating support for array inputs."""
@@ -3022,6 +3139,9 @@ class LeverettJCapillaryPressureTable(
             wettability=self.wettability,
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
+            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(
+                self.unit_system
+            ),
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
@@ -3148,7 +3268,9 @@ class LeverettJCapillaryPressureTable(
                 mixed_wet_water_fraction=self.mixed_wet_water_fraction,
                 saturation_epsilon=c.SATURATION_EPSILON,
                 minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-                dyne_per_cm_to_psi=c.DYNE_PER_CENTIMETER_TO_PSI,
+                dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(
+                    self.unit_system
+                ),
             )
         )
         return CapillaryPressureDerivatives(
@@ -3156,4 +3278,31 @@ class LeverettJCapillaryPressureTable(
             dPcow_dSo=d_pcow_d_so,
             dPcgo_dSg=d_pcgo_d_sg,
             dPcgo_dSo=d_pcgo_d_so,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `LeverettJCapillaryPressureTable` rescaled to *target*.
+
+        `permeability` is rescaled from `self.unit_system` to *target* using
+        the `permeability` conversion factor so that the rock factor
+        `sqrt(phi/k)` remains physically correct.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `LeverettJCapillaryPressureTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        return attrs.evolve(
+            self,
+            permeability=self.permeability * factors["permeability"],
+            unit_system=target,
         )

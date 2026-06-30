@@ -15,7 +15,7 @@ import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator, interp1d
 from typing_extensions import Self
 
-from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties import RockCompressibility
@@ -511,14 +511,15 @@ class RockCompressibilityTable(StoreSerializable):
 
         # Atmospheric pressure floor in the given unit system
         atm_pressures: typing.Dict[UnitSystem, float] = {
-            UnitSystem.FIELD: 14.696,
-            UnitSystem.METRIC: 1.01325,
-            UnitSystem.LAB: 1.0,
-            UnitSystem.SI: 101_325.0,
+            UnitSystem.FIELD: c.STANDARD_PRESSURE_PSI,
+            UnitSystem.METRIC: c.STANDARD_PRESSURE_BAR,
+            UnitSystem.LAB: c.STANDARD_PRESSURE_ATM,
+            UnitSystem.SI: c.STANDARD_PRESSURE_PASCAL,
         }
-        atm_pressure = atm_pressures.get(unit_system, 14.696)
 
-        min_pressure = max(atm_pressure, reference_pressure / pressure_range_factor)
+        min_pressure = max(
+            atm_pressures[unit_system], reference_pressure / pressure_range_factor
+        )
         max_pressure = reference_pressure * pressure_range_factor
 
         dtype = np.dtype(dtype if dtype is not None else get_dtype())

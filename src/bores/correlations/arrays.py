@@ -2460,7 +2460,7 @@ def _gas_solubility_in_water_henry_law(
             * c.POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER
         )
     except Exception:
-        water_density = c.STANDARD_WATER_DENSITY
+        water_density = c.STANDARD_WATER_DENSITY_SI
 
     # Setschenow salinity correction
     # Converts salinity from ppm (mg/kg) to mol/kg using molar mass in g/mol

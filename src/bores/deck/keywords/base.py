@@ -296,7 +296,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             equals the product of the named dimensions, the parsed values are
             broadcast (tiled) along the remaining axes to fill `n_cells`.
 
-            Example - `TOPS` accepts either `nx*ny` column tops or a full
+            **For example** - `TOPS` accepts either `nx*ny` column tops or a full
             `nx*ny*nz` per-cell array:
 
             ```python
@@ -306,7 +306,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             Supported broadcast patterns (axes not listed in `column_shape`
             are tiled):
 
-            ```md
+            ```
             ======================  ========================  =====================
             `column_shape`          Short-form token count    Broadcast direction
             ======================  ========================  =====================
@@ -318,7 +318,6 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             `("nz",)`               `nz`                      repeated `nx*ny` times
             ======================  ========================  =====================
             ```
-
         """
         super().__init__(name)
         self.dtype = np.dtype(dtype)

@@ -39,16 +39,14 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 # `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
-_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
-    {
-        "tetra",
-        "hexahedron",
-        "wedge",
-        "pyramid",
-        "tetra10",  # quadratic - treated as linear (first 4 nodes)
-        "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
-    }
-)
+_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset({
+    "tetra",
+    "hexahedron",
+    "wedge",
+    "pyramid",
+    "tetra10",  # quadratic - treated as linear (first 4 nodes)
+    "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
+})
 
 # Map from `meshio` quadratic type to the linear equivalent and node count.
 _QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {
@@ -181,10 +179,7 @@ def dump_mesh(
         the format is not recognised.
     """
     return _dump(
-        grid,
-        destination=destination,
-        file_format=file_format,
-        cell_data=cell_data,
+        grid, destination=destination, file_format=file_format, cell_data=cell_data
     )
 
 
@@ -241,7 +236,7 @@ def _mesh_to_grid(
     :returns: A fully initialised `bores.grids.base.Grid`.
     :raises GridImportError: If no supported 3-D cell blocks are found.
     """
-    points = np.asarray(mesh.points, dtype=np.float64)
+    points = np.asarray(mesh.points, dtype=np.float64, copy=False)
     if points.shape[1] == 2:
         # 2-D mesh: promote to 3-D with z = 0
         points = np.column_stack([points, np.zeros(len(points))])
@@ -305,29 +300,31 @@ def _grid_to_mesh(
     n_cells = grid.n_cells
 
     # Build 8 bounding-box vertices per cell: (n_cells * 8, 3)
-    verts_per_cell = 8
-    all_verts = np.empty((n_cells * verts_per_cell, 3), dtype=np.float64)
-    connectivity = np.empty((n_cells, verts_per_cell), dtype=np.int32)
+    vertices_per_cell = 8
+    all_vertices = np.empty((n_cells * vertices_per_cell, 3), dtype=np.float64)
+    connectivity = np.empty((n_cells, vertices_per_cell), dtype=np.int32)
 
     for cell_idx in range(n_cells):
         low = grid.cell_min_xyz[cell_idx]
         high = grid.cell_max_xyz[cell_idx]
-        base = cell_idx * verts_per_cell
+        base = cell_idx * vertices_per_cell
         # VTK hex vertex order: bottom face CCW then top face CCW
-        all_verts[base + 0] = [low[0], low[1], low[2]]
-        all_verts[base + 1] = [high[0], low[1], low[2]]
-        all_verts[base + 2] = [high[0], high[1], low[2]]
-        all_verts[base + 3] = [low[0], high[1], low[2]]
-        all_verts[base + 4] = [low[0], low[1], high[2]]
-        all_verts[base + 5] = [high[0], low[1], high[2]]
-        all_verts[base + 6] = [high[0], high[1], high[2]]
-        all_verts[base + 7] = [low[0], high[1], high[2]]
-        connectivity[cell_idx] = np.arange(base, base + verts_per_cell, dtype=np.int32)
+        all_vertices[base + 0] = [low[0], low[1], low[2]]
+        all_vertices[base + 1] = [high[0], low[1], low[2]]
+        all_vertices[base + 2] = [high[0], high[1], low[2]]
+        all_vertices[base + 3] = [low[0], high[1], low[2]]
+        all_vertices[base + 4] = [low[0], low[1], high[2]]
+        all_vertices[base + 5] = [high[0], low[1], high[2]]
+        all_vertices[base + 6] = [high[0], high[1], high[2]]
+        all_vertices[base + 7] = [low[0], high[1], high[2]]
+        connectivity[cell_idx] = np.arange(
+            base, base + vertices_per_cell, dtype=np.int32
+        )
 
     meshio_cell_data: typing.Dict[str, typing.List[np.ndarray]] = {}
     if cell_data:
         for field_name, field_array in cell_data.items():
-            arr = np.asarray(field_array, dtype=np.float64)
+            arr = np.asarray(field_array, dtype=np.float64, copy=False)
             if arr.shape[0] != n_cells:
                 raise GridExportError(
                     f"cell_data[{field_name!r}] has {arr.shape[0]} entries "
@@ -336,7 +333,7 @@ def _grid_to_mesh(
             meshio_cell_data[field_name] = [arr]
 
     return meshio.Mesh(
-        points=all_verts,
+        points=all_vertices,
         cells=[("hexahedron", connectivity)],
         cell_data=meshio_cell_data if meshio_cell_data else {},  # type: ignore
     )

@@ -29,7 +29,6 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-@typing.final
 @attrs.frozen(slots=True)
 class Constant(Serializable):
     """
@@ -62,7 +61,6 @@ class Constant(Serializable):
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
 
-@typing.final
 @attrs.frozen(slots=True)
 class ConstantFactory(Serializable):
     """
@@ -180,19 +178,45 @@ DEFAULT_CONSTANTS: typing.Dict[
     str, typing.Union[typing.Any, Constant, ConstantFactory]
 ] = {
     # Standard Conditions
-    "STANDARD_PRESSURE": Constant(
+    # Pressure
+    "STANDARD_PRESSURE_SI": Constant(
         value=101325, description="Standard atmospheric pressure (SI units)", unit="Pa"
     ),
     "STANDARD_PRESSURE_IMPERIAL": Constant(
-        value=14.696,
+        value=14.6959,
         description="Standard atmospheric pressure (Imperial units)",
         unit="psi",
     ),
-    "STANDARD_TEMPERATURE": Constant(
-        value=288.7056, description="Standard temperature (15.6°C) (SI units)", unit="K"
+    "STANDARD_PRESSURE_PASCAL": Constant(
+        value=101325, description="Standard atmospheric pressure (SI units)", unit="Pa"
+    ),
+    "STANDARD_PRESSURE_PSI": Constant(
+        value=14.6959,
+        description="Standard atmospheric pressure in Pound-per-Square-Inch (psi)",
+        unit="psi",
+    ),
+    "STANDARD_PRESSURE_BAR": Constant(
+        value=1.01325,
+        description="Standard atmospheric pressure in Bars (abs)",
+        unit="barsa [bar]",
+    ),
+    "STANDARD_PRESSURE_ATM": Constant(
+        value=1.0000,
+        description="Standard atmospheric pressure in Atmospheres",
+        unit="atm",
+    ),
+    # Temperature
+    "STANDARD_TEMPERATURE_SI": Constant(
+        value=288.7056, description="Standard temperature (SI units)", unit="K"
     ),
     "STANDARD_TEMPERATURE_IMPERIAL": Constant(
         value=60.0, description="Standard temperature (Imperial units)", unit="°F"
+    ),
+    "STANDARD_TEMPERATURE_KELVIN": Constant(
+        value=288.7056, description="Standard temperature in Kelvin", unit="K"
+    ),
+    "STANDARD_TEMPERATURE_FAHRENHEIT": Constant(
+        value=60.0, description="Standard temperature in Fahrenheit", unit="°F"
     ),
     "STANDARD_TEMPERATURE_RANKINE": Constant(
         value=518.67, description="Standard temperature (15.6°C) in Rankine", unit="°R"
@@ -201,51 +225,55 @@ DEFAULT_CONSTANTS: typing.Dict[
         value=15.6, description="Standard temperature in Celsius", unit="°C"
     ),
     # Thermal and Compressibility Properties
+    # Oil
     "OIL_THERMAL_EXPANSION_COEFFICIENT": Constant(
         value=9.7e-4, description="Thermal expansion coefficient for oil", unit="1/K"
-    ),
-    "WATER_THERMAL_EXPANSION_COEFFICIENT": Constant(
-        value=3.0e-4, description="Thermal expansion coefficient for water", unit="1/K"
-    ),
-    "WATER_ISOTHERMAL_COMPRESSIBILITY": Constant(
-        value=4.6e-10,
-        description="Isothermal compressibility of water at 15.6°C (SI units)",
-        unit="1/Pa",
     ),
     "OIL_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL": Constant(
         value=5.39e-4,
         description="Thermal expansion coefficient for oil (Imperial units)",
         unit="1/°F",
     ),
+    # Water
+    "WATER_THERMAL_EXPANSION_COEFFICIENT": Constant(
+        value=3.0e-4, description="Thermal expansion coefficient for water", unit="1/K"
+    ),
     "WATER_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL": Constant(
         value=1.67e-4,
         description="Thermal expansion coefficient for water (Imperial units)",
         unit="1/°F",
     ),
+    "WATER_ISOTHERMAL_COMPRESSIBILITY": Constant(
+        value=4.6e-10,
+        description="Isothermal compressibility of water at Standard temperature (15.6°C) (SI units)",
+        unit="1/Pa",
+    ),
     "WATER_ISOTHERMAL_COMPRESSIBILITY_IMPERIAL": Constant(
         value=3.17e-6,
-        description="Isothermal compressibility of water at 15.6°C (Imperial units)",
+        description="Isothermal compressibility of water at Standard temperature (15.6°C) (Imperial units)",
         unit="1/psi",
     ),
     # Standard Densities
-    "STANDARD_WATER_DENSITY": Constant(
+    # Water
+    "STANDARD_WATER_DENSITY_SI": Constant(
         value=998.2,
-        description="Standard water density at 15.6°C (SI units)",
+        description="Standard water density at Standard temperature (15.6°C) (SI units)",
         unit="kg/m³",
     ),
     "STANDARD_WATER_DENSITY_IMPERIAL": Constant(
         value=62.37,
-        description="Standard water density at 15.6°C (Imperial units)",
+        description="Standard water density at Standard temperature (15.6°C) (Imperial units)",
         unit="lb/ft³",
     ),
-    "STANDARD_AIR_DENSITY": Constant(
+    # Air
+    "STANDARD_AIR_DENSITY_SI": Constant(
         value=1.225,
-        description="Standard air density at 15.6°C (SI units)",
+        description="Standard air density at Standard temperature (15.6°C) (SI units)",
         unit="kg/m³",
     ),
     "STANDARD_AIR_DENSITY_IMPERIAL": Constant(
         value=0.0765,
-        description="Standard air density at 15.6°C (Imperial units)",
+        description="Standard air density at Standard temperature (15.6°C) (Imperial units)",
         unit="lb/ft³",
     ),
     # Molecular Weights
@@ -423,7 +451,9 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     # Gas Constant
     "IDEAL_GAS_CONSTANT": Constant(
-        value=8.31446261815324, description="Universal gas constant", unit="J/(mol·K)"
+        value=8.31446261815324,
+        description="Universal gas constant (Lab units)",
+        unit="J/(mol·K)",
     ),
     "IDEAL_GAS_CONSTANT_SI": Constant(
         value=8.31446261815324e-3,
@@ -701,7 +731,6 @@ DEFAULT_CONSTANTS: typing.Dict[
 }
 
 
-@typing.final
 class Constants(
     StoreSerializable,
     fields={"_store": typing.Dict[str, Constant]},
@@ -1094,9 +1123,9 @@ def build_unit_conversion_table(
     constants: typing.Optional[Constants] = None,
 ) -> UnitConversionTable:
     """
-    Build a unit conversion table from the (BORES) constants registry.
+    Build a unit conversion table from the provided or default constants registry.
 
-    All numeric values come from `c.*` so
+    All numeric values come from `constants` provided or `bores.c.*` so
     they stay in sync with any application-level constant overrides.
     """
     con = constants or c
@@ -1337,7 +1366,7 @@ def get_conversion_factors(
     "permeability"     mD / mD / mD / m²
     "compressibility"  1/psi / 1/bar / 1/atm / 1/Pa
     "liquid_fvf"       bbl/STB -> m³/sm³ / scc/scc (ratio, usually 1.0)
-    "gas_fvf"      ft³/scf -> m³/sm³ / scc/scc
+    "gas_fvf"          ft³/scf -> m³/sm³ / scc/scc
     "gor"              scf/STB -> sm³/sm³ / scc/scc
     "mass"             lbm / kg / g / kg  (not stored; derived as
                         density_factor x length_factor³ by callers)
@@ -1345,7 +1374,7 @@ def get_conversion_factors(
     ```
 
     :param from_system: Source `UnitSystem`.
-    :param to_system:   Target `UnitSystem`.
+    :param to_system: Target `UnitSystem`.
     :returns: Conversion-factor dictionary.
     :raises KeyError: If the (from_system, to_system) pair is not defined.
     """

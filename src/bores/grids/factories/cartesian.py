@@ -93,11 +93,6 @@ def make_cartesian_grid(
     :returns: Fully initialised `Grid`.
     :raises ValidationError: If spacing or NNC arrays are inconsistent.
     """
-    dx_arr, dy_arr, dz_arr = _resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
-    nx = len(dx_arr)
-    ny = len(dy_arr)
-    nz = len(dz_arr)
-
     if nnc_cell_indices is not None and nnc_transmissibilities is not None:
         if len(nnc_cell_indices) != len(nnc_transmissibilities):
             raise ValidationError(
@@ -105,11 +100,14 @@ def make_cartesian_grid(
                 f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries."
             )
 
-    vertex_coordinates = _build_vertex_coordinates(
-        dx=dx_arr, dy=dy_arr, dz=dz_arr, origin=origin
-    )
+    dx, dy, dz = _resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
+    nx = len(dx)
+    ny = len(dy)
+    nz = len(dz)
+
+    vertex_coordinates = _build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
     face_vertex_indices, face_vertex_offsets, face_cell_indices = _build_face_arrays(
-        nx, ny, nz
+        nx=nx, ny=ny, nz=nz
     )
 
     n_x_faces = (nx + 1) * ny * nz
@@ -166,13 +164,11 @@ def make_cartesian_grid(
         fault_nnc_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append(
-            (
-                fault_pairs,
-                fault_nnc_connection_types,
-                fault_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_nnc_connection_types,
+            fault_nnc_transmissibilities,
+        ))
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
         for local_idx, (_, _, name) in enumerate(fault_nnc_pairs):
             fault_nnc_indices.setdefault(name, []).append(fault_nnc_offset + local_idx)
@@ -187,13 +183,11 @@ def make_cartesian_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (
-                user_nnc_pairs,
-                user_nnc_connection_types,
-                user_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -204,9 +198,9 @@ def make_cartesian_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8)
+        merged_nnc_connection_types = np.concatenate([
+            t for _, t, _ in all_nnc_parts
+        ]).astype(np.int8, copy=False)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         merged_nnc_transmissibilities = (
             merged_transmissibilities
@@ -419,7 +413,7 @@ def _resolve_spacing(
         count: typing.Optional[int],
         axis: str,
     ) -> FloatArray[OneDimension]:
-        arr = np.atleast_1d(np.asarray(value, dtype=np.float64)).ravel()
+        arr = np.atleast_1d(value).astype(np.float64, copy=False).ravel()
         if arr.size == 1:
             if count is None:
                 raise ValidationError(
@@ -465,13 +459,11 @@ def _build_vertex_coordinates(
     xx, yy, zz = np.meshgrid(x_nodes, y_nodes, z_nodes, indexing="ij")
     return typing.cast(
         VertexCoordinates,
-        np.column_stack(
-            [
-                xx.ravel(order="F"),
-                yy.ravel(order="F"),
-                zz.ravel(order="F"),
-            ]
-        ),
+        np.column_stack([
+            xx.ravel(order="F"),
+            yy.ravel(order="F"),
+            zz.ravel(order="F"),
+        ]),
     )
 
 
@@ -518,16 +510,16 @@ def _build_face_arrays(
     v3_x = ii_x + jj_x * stride_j + (kk_x + 1) * stride_k
     nx_faces = len(ii_x)
     face_vertex_indices_parts.append(
-        np.column_stack([v0_x, v1_x, v2_x, v3_x]).astype(np.int32).ravel()
+        np.column_stack([v0_x, v1_x, v2_x, v3_x]).astype(np.int32, copy=False).ravel()
     )
     owner_x = np.where(
         ii_x > 0, (ii_x - 1) + jj_x * cell_stride_j + kk_x * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     neighbour_x = np.where(
         ii_x < nx, ii_x + jj_x * cell_stride_j + kk_x * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     face_cell_indices_parts.append(
-        np.column_stack([owner_x, neighbour_x]).astype(np.int32)
+        np.column_stack([owner_x, neighbour_x]).astype(np.int32, copy=False)
     )
 
     i_cells_y = np.arange(nx, dtype=np.int32)
@@ -543,16 +535,16 @@ def _build_face_arrays(
     v2_y = (ii_y + 1) + jj_y * stride_j + (kk_y + 1) * stride_k
     v3_y = (ii_y + 1) + jj_y * stride_j + kk_y * stride_k
     face_vertex_indices_parts.append(
-        np.column_stack([v0_y, v1_y, v2_y, v3_y]).astype(np.int32).ravel()
+        np.column_stack([v0_y, v1_y, v2_y, v3_y]).astype(np.int32, copy=False).ravel()
     )
     owner_y = np.where(
         jj_y > 0, ii_y + (jj_y - 1) * cell_stride_j + kk_y * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     neighbour_y = np.where(
         jj_y < ny, ii_y + jj_y * cell_stride_j + kk_y * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     face_cell_indices_parts.append(
-        np.column_stack([owner_y, neighbour_y]).astype(np.int32)
+        np.column_stack([owner_y, neighbour_y]).astype(np.int32, copy=False)
     )
 
     i_cells_z = np.arange(nx, dtype=np.int32)
@@ -568,20 +560,22 @@ def _build_face_arrays(
     v2_z = (ii_z + 1) + (jj_z + 1) * stride_j + kk_z * stride_k
     v3_z = ii_z + (jj_z + 1) * stride_j + kk_z * stride_k
     face_vertex_indices_parts.append(
-        np.column_stack([v0_z, v1_z, v2_z, v3_z]).astype(np.int32).ravel()
+        np.column_stack([v0_z, v1_z, v2_z, v3_z]).astype(np.int32, copy=False).ravel()
     )
     owner_z = np.where(
         kk_z > 0, ii_z + jj_z * cell_stride_j + (kk_z - 1) * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     neighbour_z = np.where(
         kk_z < nz, ii_z + jj_z * cell_stride_j + kk_z * cell_stride_k, -1
-    ).astype(np.int32)
+    ).astype(np.int32, copy=False)
     face_cell_indices_parts.append(
-        np.column_stack([owner_z, neighbour_z]).astype(np.int32)
+        np.column_stack([owner_z, neighbour_z]).astype(np.int32, copy=False)
     )
 
     all_face_vertices = np.concatenate(face_vertex_indices_parts)
-    all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(np.int32)
+    all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(
+        np.int32, copy=False
+    )
 
     n_total_faces = nx_faces + len(ii_y) + len(ii_z)
     verts_per_face = 4

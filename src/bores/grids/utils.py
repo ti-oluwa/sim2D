@@ -154,11 +154,11 @@ def as_pyvista_grid(
     The rotation is applied to the shared `vertex_coordinates` array (a
     copy), so the source `Grid` is not mutated.
 
-    :param grid: Source `bores.grids.base.Grid`.
+    :param grid: Source `Grid`.
     :param cell_data: Optional mapping of scalar field name to a shape
         `(n_cells,)` NumPy array. Each entry is attached as a PyVista
         cell-data array and can be visualised with
-        `pv_grid.plot(scalars="pressure")`. Arrays must have length
+        `pv_grid.plot(scalars="<scalar>")`. Arrays must have length
         `grid.n_cells`; they are automatically filtered to the valid
         (non-pinched) cells before attachment.
     :returns: A `pyvista.UnstructuredGrid` ready for rendering or
@@ -167,10 +167,12 @@ def as_pyvista_grid(
     :raises ValueError: If a `cell_data` array has length != `grid.n_cells`.
 
     Example:
+
     ```python
     from bores.grids.utils import as_pyvista_grid
     import pyvista as pv
 
+    pressure = np.zeros((n_cells,))
     pv_grid = as_pyvista_grid(grid, cell_data={"pressure": pressure})
 
     pl = pv.Plotter()
@@ -197,7 +199,8 @@ def as_pyvista_grid(
     meta = getattr(grid, "metadata", {}) or {}
     map_axes = meta.get("map_axes", None)
     if map_axes is not None:
-        map_axes = map_axes.convert(grid.unit_system)
+        if map_axes.unit_system != grid.unit_system:
+            map_axes = map_axes.convert(grid.unit_system)
         rotation_matrix = map_axes.rotation_matrix
         if np.all(np.isfinite(rotation_matrix)):
             all_points[:, :2] = all_points[:, :2] @ rotation_matrix.T
@@ -205,9 +208,9 @@ def as_pyvista_grid(
     # Build VTK polyhedron face stream
     # First, count entries per cell
     counts = _count_cell_entries(
-        grid.cell_face_offsets.astype(np.int64),
-        grid.cell_face_indices.astype(np.int64),
-        grid.face_vertex_offsets.astype(np.int64),
+        cell_face_offsets=grid.cell_face_offsets.astype(np.int64),
+        cell_face_indices=grid.cell_face_indices.astype(np.int64),
+        face_vertex_offsets=grid.face_vertex_offsets.astype(np.int64),
     )
 
     # valid_cell_mask: cells that will appear in the PyVista mesh
@@ -215,23 +218,21 @@ def as_pyvista_grid(
 
     # Next, exclusive prefix sum -> start positions for each cell
     cell_starts = np.zeros(n_cells, dtype=np.int64)
-    cell_starts[valid_cell_mask] = np.concatenate(
-        [
-            [0],
-            np.cumsum(counts[valid_cell_mask])[:-1],
-        ]
-    )
+    cell_starts[valid_cell_mask] = np.concatenate([
+        [0],
+        np.cumsum(counts[valid_cell_mask])[:-1],
+    ])
     total_entries = int(counts.sum())
 
     # Lastly, fill buffer
     flat_cells = np.empty(total_entries, dtype=np.int64)
     _fill_cell_entries(
-        grid.cell_face_offsets.astype(np.int64),
-        grid.cell_face_indices.astype(np.int64),
-        grid.face_vertex_offsets.astype(np.int64),
-        grid.face_vertex_indices.astype(np.int64),
-        cell_starts,
-        flat_cells,
+        cell_face_offsets=grid.cell_face_offsets.astype(np.int64),
+        cell_face_indices=grid.cell_face_indices.astype(np.int64),
+        face_vertex_offsets=grid.face_vertex_offsets.astype(np.int64),
+        face_vertex_indices=grid.face_vertex_indices.astype(np.int64),
+        cell_starts=cell_starts,
+        out=flat_cells,
     )
 
     # Assemble PyVista `UnstructuredGrid`
@@ -248,12 +249,11 @@ def as_pyvista_grid(
     # Attach caller-supplied arrays
     if cell_data:
         for name, array in cell_data.items():
-            arr = np.asarray(array)
+            arr = np.asarray(array, copy=False)
             if arr.shape[0] != n_cells:
                 raise ValueError(
                     f"cell_data[{name!r}] has {arr.shape[0]} entries "
                     f"but grid has {n_cells} cells."
                 )
             pv_grid.cell_data[name] = arr[valid_cell_mask]
-
     return pv_grid
