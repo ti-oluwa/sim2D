@@ -174,25 +174,18 @@ class BlackOilModel(
             plane used for pressure initialisation by the equilibration routine.
             `None` means no explicit datum is declared.
         :param unit_system: Target unit system for all property groups. When `None`, defaults
-            to `grid.unit_system`. If the grid's declared unit system does not
-            match `unit_system` a `ValueError` is raised (grid coordinates are
-            not converted here).
+            to `grid.unit_system`.
 
-        :raises ValueError: If `unit_system` does not match `grid.unit_system`.
         :raises ValidationError: If any array length in `rock`, `state`, or `hysteresis` does not
             match `grid.n_cells`, or if `datum_depth` is negative.
         """
         target_unit_system = (
             unit_system if unit_system is not None else grid.unit_system
         )
+        unit_conversion_table = build_unit_conversion_table()
         if target_unit_system != grid.unit_system:
-            raise ValueError(
-                f"unit_system={target_unit_system.value!r} does not match "
-                f"grid.unit_system={grid.unit_system.value!r}.  "
-                "Grid coordinates are not re-projected here; use a grid factory "
-                "that produces a grid in the desired unit system, or omit "
-                "unit_system to accept the grid's native units."
-            )
+            # Normalise grid to the target unit system.
+            grid = grid.convert(target_unit_system, table=unit_conversion_table)
 
         if datum_depth is not None and datum_depth < 0.0:
             raise ValidationError(
@@ -200,7 +193,6 @@ class BlackOilModel(
                 f"got {datum_depth}."
             )
 
-        unit_conversion_table = build_unit_conversion_table()
         # Normalise property groups to the target unit system.
         rock = rock.convert(target_unit_system, table=unit_conversion_table)
         pvt = pvt.convert(target_unit_system, table=unit_conversion_table)
@@ -334,9 +326,11 @@ class BlackOilModel(
         `invalidate_transmissibilities()` first.
         """
         if self._transmissibilities is None:
-            self._transmissibilities = compute_connection_transmissibilities(
-                grid=self.grid, rock=self.rock
+            transmissibilities = compute_connection_transmissibilities(
+                grid=self.grid, rock=self.rock, unit_system=self.unit_system
             )
+            assert transmissibilities.unit_system == self.unit_system
+            self._transmissibilities = transmissibilities
         return self._transmissibilities
 
     @property
@@ -360,14 +354,14 @@ class BlackOilModel(
 
     def evolve_state(self, new_state: State) -> Self:
         """
-        Return a new `ReservoirModel` with the dynamic state replaced.
+        Return a new `BlackOilModel` with the dynamic state replaced.
 
         The grid, rock, pvt, datum depth, and unit system are
         carried forward unchanged.  The transmissibility cache is **preserved**
         (it depends only on grid geometry and rock, which have not changed).
 
         :param new_state: Updated `State` from the solver.
-        :returns: New `ReservoirModel`.
+        :returns: New `BlackOilModel`.
         :raises ValidationError: If `new_state` array lengths do not match
             `grid.n_cells`.
         """
@@ -392,7 +386,7 @@ class BlackOilModel(
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `ReservoirModel` with all property groups rescaled to `target`.
+        Return a new `BlackOilModel` with all property groups rescaled to `target`.
 
         The grid's coordinate arrays are **not** re-projected (Eclipse
         convention); only the property scalars and per-cell arrays that carry
@@ -404,7 +398,7 @@ class BlackOilModel(
         positions), use a grid factory or IO utility that rebuilds the grid.
 
         :param target: Desired `UnitSystem`.
-        :returns: New `ReservoirModel` in `target` units.
+        :returns: New `BlackOilModel` in `target` units.
         """
         if target == self.unit_system:
             return self

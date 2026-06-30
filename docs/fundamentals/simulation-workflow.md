@@ -247,7 +247,7 @@ Each yielded `ModelState` contains a complete snapshot of the simulation at that
 | `state.step_size` | `float` | Timestep size in seconds |
 | `state.time` | `float` | Elapsed simulation time in seconds |
 | `state.time_in_days` | `float` | Elapsed simulation time in days |
-| `state.model` | `ReservoirModel` | Full reservoir model with updated properties |
+| `state.model` | `BlackOilModel` | Full reservoir model with updated properties |
 | `state.model.fluid_properties.pressure_grid` | `ndarray` | Pressure at each cell (psi) |
 | `state.model.fluid_properties.oil_saturation_grid` | `ndarray` | Oil saturation at each cell |
 | `state.model.fluid_properties.water_saturation_grid` | `ndarray` | Water saturation at each cell |

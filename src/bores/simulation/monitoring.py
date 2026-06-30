@@ -19,7 +19,7 @@ from tqdm import tqdm
 from bores.config import Config
 from bores.constants import c
 from bores.datastructures import FormationVolumeFactors, Rates, SparseTensor
-from bores.model import ReservoirModel
+from bores.model import BlackOilModel
 from bores.simulate import Run, StepCallback, StepResult, run
 from bores.states import ModelState
 from bores.typing import ThreeDimensions
@@ -1084,7 +1084,7 @@ def build_rich_panel(
 @typing.overload
 def monitor(
     input: typing.Union[
-        ReservoirModel[ThreeDimensions],
+        BlackOilModel[ThreeDimensions],
         Run,
         typing.Iterable[ModelState[ThreeDimensions]],
     ],
@@ -1104,7 +1104,7 @@ def monitor(
 @typing.overload
 def monitor(
     input: typing.Union[
-        ReservoirModel[ThreeDimensions],
+        BlackOilModel[ThreeDimensions],
         Run,
         typing.Iterable[ModelState[ThreeDimensions]],
     ],
@@ -1123,7 +1123,7 @@ def monitor(
 
 def monitor(
     input: typing.Union[
-        ReservoirModel[ThreeDimensions],
+        BlackOilModel[ThreeDimensions],
         Run,
         typing.Iterable[ModelState[ThreeDimensions]],
     ],
@@ -1153,10 +1153,10 @@ def monitor(
     A summary table is always emitted to the logger at INFO level when
     the generator is exhausted or closed.
 
-    :param input: A `ReservoirModel`, `Run`, or an iterable that yields `ModelState`s - identical to
+    :param input: A `BlackOilModel`, `Run`, or an iterable that yields `ModelState`s - identical to
         the first argument of `bores.run`.
     :param config: Simulation configuration. Required when `input` is a
-        `ReservoirModel`; optional when `input` is a `Run` (overrides
+        `BlackOilModel`; optional when `input` is a `Run` (overrides
         the config stored on the `Run` when provided).
     :param monitor: `Monitor` controlling display options. Defaults
         to `Monitor()` (rich live panel enabled by default).
@@ -1172,21 +1172,19 @@ def monitor(
     :yields: Tuple of `(state, stats)` - the model state and the live `RunStats`, if `return_stats` is True.
         Else, the model state only is returned.
         accumulator after each accepted output step.
-    :raises ValidationError: If `input` is a `ReservoirModel` and `config` is not provided.
+    :raises ValidationError: If `input` is a `BlackOilModel` and `config` is not provided.
     """
     if monitor is None:
         monitor = Monitor()
 
-    is_generic_input = not isinstance(input, (ReservoirModel, Run))
+    is_generic_input = not isinstance(input, (BlackOilModel, Run))
     description = "Running Simulation"
     if isinstance(input, Run):
         config = config if config is not None else input.config
         description = f"Running {input.name!r}" if input.name else description
     else:
         if config is None and not is_generic_input:
-            raise ValueError(
-                "Must provide `config` when `input` is a `ReservoirModel`."
-            )
+            raise ValueError("Must provide `config` when `input` is a `BlackOilModel`.")
         config = typing.cast(Config, config)
 
     # Suppress logging from `run(...)`; monitor handles all output and stats

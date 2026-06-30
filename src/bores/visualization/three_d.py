@@ -26,7 +26,7 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
-from bores.model import ReservoirModel
+from bores.model import BlackOilModel
 from bores.precision import get_dtype
 from bores.states import ModelState
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions
@@ -464,9 +464,10 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array(
-                [[x_surf, y_surf, z_surface], [x_surf, y_surf, z_perf]]
-            )
+            casing_pts = np.array([
+                [x_surf, y_surf, z_surface],
+                [x_surf, y_surf, z_perf],
+            ])
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(
@@ -565,9 +566,10 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array(
-                [[x_surf, y_surf, z_surface], [x_surf, y_surf, z_perf]]
-            )
+            casing_pts = np.array([
+                [x_surf, y_surf, z_surface],
+                [x_surf, y_surf, z_perf],
+            ])
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(
@@ -1926,7 +1928,7 @@ class DataVisualizer:
 
     def _get_data(
         self,
-        source: typing.Union[ModelState[ThreeDimensions], ReservoirModel],
+        source: typing.Union[ModelState[ThreeDimensions], BlackOilModel],
         name: str,
     ) -> ThreeDimensionalGrid:
         """
@@ -1972,7 +1974,7 @@ class DataVisualizer:
     def make_plot(
         self,
         source: typing.Union[
-            ReservoirModel[ThreeDimensions],
+            BlackOilModel[ThreeDimensions],
             ModelState[ThreeDimensions],
             ThreeDimensionalGrid,
         ],
@@ -2001,7 +2003,7 @@ class DataVisualizer:
         Call `.show()` to open interactive window, `.screenshot("file.png")`
         for image export, or use in Jupyter notebooks with `notebook=True`.
 
-        :param source: Data source - `ReservoirModel`, `ModelState`, or raw 3D array
+        :param source: Data source - `BlackOilModel`, `ModelState`, or raw 3D array
         :param property: Property name to visualize (required for model/state sources).
             Supports dot notation like "permeability.x"
         :param plot_type: Visualization type - "volume", "isosurface", "scatter_3d",
@@ -2064,7 +2066,7 @@ class DataVisualizer:
                 )
 
         is_model_state = isinstance(source, ModelState)
-        is_model = isinstance(source, ReservoirModel)
+        is_model = isinstance(source, BlackOilModel)
 
         if is_model_state or is_model:
             if property is None:
@@ -2222,7 +2224,7 @@ class DataVisualizer:
     def animate(
         self,
         sequence: typing.Union[
-            typing.List[ReservoirModel[ThreeDimensions]],
+            typing.List[BlackOilModel[ThreeDimensions]],
             typing.Sequence[ModelState[ThreeDimensions]],
             typing.Sequence[ThreeDimensionalGrid],
         ],
@@ -2255,7 +2257,7 @@ class DataVisualizer:
         passed to the save for export, and `Plotter`s are closed to free GPU memory.
         Without a save, returns list of `Plotter` instances for manual inspection.
 
-        :param sequence: Time-ordered collection of `ReservoirModel`s, `ModelState`s, or 3D arrays
+        :param sequence: Time-ordered collection of `BlackOilModel`s, `ModelState`s, or 3D arrays
         :param property: Property name to visualize (required for model/state sequences).
             Supports dot notation like "permeability.x"
         :param plot_type: Visualization type - "volume", "isosurface", "scatter_3d",
@@ -2306,7 +2308,7 @@ class DataVisualizer:
         if not sequence:
             raise ValidationError("Empty sequence")
 
-        is_model_sequence = isinstance(sequence[0], (ModelState, ReservoirModel))
+        is_model_sequence = isinstance(sequence[0], (ModelState, BlackOilModel))
         if is_model_sequence and property is None:
             raise ValidationError(
                 "`property` required for model / model state sequences"

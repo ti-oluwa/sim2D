@@ -12,7 +12,6 @@ from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.base import VALID_FAULT_FACE_DIRECTIONS
 from bores.model.blackoil import BlackOilModel
-from bores.model.transmissibility import compute_connection_transmissibilities
 from bores.serialization import Serializable
 from bores.typing import Number
 
@@ -86,6 +85,7 @@ class FaultRecord(Serializable):
     def from_deck_file(
         cls,
         deck_file: DeckFile,
+        *,
         fault_name: typing.Optional[str] = None,
     ) -> typing.Union[Self, typing.List[Self]]:
         """
@@ -108,47 +108,49 @@ class FaultRecord(Serializable):
 
         multflt_records = deck_file.get("MULTFLT") or []
         multflt_map: typing.Dict[str, Number] = {
-            rec["name"]: rec["multiplier"] for rec in multflt_records
+            record["name"]: record["multiplier"] for record in multflt_records
         }
 
         if fault_name is not None:
-            matching = [r for r in fault_records if r["name"] == fault_name]
+            matching = [
+                record for record in fault_records if record["name"] == fault_name
+            ]
             if not matching:
-                available = sorted({r["name"] for r in fault_records})
+                available = sorted({record["name"] for record in fault_records})
                 raise ValidationError(
                     f"Fault {fault_name!r} not found in FAULTS keyword. "
                     f"Available faults: {available}."
                 )
-            rec = matching[0]
+            record = matching[0]
             return cls(
-                name=rec["name"],
-                i1=rec["i1"],
-                i2=rec["i2"],
-                j1=rec["j1"],
-                j2=rec["j2"],
-                k1=rec["k1"],
-                k2=rec["k2"],
-                face_direction=rec["face"],
-                transmissibility_multiplier=multflt_map.get(rec["name"]),
+                name=record["name"],
+                i1=record["i1"],
+                i2=record["i2"],
+                j1=record["j1"],
+                j2=record["j2"],
+                k1=record["k1"],
+                k2=record["k2"],
+                face_direction=record["face"],
+                transmissibility_multiplier=multflt_map.get(record["name"]),
             )
 
         return [
             cls(
-                name=rec["name"],
-                i1=rec["i1"],
-                i2=rec["i2"],
-                j1=rec["j1"],
-                j2=rec["j2"],
-                k1=rec["k1"],
-                k2=rec["k2"],
-                face_direction=rec["face"],
-                transmissibility_multiplier=multflt_map.get(rec["name"]),
+                name=record["name"],
+                i1=record["i1"],
+                i2=record["i2"],
+                j1=record["j1"],
+                j2=record["j2"],
+                k1=record["k1"],
+                k2=record["k2"],
+                face_direction=record["face"],
+                transmissibility_multiplier=multflt_map.get(record["name"]),
             )
-            for rec in fault_records
+            for record in fault_records
         ]
 
     def __repr__(self) -> str:
-        mult = (
+        mult_str = (
             f", multiplier={self.transmissibility_multiplier}"
             if self.transmissibility_multiplier is not None
             else ""
@@ -160,7 +162,7 @@ class FaultRecord(Serializable):
             f"j=({self.j1}..{self.j2}), "
             f"k=({self.k1}..{self.k2}), "
             f"face={self.face_direction!r}"
-            f"{mult}"
+            f"{mult_str}"
             f")"
         )
 
@@ -237,9 +239,8 @@ def apply_faults(
         unit_system=model.unit_system,
     )
     if recompute_transmissibilities:
-        new_model._transmissibilities = compute_connection_transmissibilities(
-            grid=new_grid, rock=model.rock
-        )
+        new_model.invalidate_transmissibilities()
+        new_model.transmissibilities  # Will recompute it
     return new_model
 
 
@@ -295,9 +296,8 @@ def remove_faults(
         unit_system=model.unit_system,
     )
     if recompute_transmissibilities:
-        new_model._transmissibilities = compute_connection_transmissibilities(
-            grid=new_grid, rock=model.rock
-        )
+        new_model.invalidate_transmissibilities()
+        new_model.transmissibilities  # Will recompute it
     return new_model
 
 
@@ -492,16 +492,16 @@ def _apply_faults_to_grid(
         new_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
         new_nnc_types: typing.List[int] = []
         new_nnc_transmissibilities: typing.List[Number] = []
-        for old_idx, (pair, typ, t) in enumerate(
+        for old_idx, (cell_pair, nnc_type, transmissibility) in enumerate(
             zip(existing_nnc_pairs, existing_nnc_types, existing_nnc_transmissibilities)
         ):
             if old_idx in indices_to_drop:
                 continue
             new_idx = len(new_nnc_pairs)
             old_to_new[old_idx] = new_idx
-            new_nnc_pairs.append(pair)
-            new_nnc_types.append(typ)
-            new_nnc_transmissibilities.append(t)
+            new_nnc_pairs.append(cell_pair)
+            new_nnc_types.append(nnc_type)
+            new_nnc_transmissibilities.append(transmissibility)
 
         # Remap surviving nnc_fault_indices positions
         nnc_fault_indices_lists = {
@@ -660,12 +660,10 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
         old_to_new[old_idx] = new_idx
         assert grid.nnc_cell_indices is not None
         assert grid.nnc_connection_types is not None
-        surviving_pairs.append(
-            (
-                int(grid.nnc_cell_indices[old_idx, 0]),
-                int(grid.nnc_cell_indices[old_idx, 1]),
-            )
-        )
+        surviving_pairs.append((
+            int(grid.nnc_cell_indices[old_idx, 0]),
+            int(grid.nnc_cell_indices[old_idx, 1]),
+        ))
         surviving_types.append(int(grid.nnc_connection_types[old_idx]))
         surviving_transmissibilities.append(
             grid.nnc_transmissibilities[old_idx]  # type: ignore

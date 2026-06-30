@@ -10,7 +10,7 @@ import numpy as np
 from bores.config import Config
 from bores.errors import BORESError
 from bores.initialization import check_zero_flow_initialization
-from bores.model import FluidProperties, ReservoirModel, RockProperties
+from bores.model import FluidProperties, BlackOilModel, RockProperties
 from bores.typing import ThreeDimensions
 
 logger = logging.getLogger(__name__)
@@ -167,7 +167,7 @@ class ValidationReport:
 
 
 def validate(
-    model: ReservoirModel[ThreeDimensions],
+    model: BlackOilModel[ThreeDimensions],
     config: Config,
     *,
     correct_inplace: bool = True,
@@ -209,7 +209,7 @@ def validate(
       (saturation sums deviating beyond 1%, pressure outside PVT coverage, wells
       placed in non-existent or zero-porosity cells).
 
-    :param model: A 3-D `ReservoirModel` instance.
+    :param model: A 3-D `BlackOilModel` instance.
     :param config: The associated `Config`.
     :param correct_inplace: When True, small correctable issues are fixed directly
         on the model arrays. When False, they are reported as warnings or errors.
@@ -642,9 +642,7 @@ def _validate_pressure_pvt_coverage(
         )
 
 
-def _validate_pressure_gradient(
-    model: ReservoirModel, report: ValidationReport
-) -> None:
+def _validate_pressure_gradient(model: BlackOilModel, report: ValidationReport) -> None:
     """
     Assess the vertical pressure gradient for gross physical plausibility.
 
@@ -782,7 +780,7 @@ def _recommend_zero_flow_tolerance(cell_dimension: typing.Tuple[float, float]) -
 
 
 def _validate_zero_flow(
-    model: ReservoirModel,
+    model: BlackOilModel,
     config: Config,
     report: ValidationReport,
     *,
@@ -896,7 +894,7 @@ def _validate_zero_flow(
 
 def _validate_wells(
     config: Config,
-    model: ReservoirModel,
+    model: BlackOilModel,
     report: ValidationReport,
 ) -> None:
     """
@@ -964,7 +962,7 @@ def _validate_wells(
         )
 
 
-def _validate_fluid_contacts(model: ReservoirModel, report: ValidationReport) -> None:
+def _validate_fluid_contacts(model: BlackOilModel, report: ValidationReport) -> None:
     """
     Check macro-scale fluid contact ordering via saturation-weighted depth centroids.
 
@@ -1165,7 +1163,7 @@ def _validate_bubble_point(
         )
 
 
-def _validate_transmissibility(model: ReservoirModel, report: ValidationReport) -> None:
+def _validate_transmissibility(model: BlackOilModel, report: ValidationReport) -> None:
     """
     Inspect face transmissibility magnitude and condition number proxy.
 
@@ -1240,7 +1238,7 @@ def _validate_transmissibility(model: ReservoirModel, report: ValidationReport) 
 
 
 def _validate_pore_volume_distribution(
-    model: ReservoirModel, report: ValidationReport
+    model: BlackOilModel, report: ValidationReport
 ) -> None:
     """
     Examine the pore-volume distribution across the active grid cells.

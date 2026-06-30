@@ -18,7 +18,7 @@ from typing_extensions import TypedDict, Unpack
 
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
-from bores.model import ReservoirModel
+from bores.model import BlackOilModel
 from bores.precision import get_dtype
 from bores.states import ModelState
 from bores.typing import (
@@ -2202,12 +2202,10 @@ class Scatter3DRenderer(BaseRenderer):
                 coordinate_offsets=coordinate_offsets,
             )
 
-            z_physical = np.array(
-                [
-                    (z_boundaries[x, y, z] + z_boundaries[x, y, z + 1]) / 2
-                    for x, y, z in zip(x_coords, y_coords, z_coords)
-                ]
-            )
+            z_physical = np.array([
+                (z_boundaries[x, y, z] + z_boundaries[x, y, z + 1]) / 2
+                for x, y, z in zip(x_coords, y_coords, z_coords)
+            ])
 
             # Extract index offsets to show original dataset indices in hover text
             x_index_offset, y_index_offset, z_index_offset = coordinate_offsets or (
@@ -2490,7 +2488,7 @@ class DataVisualizer:
 
     def _get_data(
         self,
-        source: typing.Union[ModelState[ThreeDimensions], ReservoirModel],
+        source: typing.Union[ModelState[ThreeDimensions], BlackOilModel],
         name: str,
     ) -> ThreeDimensionalGrid:
         """
@@ -2535,7 +2533,7 @@ class DataVisualizer:
     def make_plot(
         self,
         source: typing.Union[
-            ReservoirModel[ThreeDimensions],
+            BlackOilModel[ThreeDimensions],
             ModelState[ThreeDimensions],
             ThreeDimensionalGrid,
         ],
@@ -2561,7 +2559,7 @@ class DataVisualizer:
         """
         Plot a specific model property or raw 3D grid data in 3D with optional data slicing.
 
-        :param source: Either a `ReservoirModel` or `ModelState` containing reservoir model data, or a raw `ThreeDimensionalGrid`
+        :param source: Either a `BlackOilModel` or `ModelState` containing reservoir model data, or a raw `ThreeDimensionalGrid`
         :param property: Name of the property to plot (from `PropertyRegistry`). Required when source is a ModelState,
             optional when source is a ThreeDimensionalGrid (will use generic metadata if not provided)
         :param plot_type: Type of 3D plot to create (volume, isosurface, scatter)
@@ -2634,7 +2632,7 @@ class DataVisualizer:
 
         # Extract data and metadata based on source type
         is_model_state = isinstance(source, ModelState)
-        is_model = isinstance(source, ReservoirModel)
+        is_model = isinstance(source, BlackOilModel)
 
         if is_model_state or is_model:
             # When working with a model or model state, property is required
@@ -2778,7 +2776,7 @@ class DataVisualizer:
     def animate(
         self,
         sequence: typing.Union[
-            typing.List[ReservoirModel[ThreeDimensions]],
+            typing.List[BlackOilModel[ThreeDimensions]],
             typing.Sequence[ModelState[ThreeDimensions]],
             typing.Sequence[ThreeDimensionalGrid],
         ],
@@ -2805,7 +2803,7 @@ class DataVisualizer:
         """
         Create an animated plot showing property evolution over time.
 
-        :param sequence: Sequence of `ReservoirModel`s, `ModelState`s or `ThreeDimensionalGrid`s representing time steps
+        :param sequence: Sequence of `BlackOilModel`s, `ModelState`s or `ThreeDimensionalGrid`s representing time steps
         :param property: Name of the property to animate. Required when sequence contains ModelStates,
             optional when sequence contains raw grids
         :param plot_type: Type of 3D plot for animation frames
@@ -2845,7 +2843,7 @@ class DataVisualizer:
 
         # Determine if we're working with models, model states or raw grids
         is_model_state_sequence = isinstance(sequence[0], ModelState)
-        is_model_sequence = isinstance(sequence[0], ReservoirModel)
+        is_model_sequence = isinstance(sequence[0], BlackOilModel)
 
         if (is_model_state_sequence or is_model_sequence) and property is None:
             raise ValidationError(

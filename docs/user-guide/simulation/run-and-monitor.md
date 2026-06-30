@@ -15,7 +15,7 @@ The minimum viable simulation run looks like this:
 ```python
 import bores
 
-model = bores.ReservoirModel.from_file("reservoir.h5")
+model = bores.BlackOilModel.from_file("reservoir.h5")
 config = bores.Config.from_file("simulation.yaml")
 
 for state in bores.run(model, config):
@@ -28,7 +28,7 @@ For interactive work where you want a live display in your terminal:
 ```python
 import bores
 
-model = bores.ReservoirModel.from_file("reservoir.h5")
+model = bores.BlackOilModel.from_file("reservoir.h5")
 config = bores.Config.from_file("simulation.yaml")
 
 for state in bores.monitor(model, config):
@@ -46,7 +46,7 @@ Both loops behave identically in terms of what `state` contains and when it is y
 
 ```python
 def run(
-    input: Union[ReservoirModel[ThreeDimensions], Run],
+    input: Union[BlackOilModel[ThreeDimensions], Run],
     config: Optional[Config] = None,
     *,
     on_step_rejected: Optional[StepCallback] = None,
@@ -58,12 +58,12 @@ def run(
 
 **`input`** accepts either:
 
-- A `ReservoirModel[ThreeDimensions]` - the static model you built. When you pass a `ReservoirModel`, you must also supply `config`.
+- A `BlackOilModel[ThreeDimensions]` - the static model you built. When you pass a `BlackOilModel`, you must also supply `config`.
 - A `Run` - a pre-packaged specification that bundles model and config together. See the [Run Specification](#run-specification) section below.
 
 **`config`** is the `Config` object containing your simulation parameters, scheme choice, wells, PVT tables, and output frequency.
 
-- Required when `input` is a `ReservoirModel`.
+- Required when `input` is a `BlackOilModel`.
 - Optional when `input` is a `Run` - the `Run`'s own config is used by default, but you can override it by passing a new `config` here.
 
 **`on_step_rejected`** is an optional callback invoked whenever a proposed time step fails due to convergence problems or saturation change violations. BORES will automatically retry the step with a smaller time step size, but this callback gives you visibility into rejection events. It receives three arguments: the `StepResult` (containing residuals and failure messages), the rejected step size in seconds, and the total elapsed simulation time in seconds.
@@ -136,7 +136,7 @@ This continues until the step succeeds, or until the step size cannot be reduced
 ```python
 import bores
 
-model = bores.ReservoirModel.from_file("model.h5")
+model = bores.BlackOilModel.from_file("model.h5")
 config = bores.Config.from_file("config.yaml")
 
 production_history = {}
@@ -172,9 +172,9 @@ The `Run` class bundles a reservoir model and configuration into a single named 
 ### Creating a Run
 
 ```python
-from bores import ReservoirModel, Config, Run
+from bores import BlackOilModel, Config, Run
 
-model = ReservoirModel.from_file("path/to/3d_model.h5")
+model = BlackOilModel.from_file("path/to/3d_model.h5")
 config = Config.from_file("path/to/simulation_config.yaml")
 
 run_spec = Run(
@@ -236,7 +236,7 @@ The `Run.from_files()` method handles loading the PVT tables and attaching them 
 
 ```python
 def monitor(
-    input: Union[ReservoirModel, Run, Iterable[ModelState]],
+    input: Union[BlackOilModel, Run, Iterable[ModelState]],
     config: Optional[Config] = None,
     *,
     monitor: Optional[MonitorConfig] = None,
@@ -255,7 +255,7 @@ Set `return_stats=True` to receive a `(ModelState, RunStats)` tuple at each yiel
 ```python
 import bores
 
-model = bores.ReservoirModel.from_file("reservoir.h5")
+model = bores.BlackOilModel.from_file("reservoir.h5")
 config = bores.Config.from_file("config.yaml")
 
 for state, stats in bores.monitor(model, config, return_stats=True):
@@ -325,7 +325,7 @@ The `stats` object is the same instance throughout the loop. If you want to insp
 ```python
 import bores
 
-model = bores.ReservoirModel.from_file("reservoir.h5")
+model = bores.BlackOilModel.from_file("reservoir.h5")
 config = bores.Config.from_file("config.yaml")
 
 monitor_cfg = bores.MonitorConfig(

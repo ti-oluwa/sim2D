@@ -265,7 +265,7 @@ The `bores.reservoir_model()` factory function is the primary entry point for co
 
 Second, it computes any fluid properties you did not provide explicitly. In this example, we supplied oil viscosity and bubble point pressure, but omitted properties like gas density, water compressibility, formation volume factors, and solution gas-oil ratio. The factory uses industry-standard PVT correlations (Standing, Vasquez-Beggs, Lee-Gonzalez, and others) to estimate these from pressure, temperature, and fluid gravity. This means you can get a working model with minimal input while retaining the option to override any property with your own data.
 
-Third, it assembles the `FluidProperties`, `RockProperties`, and `HysteresisState` objects and packages them into an immutable `ReservoirModel`. Because the model is immutable, you can safely pass it around your code without worrying about accidental modifications.
+Third, it assembles the `FluidProperties`, `RockProperties`, and `HysteresisState` objects and packages them into an immutable `BlackOilModel`. Because the model is immutable, you can safely pass it around your code without worrying about accidental modifications.
 
 ### Defining Wells
 
@@ -297,7 +297,7 @@ The `Config` object is frozen after creation. If you need to modify a parameter,
 
 ### Running the Simulation
 
-The `bores.run()` function accepts a `ReservoirModel` and a `Config` and returns a Python generator that yields `ModelState` objects. Each `ModelState` is a complete snapshot of the reservoir at a particular time step, including the updated model, well states, production and injection rates, relative permeabilities, and capillary pressures.
+The `bores.run()` function accepts a `BlackOilModel` and a `Config` and returns a Python generator that yields `ModelState` objects. Each `ModelState` is a complete snapshot of the reservoir at a particular time step, including the updated model, well states, production and injection rates, relative permeabilities, and capillary pressures.
 
 In this example, `list(bores.run(model, config))` collects all states into a list. For large simulations, you may want to process states one at a time to conserve memory, or use `bores.StateStream` to persist them to disk as they are generated.
 

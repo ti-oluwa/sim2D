@@ -19,7 +19,7 @@ from bores.material_balance import MaterialBalanceErrors
 from bores.model import (
     FluidProperties,
     HysteresisState,
-    ReservoirModel,
+    BlackOilModel,
     RockPermeability,
     RockProperties,
 )
@@ -72,7 +72,7 @@ class ModelState(
     """The time step size in seconds"""
     time: float
     """The simulation time reached in seconds. Time elapsed at this state in seconds"""
-    model: ReservoirModel[NDimension]
+    model: BlackOilModel[NDimension]
     """The reservoir model at this state"""
     wells: Wells[NDimension]
     """The wells configuration at this state"""
@@ -390,8 +390,8 @@ def validate_state(
         )
         # Reconstruct model and model state with coerced data
         model = typing.cast(
-            ReservoirModel[NDimension],
-            ReservoirModel(
+            BlackOilModel[NDimension],
+            BlackOilModel(
                 grid_shape=model.grid_shape,
                 cell_dimension=model.cell_dimension,
                 thickness_grid=thickness_grid,

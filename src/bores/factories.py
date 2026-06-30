@@ -39,7 +39,7 @@ from bores.grids.pvt import (
 from bores.model import (
     FluidProperties,
     HysteresisState,
-    ReservoirModel,
+    BlackOilModel,
     RockPermeability,
     RockProperties,
 )
@@ -220,7 +220,7 @@ def reservoir_model(
     datum_depth: typing.Optional[float] = None,
     reservoir_gas: typing.Optional[typing.Union[str, Fluid]] = None,
     pvt_tables: typing.Optional[PVTTables] = None,
-) -> ReservoirModel[NDimension]:
+) -> BlackOilModel[NDimension]:
     """
     Constructs a N-Dimensional reservoir model with given rock and fluid properties.
 
@@ -955,7 +955,7 @@ def reservoir_model(
             gas_saturation_grid=gas_saturation_grid.copy(),
         )
 
-    model = ReservoirModel(
+    model = BlackOilModel(
         grid_shape=grid_shape,
         cell_dimension=cell_dimension,
         thickness_grid=thickness_grid,
@@ -969,10 +969,10 @@ def reservoir_model(
     )
     if fractures is not None and len(model.grid_shape) == 3:
         return typing.cast(
-            ReservoirModel[NDimension],
+            BlackOilModel[NDimension],
             apply_fractures(model, *fractures),  # type: ignore
         )
-    return typing.cast(ReservoirModel[NDimension], model)
+    return typing.cast(BlackOilModel[NDimension], model)
 
 
 def injection_well(

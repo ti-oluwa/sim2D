@@ -2,22 +2,35 @@
 
 import typing
 
+import attrs
 import numba
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import NamedTuple
+from typing_extensions import Self
 
+from bores.constants import build_unit_conversion_table, get_conversion_factors
 from bores.grids.base import Grid
 from bores.model.properties import Rock
 from bores.precision import get_dtype
-from bores.typing import IntArray, Number, NumberArray, OneDimension, TwoDimensions
+from bores.typing import (
+    IntArray,
+    Number,
+    NumberArray,
+    NumberOrArray,
+    OneDimension,
+    TwoDimensions,
+    UnitConversionTable,
+    UnitSystem,
+)
+from bores.utils import scale
 
 __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
 
 
-class ConnectionTransmissibilities(NamedTuple):
+@attrs.frozen(slots=True)
+class ConnectionTransmissibilities:
     """
-    Precomputed transmissibilities for all connections in a `ReservoirModel`.
+    Precomputed transmissibilities for all connections in a `BlackOilModel`.
 
     **Attributes**:
 
@@ -36,6 +49,36 @@ class ConnectionTransmissibilities(NamedTuple):
     interior: NumberArray[OneDimension]
     boundary: NumberArray[OneDimension]
     nnc: typing.Optional[NumberArray[OneDimension]]
+    unit_system: UnitSystem
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `ConnectionTransmissibilities` with transmissibilities
+        rescaled to *target*.
+
+        :param target: Target `UnitSystem`.
+        :returns: New `ConnectionTransmissibilities` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        # Transmissibility is K * A/d
+        transmissibility_factor = factors["permeability"] * factors["length"]
+        return self.__class__(
+            interior=scale(self.interior, transmissibility_factor),
+            boundary=scale(self.boundary, transmissibility_factor),
+            nnc=(
+                None if self.nnc is None else scale(self.nnc, transmissibility_factor)
+            ),
+            unit_system=target,
+        )
 
 
 def get_face_transmissibility_map(
@@ -64,7 +107,8 @@ def compute_connection_transmissibilities(
     grid: Grid,
     rock: Rock,
     *,
-    net_to_gross: typing.Optional[NumberArray[OneDimension]] = None,
+    net_to_gross: typing.Optional[NumberOrArray[OneDimension]] = None,
+    unit_system: typing.Optional[UnitSystem] = None,
     dtype: typing.Optional[npt.DTypeLike] = None,
 ) -> ConnectionTransmissibilities:
     """
@@ -95,6 +139,11 @@ def compute_connection_transmissibilities(
       type is `ConnectionType.*FAULT*`. Pinchout and user NNCs are not affected
       by `MULTFLT`.
 
+    Note: On construction the transmissibilities are normalised to the
+        declared `unit_system` (defaults to the grid's own unit system).
+        However, it is advised that both grid and rock are in the same unit
+        system.
+
     :param grid: Fully constructed `bores.grids.base.Grid`.
     :param rock: `Rock` with `absolute_permeability` and `net_to_gross`.
     :param net_to_gross: Optional override for the NTG array.
@@ -103,13 +152,23 @@ def compute_connection_transmissibilities(
     :raises ValueError: If permeability or NTG array lengths do not match `grid.n_cells`.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    target_unit_system = unit_system if unit_system is not None else grid.unit_system
+    unit_conversion_table: typing.Optional[UnitConversionTable] = None
+    if target_unit_system != grid.unit_system:
+        unit_conversion_table = build_unit_conversion_table()
+        # Normalise grid to the target unit system.
+        grid = grid.convert(target_unit_system, table=unit_conversion_table)
 
-    kx = np.asarray(rock.absolute_permeability.x, dtype=dtype)
-    ky = np.asarray(rock.absolute_permeability.y, dtype=dtype)
-    kz = np.asarray(rock.absolute_permeability.z, dtype=dtype)
+    # Normalise rock to the target unit system (if needed).
+    rock = rock.convert(target_unit_system, table=unit_conversion_table)
+
+    kx = rock.absolute_permeability.x.astype(dtype, copy=False)
+    ky = rock.absolute_permeability.y.astype(dtype, copy=False)
+    kz = rock.absolute_permeability.z.astype(dtype, copy=False)
     ntg = np.asarray(
         rock.net_to_gross if net_to_gross is None else net_to_gross,
         dtype=dtype,
+        copy=False,
     )
 
     n_cells = grid.n_cells
@@ -178,9 +237,9 @@ def compute_connection_transmissibilities(
         nnc_transmissibilities = _resolve_nnc_transmissibilities(
             nnc_cell_indices=np.asarray(grid.nnc_cell_indices, dtype=np.int32),  # type: ignore[arg-type]
             nnc_transmissibilities=(  # type: ignore[arg-type]
-                np.asarray(grid.nnc_transmissibilities, dtype=np.float64)
+                grid.nnc_transmissibilities
                 if grid.nnc_transmissibilities is not None
-                else np.full(grid.n_nnc, np.nan, dtype=np.float64)
+                else np.full(grid.n_nnc, np.nan, dtype=dtype)
             ),
             cell_centroids=grid.cell_centroids,  # type: ignore[arg-type]
             effective_kx=effective_kx,  # type: ignore[arg-type]
@@ -220,6 +279,7 @@ def compute_connection_transmissibilities(
         interior=interior_transmissibilities.astype(dtype, copy=False),
         boundary=boundary_transmissibilities.astype(dtype, copy=False),
         nnc=nnc_transmissibilities,
+        unit_system=target_unit_system,
     )
 
 

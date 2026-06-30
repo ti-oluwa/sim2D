@@ -36,7 +36,7 @@ plotter.show()
 
 When you pass a `ModelState`, the visualizer uses the `PropertyRegistry` to look up metadata for the named property. It also extracts the cell dimensions and depth grid from the model to compute physical coordinates. The `property` parameter is a registry key such as `"pressure"`, `"oil_saturation"`, `"water_saturation"`, `"gas_saturation"`, `"permeability"`, or any other registered property.
 
-**`ReservoirModel` (for initial conditions):**
+**`BlackOilModel` (for initial conditions):**
 
 ```python
 plotter = viz.make_plot(model, property="permeability")
@@ -113,7 +113,7 @@ plotter.show()
 
 The `plot_type` parameter accepts either a `PlotType` enum value or a string. Available types are `"volume"`, `"isosurface"`, `"scatter_3d"`, and `"cell_blocks"`. Cell blocks is the default and is unique to the PyVista module.
 
-The `source` parameter accepts a `ModelState`, `ReservoirModel`, or raw 3D numpy array. When using a `ModelState` or `ReservoirModel`, the `property` parameter is required and must match a key in the `PropertyRegistry`. When using a raw array, `property` is optional.
+The `source` parameter accepts a `ModelState`, `BlackOilModel`, or raw 3D numpy array. When using a `ModelState` or `BlackOilModel`, the `property` parameter is required and must match a key in the `PropertyRegistry`. When using a raw array, `property` is optional.
 
 Because `make_plot` returns a `pv.Plotter`, you interact with it differently than a Plotly figure:
 
@@ -148,7 +148,7 @@ plotters = viz.animate(
 )
 ```
 
-The `sequence` parameter accepts a list of `ModelState` objects, `ReservoirModel` objects, or raw 3D arrays. The `frame_duration` parameter sets how many milliseconds each frame is displayed. The `step_size` parameter lets you skip frames for performance (1 means every frame, 5 means every fifth frame).
+The `sequence` parameter accepts a list of `ModelState` objects, `BlackOilModel` objects, or raw 3D arrays. The `frame_duration` parameter sets how many milliseconds each frame is displayed. The `step_size` parameter lets you skip frames for performance (1 means every frame, 5 means every fifth frame).
 
 The `save` parameter accepts a file path string or an exporter object. The format is inferred from the file extension:
 
@@ -402,7 +402,7 @@ plotter = viz.make_plot(
 | `wellbore_width` | 11.0 | Width of wellbore line in pixels |
 | `surface_marker_size` | 2.4 | Size scaling factor for surface markers |
 
-Well visualization only works when `source` is a `ModelState` with active wells. When you pass a raw array or a `ReservoirModel`, the `show_wells` parameter is ignored.
+Well visualization only works when `source` is a `ModelState` with active wells. When you pass a raw array or a `BlackOilModel`, the `show_wells` parameter is ignored.
 
 ---
 

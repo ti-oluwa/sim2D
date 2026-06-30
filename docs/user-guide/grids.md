@@ -266,7 +266,7 @@ All property grids must have the same shape as the model's `grid_shape`. BORES v
 
 You can visualize any property grid in 3D before running a simulation using the `bores.plotly3d.DataVisualizer` class. This is one of the most valuable debugging tools available to you, because it lets you catch setup errors before spending time on a simulation that will fail or produce nonsensical results.
 
-The `make_plot()` method accepts either a `ReservoirModel` (showing named properties like "porosity" or "pressure"), a `ModelState` (showing simulation results), or a raw NumPy array. When you pass a raw array, the visualizer renders it as a 3D volume with the grid geometry you provide. When you pass a model or state, you select the property by name.
+The `make_plot()` method accepts either a `BlackOilModel` (showing named properties like "porosity" or "pressure"), a `ModelState` (showing simulation results), or a raw NumPy array. When you pass a raw array, the visualizer renders it as a 3D volume with the grid geometry you provide. When you pass a model or state, you select the property by name.
 
 ```python
 import bores
