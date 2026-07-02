@@ -216,7 +216,7 @@ class PVTData(StoreSerializable):
     Used internally to compute `density_table` and `compressibility_table`
     for the water phase; not exposed as a direct query method on `PVTTable`.
     """
-    dtype: typing.Optional[npt.DTypeLike] = None
+    dtype: npt.DTypeLike = None
 
     unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
     """
@@ -264,9 +264,7 @@ class PVTData(StoreSerializable):
                 "`solution_gas_to_oil_ratios` to be provided."
             )
 
-    def ensure_dtype(
-        self, dtype: typing.Optional[npt.DTypeLike] = None, force: bool = True
-    ) -> None:
+    def ensure_dtype(self, dtype: npt.DTypeLike = None, force: bool = True) -> None:
         if not force and self.dtype is not None and self.dtype == np.dtype(dtype):
             return
 
@@ -376,7 +374,7 @@ class PVTDataSet(StoreSerializable):
         oil: typing.Optional[typing.Union[PathLike[str], str]] = None,
         gas: typing.Optional[typing.Union[PathLike[str], str]] = None,
         water: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         **load_kwargs: typing.Any,
     ) -> Self:
         """

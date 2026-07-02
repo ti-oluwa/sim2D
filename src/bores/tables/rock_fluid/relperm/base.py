@@ -1160,7 +1160,7 @@ class TwoPhaseRelPermTable(
         spacing: Spacing = "cosine",
         min_wetting_relperm: MinimumRelPerm = None,
         min_non_wetting_relperm: MinimumRelPerm = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `TwoPhaseRelPermTable` for one saturation region from a `DeckFile`.
@@ -1877,7 +1877,7 @@ class ThreePhaseRelPermTable(
         spacing: Spacing = "cosine",
         min_wetting_relperm: MinimumRelPerm = None,
         min_non_wetting_relperm: MinimumRelPerm = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> "ThreePhaseRelPermTable":
         """
         Build a `ThreePhaseRelPermTable` for one saturation region from a `DeckFile`.

@@ -196,7 +196,7 @@ def _build_pseudo_pressures_vectorized(
         [NumberOrArray[NDimension]], NumberOrArray[NDimension]
     ],
     reference_pressure: Number,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> NumberArray[NDimension]:
     """
     Build entire pseudo-pressure table values using vectorized operations.
@@ -285,7 +285,7 @@ def _build_pseudo_pressures_scalar(
     viscosity_func: typing.Callable[[Number], Number],
     reference_pressure: Number,
     max_workers: int,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> NumberArray[NDimension]:
     """
     Build pseudo-pressure table values using threaded scalar computation.
@@ -322,7 +322,7 @@ def build_pseudo_pressures(
         [NumberOrArray[NDimension]], NumberOrArray[NDimension]
     ],
     reference_pressure: Number,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> NumberArray[NDimension]:
     """
     Build pseudo-pressure table values with automatic vectorization detection.
@@ -536,7 +536,7 @@ class PseudoPressureTable(
         reference_pressure: typing.Optional[Number] = None,
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         unit_system: UnitSystem = UnitSystem.FIELD,
     ):
         """
@@ -847,7 +847,7 @@ def build_pseudo_pressure_table(
     points: typing.Optional[int] = None,
     number_of_base_points: int = 500,
     number_of_endpoint_extra_points: int = 20,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     cache_key: typing.Optional[typing.Hashable] = None,
 ) -> PseudoPressureTable:

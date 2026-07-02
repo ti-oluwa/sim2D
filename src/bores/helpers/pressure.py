@@ -54,7 +54,7 @@ def build_pressure_grid(
     gas_oil_contact: typing.Optional[float] = None,
     oil_water_contact: typing.Optional[float] = None,
     cap_pressure: typing.Optional[float] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> NDimensionalGrid[NDimension]:
     """
     Build a hydrostatically equilibrated pressure grid from a datum pressure

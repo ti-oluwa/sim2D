@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
+from typing_extensions import TypeVar
 
 from bores.precision import get_dtype
 from bores.typing import CellArray, NDimension, Number, NumberArray, NumberOrArray
@@ -251,7 +252,7 @@ def max_overload(x):
         return impl
 
 
-def atleast_1d(x, dtype: typing.Optional[npt.DTypeLike] = None) -> npt.NDArray:  # type: ignore
+def atleast_1d(x, dtype: npt.DTypeLike = None) -> npt.NDArray:  # type: ignore
     return np.atleast_1d(x)
 
 
@@ -367,13 +368,7 @@ def scale(a: NumberArray[NDimension], /, factor: Number) -> NumberArray[NDimensi
 @typing.overload
 def scale(a: Number, /, factor: Number) -> Number: ...
 @typing.overload
-def scale(
-    a: typing.Optional[NumberArray[NDimension]], /, factor: Number
-) -> typing.Optional[NumberArray[NDimension]]: ...
-@typing.overload
-def scale(a: typing.Optional[Number], /, factor: Number) -> typing.Optional[Number]: ...
-
-
+def scale(a: None, /, factor: Number) -> None: ...
 def scale(
     a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
 ) -> typing.Optional[NumberOrArray[NDimension]]:
@@ -394,15 +389,7 @@ def scale_non_empty(
 @typing.overload
 def scale_non_empty(a: Number, /, factor: Number) -> Number: ...
 @typing.overload
-def scale_non_empty(
-    a: typing.Optional[NumberArray[NDimension]], /, factor: Number
-) -> typing.Optional[NumberArray[NDimension]]: ...
-@typing.overload
-def scale_non_empty(
-    a: typing.Optional[Number], /, factor: Number
-) -> typing.Optional[Number]: ...
-
-
+def scale_non_empty(a: None, /, factor: Number) -> None: ...
 def scale_non_empty(
     a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
 ) -> typing.Optional[NumberOrArray[NDimension]]:
@@ -421,23 +408,15 @@ def scale_and_offset(
 @typing.overload
 def scale_and_offset(a: Number, /, factor: Number, offset: Number) -> Number: ...
 @typing.overload
+def scale_and_offset(a: None, /, factor: Number, offset: Number) -> None: ...
 def scale_and_offset(
-    a: typing.Optional[NumberArray[NDimension]], /, factor: Number, offset: Number
-) -> typing.Optional[NumberArray[NDimension]]: ...
-@typing.overload
-def scale_and_offset(
-    a: typing.Optional[Number], /, factor: Number, offset: Number
-) -> typing.Optional[Number]: ...
-
-
-def scale_and_offset(
-    a: typing.Optional[NumberOrArray[NDimension]], /, scale: Number, offset: Number
+    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number, offset: Number
 ) -> typing.Optional[NumberOrArray[NDimension]]:
-    """Return `a * scale + offset` as the same dtype; identity when trivial."""
-    if a is None or (scale == 1.0 and offset == 0.0):
+    """Return `a * factor + offset` as the same dtype; identity when trivial."""
+    if a is None or (factor == 1.0 and offset == 0.0):
         return a
 
-    result = (a * scale) + offset
+    result = (a * factor) + offset
     if isinstance(a, np.ndarray):
         result = result.astype(a.dtype, copy=False)  # type: ignore[attr-defined]
     return typing.cast(NumberOrArray[NDimension], result)

@@ -673,7 +673,7 @@ def as_three_phase_relperm_table(
     oil_water_reference_saturation: typing.Optional[npt.ArrayLike] = None,
     gas_oil_reference_saturation: typing.Optional[npt.ArrayLike] = None,
     mixing_rule: typing.Optional[typing.Union[MixingRule, str]] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> ThreePhaseRelPermTable:
     """
     Convert any `RelativePermeabilityTable` to a `ThreePhaseRelPermTable`
@@ -917,7 +917,7 @@ def as_three_phase_capillary_pressure_table(
     oil_water_reference_saturation: typing.Optional[npt.ArrayLike] = None,
     gas_oil_reference_saturation: typing.Optional[npt.ArrayLike] = None,
     unit_system: typing.Optional[UnitSystem] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> ThreePhaseCapillaryPressureTable:
     """
     Convert any `CapillaryPressureTable` to a `ThreePhaseCapillaryPressureTable`

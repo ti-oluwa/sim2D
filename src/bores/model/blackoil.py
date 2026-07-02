@@ -17,7 +17,10 @@ from bores.constants import (
 )
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.model.properties import PVT, Hysteresis, Regions, Rock, State
+from bores.model.properties.pvt import PVT
+from bores.model.properties.regions import Regions
+from bores.model.properties.rock import Rock
+from bores.model.properties.state import Hysteresis, State
 from bores.model.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,
@@ -388,13 +391,7 @@ class BlackOilModel(
         """
         Return a new `BlackOilModel` with all property groups rescaled to `target`.
 
-        The grid's coordinate arrays are **not** re-projected (Eclipse
-        convention); only the property scalars and per-cell arrays that carry
-        dimensional units are converted.  The returned model's `grid`
-        carries an updated `unit_system` declaration but identical vertex
-        coordinates.
-
-        For a true coordinate reprojection (e.g. ft → m for all vertex
+        For a true coordinate reprojection (e.g. ft -> m for all vertex
         positions), use a grid factory or IO utility that rebuilds the grid.
 
         :param target: Desired `UnitSystem`.
@@ -403,12 +400,10 @@ class BlackOilModel(
         if target == self.unit_system:
             return self
 
-        # Rebuild grid with updated `unit_system` declaration only
-        new_grid = attrs.evolve(self.grid, unit_system=target)
         table = table or build_unit_conversion_table()
         factors = get_conversion_factors(self.unit_system, target, table=table)
         new_model = self.__class__(
-            grid=new_grid,
+            grid=self.grid.convert(target, table=table),
             rock=self.rock.convert(target, table=table),
             pvt=self.pvt.convert(target, table=table),
             state=self.state.convert(target, table=table),

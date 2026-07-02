@@ -23,7 +23,7 @@ from bores.correlations.arrays import (
 )
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.model.properties import PVT
+from bores.model.properties.pvt import PVT
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.tables.pvt.data import PVTData, PVTDataSet
@@ -248,7 +248,7 @@ class PVTTable(StoreSerializable):
             typing.Optional[typing.Mapping[str, typing.Tuple[float, float]]],
         ] = None,
         pvt: typing.Optional[PVT] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> None:
         """
         Build a `PVTTable` from raw tabulated data.
@@ -1097,13 +1097,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         clamps = self.clamps
@@ -2003,7 +2001,7 @@ class PVTTables(StoreSerializable):
             None,
         ] = None,
         pvt: typing.Optional[PVT] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `PVTTables` bundle from a `PVTDataSet`.
@@ -2067,7 +2065,7 @@ class PVTTables(StoreSerializable):
             None,
         ] = None,
         pvt: typing.Optional[PVT] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         **load_kwargs: typing.Any,
     ) -> Self:
         """
@@ -2111,7 +2109,7 @@ class PVTTables(StoreSerializable):
         validate: bool = True,
         warn_on_extrapolation: bool = False,
         pvt: typing.Optional[PVT] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build `PVTTables` for a single PVT region from a parsed `DeckFile`.

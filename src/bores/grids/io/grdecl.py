@@ -373,7 +373,7 @@ def load_grdecl(
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
     """
-    Load a GRDECL corner-point (or Cartesian) grid from a file path, raw
+    Load a GRDECL corner-point (or Cartesian) grid from a `DeckFile`, file path, raw
     string, or bytes.
 
     Automatically detects whether `source` is a filesystem path or raw

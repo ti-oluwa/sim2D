@@ -13,7 +13,7 @@ from typing_extensions import Self
 from bores.constants import UnitConversionTable, c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.model.properties import PVT
+from bores.model.properties.pvt import PVT
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.tables.pvt.base import InterpolationMethod, PVTTable, PVTTables
@@ -112,7 +112,7 @@ class PVTRegions(StoreSerializable):
         validate: bool = True,
         warn_on_extrapolation: bool = False,
         pvt: typing.Optional[PVT] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build all PVT regions from a parsed `DeckFile`.
@@ -217,7 +217,7 @@ def _build_oil_data_from_pvto(
     temperature: Number,
     pvt: typing.Optional[PVT],
     unit_system: UnitSystem,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
     Build oil `PVTData` from a parsed `PVTO` record set.
@@ -430,7 +430,7 @@ def _build_oil_data_from_pvdo(
     temperature: Number,
     pvt: typing.Optional[PVT],
     unit_system: UnitSystem,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
     Build dead-oil `PVTData` from a parsed `PVDO` record set.
@@ -517,7 +517,7 @@ def _build_gas_data_from_pvdg(
     temperature: Number,
     pvt: typing.Optional[PVT],
     unit_system: UnitSystem,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
     Build dry-gas `PVTData` from a parsed `PVDG` record set.
@@ -602,7 +602,7 @@ def _build_gas_data_from_pvtg(
     temperature: Number,
     pvt: typing.Optional[PVT],
     unit_system: UnitSystem,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
     Build wet-gas `PVTData` from a parsed `PVTG` record set.
@@ -761,7 +761,7 @@ def _build_water_data_from_pvtw(
     unit_system: UnitSystem,
     salinity: Number = 0.0,
     n_pressure_points: int = 50,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
     Build water `PVTData` from a `PVTW` analytical record.
@@ -872,7 +872,7 @@ def load_pvt_regions(
     validate: bool = True,
     warn_on_extrapolation: bool = False,
     pvt: typing.Optional[PVT] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> typing.Dict[int, PVTTables]:
     """
     Build a `PVTRegions` object from a parsed `DeckFile`.

@@ -123,7 +123,7 @@ class RockFluidRegions(StoreSerializable):
         min_wetting_relperm: MinimumRelPerm = None,
         min_non_wetting_relperm: MinimumRelPerm = None,
         include_capillary_pressure: bool = True,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build all saturation function regions from a parsed `DeckFile`.

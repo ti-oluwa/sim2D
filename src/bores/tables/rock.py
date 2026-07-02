@@ -18,7 +18,7 @@ from typing_extensions import Self
 from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.model.properties import RockCompressibility
+from bores.model.properties.rock import RockCompressibility
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.typing import (
@@ -28,6 +28,7 @@ from bores.typing import (
     InterpolationMethod,
     NDimension,
     Number,
+    NumberArray,
     OneDimension,
     TableQuery,
     TableResult,
@@ -85,7 +86,7 @@ class RockCompressibilityTable(StoreSerializable):
         *,
         interpolation_method: InterpolationMethod = "linear",
         unit_system: UnitSystem = UnitSystem.FIELD,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         validate: bool = True,
     ) -> None:
         """
@@ -115,14 +116,19 @@ class RockCompressibilityTable(StoreSerializable):
             )
 
         self.dtype = np.dtype(dtype if dtype is not None else get_dtype())
-        self.pressures = pressures.astype(self.dtype, copy=False)
-        self.pore_volume_multipliers = pore_volume_multipliers.astype(
-            self.dtype, copy=False
+        self.pressures = typing.cast(
+            NumberArray, pressures.astype(self.dtype, copy=False)
         )
-        self.transmissibility_multipliers = np.asarray(
-            transmissibility_multipliers, dtype=self.dtype
+        self.pore_volume_multipliers = typing.cast(
+            NumberArray, pore_volume_multipliers.astype(self.dtype, copy=False)
         )
-        self.reference_pressure = self.dtype.type(reference_pressure)  # type: ignore
+        self.transmissibility_multipliers = typing.cast(
+            NumberArray, np.asarray(transmissibility_multipliers, dtype=self.dtype)
+        )
+        self.reference_pressure = typing.cast(
+            Number,
+            self.dtype.type(reference_pressure),  # type: ignore
+        )
         self.interpolation_method: InterpolationMethod = interpolation_method
         self.unit_system = unit_system
 
@@ -183,58 +189,51 @@ class RockCompressibilityTable(StoreSerializable):
 
     def _build_interpolants(self) -> None:
         """Build and cache scipy interpolatants for both multiplier columns."""
-        pressures = np.asarray(self.pressures, dtype=np.float64)
-        pore_volume_multiplier = np.asarray(
-            self.pore_volume_multipliers, dtype=np.float64
-        )
-        transmissibility_multipliers = np.asarray(
-            self.transmissibility_multipliers, dtype=np.float64
-        )
+        pressures = self.pressures
+        pore_volume_multiplier = self.pore_volume_multipliers
+        transmissibility_multipliers = self.transmissibility_multipliers
 
         if self.interpolation_method == "cubic":
-            pv_interp = PchipInterpolator(
+            pore_volume_interp = PchipInterpolator(
                 pressures, pore_volume_multiplier, extrapolate=True
             )
-            t_interp = PchipInterpolator(
+            transmissibility_interp = PchipInterpolator(
                 pressures, transmissibility_multipliers, extrapolate=True
             )
-            pv_dp_interp = pv_interp.derivative(1)
-            t_dp_interp = t_interp.derivative(1)
+            pore_volume_dp_interp = pore_volume_interp.derivative(1)
+            transmissibility_dp_interp = transmissibility_interp.derivative(1)
         else:
-            pv_interp = interp1d(
+            pore_volume_interp = interp1d(
                 pressures,
                 pore_volume_multiplier,
                 kind="linear",
                 bounds_error=False,
-                fill_value=(
-                    float(pore_volume_multiplier[0]),
-                    float(pore_volume_multiplier[-1]),
-                ),
+                fill_value=(pore_volume_multiplier[0], pore_volume_multiplier[-1]),
             )
-            t_interp = interp1d(
+            transmissibility_interp = interp1d(
                 pressures,
                 transmissibility_multipliers,
                 kind="linear",
                 bounds_error=False,
                 fill_value=(
-                    float(transmissibility_multipliers[0]),
-                    float(transmissibility_multipliers[-1]),
+                    transmissibility_multipliers[0],
+                    transmissibility_multipliers[-1],
                 ),
             )
             # Use PCHIP derivative even for the linear primal - the derivative
             # of a linear interpolant is a step function which is less useful
             # for the Jacobian than a smooth approximation from the same data.
-            pv_dp_interp = PchipInterpolator(
+            pore_volume_dp_interp = PchipInterpolator(
                 pressures, pore_volume_multiplier
             ).derivative(1)
-            t_dp_interp = PchipInterpolator(
+            transmissibility_dp_interp = PchipInterpolator(
                 pressures, transmissibility_multipliers
             ).derivative(1)
 
-        self._pv_interp = pv_interp
-        self._t_interp = t_interp
-        self._pv_dp_interp = pv_dp_interp
-        self._t_dp_interp = t_dp_interp
+        self._pore_volume_interp = pore_volume_interp
+        self._transmissibility_interp = transmissibility_interp
+        self._pore_volume_dp_interp = pore_volume_dp_interp
+        self._transmissibility_dp_interp = transmissibility_dp_interp
 
     def _query(
         self,
@@ -280,7 +279,7 @@ class RockCompressibilityTable(StoreSerializable):
         :param pressure: Scalar or array of pressures in `self.unit_system`.
         :returns: PV multiplier(s), dimensionless, in `self.dtype`.
         """
-        return self._query(self._pv_interp, pressure, clip_min=0.0)
+        return self._query(self._pore_volume_interp, pressure, clip_min=0.0)
 
     def pore_volume_multiplier_dp(
         self, pressure: TableQuery[NDimension]
@@ -297,7 +296,7 @@ class RockCompressibilityTable(StoreSerializable):
         :returns: Derivative of PV multiplier with respect to pressure,
             in `self.dtype`.
         """
-        return self._query(self._pv_dp_interp, pressure)
+        return self._query(self._pore_volume_dp_interp, pressure)
 
     def transmissibility_multiplier(
         self, pressure: TableQuery[NDimension]
@@ -313,7 +312,7 @@ class RockCompressibilityTable(StoreSerializable):
         :param pressure: Scalar or array of pressures in `self.unit_system`.
         :returns: Transmissibility multiplier(s), dimensionless, in `self.dtype`.
         """
-        return self._query(self._t_interp, pressure, clip_min=0.0)
+        return self._query(self._transmissibility_interp, pressure, clip_min=0.0)
 
     def transmissibility_multiplier_dp(
         self, pressure: TableQuery[NDimension]
@@ -330,7 +329,7 @@ class RockCompressibilityTable(StoreSerializable):
         :returns: Derivative of transmissibility multiplier with respect to
             pressure, in `self.dtype`.
         """
-        return self._query(self._t_dp_interp, pressure)
+        return self._query(self._transmissibility_dp_interp, pressure)
 
     def convert(
         self,
@@ -367,7 +366,7 @@ class RockCompressibilityTable(StoreSerializable):
 
     def to_rock_compressibility(
         self,
-        cell_pressures: CellArray,
+        pressure: CellArray,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> RockCompressibility:
         """
@@ -381,7 +380,7 @@ class RockCompressibilityTable(StoreSerializable):
         This is the instantaneous compressibility implied by the table -
         equivalent to the `ROCK` scalar `cr` but pressure-dependent.
 
-        :param cell_pressures: Shape `(n_cells,)` - current pressures.
+        :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match `self.unit_system`.
         :param unit_system: Unit system for the returned `RockCompressibility`.
             Defaults to `self.unit_system`.
@@ -392,14 +391,14 @@ class RockCompressibilityTable(StoreSerializable):
             unit_system if unit_system is not None else self.unit_system
         )
 
-        pore_volume_multiplier = self._pv_interp(cell_pressures)
-        dpv_dp = self._pv_dp_interp(cell_pressures)
+        pore_volume_multiplier = self._pore_volume_interp(pressure)
+        dpv_dp = self._pore_volume_dp_interp(pressure)
 
         effective_compressibility = np.where(
             pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
         ).astype(dtype)
         reference_pressures = np.full_like(
-            cell_pressures, self.reference_pressure, dtype=dtype
+            pressure, self.reference_pressure, dtype=dtype
         )
 
         if target_unit_system != self.unit_system:
@@ -469,7 +468,7 @@ class RockCompressibilityTable(StoreSerializable):
         pressure_range_factor: float = 10.0,
         interpolation_method: InterpolationMethod = "linear",
         unit_system: UnitSystem = UnitSystem.FIELD,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `RockCompressibilityTable` from a `ROCK` scalar record.
@@ -551,7 +550,7 @@ class RockCompressibilityTable(StoreSerializable):
         *,
         interpolation_method: InterpolationMethod = "linear",
         unit_system: UnitSystem = UnitSystem.FIELD,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `RockCompressibilityTable` from parsed `ROCKTAB` records.
@@ -619,7 +618,7 @@ class RockCompressibilityTable(StoreSerializable):
         region_index: int = 0,
         *,
         interpolation_method: InterpolationMethod = "linear",
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `RockCompressibilityTable` for one region from a `DeckFile`.
@@ -730,7 +729,7 @@ class RockCompressibilityRegions(StoreSerializable):
         deck_file: DeckFile,
         *,
         interpolation_method: InterpolationMethod = "linear",
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build all rock compressibility regions from a `DeckFile`.
@@ -754,7 +753,7 @@ class RockCompressibilityRegions(StoreSerializable):
 
     def to_rock_compressibility(
         self,
-        cell_pressures: CellArray,
+        pressure: CellArray,
         rock_region: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> RockCompressibility:
@@ -766,7 +765,7 @@ class RockCompressibilityRegions(StoreSerializable):
 
         `cr_eff(P) = (1 / PV_mult(P)) · ∂(PV_mult)/∂P`
 
-        :param cell_pressures: Shape `(n_cells,)` - current pressures.
+        :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match the tables' `unit_system`.
         :param rock_region: Shape `(n_cells,)` int array of 1-based ROCKNUM
             values. When `None`, region 1 is used for all cells.
@@ -774,7 +773,7 @@ class RockCompressibilityRegions(StoreSerializable):
             Defaults to the unit system of region 1.
         :returns: Per-cell `RockCompressibility`.
         """
-        n_cells = len(cell_pressures)
+        n_cells = len(pressure)
         dtype = np.dtype(self.regions[next(iter(self.regions))].dtype)
         target_unit_system = (
             unit_system
@@ -786,8 +785,8 @@ class RockCompressibilityRegions(StoreSerializable):
 
         if rock_region is None:
             table = self.for_region(1)
-            pore_volume_multiplier = table._pv_interp(cell_pressures)
-            dpv_dp = table._pv_dp_interp(cell_pressures)
+            pore_volume_multiplier = table._pore_volume_interp(pressure)
+            dpv_dp = table._pore_volume_dp_interp(pressure)
             effective_compressibility[:] = np.where(
                 pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
             )
@@ -801,9 +800,9 @@ class RockCompressibilityRegions(StoreSerializable):
             for rocknum in np.unique(rock_region):
                 mask = rock_region == rocknum
                 table = self.for_region(int(rocknum))
-                region_pressures = cell_pressures[mask]
-                pore_volume_multiplier = table._pv_interp(region_pressures)
-                dpv_dp = table._pv_dp_interp(region_pressures)
+                region_pressures = pressure[mask]
+                pore_volume_multiplier = table._pore_volume_interp(region_pressures)
+                dpv_dp = table._pore_volume_dp_interp(region_pressures)
                 effective_compressibility = np.where(
                     pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
                 )
@@ -879,7 +878,7 @@ def load_compressibility_regions(
     deck_file: DeckFile,
     *,
     interpolation_method: InterpolationMethod = "linear",
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> typing.Dict[int, RockCompressibilityTable]:
     """
     Build a `{rocknum: RockCompressibilityTable}` dict from a `DeckFile`.

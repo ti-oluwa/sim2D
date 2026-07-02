@@ -10,6 +10,7 @@ from scipy.spatial import cKDTree
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.deck.file import DeckFile
 from bores.errors import (
     CellNotFoundError,
     InvalidFaceAreaError,
@@ -227,10 +228,8 @@ def _compute_cell_volumes_and_centroids(
     for face_idx in range(n_faces):
         owner_cell = face_cell_indices[face_idx, 0]
         neighbour_cell = face_cell_indices[face_idx, 1]
-
         start = face_vertex_offsets[face_idx]
         end = face_vertex_offsets[face_idx + 1]
-
         apex = vertex_coordinates[face_vertex_indices[start]]
 
         for iteration in range(2):
@@ -351,6 +350,7 @@ def _compute_cell_bounding_boxes(
     return cell_min, cell_max
 
 
+@typing.final
 @attrs.define(frozen=True, slots=True, kw_only=True)
 class Grid(
     Serializable,
@@ -761,15 +761,15 @@ class Grid(
 
     def _build_cell_face_connectivity(self) -> None:
         n_cells = int(self.face_cell_indices.max()) + 1
-        cell_face_lists: list[list[int]] = [[] for _ in range(n_cells)]
+        cell_face_lists: typing.List[typing.List[int]] = [[] for _ in range(n_cells)]
         for face_idx, (owner, neighbour) in enumerate(self.face_cell_indices):
             if owner >= 0:
                 cell_face_lists[owner].append(face_idx)
             if neighbour >= 0:
                 cell_face_lists[neighbour].append(face_idx)
 
-        flat: list[int] = []
-        offsets: list[int] = [0]
+        flat: typing.List[int] = []
+        offsets: typing.List[int] = [0]
         for faces in cell_face_lists:
             flat.extend(faces)
             offsets.append(len(flat))
@@ -780,14 +780,14 @@ class Grid(
 
     def _build_cell_neighbor_connectivity(self) -> None:
         n_cells = int(self.face_cell_indices.max()) + 1
-        neighbor_sets: list[set[int]] = [set() for _ in range(n_cells)]
+        neighbor_sets: typing.List[typing.Set[int]] = [set() for _ in range(n_cells)]
         for owner, neighbour in self.face_cell_indices:
             if owner >= 0 and neighbour >= 0:
                 neighbor_sets[owner].add(neighbour)
                 neighbor_sets[neighbour].add(owner)
 
-        flat: list[int] = []
-        offsets: list[int] = [0]
+        flat: typing.List[int] = []
+        offsets: typing.List[int] = [0]
         for neighbors in neighbor_sets:
             flat.extend(sorted(neighbors))
             offsets.append(len(flat))
@@ -1074,12 +1074,10 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate(
-            [
-                owners[owners >= 0],
-                neighbours[neighbours >= 0],
-            ]
-        )
+        all_boundary = np.concatenate([
+            owners[owners >= 0],
+            neighbours[neighbours >= 0],
+        ])
         return typing.cast(
             IntArray[OneDimension], np.unique(all_boundary).astype(np.int32)
         )
@@ -1254,6 +1252,48 @@ class Grid(
                     "One or more face unit normals do not have unit magnitude "
                     f"(max deviation = {deviation.max():.3e})."
                 )
+
+    @classmethod
+    def from_deck_file(
+        cls,
+        deck_file: DeckFile,
+        *,
+        unit_system: typing.Optional[UnitSystem] = None,
+        metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    ) -> Self:
+        """
+        Build a `Grid` from a parsed `DeckFile`.
+
+        Detects the grid format (corner-point via `COORD`/`ZCORN` or Cartesian
+        via `DX`/`DY`/`DZ`) and delegates to the appropriate factory.
+
+        Corner-point grids are built via `make_corner_point_grid`; Cartesian
+        grids via `make_cartesian_grid`. Both factories consume the GRDECL
+        keywords already parsed in the deck.
+
+        Delegates directly to `load_grdecl`, which handles both corner-point
+        and Cartesian grids, fault processing, NNC resolution, and unit
+        system detection from the deck.
+
+        :param deck_file: Parsed `DeckFile` containing GRID-section keywords.
+        :param unit_system: If provided, convert the grid to this unit system
+            after loading. When `None`, the unit system declared in the deck
+            is used as-is.
+        :param metadata: Optional extra key/value pairs merged into
+            `Grid.metadata`.
+        :returns: `Grid` for the deck.
+        :raises ValidationError: If no recognisable grid keywords are found.
+        """
+        from bores.grids.io.grdecl import load_grdecl
+
+        return typing.cast(
+            Self,
+            load_grdecl(
+                source=deck_file,
+                unit_system=unit_system,
+                metadata=metadata,
+            ),
+        )
 
     def convert(
         self,

@@ -109,7 +109,7 @@ def compute_connection_transmissibilities(
     *,
     net_to_gross: typing.Optional[NumberOrArray[OneDimension]] = None,
     unit_system: typing.Optional[UnitSystem] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> ConnectionTransmissibilities:
     """
     Compute TPFA transmissibilities for all connections in an unstructured grid.

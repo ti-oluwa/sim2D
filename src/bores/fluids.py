@@ -92,7 +92,7 @@ class Fluid(StoreSerializable):
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
         pvt_tables: typing.Optional[PVTTables] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         unit_system: UnitSystem = UnitSystem.FIELD,
     ) -> typing.Tuple[typing.Any, ...]:
         """Stable hashable cache key for pseudo-pressure table construction."""
@@ -156,7 +156,7 @@ class Fluid(StoreSerializable):
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
         pvt_tables: typing.Optional[PVTTables] = None,
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
         unit_system: UnitSystem = UnitSystem.FIELD,
         use_cache: bool = True,
     ) -> PseudoPressureTable:

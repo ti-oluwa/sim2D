@@ -26,7 +26,7 @@ def build_saturation_grids(
     gas_oil_transition_thickness: float = 5.0,
     oil_water_transition_thickness: float = 5.0,
     transition_curvature_exponent: float = 2.0,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> typing.Tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],

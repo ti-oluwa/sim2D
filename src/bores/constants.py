@@ -29,6 +29,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+@typing.final
 @attrs.frozen(slots=True)
 class Constant(Serializable):
     """
@@ -61,6 +62,7 @@ class Constant(Serializable):
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
 
+@typing.final
 @attrs.frozen(slots=True)
 class ConstantFactory(Serializable):
     """
@@ -731,6 +733,7 @@ DEFAULT_CONSTANTS: typing.Dict[
 }
 
 
+@typing.final
 class Constants(
     StoreSerializable,
     fields={"_store": typing.Dict[str, Constant]},
@@ -1346,7 +1349,7 @@ def get_conversion_factors(
 ) -> UnitConversionFactors:
     """
     Return a dictionary of scalar conversion factors for every physical
-    dimension used by the property classes in this module.
+    dimension used by the classes in this library.
 
     Each value converts a quantity expressed in `from_system` to
     `to_system` by **multiplication**, except temperature which uses an

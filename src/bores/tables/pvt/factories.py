@@ -82,7 +82,7 @@ def _get_gas_tables_from_pvt_table(
     pvt_table: PVTTable,
     pressure: NumberArray[NDimension],
     temperature: NumberArray[NDimension],
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
 ) -> typing.Dict[str, typing.Optional[NumberArray[NDimension]]]:
     """
     Evaluate a gas `PVTTable` on a `(P, T)` meshgrid.
@@ -140,7 +140,7 @@ def build_oil_pvt_data(
     solution_gas_to_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None,
     standard_oil_density: typing.Optional[Number] = None,
     standard_gas_density: typing.Optional[Number] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
@@ -284,9 +284,8 @@ def build_oil_pvt_data(
         temperatures_flat = np.broadcast_to(temperatures, (n_p, n_t))
         assert solution_gas_to_oil_ratio_table is not None
         bubble_point_pressure_table = (
-            pb_interp.ev(
-                solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel()
-            )
+            pb_interp
+            .ev(solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel())
             .reshape(n_p, n_t)
             .astype(dtype)
         )
@@ -441,7 +440,7 @@ def build_gas_pvt_data(
     standard_gas_density: typing.Optional[Number] = None,
     standard_oil_density: typing.Optional[Number] = None,
     vaporized_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
@@ -655,7 +654,7 @@ def build_water_pvt_data(
     bubble_point_pressure_table: typing.Optional[NumberArray[ThreeDimensions]] = None,
     gas_free_water_fvf_table: typing.Optional[NumberArray[TwoDimensions]] = None,
     standard_water_density: typing.Optional[Number] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTData:
@@ -876,7 +875,7 @@ def build_pvt_dataset(
     standard_oil_density: typing.Optional[Number] = None,
     standard_gas_density: typing.Optional[Number] = None,
     standard_water_density: typing.Optional[Number] = None,
-    dtype: typing.Optional[npt.DTypeLike] = None,
+    dtype: npt.DTypeLike = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     **kwargs: typing.Any,
 ) -> PVTDataSet:

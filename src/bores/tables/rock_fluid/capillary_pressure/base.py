@@ -542,7 +542,7 @@ class TwoPhaseCapillaryPressureTable(
         number_of_base_points: int = 200,
         number_of_endpoint_extra_points: int = 30,
         spacing: Spacing = "cosine",
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> "TwoPhaseCapillaryPressureTable":
         """
         Build a `TwoPhaseCapillaryPressureTable` for one saturation region from a `DeckFile`.
@@ -958,7 +958,7 @@ class ThreePhaseCapillaryPressureTable(
         number_of_base_points: int = 200,
         number_of_endpoint_extra_points: int = 30,
         spacing: Spacing = "cosine",
-        dtype: typing.Optional[npt.DTypeLike] = None,
+        dtype: npt.DTypeLike = None,
     ) -> Self:
         """
         Build a `ThreePhaseCapillaryPressureTable` for one saturation region from
