@@ -15,7 +15,12 @@ import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator, interp1d
 from typing_extensions import Self
 
-from bores.constants import UnitConversionTable, c, get_conversion_factors
+from bores.constants import (
+    UnitConversionTable,
+    build_unit_conversion_table,
+    c,
+    get_conversion_factors,
+)
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties.rock import RockCompressibility
@@ -397,18 +402,18 @@ class RockCompressibilityTable(StoreSerializable):
         effective_compressibility = np.where(
             pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
         ).astype(dtype)
-        reference_pressures = np.full_like(
+        reference_pressure = np.full_like(
             pressure, self.reference_pressure, dtype=dtype
         )
 
         if target_unit_system != self.unit_system:
             factors = get_conversion_factors(self.unit_system, target_unit_system)
-            reference_pressures *= factors["pressure"]  # type: ignore[operator]
+            reference_pressure *= factors["pressure"]  # type: ignore[operator]
             effective_compressibility *= factors["compressibility"]  # type: ignore[operator]
 
         return RockCompressibility(
             reference_pressure=typing.cast(
-                CellArray, reference_pressures.astype(dtype, copy=False)
+                CellArray, reference_pressure.astype(dtype, copy=False)
             ),
             compressibility=typing.cast(
                 CellArray, effective_compressibility.astype(dtype, copy=False)
@@ -617,6 +622,8 @@ class RockCompressibilityTable(StoreSerializable):
         deck_file: DeckFile,
         region_index: int = 0,
         *,
+        n_pressure_points: int = 50,
+        pressure_range_factor: float = 10,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
     ) -> Self:
@@ -653,8 +660,10 @@ class RockCompressibilityTable(StoreSerializable):
             if region_rows:
                 record = region_rows[0]
                 return cls.from_rock_record(
-                    reference_pressure=float(record["p_ref"]),
-                    rock_compressibility=float(record["cr"]),
+                    reference_pressure=record["p_ref"],
+                    rock_compressibility=record["cr"],
+                    n_pressure_points=n_pressure_points,
+                    pressure_range_factor=pressure_range_factor,
                     interpolation_method=interpolation_method,
                     unit_system=unit_system,
                     dtype=dtype,
@@ -781,7 +790,7 @@ class RockCompressibilityRegions(StoreSerializable):
             else self.regions[next(iter(self.regions))].unit_system
         )
         effective_compressibility = np.empty(n_cells, dtype=dtype)
-        reference_pressures = np.empty(n_cells, dtype=dtype)
+        reference_pressure = np.empty(n_cells, dtype=dtype)
 
         if rock_region is None:
             table = self.for_region(1)
@@ -790,13 +799,14 @@ class RockCompressibilityRegions(StoreSerializable):
             effective_compressibility[:] = np.where(
                 pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
             )
-            reference_pressures[:] = table.reference_pressure
+            reference_pressure[:] = table.reference_pressure
 
             if target_unit_system != table.unit_system:
                 factors = get_conversion_factors(table.unit_system, target_unit_system)
-                reference_pressures *= factors["pressure"]  # type: ignore
+                reference_pressure *= factors["pressure"]  # type: ignore
                 effective_compressibility *= factors["compressibility"]  # type: ignore
         else:
+            unit_conversion_table = build_unit_conversion_table()
             for rocknum in np.unique(rock_region):
                 mask = rock_region == rocknum
                 table = self.for_region(int(rocknum))
@@ -806,21 +816,23 @@ class RockCompressibilityRegions(StoreSerializable):
                 effective_compressibility = np.where(
                     pore_volume_multiplier > 0.0, dpv_dp / pore_volume_multiplier, 0.0
                 )
-                reference_pressures = np.full(mask.sum(), table.reference_pressure)
+                reference_pressure = np.full(mask.sum(), table.reference_pressure)
 
                 if target_unit_system != table.unit_system:
                     factors = get_conversion_factors(
-                        table.unit_system, target_unit_system
+                        table.unit_system,
+                        target_unit_system,
+                        table=unit_conversion_table,
                     )
-                    reference_pressures *= factors["pressure"]
+                    reference_pressure *= factors["pressure"]
                     effective_compressibility *= factors["compressibility"]
 
                 effective_compressibility[mask] = effective_compressibility
-                reference_pressures[mask] = reference_pressures
+                reference_pressure[mask] = reference_pressure
 
         return RockCompressibility(
             reference_pressure=typing.cast(
-                CellArray, reference_pressures.astype(dtype, copy=False)
+                CellArray, reference_pressure.astype(dtype, copy=False)
             ),
             compressibility=typing.cast(
                 CellArray, effective_compressibility.astype(dtype, copy=False)

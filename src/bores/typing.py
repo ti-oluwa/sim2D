@@ -49,7 +49,7 @@ class UnitSystem(enum.Enum):
     =========  =======  ======  =======  =========  =======  ========  ========
     System     Length   Area    Volume   Perm.      Press.   Temp.     Rates (/day)
     =========  =======  ======  =======  =========  =======  ========  ========
-    FIELD      ft       ft²     ft³      mD         psi      °F        STB/MSCF
+    FIELD      ft       ft²     ft³      mD         psi      °F        STB/SCF
     METRIC     m        m²      m³       mD         bar      °C        Sm³
     LAB        cm       cm²     cm³      mD         atm      °C        cm³ or cc
     SI         m        m²      m³       m²         Pa       K         m³
@@ -462,6 +462,23 @@ class UnitConversionFactors(TypedDict):
 
     temperature_offset: Number
     """Additive temperature conversion offset."""
+
+    volumetric_rate: Number
+    """
+    Volumetric flow rate conversion factor (volume/time).
+
+    FIELD: ft³/day, METRIC: m³/day, LAB: cm³/hour, SI: m³/s.
+    Derived as `volume_factor / time_factor` where time is always in days
+    for FIELD/METRIC, hours for LAB, and seconds for SI.
+    """
+
+    mass: Number
+    """
+    Mass conversion factor.
+
+    FIELD: lbm, METRIC: kg, LAB: g, SI: kg.
+    Derived as `density_factor * length_factor³`.
+    """
 
 
 UnitConversionTable = typing.Dict[

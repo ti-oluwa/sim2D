@@ -129,7 +129,7 @@ def _utilization(
     return actual / limit
 
 
-@attrs.define
+@attrs.mutable
 class Timer(StoreSerializable):
     """
     Simulation time manager for smart and adaptive time stepping.

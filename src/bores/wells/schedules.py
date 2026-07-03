@@ -137,7 +137,7 @@ class EventActions(Serializable, typing.Generic[WellT, Coordinates]):
         return cls(*actions)
 
 
-@attrs.define(slots=True)
+@attrs.mutable(slots=True)
 class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
     """A predicate that can be serialized and composed with complex expressions."""
 
@@ -250,7 +250,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         raise DeserializationError(f"Unknown {cls.__name__} type: {pred_type}")
 
 
-@attrs.define(slots=True)
+@attrs.mutable(slots=True)
 class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
     """An action that can be serialized and composed."""
 
@@ -676,7 +676,7 @@ def deserialize_event_action(
 
 
 @typing.final
-@attrs.define(slots=True, hash=True)
+@attrs.mutable(slots=True, hash=True)
 class WellEvent(Serializable, typing.Generic[Coordinates]):
     """
     Represents a scheduled event for a well at a specific time step.
@@ -884,7 +884,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
 
 
 @typing.final
-@attrs.define(slots=True)
+@attrs.mutable(slots=True)
 class WellSchedules(StoreSerializable, typing.Generic[Coordinates]):
     """
     A collection of schedules for multiple wells.

@@ -72,7 +72,7 @@ __all__ = [
 
 
 @typing.final
-@attrs.define
+@attrs.mutable
 class MixingRule:
     """
     Wraps a mixing-rule callable together with an optional analytical

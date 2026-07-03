@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.constants import UnitConversionTable, c, get_conversion_factors
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
@@ -21,7 +21,7 @@ from bores.typing import (
 )
 from bores.utils import scale, scale_and_offset
 
-__all__ = ["RockPermeability", "Rock", "RockCompressibility"]
+__all__ = ["RockPermeability", "Rock", "RockCompressibility", "Temperature"]
 
 
 def _load_cell_array(
@@ -225,38 +225,120 @@ class RockCompressibility(StoreSerializable):
         )
 
 
-def _load_temperature(
-    deck_file: DeckFile,
-    n_cells: int,
-    default: typing.Optional[Number] = None,
-    dtype: npt.DTypeLike = None,
-) -> CellArray:
+@attrs.frozen(slots=True)
+class Temperature:
     """
-    Resolve the initial per-cell reservoir temperature field from the deck.
+    Reservoir temperature specification.
 
-    :param deck_file: Parsed DataFile.
-    :param default: Fallback temperature (°F) when nothing is in deck.
-        Will default to `c.STANDARD_TEMPERATURE_IMPERIAL` if not provided.
-    :param dtype: NumPy floating dtype for output array. Defaults to `bores.get_dtype()`.
-    :returns: (n_cells,) temperature array.
+    Represents either a single uniform reservoir temperature (`default`) or
+    a mapping of 1-based PVT region indices to temperature values (`regions`).
+
+    - `default`: Single temperature applied when no per-region mapping exists.
+    - `regions`: Mapping from 1-based region index to temperature value. A
+        special key `-1` is used as the default region value when present.
+    - `unit_system`: Unit system used for stored temperature values.
+
+    The companion method `as_cell_array` broadcasts region temperatures to a
+    per-cell array using a provided region index array (e.g. `pvt_region`).
+    Use `convert(target)` to produce a copy in a different `UnitSystem`.
     """
-    rtemp = deck_file.get("RTEMP")
-    if rtemp is not None and len(rtemp) != 1:
-        raise ValidationError("`RTEMP` must contain exactly one table.")
 
-    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    if rtemp:
-        temperature = rtemp[0][0]["temperature"]
-        return np.full(n_cells, temperature, dtype=dtype)
+    default: typing.Optional[Number] = None
+    """Single temperature applied when no per-region mapping exists."""
+    regions: typing.Optional[typing.Dict[int, Number]] = None
+    """
+    Mapping from 1-based region index to temperature value. 
+    A special key `-1` is used as the default region value when present.
+    """
+    unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system used for stored temperature values."""
 
-    return typing.cast(
-        CellArray,
-        np.full(
-            n_cells,
-            default if default is not None else c.STANDARD_TEMPERATURE_IMPERIAL,
-            dtype=dtype,
-        ),
-    )
+    def __attrs_post_init__(self) -> None:
+        if self.default is None and self.regions is None:
+            raise ValidationError("Either `default` or `regions` must be provided.")
+
+        if not self.regions and not self.default:
+            raise ValidationError(
+                "`regions` cannot be empty when `default` is not provided."
+            )
+
+        regions = self.regions or {}
+        regions[-1] = (  # -1 is the default region
+            self.default
+            if self.default is not None
+            else np.mean(list(regions.values()))  # type: ignore
+        )
+        object.__setattr__(self, "regions", regions)
+
+    def for_region(self, pvtnum: int) -> Number:
+        assert self.regions
+        if pvtnum in self.regions:
+            return self.regions[pvtnum]
+        return self.regions[-1]
+
+    def as_cell_array(
+        self, pvt_region: IntCellArray, dtype: npt.DTypeLike = None
+    ) -> CellArray:
+        """
+        Broadcast per-region temperatures to a per-cell array.
+
+        :param pvt_region: Shape `(n_cells,)` int array of 1-based region
+            indices. Usually `Regions.pvt_region`. For each cell the temperature
+            is `regions[pvt_region[i]]` when present, otherwise the default region
+            value `regions[-1]` is used (or `self.default` when `regions` is absent).
+        :param dtype: Optional numpy dtype for the returned array. When
+            omitted `get_dtype()` is used.
+        :returns: `CellArray` of shape `(n_cells,)` with temperature values.
+        """
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+        n_cells = pvt_region.size
+
+        # Resolve per-region mapping and default
+        assert self.regions
+        regions = self.regions
+        default = regions[-1]
+        out = np.full(n_cells, default, dtype=dtype)
+        # If there are explicit region values, broadcast them
+        # Assign each region value to cells belonging to that region
+        for region_idx, temperature in regions.items():
+            if region_idx == -1:
+                continue
+            mask = pvt_region == region_idx
+            if np.any(mask):
+                out[mask] = temperature
+        return typing.cast(CellArray, out)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """Return a copy with temperatures converted to *target* units."""
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        factor = factors["temperature"]
+        offset = factors["temperature_offset"]
+
+        new_default = (
+            None
+            if self.default is None
+            else scale_and_offset(self.default, factor=factor, offset=offset)
+        )
+
+        new_regions: typing.Optional[typing.Dict[int, Number]] = None
+        if self.regions is not None:
+            new_regions = {
+                k: scale_and_offset(v, factor=factor, offset=offset)
+                for k, v in self.regions.items()
+            }
+
+        return self.__class__(
+            default=new_default, regions=new_regions, unit_system=target
+        )
 
 
 @attrs.frozen(slots=True)
@@ -314,13 +396,12 @@ class Rock(StoreSerializable):
     Units: °F (FIELD), °C (METRIC / LAB), K (SI).
 
     For standard isothermal black-oil the array is uniform (a single
-    reservoir temperature broadcast across all cells).  For thermal
-    extensions the values vary spatially and are interpolated from the
-    `TEMPVD` keyword (temperature vs depth) at each cell centroid.
+    reservoir temperature broadcast across all cells) or a per-region temperature distribution.
 
-    This quantity belongs on `Rock` rather than
-    `State` because it is *not* a primary unknown - the solver
-    does not update it during Newton iterations.
+    Note:
+        This quantity belongs on `Rock` rather than
+        `State` because it is *not* a primary unknown as the solver
+         does not update it during Newton iterations.
     """
 
     connate_water_saturation: CellArray
@@ -419,8 +500,9 @@ class Rock(StoreSerializable):
         *,
         grid: Grid,
         pressure: CellArray,
-        temperature: typing.Optional[CellArray] = None,
-        default_temperature: typing.Optional[Number] = None,
+        temperature: typing.Union[
+            CellArray, Number
+        ],  # Must tally with whatever is used build `PVTTables` and vice versa.
         rock_region: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
@@ -445,22 +527,18 @@ class Rock(StoreSerializable):
         dtype = get_dtype()
 
         def _required(keyword: str) -> CellArray:
-            data = deck_file.get(keyword)
+            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is None:
                 raise ValidationError(
                     f"`{keyword}` is required but not found in the DeckFile."
                 )
-            return typing.cast(
-                CellArray, np.asarray(data, dtype=dtype).ravel()[:n_cells]
-            )
+            return data
 
         def _optional(keyword: str, default: float) -> CellArray:
-            data = deck_file.get(keyword)
+            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is None:
                 return np.full(n_cells, default, dtype=dtype)
-            return typing.cast(
-                CellArray, np.asarray(data, dtype=dtype).ravel()[:n_cells]
-            )
+            return data
 
         permeability = RockPermeability.from_deck_file(
             deck_file, n_cells=n_cells, dtype=dtype
@@ -476,19 +554,16 @@ class Rock(StoreSerializable):
             rock_region=rock_region,
             unit_system=unit_system,
         )
-        if temperature is None:
-            temperature = _load_temperature(
-                deck_file,
-                n_cells=n_cells,
-                default=default_temperature,
-                dtype=dtype,
+        if np.isscalar(temperature):
+            temperature = typing.cast(
+                CellArray, np.full(n_cells, temperature, dtype=dtype)
             )
         return cls(
             porosity=_required("PORO"),
             absolute_permeability=permeability,
             net_to_gross=_optional("NTG", 1.0),
             compressibility=compressibility,
-            temperature=temperature,
+            temperature=typing.cast(CellArray, temperature),
             connate_water_saturation=_optional("SWCON", 0.0),
             irreducible_water_saturation=_optional("SWCRIT", 0.0),
             residual_oil_saturation_water_flood=_optional("SOWCR", 0.0),

@@ -135,7 +135,7 @@ class Hysteresis(StoreSerializable):
 # so we dont mutate the one on the model itself. Moreover, the PVTCache is what will
 # mostlikely be updated most frequently during the simulation. The `State` object will only
 # use to record or generated summary of each timestep.
-@attrs.define(slots=True)
+@attrs.mutable(slots=True)
 class State(StoreSerializable):
     """
     Dynamic per-cell simulation state, updated at every time step.

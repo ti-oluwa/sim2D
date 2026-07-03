@@ -6,6 +6,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.correlations import scalars
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
@@ -19,7 +20,7 @@ from bores.typing import (
     Number,
     UnitSystem,
 )
-from bores.utils import scale, scale_and_offset
+from bores.utils import scale
 
 __all__ = ["PVT", "PVTCache"]
 
@@ -27,64 +28,20 @@ __all__ = ["PVT", "PVTCache"]
 @attrs.frozen(slots=True)
 class PVT(StoreSerializable):
     """
-    Static PVT reference characterisation of the reservoir fluids.
+    Static/immutable fluid characterization. Pressure- and temperature-dependent 
+    properties are evaluated from the PVT tables or correlations during the simulation 
+    and may be cached separately for performance.
 
-    Stores the per-fluid scalars read once from the PVT deck that do not
-    change between time steps. Quantities that *do* vary with pressure -
-    FVFs, viscosities, densities, Rs, Rv, Rsw, bubble-point and dew-point
-    pressures, z-factor, and compressibilities, live in `PVTCache` and
-    are recomputed from the PVT tables each Newton iteration.
-
-    This split reflects the physical distinction between what fluids *are*
-    (static characterisation, stored here) and what the current reservoir
-    *condition* looks like (transient evaluation, stored in `PVTCache`).
-
-    Use `convert(target)` to rescale dimensional quantities to another
-    unit system.
+    Use `convert(target)` to rescale dimensional quantities to another unit system.
     """
-
-    reference_temperature: Number
 
     # Oil
-
     oil_specific_gravity: Number
     """
-    Oil specific gravity relative to fresh water at 60 °F (dimensionless).
+    Oil specific gravity relative to fresh water at standard conditions (dimensionless).
 
-    Constant for a given crude; typically 0.75-0.95.  Used to derive the
+    Constant for a given crude; typically 0.75-0.95. Used to derive the
     stock-tank oil density: ρ_o,STC = oil_specific_gravity x ρ_water_STC.
-    """
-
-    oil_api_gravity: Number
-    """
-    Oil API gravity (°API), computed as 141.5 / SG - 131.5.
-
-    Provided for convenience; redundant with `oil_specific_gravity`.
-    """
-
-    oil_reference_fvf: Number
-    """
-    Oil formation volume factor at bubble-point (reference) pressure (Bo_ref).
-
-    Units: bbl/STB (FIELD), m³/sm³ (METRIC / SI), cc/scc (LAB).
-    Used to initialise `PVTCache.oil_fvf` before the first Newton iteration.
-    """
-
-    oil_reference_viscosity: Number
-    """
-    Dead-oil viscosity at standard conditions.
-
-    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
-    Serves as the correlation reference value; live-oil viscosity at
-    reservoir conditions is evaluated in `PVTCache`.
-    """
-
-    oil_reference_compressibility: Number
-    """
-    Oil compressibility at bubble-point (reference) pressure.
-
-    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
-    Used for the undersaturated-oil compressibility term above bubble point.
     """
 
     standard_oil_density: Number
@@ -97,15 +54,6 @@ class PVT(StoreSerializable):
     """
 
     # Water
-
-    water_salinity: Number
-    """
-    Formation water salinity (ppm NaCl).
-
-    Assumed spatially and temporally constant. Used in brine density and
-    viscosity correlations (e.g. Batzle-Wang). Typical seawater: 35 000 ppm.
-    """
-
     water_reference_pressure: Number
     """
     Reference pressure at which `water_reference_fvf` and
@@ -149,6 +97,24 @@ class PVT(StoreSerializable):
     Used in: ρw,res = standard_water_density / Bw
     """
 
+    # Gas
+    gas_gravity: Number
+    """
+    Gas specific gravity relative to air (dimensionless).
+
+    0.556 for pure methane; up to ~0.9 for rich condensate gas. Input to
+    pseudo-critical property correlations (Sutton, Pitzer) for z-factor and
+    viscosity.
+    """
+
+    gas_reference_viscosity: Number
+    """
+    Gas viscosity at reference (standard) conditions.
+
+    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
+    Typically 0.01-0.03 cP at reservoir temperature.
+    """
+
     standard_gas_density: Number
     """
     Stock-tank gas density at standard conditions.
@@ -168,52 +134,20 @@ class PVT(StoreSerializable):
     Zero for incompressible-viscosity water (the common default).
     """
 
-    # Gas
-
-    reservoir_gas: str = "methane"
+    water_salinity: Number = 0.0
     """
-    Name or identifier of the reservoir (or injected) gas
-    (e.g. `"methane"`, `"CO2"`).
+    Formation water salinity (ppm NaCl).
 
-    Used to select z-factor correlations and for documentation.
+    Assumed spatially and temporally constant. Used in brine density and
+    viscosity correlations (e.g. Batzle-Wang). Typical seawater: 35 000 ppm.
     """
 
-    gas_gravity: Number = 0.6
+    gas_molecular_weight: typing.Optional[Number] = None
     """
-    Gas specific gravity relative to air (dimensionless).
-
-    0.556 for pure methane; up to ~0.9 for rich condensate gas. Input to
-    pseudo-critical property correlations (Sutton, Pitzer) for z-factor and
-    viscosity.
-    """
-
-    gas_molecular_weight: Number = 16.04
-    """
-    Gas molecular weight (g/mol).
-
-    Methane: 16.04 g/mol; CO₂: 44.01 g/mol.
-    Should satisfy MW ≈ 28.97 x gas_gravity.
-    """
-
-    gas_reference_viscosity: Number = 0.012
-    """
-    Gas viscosity at reference (standard) conditions.
-
-    Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
-    Typically 0.01-0.03 cP at reservoir temperature.
-    """
-
-    # Miscible / solvent (EOR)
-
-    miscibility_model: MiscibilityModel = "immiscible"
-    """
-    Miscibility model identifier.
-
-    `"immiscible"` - standard black-oil.
-    `"todd-longstaff"` - first-contact miscible EOR.
-
-    Controls how solvent concentration in the oil phase is handled and which
-    mixing rules are applied for effective viscosity and density.
+    Gas molecular weight (g/mol). Not universally provided in the PVT deck; if missing, and
+    needed, it can be computed from the gas composition (if available) or estimated from the gas gravity
+    (for hydrocarbon gases, MW ≈ 28.97 x gas_gravity) or use 
+    `bores.correlations.scalars.compute_gas_molecular_weight` to compute it from the gas gravity.
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -224,6 +158,15 @@ class PVT(StoreSerializable):
     weight, miscibility_model, reservoir_gas) are unaffected by unit
     conversion.
     """
+
+    @property
+    def oil_api_gravity(self) -> Number:
+        """
+        Oil API gravity (°API), computed as 141.5 / SG - 131.5.
+
+        Provided for convenience; redundant with `oil_specific_gravity`.
+        """
+        return scalars.compute_oil_api_gravity(self.oil_specific_gravity)
 
     def convert(
         self,
@@ -236,8 +179,7 @@ class PVT(StoreSerializable):
         Return a new `PVT` with dimensional quantities rescaled to
         *target*.
 
-        Dimensionless fields (gravities, API, molecular weight,
-        `miscibility_model`, `reservoir_gas`) are copied unchanged.
+        Dimensionless fields are copied unchanged.
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
@@ -248,20 +190,7 @@ class PVT(StoreSerializable):
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
-            reference_temperature=scale_and_offset(
-                self.reference_temperature,
-                factor=factors["temperature"],
-                offset=factors["temperature_offset"],
-            ),
-            oil_specific_gravity=self.oil_specific_gravity,
-            oil_api_gravity=self.oil_api_gravity,
-            oil_reference_fvf=scale(self.oil_reference_fvf, factors["liquid_fvf"]),
-            oil_reference_viscosity=scale(
-                self.oil_reference_viscosity, factors["viscosity"]
-            ),
-            oil_reference_compressibility=scale(
-                self.oil_reference_compressibility, factors["compressibility"]
-            ),
+            oil_specific_gravity=self.oil_specific_gravity,           
             water_salinity=self.water_salinity,
             water_reference_pressure=scale(
                 self.water_reference_pressure, factors["pressure"]
@@ -281,13 +210,11 @@ class PVT(StoreSerializable):
                 self.standard_water_density, factors["density"]
             ),
             standard_gas_density=scale(self.standard_gas_density, factors["density"]),
-            reservoir_gas=self.reservoir_gas,
             gas_gravity=self.gas_gravity,
             gas_molecular_weight=self.gas_molecular_weight,
             gas_reference_viscosity=scale(
                 self.gas_reference_viscosity, factors["viscosity"]
             ),
-            miscibility_model=self.miscibility_model,
             unit_system=target,
         )
 
@@ -295,21 +222,12 @@ class PVT(StoreSerializable):
 @attrs.frozen(slots=True)
 class PVTCache:
     """
-    Transient per-cell PVT quantities derived from pressure and the PVT tables.
+    Transient per-cell PVT quantities derived from pressure, temperature, and the PVT tables.
 
     Every field in this class is a function of the current `State`
     pressure (and optionally Rs, Rv, Rsw) evaluated against the parsed PVT
-    tables.  They are recomputed at the start of each Newton iteration and
+    tables. They are recomputed at the start of each Newton iteration and
     discarded at the end of each time step.
-
-    **This class is deliberately not** `Serializable` **and not**
-    `StoreSerializable`. It must never be checkpointed, persisted, or
-    passed to `evolve_state`. If you need to write PVT quantities to an
-    output file for post-processing, compute them on demand from the stored
-    `State` and the PVT tables at output time - exactly as Eclipse
-    does when it writes `DENO`, `DENG` etc. via `RPTRST`.
-
-    Use `bores.model.pvt.compute_pvt_cache` to construct an instance.
 
     All arrays are shape `(n_cells,)` and indexed in the same order as
     `Grid.cell_centroids`.  Units follow `State.unit_system`.

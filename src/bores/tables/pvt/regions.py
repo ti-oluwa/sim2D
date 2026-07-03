@@ -14,6 +14,7 @@ from bores.constants import UnitConversionTable, c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties.pvt import PVT
+from bores.model.properties.rock import Temperature
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.tables.pvt.base import InterpolationMethod, PVTTable, PVTTables
@@ -42,7 +43,7 @@ class PVTRegions(StoreSerializable):
     the corresponding `PVTTables` instance.
 
     Use `for_region(pvtnum)` to retrieve the tables for a given region, and
-    `load_pvt_regions` to construct from a deck.
+    `from_deck_file` to construct from a deck.
 
     Example:
 
@@ -106,7 +107,7 @@ class PVTRegions(StoreSerializable):
     def from_deck_file(
         cls,
         deck_file: DeckFile,
-        temperature: float,
+        temperature: typing.Union[Temperature, Number],
         *,
         interpolation_method: InterpolationMethod = "linear",
         validate: bool = True,
@@ -121,7 +122,8 @@ class PVTRegions(StoreSerializable):
         `PVTG` > `PVDG` for gas; `PVTW` for water) and builds one `PVTTables` per `PVTNUM` region.
 
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
-        :param temperature: Reservoir temperature (°F).
+        :param temperature: Reservoir temperature (°F) used for all regions,  
+            or a reservoir regional `Temperature` instance.
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param validate: Run physical-consistency checks.
         :param warn_on_extrapolation: Log warnings on extrapolation.
@@ -130,7 +132,9 @@ class PVTRegions(StoreSerializable):
         """
         regions = load_pvt_regions(
             deck_file=deck_file,
-            temperature=temperature,
+            temperature=temperature
+            if isinstance(temperature, Temperature)
+            else Temperature(temperature, unit_system=UnitSystem.FIELD),
             interpolation_method=interpolation_method,
             validate=validate,
             warn_on_extrapolation=warn_on_extrapolation,
@@ -360,11 +364,11 @@ def _build_oil_data_from_pvto(
         rs_at_pressure = float(solution_gor_of_pressure(pressure))
         solution_gor_2d[i, :] = rs_at_pressure
 
-        oil_fvf_val = float(oil_fvf_interps[rs_idx](pressure))
-        oil_viscosity_val = float(oil_viscosity_interps[rs_idx](pressure))
+        oil_fvf = float(oil_fvf_interps[rs_idx](pressure))
+        oil_viscosity = float(oil_viscosity_interps[rs_idx](pressure))
 
-        oil_fvf_2d[i, :] = oil_fvf_val
-        oil_viscosity_2d[i, :] = oil_viscosity_val
+        oil_fvf_2d[i, :] = oil_fvf
+        oil_viscosity_2d[i, :] = oil_viscosity
 
     # Bubble-point table: Pb(Rs, T) - 2-D, one Pb per Rs per temperature
     bubble_point_pressure_2d = np.tile(
@@ -866,7 +870,7 @@ def _build_water_data_from_pvtw(
 
 def load_pvt_regions(
     deck_file: DeckFile,
-    temperature: Number,
+    temperature: Temperature,
     *,
     interpolation_method: InterpolationMethod = "linear",
     validate: bool = True,
@@ -890,7 +894,7 @@ def load_pvt_regions(
     takes precedence.
 
     :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
-    :param temperature: Reservoir temperature (°F).
+    :param temperature: `Temperature` instance.
     :param interpolation_method: `"linear"` (default) or `"cubic"`.
     :param validate: Run physical-consistency checks.
     :param warn_on_extrapolation: Log warnings when queries exceed table bounds.
@@ -929,6 +933,8 @@ def load_pvt_regions(
         dtype=dtype,
     )
     regions: typing.Dict[int, PVTTables] = {}
+    if unit_system != temperature.unit_system:
+        temperature = temperature.convert(unit_system)
 
     for region_idx in range(n_regions):
         pvtnum = region_idx + 1  # 1-based
@@ -947,7 +953,7 @@ def load_pvt_regions(
             oil_data = _build_oil_data_from_pvto(
                 pvto_records=pvto_all[region_idx],
                 density_record=density_record,
-                temperature=temperature,
+                temperature=temperature.for_region(pvtnum),
                 pvt=pvt,
                 unit_system=unit_system,
                 dtype=dtype,
@@ -956,7 +962,7 @@ def load_pvt_regions(
             oil_data = _build_oil_data_from_pvdo(
                 pvdo_records=pvdo_all[region_idx],
                 density_record=density_record,
-                temperature=temperature,
+                temperature=temperature.for_region(pvtnum),
                 pvt=pvt,
                 unit_system=unit_system,
                 dtype=dtype,
@@ -984,7 +990,7 @@ def load_pvt_regions(
                 oil_data = _build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,
                     density_record=density_record,
-                    temperature=temperature,
+                    temperature=temperature.for_region(pvtnum),
                     pvt=pvt,
                     unit_system=unit_system,
                     dtype=dtype,
@@ -996,7 +1002,7 @@ def load_pvt_regions(
             gas_data = _build_gas_data_from_pvtg(
                 pvtg_records=pvtg_all[region_idx],
                 density_record=density_record,
-                temperature=temperature,
+                temperature=temperature.for_region(pvtnum),
                 pvt=pvt,
                 unit_system=unit_system,
                 dtype=dtype,
@@ -1005,7 +1011,7 @@ def load_pvt_regions(
             gas_data = _build_gas_data_from_pvdg(
                 pvdg_records=pvdg_all[region_idx],
                 density_record=density_record,
-                temperature=temperature,
+                temperature=temperature.for_region(pvtnum),
                 pvt=pvt,
                 unit_system=unit_system,
                 dtype=dtype,
@@ -1020,7 +1026,7 @@ def load_pvt_regions(
                 water_data = _build_water_data_from_pvtw(
                     pvtw_record=pvtw_rows[0],
                     density_record=density_record,
-                    temperature=temperature,
+                    temperature=temperature.for_region(pvtnum),
                     pvt=pvt,
                     unit_system=unit_system,
                     salinity=salinity,

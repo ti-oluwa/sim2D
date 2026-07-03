@@ -1794,7 +1794,7 @@ StepCallback = typing.Callable[[StepResult[ThreeDimensions]], None]
 """A callback invoked after each simulation step attempt."""
 
 
-@attrs.define
+@attrs.mutable
 class Run(StoreSerializable):
     """
     Simulation run specification.

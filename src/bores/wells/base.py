@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["InjectionWell", "ProductionWell", "Well", "Wells", "well_type"]
 
 
-@attrs.define(hash=True)
+@attrs.mutable(hash=True)
 class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
     """Models a well in the reservoir model."""
 
@@ -429,7 +429,7 @@ register_type_deserializer(
 
 @typing.final
 @well_type
-@attrs.define(hash=True)
+@attrs.mutable(hash=True)
 class InjectionWell(Well[Coordinates, InjectedFluid]):
     """
     Models an injection well in the reservoir model.
@@ -490,7 +490,7 @@ class InjectionWell(Well[Coordinates, InjectedFluid]):
 
 @typing.final
 @well_type
-@attrs.define(hash=True)
+@attrs.mutable(hash=True)
 class ProductionWell(Well[Coordinates, ProducedFluid]):
     """
     Models a production well in the reservoir model.

@@ -32,7 +32,7 @@ __all__ = [
 T = typing.TypeVar("T")
 
 
-@attrs.define(slots=True, frozen=True)
+@attrs.mutable(slots=True, frozen=True)
 class Field(typing.Generic[T]):
     """
     One positional field in a `RecordKeyword` or

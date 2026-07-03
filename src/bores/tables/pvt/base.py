@@ -24,6 +24,7 @@ from bores.correlations.arrays import (
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.model.properties.pvt import PVT
+from bores.model.properties.rock import Temperature
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.tables.pvt.data import PVTData, PVTDataSet
@@ -58,7 +59,7 @@ INTERPOLATION_DEGREES: typing.Dict[str, int] = {"linear": 1, "cubic": 3}
 # Default clamp ranges #
 ########################
 
-DEFAULT_OIL_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
+DEFAULT_OIL_CLAMPS: typing.Dict[str, typing.Tuple[Number, Number]] = {
     "viscosity": (1e-6, 1e4),
     "density": (1.0, 80.0),
     "formation_volume_factor": (0.5, 5.0),
@@ -68,7 +69,7 @@ DEFAULT_OIL_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
     "molecular_weight": (10.0, 600.0),
 }
 
-DEFAULT_GAS_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
+DEFAULT_GAS_CLAMPS: typing.Dict[str, typing.Tuple[Number, Number]] = {
     "viscosity": (1e-6, 1e2),
     "density": (0.001, 50.0),
     "formation_volume_factor": (1e-6, 100.0),
@@ -80,7 +81,7 @@ DEFAULT_GAS_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
     "vaporized_oil_ratio": (0.0, 1000.0),
 }
 
-DEFAULT_WATER_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
+DEFAULT_WATER_CLAMPS: typing.Dict[str, typing.Tuple[Number, Number]] = {
     "viscosity": (1e-6, 10.0),
     "density": (30.0, 80.0),
     "formation_volume_factor": (0.9, 2.0),
@@ -90,7 +91,7 @@ DEFAULT_WATER_CLAMPS: typing.Dict[str, typing.Tuple[float, float]] = {
 }
 
 PHASE_DEFAULT_CLAMPS: typing.Dict[
-    FluidPhase, typing.Dict[str, typing.Tuple[float, float]]
+    FluidPhase, typing.Dict[str, typing.Tuple[Number, Number]]
 ] = {
     FluidPhase.OIL: DEFAULT_OIL_CLAMPS,
     FluidPhase.GAS: DEFAULT_GAS_CLAMPS,
@@ -245,7 +246,7 @@ class PVTTable(StoreSerializable):
         warn_on_extrapolation: bool = False,
         clamps: typing.Union[
             typing.Literal[False],
-            typing.Optional[typing.Mapping[str, typing.Tuple[float, float]]],
+            typing.Optional[typing.Mapping[str, typing.Tuple[Number, Number]]],
         ] = None,
         pvt: typing.Optional[PVT] = None,
         dtype: npt.DTypeLike = None,
@@ -282,7 +283,7 @@ class PVTTable(StoreSerializable):
         self.warn_on_extrapolation = warn_on_extrapolation
 
         if clamps is False:
-            self.clamps: typing.Dict[str, typing.Tuple[float, float]] = {}
+            self.clamps: typing.Dict[str, typing.Tuple[Number, Number]] = {}
         else:
             self.clamps = {
                 **PHASE_DEFAULT_CLAMPS[data.phase],  # type: ignore
@@ -306,7 +307,7 @@ class PVTTable(StoreSerializable):
         if validate:
             self._check_physical_consistency(data)
 
-        self._extrapolation_bounds: typing.Dict[str, typing.Tuple[float, float]] = {
+        self._extrapolation_bounds: typing.Dict[str, typing.Tuple[Number, Number]] = {
             "pressure": (data.pressures[0], data.pressures[-1]),
             "temperature": (data.temperatures[0], data.temperatures[-1]),
         }
@@ -320,7 +321,7 @@ class PVTTable(StoreSerializable):
         if data.phase == FluidPhase.OIL and data.bubble_point_pressures is not None:
             self._bubble_point_ndim = data.bubble_point_pressures.ndim
 
-        self.default_salinity: typing.Optional[float] = (
+        self.default_salinity: typing.Optional[Number] = (
             data.salinities[0] if data.salinities is not None else None
         )
         self._water_constant_salinity: bool = (
@@ -368,7 +369,7 @@ class PVTTable(StoreSerializable):
         simulation time every property is a single interpolator call.
 
         :param data: Source `PVTData`.
-        :param pvt: Reference densities carrier.
+        :param pvt: Static PVT properties.
         :returns: `PVTData` with derived tables filled in (may be the same
             object if nothing was missing).
         """
@@ -396,7 +397,7 @@ class PVTTable(StoreSerializable):
                 and solution_gor_table is not None
             ):
                 if pvt is not None:
-                    standard_oil_density = pvt.standard_gas_density
+                    standard_oil_density = pvt.standard_oil_density
                     standard_gas_density = pvt.standard_gas_density
                     if (
                         standard_oil_density is not None
@@ -414,10 +415,12 @@ class PVTTable(StoreSerializable):
                     specific_gravity_table = (
                         data.specific_gravity_table
                         if data.specific_gravity_table is not None
-                        else np.full((n_p, n_t), 0.85, dtype=dtype)
+                        else np.full((n_p, n_t), pvt.oil_specific_gravity, dtype=dtype)
                     )
                     oil_api_table = compute_oil_api_gravity(specific_gravity_table)
-                    gas_gravity_table = np.full((n_p, n_t), 0.65, dtype=dtype)
+                    gas_gravity_table = np.full(
+                        (n_p, n_t), pvt.gas_gravity, dtype=dtype
+                    )
                     updates["density_table"] = compute_live_oil_density(
                         api_gravity=oil_api_table,
                         gas_gravity=gas_gravity_table,
@@ -435,7 +438,7 @@ class PVTTable(StoreSerializable):
 
                 oil_compressibility_table = -(1.0 / oil_fvf_table) * dbo_dp
                 np.clip(
-                    oil_compressibility_table, 0.0, 1e-1, out=oil_compressibility_table
+                    oil_compressibility_table, 0.0, None, out=oil_compressibility_table
                 )
                 updates["compressibility_table"] = oil_compressibility_table.astype(
                     dtype, copy=False
@@ -459,7 +462,7 @@ class PVTTable(StoreSerializable):
             # Density: ρg = (ρg,SC + Rv·ρo,SC) / Bg  [wet] or ρg,SC / Bg [dry]
             if data.density_table is None and gas_fvf_table is not None:
                 if pvt is not None:
-                    standard_oil_density = pvt.standard_gas_density
+                    standard_oil_density = pvt.standard_oil_density
                     standard_gas_density = pvt.standard_gas_density
                     if standard_gas_density is not None:
                         if (
@@ -479,7 +482,7 @@ class PVTTable(StoreSerializable):
                         specific_gravity_table = (
                             data.specific_gravity_table
                             if data.specific_gravity_table is not None
-                            else np.full((n_p, n_t), 0.65, dtype=dtype)
+                            else np.full((n_p, n_t), pvt.gas_gravity, dtype=dtype)
                         )
                         updates["density_table"] = compute_gas_density(
                             pressure=pressure_table,
@@ -505,7 +508,7 @@ class PVTTable(StoreSerializable):
                     np.clip(
                         gas_compressibility_table,
                         0.0,
-                        1e-1,
+                        None,
                         out=gas_compressibility_table,
                     )
                     updates["compressibility_table"] = gas_compressibility_table.astype(
@@ -525,7 +528,7 @@ class PVTTable(StoreSerializable):
                     np.clip(
                         gas_compressibility_table,
                         0.0,
-                        1e-1,
+                        None,
                         out=gas_compressibility_table,
                     )
                     updates["compressibility_table"] = gas_compressibility_table.astype(
@@ -569,7 +572,7 @@ class PVTTable(StoreSerializable):
                 np.clip(
                     water_compressibility_2d_table,
                     0.0,
-                    1e-2,
+                    None,
                     out=water_compressibility_2d_table,
                 )
                 if data.salinities is not None:
@@ -729,7 +732,7 @@ class PVTTable(StoreSerializable):
             and np.any(data.density_table >= 50.0)
         ):
             warnings.warn(
-                "Gas density table contains values >= 50 lbm/ft³ - unusually max_value. "
+                "Gas density table contains values >= 50 lbm/ft³. "
                 "Verify units (expected lbm/ft³).",
                 UserWarning,
                 stacklevel=3,
@@ -1997,7 +2000,9 @@ class PVTTables(StoreSerializable):
         warn_on_extrapolation: bool = False,
         clamps: typing.Union[
             typing.Literal[False],
-            typing.Mapping[FluidPhase, typing.Mapping[str, typing.Tuple[float, float]]],
+            typing.Mapping[
+                FluidPhase, typing.Mapping[str, typing.Tuple[Number, Number]]
+            ],
             None,
         ] = None,
         pvt: typing.Optional[PVT] = None,
@@ -2061,7 +2066,9 @@ class PVTTables(StoreSerializable):
         warn_on_extrapolation: bool = False,
         clamps: typing.Union[
             typing.Literal[False],
-            typing.Mapping[FluidPhase, typing.Mapping[str, typing.Tuple[float, float]]],
+            typing.Mapping[
+                FluidPhase, typing.Mapping[str, typing.Tuple[Number, Number]]
+            ],
             None,
         ] = None,
         pvt: typing.Optional[PVT] = None,
@@ -2102,7 +2109,7 @@ class PVTTables(StoreSerializable):
     def from_deck_file(
         cls,
         deck_file: DeckFile,
-        temperature: float,
+        temperature: typing.Union[Temperature, Number],
         pvtnum: int = 1,
         *,
         interpolation_method: InterpolationMethod = "linear",
@@ -2119,7 +2126,8 @@ class PVTTables(StoreSerializable):
 
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
         :param temperature: Reservoir temperature (°F) - used as the single
-            temperature value for deck-loaded isothermal tables.
+            temperature value for deck-loaded isothermal tables, or a reservoir
+            regional `Temperature` instance.
         :param pvtnum: 1-based PVT region index to extract (default 1).
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param validate: Run physical-consistency checks.

@@ -588,6 +588,12 @@ DEFAULT_CONSTANTS: typing.Dict[
     "DAYS_PER_SECOND": Constant(
         value=1 / 86400.0, description="Number of days in a second", unit="day/s"
     ),
+    "HOURS_PER_DAY": Constant(
+        value=24.0, description="Number of hours in a day", unit="hrs/day"
+    ),
+    "DAYS_PER_HOUR": Constant(
+        value=1 / 24.0, description="Number of days in a hour", unit="day/hr"
+    ),
     "DAYS_PER_YEAR": Constant(
         value=365.25, description="Number of days in a year", unit="day/year"
     ),
@@ -1147,11 +1153,29 @@ def build_unit_conversion_table(
     bar_to_pa = psi_to_bar / psi_to_pa
     psi_to_atm = psi_to_pa / atm_to_pa
     bar_to_atm = bar_to_pa / atm_to_pa
-    cm_to_m = 0.01  # Common; no need to check constants objects
+    cm_to_m = 0.01
     m_to_cm = 100.0
     ft_to_cm = ft_to_m * m_to_cm
     kg_m3_to_g_cm3 = 1e-3
     lbm_ft3_to_g_cm3 = lbm_ft3_to_kg_m3 * kg_m3_to_g_cm3
+
+    ft3_to_m3 = ft_to_m**3  # 0.0283168
+    seconds_per_day = con.SECONDS_PER_DAY  # 86400.0
+    hours_per_day = con.HOURS_PER_DAY  # 24
+    seconds_per_hour = seconds_per_day / hours_per_day
+
+    # Volume rate factors: source_volume/source_time -> target_volume/target_time
+    # FIELD (ft³/day) -> METRIC (m³/day): just volume factor, same time base
+    # FIELD (ft³/day) -> SI (m³/s): volume factor / seconds_per_day
+    # FIELD (ft³/day) -> LAB (cm³/day): ft³->cm³ * day
+    ft3_per_day_to_m3_per_day = ft3_to_m3
+    ft3_per_day_to_m3_per_s = ft3_to_m3 / seconds_per_day
+    ft3_per_day_to_cm3_per_hour = (
+        ft_to_cm**3
+    ) / hours_per_day  # ft³/day -> cm³/day / hr/day
+    m3_per_day_to_cm3_per_hour = (
+        m_to_cm**3
+    ) / hours_per_day  # m³/day -> cm³/day / hr/day
 
     def _inverse(x: Number) -> Number:
         return 1.0 / x
@@ -1170,6 +1194,8 @@ def build_unit_conversion_table(
             gor=scf_stb_to_sm3_sm3,
             temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+            volumetric_rate=ft3_per_day_to_m3_per_day,  # ft³/day -> m³/day
+            mass=lbm_ft3_to_kg_m3 * (ft_to_m**3),  # lbm -> kg
         ),
         (UnitSystem.FIELD, UnitSystem.SI): UnitConversionFactors(
             pressure=psi_to_pa,
@@ -1183,6 +1209,8 @@ def build_unit_conversion_table(
             gor=scf_stb_to_sm3_sm3,
             temperature=5.0 / 9.0,
             temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
+            volumetric_rate=ft3_per_day_to_m3_per_s,  # ft³/day -> m³/s
+            mass=lbm_ft3_to_kg_m3 * (ft_to_m**3),  # lbm -> kg
         ),
         (UnitSystem.FIELD, UnitSystem.LAB): UnitConversionFactors(
             pressure=psi_to_atm,
@@ -1196,6 +1224,8 @@ def build_unit_conversion_table(
             gor=scf_stb_to_sm3_sm3,
             temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+            volumetric_rate=ft3_per_day_to_cm3_per_hour,  # ft³/day -> cm³/hr
+            mass=lbm_ft3_to_g_cm3 * (ft_to_cm**3),  # lbm -> g
         ),
         # METRIC -> *
         (UnitSystem.METRIC, UnitSystem.FIELD): UnitConversionFactors(
@@ -1210,6 +1240,8 @@ def build_unit_conversion_table(
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
+            volumetric_rate=_inverse(ft3_per_day_to_m3_per_day),
+            mass=_inverse(lbm_ft3_to_kg_m3 * (ft_to_m**3)),
         ),
         (UnitSystem.METRIC, UnitSystem.SI): UnitConversionFactors(
             pressure=bar_to_pa,
@@ -1223,6 +1255,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=273.15,  # °C -> K
+            volumetric_rate=_inverse(seconds_per_day),  # m³/day -> m³/s
+            mass=1.0,  # kg -> kg
         ),
         (UnitSystem.METRIC, UnitSystem.LAB): UnitConversionFactors(
             pressure=bar_to_atm,
@@ -1236,6 +1270,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=0.0,  # °C -> °C
+            volumetric_rate=m3_per_day_to_cm3_per_hour,  # m³/day -> cm³/hr
+            mass=_inverse(kg_m3_to_g_cm3),  # kg -> g  (1000)
         ),
         # SI -> *
         (UnitSystem.SI, UnitSystem.FIELD): UnitConversionFactors(
@@ -1250,6 +1286,8 @@ def build_unit_conversion_table(
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature=9.0 / 5.0,
             temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
+            volumetric_rate=_inverse(ft3_per_day_to_m3_per_s),
+            mass=_inverse(lbm_ft3_to_kg_m3 * (ft_to_m**3)),
         ),
         (UnitSystem.SI, UnitSystem.METRIC): UnitConversionFactors(
             pressure=_inverse(bar_to_pa),
@@ -1263,6 +1301,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=-273.15,  # K -> °C
+            volumetric_rate=seconds_per_day,  # m³/s -> m³/day
+            mass=1.0,  # kg -> kg
         ),
         (UnitSystem.SI, UnitSystem.LAB): UnitConversionFactors(
             pressure=_inverse(atm_to_pa),
@@ -1276,6 +1316,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=-273.15,  # K -> °C
+            volumetric_rate=(m_to_cm**3) * seconds_per_hour,  # m³/s -> cm³/hr
+            mass=_inverse(kg_m3_to_g_cm3),  # kg -> g
         ),
         # LAB -> *
         (UnitSystem.LAB, UnitSystem.FIELD): UnitConversionFactors(
@@ -1290,6 +1332,8 @@ def build_unit_conversion_table(
             gor=_inverse(scf_stb_to_sm3_sm3),
             temperature=9.0 / 5.0,
             temperature_offset=32.0,  # °C -> °F
+            volumetric_rate=_inverse(ft3_per_day_to_cm3_per_hour),
+            mass=_inverse(lbm_ft3_to_g_cm3 * (ft_to_cm**3)),
         ),
         (UnitSystem.LAB, UnitSystem.METRIC): UnitConversionFactors(
             pressure=_inverse(bar_to_atm),
@@ -1303,6 +1347,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=0.0,  # °C -> °C
+            volumetric_rate=_inverse(m3_per_day_to_cm3_per_hour),  # cm³/hr -> m³/day
+            mass=kg_m3_to_g_cm3,  # g -> kg
         ),
         (UnitSystem.LAB, UnitSystem.SI): UnitConversionFactors(
             pressure=atm_to_pa,
@@ -1316,6 +1362,8 @@ def build_unit_conversion_table(
             gor=1.0,
             temperature=1.0,
             temperature_offset=273.15,  # °C -> K
+            volumetric_rate=_inverse((m_to_cm**3) * seconds_per_hour),  # cm³/hr -> m³/s
+            mass=kg_m3_to_g_cm3,  # g -> kg
         ),
     }
     return table
@@ -1333,6 +1381,8 @@ IDENTITY_FACTORS = UnitConversionFactors(
     gor=1.0,
     temperature=1.0,
     temperature_offset=0.0,
+    volumetric_rate=1.0,
+    mass=1.0,
 )
 """Identity unit conversion factors. All factors = 1."""
 

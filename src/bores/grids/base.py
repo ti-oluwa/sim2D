@@ -351,7 +351,7 @@ def _compute_cell_bounding_boxes(
 
 
 @typing.final
-@attrs.define(frozen=True, slots=True, kw_only=True)
+@attrs.mutable(frozen=True, slots=True, kw_only=True)
 class Grid(
     Serializable,
     fields={

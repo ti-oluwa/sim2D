@@ -110,7 +110,7 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     return deck_file.unit_system
 
 
-@attrs.define(frozen=True, slots=True)
+@attrs.mutable(frozen=True, slots=True)
 class MapAxes:
     """
     Map coordinate system axes parsed from the GRDECL `MAPAXES` keyword.

@@ -1065,7 +1065,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
 
 
 @boundary_condition
-@attrs.define
+@attrs.mutable
 class CarterTracyAquifer(BoundaryCondition):
     """
     Finite radial aquifer boundary condition using the Carter-Tracy (1960)
@@ -1224,12 +1224,12 @@ class CarterTracyAquifer(BoundaryCondition):
 
     # Derived scalars computed on initialization
 
-    _aquifer_constant_resolved: Number = attrs.field(
+    _resolved_aquifer_constant: Number = attrs.field(
         default=0.0, init=False, repr=False
     )
     """Resolved aquifer constant *B* (volume/pressure). Set on initialization."""
 
-    _dimensionless_radius_ratio_resolved: Number = attrs.field(
+    _resolved_dimensionless_radius_ratio: Number = attrs.field(
         default=10.0, init=False, repr=False
     )
     """Resolved dimensionless radius ratio `r_D = r_outer / r_inner`."""
@@ -1242,6 +1242,12 @@ class CarterTracyAquifer(BoundaryCondition):
 
     `None` in calibrated-constant mode (where *η* is not available).
     Physical-mode: *η = 0.006328 · K / (φ · μ · ct)* (FIELD units).
+    """
+
+    _t_d_cutoff: float = attrs.field(default=0.0, init=False, repr=False)
+    """
+    Maximum meaningful dimensionless time before W_D' is negligible.
+    Beyond t_D = r_D² the aquifer boundary has fully been felt.
     """
 
     def __attrs_post_init__(self) -> None:
@@ -1286,7 +1292,11 @@ class CarterTracyAquifer(BoundaryCondition):
                 )
 
             r_d = self.outer_radius / self.inner_radius
-            object.__setattr__(self, "_dimensionless_radius_ratio_resolved", r_d)
+            object.__setattr__(self, "_resolved_dimensionless_radius_ratio", r_d)
+
+            # W_D' is negligible when t_D > r_D^2; use 2*r_D^2 as a conservative cutoff
+            t_d_cutoff = 2.0 * (self._resolved_dimensionless_radius_ratio**2)
+            object.__setattr__(self, "_t_d_cutoff", t_d_cutoff)
 
             angle_fraction = self.angle / 360.0
             r_sq_diff = self.outer_radius**2 - self.inner_radius**2
@@ -1303,7 +1313,7 @@ class CarterTracyAquifer(BoundaryCondition):
                 * self.aquifer_thickness
                 / self.water_viscosity
             )
-            object.__setattr__(self, "_aquifer_constant_resolved", B)
+            object.__setattr__(self, "_resolved_aquifer_constant", B)
 
             # Hydraulic diffusivity: η = 0.006328 * K / (φ * μ * ct)  [ft²/day, FIELD]
             eta = (
@@ -1321,15 +1331,19 @@ class CarterTracyAquifer(BoundaryCondition):
             # Calibrated-constant mode
             object.__setattr__(
                 self,
-                "_aquifer_constant_resolved",
+                "_resolved_aquifer_constant",
                 float(self.aquifer_constant),  # type: ignore
             )
             object.__setattr__(
                 self,
-                "_dimensionless_radius_ratio_resolved",
+                "_resolved_dimensionless_radius_ratio",
                 self.dimensionless_radius_ratio,
             )
             object.__setattr__(self, "_hydraulic_diffusivity", None)
+
+            # W_D' is negligible when t_D > r_D^2; use 2*r_D^2 as a conservative cutoff
+            t_d_cutoff = 2.0 * (self._resolved_dimensionless_radius_ratio**2)
+            object.__setattr__(self, "_t_d_cutoff", t_d_cutoff)
 
     @property
     def condition_type(self) -> BoundaryConditionType:
@@ -1387,6 +1401,30 @@ class CarterTracyAquifer(BoundaryCondition):
         history = self._pressure_history
         if not history or time > history[-1][0]:
             history.append((time, pressure_drop))
+            # Prune entries whose W_D' contribution is now negligible.
+            # An entry at t_i contributes W_D'(t_D_current - t_D_i).
+            # When that dimensionless time gap exceeds `_t_d_cutoff`, the
+            # contribution is below machine precision and the entry can be dropped.
+            if (
+                self._hydraulic_diffusivity is not None
+                and self.inner_radius is not None
+            ):
+                cutoff_real_time = (
+                    self._t_d_cutoff
+                    * (self.inner_radius**2)
+                    / self._hydraulic_diffusivity
+                )
+                object.__setattr__(
+                    self,
+                    "_pressure_history",
+                    [(t, dp) for t, dp in history if time - t <= cutoff_real_time],
+                )
+            elif len(history) > 500:
+                # Calibrated-constant mode has no hydraulic diffusivity so we
+                # cannot compute a physical cutoff. Fall back to a hard cap of
+                # 500 entries - at typical timestep counts this is several years
+                # of monthly steps, beyond which the oldest entries are negligible.
+                object.__setattr__(self, "_pressure_history", history[-500:])
 
         total_influx_rate = self._compute_influx_rate(time)
 
@@ -1445,11 +1483,11 @@ class CarterTracyAquifer(BoundaryCondition):
                 t_d = dt
 
             w_d_prime = self._van_everdingen_hurst_derivative(
-                t_d, self._dimensionless_radius_ratio_resolved
+                t_d, self._resolved_dimensionless_radius_ratio
             )
             total += dp_i * w_d_prime
 
-        return self._aquifer_constant_resolved * total
+        return self._resolved_aquifer_constant * total
 
     @staticmethod
     def _van_everdingen_hurst_derivative(t_d: Number, r_d: Number) -> Number:
