@@ -486,7 +486,7 @@ class BrooksCoreyRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         return self.maximum_gas_relperm
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -573,7 +573,7 @@ class BrooksCoreyRelPermTable(
         )
         return RelativePermeabilities(water=krw, oil=kro, gas=krg)  # type: ignore[typeddict-item]
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -1853,7 +1853,7 @@ class LETThreePhaseRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         return self.maximum_gas_relperm
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -1950,7 +1950,7 @@ class LETThreePhaseRelPermTable(
         )
         return RelativePermeabilities(water=krw, oil=kro, gas=krg)  # type: ignore[typeddict-item]
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],

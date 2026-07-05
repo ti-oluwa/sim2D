@@ -79,7 +79,7 @@ def _get_oil_water_capillary_pressure(
             non_wetting_saturation=non_wetting_saturation,
         )
 
-    result = oil_water_capillary_pressure_table.get_capillary_pressures(
+    result = oil_water_capillary_pressure_table.evaluate(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -122,7 +122,7 @@ def _get_gas_oil_capillary_pressure(
             non_wetting_saturation=non_wetting_saturation,
         )
 
-    result = gas_oil_capillary_pressure_table.get_capillary_pressures(
+    result = gas_oil_capillary_pressure_table.evaluate(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -171,7 +171,7 @@ def _get_oil_water_capillary_pressure_derivative(
             non_wetting_saturation=non_wetting_saturation,
         )
 
-    derivatives = oil_water_capillary_pressure_table.get_capillary_pressure_derivatives(
+    derivatives = oil_water_capillary_pressure_table.derivatives(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -219,7 +219,7 @@ def _get_gas_oil_capillary_pressure_derivative(
             non_wetting_saturation=non_wetting_saturation,
         )
 
-    derivatives = gas_oil_capillary_pressure_table.get_capillary_pressure_derivatives(
+    derivatives = gas_oil_capillary_pressure_table.derivatives(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -252,7 +252,7 @@ class KilloughCapillaryPressureTable(
     scanning curve scans over *gas* saturation.
 
     Saturation history is passed as additional keyword arguments to
-    `get_capillary_pressures` and `get_capillary_pressure_derivatives`.
+    `evaluate` and `derivatives`.
     When these arguments are absent the model returns primary drainage Pc
     values.
     """
@@ -451,7 +451,7 @@ class KilloughCapillaryPressureTable(
             gas_reversal_saturation,
         )
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -586,7 +586,7 @@ class KilloughCapillaryPressureTable(
             gas_oil=gas_oil_capillary_pressure,  # type: ignore[typeddict-item]
         )
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],

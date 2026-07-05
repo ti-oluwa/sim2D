@@ -243,7 +243,7 @@ class RelativePermeabilityTable(StoreSerializable):
             gas=self.get_gas_relperm_endpoint(),
         )
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -261,7 +261,7 @@ class RelativePermeabilityTable(StoreSerializable):
         """
         raise NotImplementedError
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -295,30 +295,7 @@ class RelativePermeabilityTable(StoreSerializable):
         :param kwargs: Other key word arguments for computing the relative peremabilities.
         :return: `RelativePermeabilities` dictionary.
         """
-        return self.get_relative_permeabilities(
-            water_saturation=water_saturation,
-            oil_saturation=oil_saturation,
-            gas_saturation=gas_saturation,
-            **kwargs,
-        )
-
-    def derivatives(
-        self,
-        water_saturation: NumberOrArray[NDimension],
-        oil_saturation: NumberOrArray[NDimension],
-        gas_saturation: NumberOrArray[NDimension],
-        **kwargs: typing.Any,
-    ) -> RelativePermeabilityDerivatives:
-        """
-        Compute relative permeability derivatives for water, oil, and gas.
-
-        :param water_saturation: Water saturation (fraction) - scalar or array.
-        :param oil_saturation: Oil saturation (fraction) - scalar or array.
-        :param gas_saturation: Gas saturation (fraction) - scalar or array.
-        :param kwargs: Other key word arguments for computing the derivatives.
-        :return: `RelativePermeabilityDerivatives` dictionary.
-        """
-        return self.get_relative_permeability_derivatives(
+        return self.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -899,7 +876,7 @@ class TwoPhaseRelPermTable(
             return np.max(self.wetting_phase_relative_permeability)
         return np.max(self.non_wetting_phase_relative_permeability)
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -991,7 +968,7 @@ class TwoPhaseRelPermTable(
             f"Expected OIL+WATER or OIL+GAS."
         )
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -1478,7 +1455,7 @@ class ThreePhaseRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         return self.gas_oil_table.get_gas_relperm_endpoint()
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -1589,7 +1566,7 @@ class ThreePhaseRelPermTable(
             gas=krg.astype(dtype, copy=False),  # type: ignore[attr-defined]
         )
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],

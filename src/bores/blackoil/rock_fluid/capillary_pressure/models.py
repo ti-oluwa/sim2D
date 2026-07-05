@@ -823,7 +823,7 @@ class BrooksCoreyCapillaryPressureTable(
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return FluidPhase.OIL
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -907,7 +907,7 @@ class BrooksCoreyCapillaryPressureTable(
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -1964,7 +1964,7 @@ class VanGenuchtenCapillaryPressureTable(
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return FluidPhase.OIL
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -2048,7 +2048,7 @@ class VanGenuchtenCapillaryPressureTable(
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -3050,7 +3050,7 @@ class LeverettJCapillaryPressureTable(
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return FluidPhase.OIL
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -3145,7 +3145,7 @@ class LeverettJCapillaryPressureTable(
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],

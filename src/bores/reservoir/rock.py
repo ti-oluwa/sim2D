@@ -381,7 +381,7 @@ class Rock(StoreSerializable):
         :raises ValidationError: If required keywords (`PORO`, `PERMX`) are
             missing.
         """
-        from bores.blackoil.rock_compressibility import RockCompressibilityRegions
+        from bores.blackoil.compressibility import RockCompressibilityRegions
 
         unit_system = deck_file.unit_system
         n_cells = grid.n_cells

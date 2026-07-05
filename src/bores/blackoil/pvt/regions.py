@@ -1023,10 +1023,10 @@ def load_pvt_regions(
 
         # Water
         water_data: typing.Optional[PVTData] = None
+        salinity = 0.0  # Salinity is not stored in the PVTW record; default to 0 ppm
         if pvtw_all is not None and region_idx < len(pvtw_all):
             pvtw_rows = pvtw_all[region_idx]
             if pvtw_rows:
-                salinity = 0.0  # TODO: Retrieve salinity from deck if available
                 water_data = _build_water_data_from_pvtw(
                     pvtw_record=pvtw_rows[0],
                     density_record=density_record,
@@ -1036,13 +1036,78 @@ def load_pvt_regions(
                     dtype=dtype,
                 )
 
-        # Assemble `PVTRegion` for this region
+        # `StaticPVT` for this region
+        # Resolve stock-tank densities from DENSITY record
+        stock_tank_oil_density = (
+            density_record["oil"] if density_record is not None else 53.0
+        )
+        stock_tank_water_density = (
+            density_record["water"] if density_record is not None else 62.4
+        )
+        stock_tank_gas_density = (
+            density_record["gas"] if density_record is not None else 0.0765
+        )
+
+        # Derive oil specific gravity from stock-tank oil density relative to
+        # fresh water at standard conditions in unit_system.
+        _standard_water_density: typing.Dict[UnitSystem, Number] = {
+            UnitSystem.FIELD: 62.37,
+            UnitSystem.METRIC: 999.0,
+            UnitSystem.SI: 999.0,
+            UnitSystem.LAB: 0.999,
+        }
+        ref_water_density = _standard_water_density[unit_system]
+        oil_specific_gravity = stock_tank_oil_density / ref_water_density
+
+        # Derive gas gravity from stock-tank gas density relative to air.
+        _standard_air_density: typing.Dict[UnitSystem, Number] = {
+            UnitSystem.FIELD: 0.0765,
+            UnitSystem.METRIC: 1.225,
+            UnitSystem.SI: 1.225,
+            UnitSystem.LAB: 1.225e-3,
+        }
+        ref_air_density = _standard_air_density[unit_system]
+        gas_gravity = stock_tank_gas_density / ref_air_density
+
+        # PVTW scalars for this region
+        water_reference_pressure = 14.696
+        water_reference_fvf = 1.0
+        water_reference_viscosity = 0.5
+        water_reference_compressibility = 3.0e-6
+        water_viscosibility = 0.0
+
+        if pvtw_all is not None and region_idx < len(pvtw_all):
+            pvtw_rows = pvtw_all[region_idx]
+            if pvtw_rows:
+                pvtw_record = pvtw_rows[0]
+                water_reference_pressure = pvtw_record["p_ref"]
+                water_reference_fvf = pvtw_record["bw"]
+                water_reference_compressibility = pvtw_record["cw"]
+                water_reference_viscosity = pvtw_record["viscosity"]
+                water_viscosibility = pvtw_record.get("cv", 0.0)
+
+        static = StaticPVT(
+            oil_specific_gravity=oil_specific_gravity,
+            stock_tank_oil_density=stock_tank_oil_density,
+            water_reference_pressure=water_reference_pressure,
+            water_reference_fvf=water_reference_fvf,
+            water_reference_viscosity=water_reference_viscosity,
+            water_reference_compressibility=water_reference_compressibility,
+            stock_tank_water_density=stock_tank_water_density,
+            gas_gravity=gas_gravity,
+            stock_tank_gas_density=stock_tank_gas_density,
+            water_viscosibility=water_viscosibility,
+            water_salinity=salinity,
+            unit_system=unit_system,
+        )
+
+        # Assemble `PVTRegion`
         dataset = PVTDataSet(oil=oil_data, gas=gas_data, water=water_data)
         tables = PVTTables.from_dataset(dataset, **table_kwargs)
-        regions[pvtnum] = PVTRegion(tables=tables, static=...)
+        regions[pvtnum] = PVTRegion(tables=tables, static=static)
 
         logger.debug(
-            "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s",
+            "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s, salinity=%.0f ppm",
             pvtnum,
             "PVTO"
             if pvto_all and region_idx < len(pvto_all)
@@ -1057,5 +1122,6 @@ def load_pvt_regions(
             if pvdg_all and region_idx < len(pvdg_all)
             else "none",
             "PVTW" if pvtw_all and region_idx < len(pvtw_all) else "none",
+            salinity,
         )
     return regions

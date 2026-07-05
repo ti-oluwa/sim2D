@@ -216,7 +216,7 @@ def _get_oil_water_relative_permeabilities(
         return water_relative_permeability, oil_relative_permeability
 
     # Full three-phase table
-    result = oil_water_table.get_relative_permeabilities(
+    result = oil_water_table.evaluate(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -281,7 +281,7 @@ def _get_gas_oil_relative_permeabilities(
         )
         return oil_relative_permeability, gas_relative_permeability
 
-    result = gas_oil_table.get_relative_permeabilities(
+    result = gas_oil_table.evaluate(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -339,7 +339,7 @@ def _get_oil_water_relative_permeability_derivatives(
             )  # d_krw/d_Sw, d_kro_w/d_Sw
         return non_wetting_derivative, wetting_derivative  # d_krw/d_So, d_kro_w/d_So
 
-    derivatives = oil_water_table.get_relative_permeability_derivatives(
+    derivatives = oil_water_table.derivatives(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -398,7 +398,7 @@ def _get_gas_oil_relative_permeability_derivatives(
             )  # d_kro_g/d_So, d_krg/d_So
         return non_wetting_derivative, wetting_derivative  # d_kro_g/d_Sg, d_krg/d_Sg
 
-    derivatives = gas_oil_table.get_relative_permeability_derivatives(
+    derivatives = gas_oil_table.derivatives(
         water_saturation=water_saturation,
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
@@ -442,7 +442,7 @@ class KilloughLandRelPermTable(
     model is wettability-agnostic.
 
     The hysteresis history is passed as additional keyword arguments to
-    `get_relative_permeabilities` and `get_relative_permeability_derivatives`. When these arguments are
+    `evaluate` and `derivatives`. When these arguments are
     absent the model degenerates to the primary drainage curves, which is the
     physically correct behaviour for the first drainage cycle
     (see `simulate.py`, the `enable_hysteresis` flag in `Config` controls
@@ -673,7 +673,7 @@ class KilloughLandRelPermTable(
             gas_reversal_saturation,
         )
 
-    def get_relative_permeabilities(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -926,7 +926,7 @@ class KilloughLandRelPermTable(
             gas=gas_relative_permeability,
         )
 
-    def get_relative_permeability_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],

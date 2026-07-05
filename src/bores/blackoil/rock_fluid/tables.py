@@ -56,56 +56,6 @@ class RockFluidTables(StoreSerializable):
     relative_permeability: RelativePermeabilityTable
     capillary_pressure: typing.Optional[CapillaryPressureTable] = None
 
-    def get_relative_permeabilities(
-        self,
-        water_saturation: NumberOrArray[NDimension],
-        oil_saturation: NumberOrArray[NDimension],
-        gas_saturation: NumberOrArray[NDimension],
-        **kwargs: typing.Any,
-    ) -> RelativePermeabilities:
-        """
-        Compute relative permeabilities for water, oil, and gas using the underlying relative permeability table/table.
-
-        :param water_saturation: Water saturation (fraction) - scalar or array.
-        :param oil_saturation: Oil saturation (fraction) - scalar or array.
-        :param gas_saturation: Gas saturation (fraction) - scalar or array.
-        :param kwargs: Additional keyword arguments required by the relative permeability table/table
-        :return: `RelativePermeabilities` dictionary.
-        """
-        return self.relative_permeability.get_relative_permeabilities(
-            water_saturation=water_saturation,
-            oil_saturation=oil_saturation,
-            gas_saturation=gas_saturation,
-            **kwargs,
-        )
-
-    def get_capillary_pressures(
-        self,
-        water_saturation: NumberOrArray[NDimension],
-        oil_saturation: NumberOrArray[NDimension],
-        gas_saturation: NumberOrArray[NDimension],
-        **kwargs: typing.Any,
-    ) -> CapillaryPressures:
-        """
-        Compute oil water and gas-oil capillary pressures using the underlying capillary pressure table/table.
-
-        :param water_saturation: Water saturation (fraction, 0-1) - scalar or array.
-        :param oil_saturation: Oil saturation (fraction, 0-1) - scalar or array.
-        :param gas_saturation: Gas saturation (fraction, 0-1) - scalar or array.
-        :param irreducible_water_saturation: Optional override for Swc - scalar or array.
-        :param kwargs: Additional keyword arguments required by the relative permeability table/table
-        :param permeability: Optional override for permeability - scalar or array.
-        :return: `CapillaryPressures` dictionary.
-        """
-        if self.capillary_pressure is None:
-            raise ValidationError("Capillary pressure table is not defined.")
-        return self.capillary_pressure.get_capillary_pressures(
-            water_saturation=water_saturation,
-            oil_saturation=oil_saturation,
-            gas_saturation=gas_saturation,
-            **kwargs,
-        )
-
     def convert(
         self,
         target: UnitSystem,
@@ -388,7 +338,7 @@ def _sample_oil_water_relative_permeabilities(
                 )
             )
 
-        relative_permeabilities = relperm_table.get_relative_permeabilities(
+        relative_permeabilities = relperm_table.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -488,7 +438,7 @@ def _sample_gas_oil_relative_permeabilities(
                 )
             )
 
-        relative_permeabilities = relperm_table.get_relative_permeabilities(
+        relative_permeabilities = relperm_table.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -571,7 +521,7 @@ def _sample_oil_water_capillary_pressure(
                 )
             )
 
-        capillary_pressures = capillary_pressure_table.get_capillary_pressures(
+        capillary_pressures = capillary_pressure_table.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -645,7 +595,7 @@ def _sample_gas_oil_capillary_pressure(
                 )
             )
 
-        capillary_pressures = capillary_pressure_table.get_capillary_pressures(
+        capillary_pressures = capillary_pressure_table.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,

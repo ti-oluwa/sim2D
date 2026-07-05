@@ -52,7 +52,7 @@ class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return FluidPhase.OIL
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -71,7 +71,7 @@ class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
         """
         raise NotImplementedError
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -105,31 +105,7 @@ class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
         :param gas_saturation: Gas saturation (fraction, 0-1) - scalar or array.
         :return: `CapillaryPressures` dictionary.
         """
-        return self.get_capillary_pressures(
-            water_saturation=water_saturation,
-            oil_saturation=oil_saturation,
-            gas_saturation=gas_saturation,
-            **kwargs,
-        )
-
-    def derivatives(
-        self,
-        water_saturation: NumberOrArray[NDimension],
-        oil_saturation: NumberOrArray[NDimension],
-        gas_saturation: NumberOrArray[NDimension],
-        **kwargs: typing.Any,
-    ) -> CapillaryPressureDerivatives:
-        """
-        Compute capillary pressure derivatives for three-phase system.
-
-        Supports both scalar and array inputs.
-
-        :param water_saturation: Water saturation (fraction, 0-1) - scalar or array.
-        :param oil_saturation: Oil saturation (fraction, 0-1) - scalar or array.
-        :param gas_saturation: Gas saturation (fraction, 0-1) - scalar or array.
-        :return: `CapillaryPressureDerivatives` dictionary containing the partial derivatives as described above.
-        """
-        return self.get_capillary_pressure_derivatives(
+        return self.evaluate(
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
@@ -745,7 +721,7 @@ class ThreePhaseCapillaryPressureTable(
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return typing.cast(FluidPhase, self.gas_oil_table.wetting_phase)
 
-    def get_capillary_pressures(
+    def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
@@ -805,7 +781,7 @@ class ThreePhaseCapillaryPressureTable(
 
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
-    def get_capillary_pressure_derivatives(
+    def derivatives(
         self,
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
