@@ -32,7 +32,7 @@ import typing
 
 import numpy as np
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import (
     Field,
     GridArrayKeyword,
@@ -56,7 +56,9 @@ __all__ = [
     "RESTART",
     "RTEMP",
     "TEMPVD",
+    "RTEMPVD",
 ]
+
 
 SWAT = SW = GridArrayKeyword("SWAT", dtype=np.float64, default_value=0.0)
 """`SWAT` / `SW` - initial water saturation `[0, 1]`."""
@@ -171,6 +173,33 @@ Each table (one per equilibration region) contains rows:
 Rows must be in ascending depth order.
 """
 
+RTEMPVD = PVTTableKeyword(
+    "RTEMPVD",
+    columns=[
+        Field("depth", np.float64),
+        Field("temperature", np.float64),
+    ],
+)
+"""
+`RTEMPVD` - temperature versus depth table.
+
+Same as `TEMPVD` but used in more recent Eclipse versions
+
+Specifies how reservoir temperature varies with depth, one table per
+equilibration region (matched by `EQLNUM`). Cell temperatures are
+interpolated linearly from this table at each cell centroid depth.
+Values above the shallowest entry or below the deepest entry are
+clamped to the endpoint value (no extrapolation).
+
+Each table (one per equilibration region) contains rows:
+
+- `depth`       - true vertical depth (ft in FIELD, m in METRIC).
+- `temperature` - reservoir temperature at that depth (°F in FIELD,
+  °C in METRIC / LAB).
+
+Rows must be in ascending depth order.
+"""
+
 
 class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
     """
@@ -201,7 +230,7 @@ class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
         if record is None:
             return None
 
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         if len(tokens) < 2:
             raise DeckParseError(
                 f"RESTART: expected 2 tokens (ROOT_NAME REPORT_STEP); "

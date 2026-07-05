@@ -264,7 +264,7 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "STANDARD_WATER_DENSITY_IMPERIAL": Constant(
         value=62.37,
-        description="Standard water density at Standard temperature (15.6°C) (Imperial units)",
+        description="Standard water density at Standard temperature (15.6°C) (Imperial/field units)",
         unit="lbm/ft³",
     ),
     "STANDARD_WATER_DENSITY_METRIC": Constant(
@@ -285,7 +285,7 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "STANDARD_AIR_DENSITY_IMPERIAL": Constant(
         value=0.0765,
-        description="Standard air density at Standard temperature (15.6°C) (Imperial units)",
+        description="Standard air density at Standard temperature (15.6°C) (Imperial/field units)",
         unit="lbm/ft³",
     ),
     "STANDARD_AIR_DENSITY_METRIC": Constant(

@@ -41,7 +41,7 @@ import typing
 
 import numpy as np
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import DatesKeyword, Field, Keyword, RepeatedRecordKeyword
 from bores.deck.operators import Operation
 
@@ -79,7 +79,7 @@ class TStepKeyword(Keyword[typing.List[float]]):
     `/`.
 
     `N*value` repeat syntax is already expanded by
-    `bores.deck.core.tokenise`, so `30*30` correctly yields
+    `bores.deck.core.tokenize`, so `30*30` correctly yields
     thirty entries of `30.0`.
 
     Multiple `TSTEP` blocks in the same deck are concatenated in file
@@ -110,7 +110,7 @@ class TStepKeyword(Keyword[typing.List[float]]):
 
         steps: typing.List[float] = []
         for record in records:
-            tokens = tokenise(record.body)
+            tokens = tokenize(record.body)
             for token in tokens:
                 try:
                     steps.append(float(token))

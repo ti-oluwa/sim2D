@@ -20,7 +20,7 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.state import TemperatureRegions
+from bores.reservoir.temperature import TemperatureRegions
 from bores.stores import StoreSerializable
 from bores.typing import (
     Boolean,
@@ -984,11 +984,13 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack([
-            pressure_arr.ravel(),
-            temperature_arr.ravel(),
-            salinity_arr.ravel(),
-        ])
+        points = np.column_stack(
+            [
+                pressure_arr.ravel(),
+                temperature_arr.ravel(),
+                salinity_arr.ravel(),
+            ]
+        )
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:

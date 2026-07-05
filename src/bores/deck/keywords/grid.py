@@ -8,7 +8,7 @@ import typing
 
 import numpy as np
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import (
     Field,
     FlagKeyword,
@@ -107,7 +107,7 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         if record is None:
             return None
 
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         expected = (dims.nx + 1) * (dims.ny + 1) * 6
         if len(tokens) != expected:
             raise DeckParseError(
@@ -147,7 +147,7 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         if record is None:
             return None
 
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         expected = dims.nx * dims.ny * dims.nz * 8
         if len(tokens) != expected:
             raise DeckParseError(
@@ -312,7 +312,7 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
         if record is None:
             return None
 
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         expected = self._axis_extent(dims)
         try:
             values = [np.float64(token) for token in tokens]

@@ -16,7 +16,7 @@ import warnings
 
 import numpy as np
 
-from bores.deck.core import Deck, GridDimensions, tokenise
+from bores.deck.core import Deck, GridDimensions, tokenize
 from bores.typing import FloatArray, OneDimension
 
 __all__ = [
@@ -29,7 +29,14 @@ __all__ = [
 _BOX_KEYWORD = "BOX"
 _ENDBOX_KEYWORD = "ENDBOX"
 _OPERATOR_KEYWORDS: typing.FrozenSet[str] = frozenset(
-    {"EQUALS", "ADD", "MULTIPLY", "COPY", "MAXVALUE", "MINVALUE"}
+    {
+        "EQUALS",
+        "ADD",
+        "MULTIPLY",
+        "COPY",
+        "MAXVALUE",
+        "MINVALUE",
+    }
 )
 
 OPERATOR_CONTROL_KEYWORDS: typing.FrozenSet[str] = (
@@ -46,15 +53,19 @@ class Operation(typing.NamedTuple):
     """One resolved operator instruction (`EQUALS` / `ADD` / etc.)."""
 
     op: str
-    """Operator name: one of `EQUALS`, `ADD`, `MULTIPLY`, `COPY`,
-    `MAXVALUE`, `MINVALUE`."""
+    """
+    Operator name: one of `EQUALS`, `ADD`, `MULTIPLY`, `COPY`,
+    `MAXVALUE`, `MINVALUE`.
+    """
 
     target: str
     """Upper-cased name of the keyword array being modified."""
 
     value: typing.Optional[float]
-    """Scalar operand for `EQUALS` / `ADD` / `MULTIPLY` / `MAXVALUE` /
-    `MINVALUE`; `None` for `COPY`."""
+    """
+    Scalar operand for `EQUALS` / `ADD` / `MULTIPLY` / `MAXVALUE` /
+    `MINVALUE`; `None` for `COPY`.
+    """
 
     source: typing.Optional[str]
     """Upper-cased source keyword name for `COPY`; `None` otherwise."""
@@ -101,7 +112,7 @@ def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operatio
     resolve each operator record to a concrete `Operation`.
 
     `BOX` updates the active box for all subsequent operator records until
-    `ENDBOX` resets it to the full grid extent.  The active box is
+    `ENDBOX` resets it to the full grid extent. The active box is
     deck-order state, independent of which keyword each operator record
     targets.
 
@@ -116,7 +127,7 @@ def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operatio
 
     for record in deck.records:
         if record.keyword == _BOX_KEYWORD:
-            tokens = tokenise(record.body)
+            tokens = tokenize(record.body)
             if len(tokens) < 6:
                 warnings.warn(
                     f"BOX record has {len(tokens)} token(s); expected 6 "
@@ -170,7 +181,7 @@ def _parse_operator_records(
         a placeholder `(0, 0)` — the caller replaces it).
     """
     for line in body.split("/"):
-        tokens = tokenise(line)
+        tokens = tokenize(line)
         if not tokens:
             continue
 

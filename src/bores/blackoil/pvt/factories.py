@@ -270,8 +270,9 @@ def build_oil_pvt_data(
         temperatures_flat = np.broadcast_to(temperatures, (n_p, n_t))
         assert solution_gas_to_oil_ratio_table is not None
         bubble_point_pressure_table = (
-            pb_interp
-            .ev(solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel())
+            pb_interp.ev(
+                solution_gas_to_oil_ratio_table.ravel(), temperatures_flat.ravel()
+            )
             .reshape(n_p, n_t)
             .astype(dtype)
         )

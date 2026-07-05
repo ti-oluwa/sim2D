@@ -19,7 +19,7 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.state import TemperatureRegions
+from bores.reservoir.temperature import TemperatureRegions
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
 from bores.typing import (
@@ -348,9 +348,9 @@ def _build_oil_data_from_pvto(
     for i, solution_gor in enumerate(solution_gor_values):
         rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
         saturated_row = rows[0]
-        bubble_point_pressure_values[i] = float(saturated_row["pressure"])
-        saturated_oil_fvf[i] = float(saturated_row["bo"])
-        saturated_oil_viscosity[i] = float(saturated_row["viscosity"])
+        bubble_point_pressure_values[i] = saturated_row["pressure"]
+        saturated_oil_fvf[i] = saturated_row["bo"]
+        saturated_oil_viscosity[i] = saturated_row["viscosity"]
 
     # Pressure grid: bubble-point pressures + extension to max undersaturated pressure.
     # We do NOT merge all undersaturated rows into one flat grid - that would mix
@@ -385,7 +385,7 @@ def _build_oil_data_from_pvto(
                 oil_fvf_arr,
                 kind="linear",
                 bounds_error=False,
-                fill_value=(float(oil_fvf_arr[0]), float(oil_fvf_arr[-1])),
+                fill_value=(oil_fvf_arr[0], oil_fvf_arr[-1]),
             )
         )
         oil_viscosity_interps.append(
@@ -394,7 +394,7 @@ def _build_oil_data_from_pvto(
                 oil_viscosity_arr,
                 kind="linear",
                 bounds_error=False,
-                fill_value=(float(oil_viscosity_arr[0]), float(oil_viscosity_arr[-1])),
+                fill_value=(oil_viscosity_arr[0], oil_viscosity_arr[-1]),
             )
         )
 
@@ -414,7 +414,7 @@ def _build_oil_data_from_pvto(
         solution_gor_values,
         kind="linear",
         bounds_error=False,
-        fill_value=(float(solution_gor_values[0]), float(solution_gor_values[-1])),
+        fill_value=(solution_gor_values[0], solution_gor_values[-1]),
     )
 
     oil_fvf_2d = np.empty((n_p, n_t), dtype=dtype)
@@ -431,11 +431,11 @@ def _build_oil_data_from_pvto(
         rs_idx = int(np.clip(rs_idx, 0, n_rs - 1))
 
         # Rs at this pressure on the saturated envelope
-        rs_at_pressure = float(solution_gor_of_pressure(pressure))
+        rs_at_pressure = solution_gor_of_pressure(pressure)
         solution_gor_2d[i, :] = rs_at_pressure
 
-        oil_fvf = float(oil_fvf_interps[rs_idx](pressure))
-        oil_viscosity = float(oil_viscosity_interps[rs_idx](pressure))
+        oil_fvf = oil_fvf_interps[rs_idx](pressure)
+        oil_viscosity = oil_viscosity_interps[rs_idx](pressure)
 
         oil_fvf_2d[i, :] = oil_fvf
         oil_viscosity_2d[i, :] = oil_viscosity
@@ -443,7 +443,7 @@ def _build_oil_data_from_pvto(
     # Bubble-point table: Pb(Rs, T) - 2-D, one Pb per Rs per temperature
     bubble_point_pressure_2d = np.tile(
         bubble_point_pressure_values[:, np.newaxis], (1, n_t)
-    ).astype(dtype)
+    ).astype(dtype, copy=False)
 
     # Resolve reference densities: pvt takes precedence over DENSITY record
     stock_tank_oil_density: typing.Optional[Number] = None
@@ -458,7 +458,7 @@ def _build_oil_data_from_pvto(
         oil_density_2d = (
             (stock_tank_oil_density + solution_gor_2d * stock_tank_gas_density)
             / oil_fvf_2d
-        ).astype(dtype)
+        ).astype(dtype, copy=False)
 
     # Compressibility: co = -(1/Bo)·(∂Bo/∂P) via PCHIP derivative
     oil_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
@@ -466,7 +466,9 @@ def _build_oil_data_from_pvto(
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
         # Compressibility must be non-negative; clamp to physical range
-        oil_compressibility_2d[:, j] = np.clip(oil_compressibility, 0.0, 1e-1)
+        oil_compressibility_2d[:, j] = np.clip(
+            oil_compressibility, 0.0, 1e-1, dtype=dtype
+        )
 
     return PVTData(
         phase=FluidPhase.OIL,
@@ -547,14 +549,14 @@ def _build_oil_data_from_pvdo(
     # Density: ρo = ρo,SC / Bo (dead oil - Rs = 0)
     oil_density_2d: typing.Optional[npt.NDArray] = None
     if stock_tank_oil_density is not None:
-        oil_density_2d = (stock_tank_oil_density / oil_fvf_2d).astype(dtype)
+        oil_density_2d = (stock_tank_oil_density / oil_fvf_2d).astype(dtype, copy=False)
 
     # Compressibility: co = -(1/Bo)·(∂Bo/∂P)
     oil_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
     for j in range(n_t):
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = np.clip(
-            -(1.0 / oil_fvf_2d[:, j]) * dbo_dp, 0.0, 1e-1
+            -(1.0 / oil_fvf_2d[:, j]) * dbo_dp, 0.0, 1e-1, dtype=dtype
         )
 
     return PVTData(
@@ -629,14 +631,14 @@ def _build_gas_data_from_pvdg(
     # Density: ρg = ρg,SC / Bg
     gas_density_2d: typing.Optional[npt.NDArray] = None
     if stock_tank_gas_density is not None:
-        gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(dtype)
+        gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(dtype, copy=False)
 
     # Compressibility: cg ≈ -(1/Bg)·(∂Bg/∂P)
     gas_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
     for j in range(n_t):
         dbg_dp = PchipInterpolator(pressures, gas_fvf_2d[:, j]).derivative(1)(pressures)
         gas_compressibility_2d[:, j] = np.clip(
-            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1
+            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1, dtype=dtype
         )
 
     return PVTData(
@@ -701,9 +703,9 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups → common Rv grid
-    all_rv = sorted({
-        float(row["rv"]) for rows in pressure_to_rows.values() for row in rows
-    })
+    all_rv = sorted(
+        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
+    )
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 
@@ -731,22 +733,22 @@ def _build_gas_data_from_pvtg(
 
         # If this pressure group has only one Rv point, broadcast it
         if len(rv_arr) == 1:
-            gas_fvf_2d[i, :] = float(gas_fvf_arr[0])
-            gas_viscosity_2d[i, :] = float(gas_viscosity_arr[0])
+            gas_fvf_2d[i, :] = gas_fvf_arr[0]
+            gas_viscosity_2d[i, :] = gas_viscosity_arr[0]
         else:
             gas_fvf_2d[i, :] = interp1d(
                 rv_arr,
                 gas_fvf_arr,
                 kind="linear",
                 bounds_error=False,
-                fill_value=(float(gas_fvf_arr[0]), float(gas_fvf_arr[-1])),
+                fill_value=(gas_fvf_arr[0], gas_fvf_arr[-1]),
             )(rv_values)
             gas_viscosity_2d[i, :] = interp1d(
                 rv_arr,
                 gas_viscosity_arr,
                 kind="linear",
                 bounds_error=False,
-                fill_value=(float(gas_viscosity_arr[0]), float(gas_viscosity_arr[-1])),
+                fill_value=(gas_viscosity_arr[0], gas_viscosity_arr[-1]),
             )(rv_values)
 
     # Resolve reference densities
@@ -765,9 +767,11 @@ def _build_gas_data_from_pvtg(
         if stock_tank_oil_density is not None:
             gas_density_2d = (
                 (stock_tank_gas_density + rv_grid * stock_tank_oil_density) / gas_fvf_2d
-            ).astype(dtype)
+            ).astype(dtype, copy=False)
         else:
-            gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(dtype)
+            gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(
+                dtype, copy=False
+            )
 
     # Compressibility: cg ≈ -(1/Bg)·(∂Bg/∂P) along each Rv column
     gas_compressibility_2d = np.empty((n_p, n_rv), dtype=dtype)
@@ -776,14 +780,13 @@ def _build_gas_data_from_pvtg(
             pressure_values
         )
         gas_compressibility_2d[:, j] = np.clip(
-            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1
+            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1, dtype=dtype
         )
 
     # Rv table: shape (n_p, n_rv) - same Rv values at every pressure
     vaporized_oil_ratio_table = np.tile(rv_values[np.newaxis, :], (n_p, 1)).astype(
-        dtype
+        dtype, copy=False
     )
-
     return PVTData(
         phase=FluidPhase.GAS,
         pressures=typing.cast(FloatArray[OneDimension], pressure_values),
@@ -859,24 +862,39 @@ def _build_water_data_from_pvtw(
     if reference_water_viscosity <= 0:
         raise ValidationError("PVTW viscosity must be positive.")
 
-    min_pressure = max(14.696, reference_pressure / 10.0)
+    min_pressure = max(0.0, reference_pressure / 10.0)
     max_pressure = reference_pressure * 10.0
     pressures = np.linspace(min_pressure, max_pressure, n_pressure_points, dtype=dtype)
     n_p = len(pressures)
 
     delta_p = pressures - reference_pressure
-    water_fvf_1d = (
-        reference_water_fvf * np.exp(-water_compressibility * delta_p)
-    ).astype(dtype)
-    water_viscosity_1d = (
-        reference_water_viscosity * np.exp(-water_viscosibility * delta_p)
-    ).astype(dtype)
+    # True Exponential approach (May give negatives by more accurate)
+    # water_fvf_1d = (
+    #     reference_water_fvf * np.exp(-water_compressibility * delta_p)
+    # ).astype(dtype, copy=False)
+
+    # Taylor's exponential approximation (more stable). Used by Eclipse.
+    x = water_compressibility * delta_p
+    water_fvf_1d = (reference_water_fvf / (1.0 + x + 0.5 * x * x)).astype(
+        dtype, copy=False
+    )
+
+    # True Exponential approach (May give negatives by more accurate)
+    # water_viscosity_1d = (
+    #     reference_water_viscosity * np.exp(-water_viscosibility * delta_p)
+    # ).astype(dtype, copy=False)
+
+    # Taylor's exponential approximation (more stable). Used by Eclipse.
+    y = water_viscosibility * delta_p
+    water_viscosity_1d = (reference_water_viscosity / (1.0 + y + 0.5 * y * y)).astype(
+        dtype, copy=False
+    )
 
     water_fvf_2d = _broadcast_to_2d(water_fvf_1d, n_t)
     water_viscosity_2d = _broadcast_to_2d(water_viscosity_1d, n_t)
     # Expand to 3-D: (n_p, n_t, n_s=1)
-    water_fvf_3d = water_fvf_2d[:, :, np.newaxis].astype(dtype)
-    water_viscosity_3d = water_viscosity_2d[:, :, np.newaxis].astype(dtype)
+    water_fvf_3d = water_fvf_2d[:, :, np.newaxis].astype(dtype, copy=False)
+    water_viscosity_3d = water_viscosity_2d[:, :, np.newaxis].astype(dtype, copy=False)
 
     stock_tank_water_density: typing.Optional[Number] = None
     if density_record is not None:
@@ -885,7 +903,9 @@ def _build_water_data_from_pvtw(
     # Density: ρw = ρw,SC / Bw
     water_density_3d: typing.Optional[npt.NDArray] = None
     if stock_tank_water_density is not None:
-        water_density_3d = (stock_tank_water_density / water_fvf_3d).astype(dtype)
+        water_density_3d = (stock_tank_water_density / water_fvf_3d).astype(
+            dtype, copy=False
+        )
 
     # Compressibility: cw is constant for this model - store as a uniform table
     # so the lookup API is consistent with oil and gas phases

@@ -72,7 +72,7 @@ class ReservoirModel(
     """
     Reservoir characterization.
 
-    Binds a polyhedral `Grid` to per-cell rock,faults, regions, boundary conditions,
+    Binds a polyhedral `Grid` to per-cell rock, faults, regions, boundary conditions,
     etc. On construction all property groups are normalised to the
     declared `unit_system` (defaults to the grid's own unit system).
     """

@@ -6,136 +6,16 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
-from bores.deck.file import DeckFile
-from bores.errors import ValidationError
-from bores.grids.base import Grid
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.typing import (
     BooleanCellArray,
     CellArray,
-    IntCellArray,
-    Number,
     UnitSystem,
 )
 from bores.utils import scale, scale_and_offset
 
 __all__ = ["Hysteresis", "State"]
-
-
-@attrs.frozen(slots=True)
-class TemperatureRegions:
-    """
-    Reservoir temperature specification.
-
-    Represents either a single uniform reservoir temperature (`default`) or
-    a mapping of 1-based PVT region indices to temperature values (`regions`).
-
-    - `default`: Single temperature applied when no per-region mapping exists.
-    - `regions`: Mapping from 1-based region index to temperature value. A
-        special key `-1` is used as the default region value when present.
-    - `unit_system`: Unit system used for stored temperature values.
-
-    The companion method `as_cell_array` broadcasts region temperatures to a
-    per-cell array using a provided region index array (e.g. `pvt_region`).
-    Use `convert(target)` to produce a copy in a different `UnitSystem`.
-    """
-
-    default: typing.Optional[Number] = None
-    """Single temperature applied when no per-region mapping exists."""
-    regions: typing.Optional[typing.Dict[int, Number]] = None
-    """
-    Mapping from 1-based region index to temperature value. 
-    A special key `-1` is used as the default region value when present.
-    """
-    unit_system: UnitSystem = UnitSystem.FIELD
-    """Unit system used for stored temperature values."""
-
-    def __attrs_post_init__(self) -> None:
-        if self.default is None and self.regions is None:
-            raise ValidationError("Either `default` or `regions` must be provided.")
-
-        if not self.regions and not self.default:
-            raise ValidationError(
-                "`regions` cannot be empty when `default` is not provided."
-            )
-
-        regions = self.regions or {}
-        regions[-1] = (  # -1 is the default region
-            self.default
-            if self.default is not None
-            else np.mean(list(regions.values()))  # type: ignore
-        )
-        object.__setattr__(self, "regions", regions)
-
-    def for_region(self, pvtnum: int) -> Number:
-        assert self.regions
-        if pvtnum in self.regions:
-            return self.regions[pvtnum]
-        return self.regions[-1]
-
-    def as_cell_array(
-        self, pvt_region: IntCellArray, dtype: npt.DTypeLike = None
-    ) -> CellArray:
-        """
-        Broadcast per-region temperatures to a per-cell array.
-
-        :param pvt_region: Shape `(n_cells,)` int array of 1-based region
-            indices. Usually `Regions.pvt_region`. For each cell the temperature
-            is `regions[pvt_region[i]]` when present, otherwise the default region
-            value `regions[-1]` is used (or `self.default` when `regions` is absent).
-        :param dtype: Optional numpy dtype for the returned array. When
-            omitted `get_dtype()` is used.
-        :returns: `CellArray` of shape `(n_cells,)` with temperature values.
-        """
-        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-        n_cells = pvt_region.size
-
-        # Resolve per-region mapping and default
-        assert self.regions
-        regions = self.regions
-        default = regions[-1]
-        out = np.full(n_cells, default, dtype=dtype)
-        # If there are explicit region values, broadcast them
-        # Assign each region value to cells belonging to that region
-        for region_idx, temperature in regions.items():
-            if region_idx == -1:
-                continue
-            mask = pvt_region == region_idx
-            if np.any(mask):
-                out[mask] = temperature
-        return typing.cast(CellArray, out)
-
-    def convert(
-        self,
-        target: UnitSystem,
-        /,
-        *,
-        table: typing.Optional[UnitConversionTable] = None,
-    ) -> Self:
-        """Return a copy with temperatures converted to *target* units."""
-        if target == self.unit_system:
-            return self
-
-        factors = get_conversion_factors(self.unit_system, target, table=table)
-        factor = factors["temperature"]
-        offset = factors["temperature_offset"]
-
-        new_default = (
-            None
-            if self.default is None
-            else scale_and_offset(self.default, factor=factor, offset=offset)
-        )
-        new_regions: typing.Optional[typing.Dict[int, Number]] = None
-        if self.regions is not None:
-            new_regions = {
-                k: scale_and_offset(v, factor=factor, offset=offset)
-                for k, v in self.regions.items()
-            }
-
-        return self.__class__(
-            default=new_default, regions=new_regions, unit_system=target
-        )
 
 
 @attrs.frozen(slots=True)
@@ -244,13 +124,7 @@ class Hysteresis(StoreSerializable):
         return attrs.evolve(self, **kwargs)
 
 
-# We need `State` to be mutable as it is going to be used alot in the simulation solver
-# and we dont want to creating new objects (allocating/deallocating) in an hot path
-# when we can absolutely avoid it. We will only make a copy once (before simualtion start)
-# so we dont mutate the one on the model itself. Moreover, the PVTCache is what will
-# mostlikely be updated most frequently during the simulation. The `State` object will only
-# use to record or generated summary of each timestep.
-@attrs.mutable(slots=True)
+@attrs.frozen(slots=True)
 class State(StoreSerializable):
     """
     Reservoir (dynamic) per-cell state, updated at every time step.
@@ -287,9 +161,6 @@ class State(StoreSerializable):
     - `oil_mass`, `water_mass`, `free_gas_mass`
     - `dissolved_gas_mass_in_oil`, `dissolved_gas_mass_in_water`
     - `vaporized_oil_mass_in_gas`
-
-    **TemperatureRegions** lives on `Rock.temperature` because it is a
-    static field (not a solver unknown) in standard isothermal black-oil.
 
     Use `convert(target)` to rescale to another unit system, or
     `evolve(**kwargs)` to produce a new state with selected fields replaced.

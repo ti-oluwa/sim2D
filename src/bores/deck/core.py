@@ -5,12 +5,14 @@ import typing
 import warnings
 from pathlib import Path
 
-__all__ = ["GridDimensions", "Record", "Deck", "DeckParseError", "tokenise"]
+from bores.errors import ValidationError
+
+__all__ = ["GridDimensions", "Record", "Deck", "DeckParseError", "tokenize"]
 
 _TextOrPath = typing.Union[str, bytes, Path]
 
 
-class DeckParseError(ValueError):
+class DeckParseError(ValidationError):
     """Raised when an Eclipse deck or one of its keyword records is malformed."""
 
 
@@ -145,7 +147,7 @@ _REPEAT_RE = re.compile(r"^(\d+)\*(.*)$")
 _QUOTED_RE = re.compile(r"""(['"])((?:(?!\1).)*)\1""")
 
 
-def tokenise(text: str) -> typing.List[str]:
+def tokenize(text: str) -> typing.List[str]:
     """
     Split text into whitespace-separated tokens, expanding `N*value`
     repeat syntax and preserving quoted strings (with embedded whitespace)
@@ -179,23 +181,23 @@ def tokenise(text: str) -> typing.List[str]:
     stashed_text = _QUOTED_RE.sub(_stash, text)
 
     tokens: typing.List[str] = []
-    for raw_tok in stashed_text.split():
-        m = _REPEAT_RE.match(raw_tok)
-        if m:
-            count, value = int(m.group(1)), m.group(2)
+    for raw_token in stashed_text.split():
+        match = _REPEAT_RE.match(raw_token)
+        if match:
+            count, value = int(match.group(1)), match.group(2)
             tokens.extend([value] * count)
         else:
-            tokens.append(raw_tok)
+            tokens.append(raw_token)
 
-    def _unstash(tok: str) -> str:
-        if tok.startswith("\x00") and tok.endswith("\x00"):
+    def _unstash(token: str) -> str:
+        if token.startswith("\x00") and token.endswith("\x00"):
             try:
-                return placeholders[int(tok[1:-1])]
+                return placeholders[int(token[1:-1])]
             except (ValueError, IndexError):
-                return tok
-        return tok
+                return token
+        return token
 
-    return [_unstash(tok) for tok in tokens]
+    return [_unstash(token) for token in tokens]
 
 
 class Record(typing.NamedTuple):
@@ -209,6 +211,15 @@ class Record(typing.NamedTuple):
     Raw text between the keyword and its terminating `/` (untokenised),
     or empty string for a bare/nullary keyword that takes no data section.
     """
+    # NOTE: Record could essentially just store the start and end position of the
+    # keyword record body in the original text buffer and not store `body` at all.
+    # However, that would imply for every `Keyword.parse` a slice (copy) from the body is taken.
+    # This may look like memory savings through lazy evaluation of record body when needed,
+    # but the cost of slicing a string is *O(length of slice)*, because strings are immutable
+    # and slices copy data. This can be very expensive especially for repeated lookup of keywords
+    # that can have very large record bodies e.g `PORO` or any array kind keyword. So why not just
+    # pay that cost upfront (at the expense of a little more memory usage). Atleast that's why the
+    # `Deck` and `DeckFile` API exists - upfront pre-parsing of Eclipse deck text records.
 
     start: int
     """Character offset of the keyword name in the source text."""
@@ -229,6 +240,13 @@ _KEYWORD_LINE_RE = re.compile(
     r"^[ \t]*(?P<keyword>[A-Z][A-Z0-9_]{0,7}-?)[ \t]*\r?$",
     re.MULTILINE,
 )
+
+
+class ScanResult(typing.NamedTuple):
+    """Result of scanning an Eclipse deck."""
+
+    records: typing.List[Record]
+    keyword_records: typing.Dict[str, typing.List[Record]]
 
 
 class Deck:
@@ -257,7 +275,7 @@ class Deck:
         this edge case only arises with truncated or hand-written files.
     """
 
-    __slots__ = ("text", "records", "_hash")
+    __slots__ = ("text", "records", "_keyword_records", "_hash")
 
     def __init__(self, text: str) -> None:
         """
@@ -265,26 +283,29 @@ class Deck:
             text.
         """
         self.text = text
-        self.records: typing.List[Record] = self._scan(text)
+        self.records, self._keyword_records = self._scan(text)
         self._hash: typing.Optional[int] = None
 
     @staticmethod
-    def _scan(text: str) -> typing.List[Record]:
+    def _scan(text: str) -> ScanResult:
         """
-        Tokenise `text` into an ordered list of `Record` objects.
+        Scan `text` into an ordered list of `Record` objects together with an
+        index mapping upper-cased keywords to all matching records.
 
-        :param text: Clean Eclipse text (no comments, no INCLUDE
-            directives).
-        :returns: Records in the order they appear in the file.
+        :param text: Clean Eclipse text (no comments, no INCLUDE directives).
+        :returns: `ScanResult` containing records in file order and a keyword index.
         """
         keyword_lines = list(_KEYWORD_LINE_RE.finditer(text))
-        records: typing.List[Record] = []
 
-        for idx, m in enumerate(keyword_lines):
-            keyword = m.group("keyword").upper()
-            body_start = m.end()
-            # The next keyword line (if any) bounds how far this keyword's
-            # body may extend, even if no '/' is found before it.
+        records: typing.List[Record] = []
+        keyword_records: typing.Dict[str, typing.List[Record]] = {}
+
+        for idx, match in enumerate(keyword_lines):
+            keyword = match.group("keyword").upper()
+            body_start = match.end()
+
+            # The next keyword line (if any) bounds how far this keyword's body
+            # may extend, even if no '/' is found before it.
             next_keyword_start = (
                 keyword_lines[idx + 1].start()
                 if idx + 1 < len(keyword_lines)
@@ -296,45 +317,36 @@ class Deck:
             if slash_pos == -1:
                 # No terminator before the next keyword line (or end of
                 # file): treat as bare/nullary keyword.
-                records.append(
-                    Record(
-                        keyword=keyword,
-                        body="",
-                        start=m.start(),
-                        end=body_start,
-                    )
+                record = Record(
+                    keyword=keyword,
+                    body="",
+                    start=match.start(),
+                    end=body_start,
                 )
             else:
-                body = window[:slash_pos]
-                end = body_start + slash_pos + 1
-                records.append(
-                    Record(
-                        keyword=keyword,
-                        body=body,
-                        start=m.start(),
-                        end=end,
-                    )
+                record = Record(
+                    keyword=keyword,
+                    body=window[:slash_pos],
+                    start=match.start(),
+                    end=body_start + slash_pos + 1,
                 )
 
-        return records
+            records.append(record)
+            keyword_records.setdefault(keyword, []).append(record)
+        return ScanResult(records=records, keyword_records=keyword_records)
 
     def records_for(self, keyword: str) -> typing.List[Record]:
         """Return every record for `keyword`, in file order."""
-        upper = keyword.upper()
-        return [r for r in self.records if r.keyword == upper]
+        return self._keyword_records.get(keyword.upper(), [])
 
     def first_record_for(self, keyword: str) -> typing.Optional[Record]:
         """Return the first record for `keyword`, or `None` if absent."""
-        upper = keyword.upper()
-        for r in self.records:
-            if r.keyword == upper:
-                return r
-        return None
+        records = self._keyword_records.get(keyword.upper())
+        return records[0] if records else None
 
     def has(self, keyword: str) -> bool:
         """Return whether `keyword` occurs anywhere in the deck."""
-        upper = keyword.upper()
-        return any(r.keyword == upper for r in self.records)
+        return keyword.upper() in self._keyword_records
 
     def __hash__(self) -> int:
         if self._hash is None:

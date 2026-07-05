@@ -868,7 +868,7 @@ def build_pseudo_pressure_table(
     **Cache Key Construction:**
     The cache key should uniquely identify the table based on:
     - Gas properties (specific gravity, molecular weight)
-    - TemperatureRegions
+    - Temperature
     - Pressure range and resolution
     - Whether PVT tables are used
 

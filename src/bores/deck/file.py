@@ -107,6 +107,7 @@ from bores.deck.keywords.solution import (
     RESTART,
     RS,
     RTEMP,
+    RTEMPVD,
     RV,
     SGAS,
     SOIL,
@@ -227,6 +228,7 @@ DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
         SOIL,
         SWAT,
         RTEMP,
+        RTEMPVD,
         TEMPVD,
         ### SCHEDULE ###
         COMPDAT,

@@ -12,13 +12,10 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.pvt import StaticPVT
 from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
-from bores.grids.base import Grid
 from bores.precision import get_dtype
 from bores.reservoir.model import ReservoirModel
-from bores.reservoir.rock import Rock
 from bores.reservoir.state import State
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
@@ -514,9 +511,7 @@ class ConstantFluxBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        rock: Rock,
-        pvt: StaticPVT,
-        grid: Grid,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -816,7 +811,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         # Resolve per-face PI
         if self.alpha_function is not None:
             productivity_index = np.asarray(
-                self.alpha_function(face_positions, state, rock, pvt, grid, time),
+                self.alpha_function(face_positions, state, reservoir, time),
                 dtype=dtype,
                 copy=False,
             )
@@ -895,9 +890,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: State,
-        rock: Rock,
-        pvt: StaticPVT,
-        grid: Grid,
+        reservoir: ReservoirModel,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -1118,7 +1111,7 @@ class CarterTracyAquifer(BoundaryCondition):
 
     - Carter, R.D. & Tracy, G.W. (1960). *An Improved Method for Calculating
       Water Influx.* Trans. AIME, 219, 415-417.
-    - Edwardson, M.J. et al. (1962). *Calculation of Formation TemperatureRegions
+    - Edwardson, M.J. et al. (1962). *Calculation of Formation Temperature
       Disturbances Caused by Mud Circulation.* JPT, 14(4), 416-426.
       (source of the pD polynomial approximations)
     - Ahmed, T. (2010). *Reservoir Engineering Handbook*, 4th ed.
@@ -1970,9 +1963,7 @@ class BoundaryConditions(StoreSerializable):
         self,
         n_boundary_faces: int,
         state: State,
-        rock: Rock,
-        pvt: StaticPVT,
-        grid: Grid,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> typing.Tuple[
@@ -1993,9 +1984,6 @@ class BoundaryConditions(StoreSerializable):
             (`len(Grid.boundary_face_indices)`). Determines the length of
             the output arrays.
         :param state: Current `State`.
-        :param rock: `Rock` properties.
-        :param pvt: `PVT` fluid properties.
-        :param grid: The simulation `Grid`.
         :param time: Current simulation time (days).
         :param dtype: Output array dtype. When `None`, `get_dtype()` is used.
         :returns: 3-tuple `(pressure_values, flux_values, is_dirichlet)`
@@ -2019,9 +2007,7 @@ class BoundaryConditions(StoreSerializable):
             values = region.condition.evaluate(
                 face_positions=face_positions,
                 state=state,
-                rock=rock,
-                pvt=pvt,
-                grid=grid,
+                reservoir=reservoir,
                 time=time,
                 dtype=dtype,
             ).astype(dtype, copy=False)

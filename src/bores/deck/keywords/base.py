@@ -13,7 +13,7 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.operators import Operation, apply_operation, resolve_operations
 from bores.typing import FloatArray, Number, OneDimension
 
@@ -153,14 +153,15 @@ def _parse_tokens(
         invalid value.
     """
     result: typing.Dict[str, typing.Optional[T]] = {}
+    token_count = len(tokens)
     for idx, field in enumerate(fields):
-        if idx < len(tokens):
+        if idx < token_count:
             raw = tokens[idx]
             result[field.name] = field.parse(raw, keyword_name)
         elif field.required:
             raise DeckParseError(
                 f"{keyword_name} record: missing required field {field.name!r} "
-                f"(got {len(tokens)} token(s), expected at least {idx + 1})."
+                f"(got {token_count} token(s), expected at least {idx + 1})."
             )
         else:
             result[field.name] = field.default
@@ -194,7 +195,7 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         return self._parse_tokens(tokens)
 
     def _parse_tokens(
@@ -238,7 +239,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
         results: typing.List[typing.Dict[str, typing.Optional[T]]] = []
         for record in records:
             for line in record.body.split("/"):
-                tokens = tokenise(line)
+                tokens = tokenize(line)
                 if not tokens:
                     continue
                 results.append(self._parse_tokens(tokens))
@@ -250,6 +251,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
         return _parse_tokens(self.name, self.fields, tokens)
 
 
+# TODO: Optimize `GridArrayKeyword` keyword. It slow for large arrays
 class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
     """
     A flat per-cell array keyword of length `nx * ny * nz`
@@ -327,7 +329,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         if column_shape and len(column_shape) > 3:
             raise ValueError(f"Invalid size for `column_shape`: {column_shape!r}")
         self.column_shape = (
-            [col.lower() for col in column_shape] if column_shape else None
+            [column.lower() for column in column_shape] if column_shape else None
         )
 
     def parse(
@@ -353,12 +355,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 f"Cannot parse grid array keyword {self.name!r} without "
                 "resolved grid dimensions (SPECGRID/DIMENS not found)."
             )
-        return self._resolve(
-            deck,
-            dims,
-            operations=operations,
-            stop_before_order=None,
-        )
+        return self._resolve(deck, dims, operations=operations, stop_before_order=None)
 
     def _resolve(
         self,
@@ -473,7 +470,6 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                         name, _order, operations=operations
                     ),
                 )
-
         return array.astype(self.dtype, copy=False)  # type: ignore[return-value]
 
     def _short_form_count(self, dims: GridDimensions) -> int:
@@ -550,7 +546,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         events: typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]] = []
 
         for record in deck.records_for(self.name):
-            raw_tokens = tokenise(record.body)
+            raw_tokens = tokenize(record.body)
             # Filter out tokens that are empty strings (produced by bare "N*"
             # repeat syntax). A record that expands to only empty strings is
             # dropped with a warning rather than crashing float() later.
@@ -597,7 +593,7 @@ def _parse_date(tokens: typing.Sequence[str], keyword_name: str) -> datetime.dat
     Parse a three-token Eclipse date `[day, month, year]` into a `datetime.date`.
 
     Eclipse month tokens may be bare (`JAN`) or quoted (`'JAN'`);
-    quoting is already stripped by `bores.deck.core.tokenise`.
+    quoting is already stripped by `bores.deck.core.tokenize`.
 
     :param tokens: At least three string tokens: day, month abbreviation, year.
     :param keyword_name: Keyword name for error messages.
@@ -686,7 +682,7 @@ class DateKeyword(Keyword[datetime.date]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         return _parse_date(tokens, self.name)
 
 
@@ -724,7 +720,7 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
         dates: typing.List[datetime.date] = []
         for record in records:
             for segment in record.body.split("/"):
-                tokens = tokenise(segment)
+                tokens = tokenize(segment)
                 if not tokens:
                     continue
                 dates.append(_parse_date(tokens, self.name))
@@ -817,34 +813,26 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         designator is treated as absent (falls back to `default`).
         """
         row: PVTRow = {}
-        for idx, col in enumerate(self.columns):
+        for idx, column in enumerate(self.columns):
             if idx < len(tokens):
                 raw = tokens[idx]
                 if raw == "1*":
                     # Eclipse default designator - use the column default.
-                    if col.required:
+                    if column.required:
                         raise DeckParseError(
-                            f"{self.name}: required column {col.name!r} "
+                            f"{self.name}: required column {column.name!r} "
                             "has a default designator ('1*') but no default value."
                         )
-                    row[col.name] = col.default
+                    row[column.name] = column.default
                 else:
-                    try:
-                        row[col.name] = col.type(raw)
-                    except ValueError as exc:
-                        if col.required:
-                            raise DeckParseError(
-                                f"{self.name}: column {col.name!r} got invalid "
-                                f"value {raw!r}: {exc}"
-                            ) from exc
-                        row[col.name] = col.default
-            elif col.required:
+                    row[column.name] = column.parse(raw, self.name)
+            elif column.required:
                 raise DeckParseError(
-                    f"{self.name}: missing required column {col.name!r} "
+                    f"{self.name}: missing required column {column.name!r} "
                     f"(got {len(tokens)} token(s), need at least {idx + 1})."
                 )
             else:
-                row[col.name] = col.default
+                row[column.name] = column.default
         return row
 
     def _parse_flat(self, body: str) -> PVTTable[Number]:
@@ -854,7 +842,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         """
         table: PVTTable = []
         for segment in body.split("/"):
-            tokens = tokenise(segment)
+            tokens = tokenize(segment)
             if not tokens:
                 continue
             table.append(self._row_from_tokens(tokens))
@@ -885,7 +873,7 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         i = 0
         while i < len(segments):
             seg = segments[i]
-            tokens = tokenise(seg)
+            tokens = tokenize(seg)
             i += 1
 
             if not tokens:

@@ -32,7 +32,7 @@ SCHEDULE) sections and share no shape with the vector selectors above.
 
 import typing
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenise
+from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import Keyword
 from bores.deck.operators import Operation
 
@@ -84,7 +84,7 @@ class SummaryVectorKeyword(Keyword[typing.List[str]]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        return tokenise(record.body)
+        return tokenize(record.body)
 
 
 FOPR = SummaryVectorKeyword("FOPR")
@@ -165,7 +165,7 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
         if record is None:
             return None
 
-        tokens = tokenise(record.body)
+        tokens = tokenize(record.body)
         result: typing.Dict[str, typing.Optional[int]] = {}
         for token in tokens:
             if "=" in token:
