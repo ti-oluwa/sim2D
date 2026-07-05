@@ -81,11 +81,11 @@ class PVTData(StoreSerializable):
 
     # Coordinate grids
     pressures: NumberArray[OneDimension]
-    """1-D array of pressures (psi), strictly increasing."""
+    """1-D array of pressures, strictly increasing. Units depend on `unit_system`."""
 
     temperatures: NumberArray[OneDimension]
     """
-    1-D array of temperatures (°F), strictly increasing.
+    1-D array of temperatures, strictly increasing. Units depend on `unit_system`.
 
     For wet-gas (PVTG) tables this axis carries Rv values instead of
     temperatures; the `pvtg` flag on `PVTTable` signals this.
@@ -93,14 +93,14 @@ class PVTData(StoreSerializable):
 
     # Water-only coordinate
     salinities: typing.Optional[NumberArray[OneDimension]] = None
-    """1-D array of salinities (ppm NaCl), strictly increasing. Water phase only."""
+    """1-D array of salinities (ppm NaCl), strictly increasing. Water phase only. Unit-system independent."""
 
     # Oil-only coordinates / meta
     bubble_point_pressures: typing.Optional[
         typing.Union[NumberArray[OneDimension], NumberArray[TwoDimensions]]
     ] = None
     """
-    Bubble-point pressures (psi).  Oil phase only.
+    Bubble-point pressures. Oil phase only. Units depend on `unit_system`.
 
     - 1-D shape `(n_t,)`      -> Pb(T).
     - 2-D shape `(n_rs, n_t)` -> Pb(Rs, T); requires `solution_gas_to_oil_ratios`.
@@ -108,7 +108,7 @@ class PVTData(StoreSerializable):
 
     solution_gas_to_oil_ratios: typing.Optional[NumberArray[OneDimension]] = None
     """
-    1-D array of Rs values (scf/STB) for the first axis of a 2-D
+    1-D array of Rs values (SCF/STB) for the first axis of a 2-D
     `bubble_point_pressures` table. Required when `bubble_point_pressures`
     is 2-D. Oil phase only.
     """
@@ -116,30 +116,32 @@ class PVTData(StoreSerializable):
     # Gas-only: dew point and Rv
     dew_point_pressures: typing.Optional[NumberArray[OneDimension]] = None
     """
-    Dew-point pressures Pdew(T) (psi). Gas / condensate phase only.
-    Shape `(n_t,)`.
+    Dew-point pressures Pdew(T). Gas / condensate phase only.
+    Shape `(n_t,)`. Units depend on `unit_system`.
     """
 
     vaporized_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
-    Vaporised oil ratio Rv(P, T) in STB/Mscf. Gas / condensate phase only.
-    Shape `(n_p, n_t)`. Rv is capped at Rv_sat above dew point (analogous
-    to Rs being capped at Rsb above bubble point for oil).
+    Vaporised oil ratio Rv(P, T). Gas / condensate phase only. Shape `(n_p, n_t)`.
+    Units: STB/Mscf (FIELD), Sm³/Sm³ (METRIC/SI), scc/scc (LAB). Dimensionless ratios are unit-system independent.
+    Rv is capped at Rv_sat above dew point (analogous to Rs being capped at Rsb above bubble point for oil).
     """
 
     # Shared primary tables (2-D for oil/gas; 3-D for water)
     viscosity_table: typing.Optional[
         typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
-    """Viscosity μ(P, T) in cP. 2-D for oil/gas, 3-D for water."""
+    """Viscosity μ(P, T). Units depend on `unit_system` (cP in FIELD/METRIC/LAB, Pa·s in SI). 2-D for oil/gas, 3-D for water."""
 
     formation_volume_factor_table: typing.Optional[
         typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
-    Formation volume factor B(P, T).
+    Formation volume factor B(P, T). 2-D for oil/gas, 3-D for water.
 
-    Units: bbl/STB (oil / water), ft³/scf (gas). 2-D for oil/gas, 3-D for water.
+    Units depend on `unit_system` and phase:
+    - Oil/water: bbl/STB (FIELD), m³/Sm³ (METRIC/SI), cc/scc (LAB)
+    - Gas: ft³/SCF (FIELD), m³/Sm³ (METRIC/SI), cc/scc (LAB)
     """
 
     # Shared derived tables (optional; built at PVTTable construction when absent)
@@ -147,7 +149,9 @@ class PVTData(StoreSerializable):
         typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
-    Density ρ(P, T) in lbm/ft³.  2-D for oil/gas, 3-D for water.
+    Density ρ(P, T). 2-D for oil/gas, 3-D for water.
+
+    Units depend on `unit_system` (lbm/ft³ in FIELD, kg/m³ in METRIC/SI, g/cm³ in LAB).
 
     Derived from FVF and stock-tank reference densities:
 
@@ -164,7 +168,9 @@ class PVTData(StoreSerializable):
         typing.Union[NumberArray[TwoDimensions], NumberArray[ThreeDimensions]]
     ] = None
     """
-    Compressibility c(P, T) in psi⁻¹.  2-D for oil/gas, 3-D for water.
+    Compressibility c(P, T). 2-D for oil/gas, 3-D for water.
+
+    Units depend on `unit_system` (1/psi in FIELD, 1/bar in METRIC, 1/atm in LAB, 1/Pa in SI).
 
     Derived from the pressure-derivative of FVF:
 
@@ -176,7 +182,7 @@ class PVTData(StoreSerializable):
 
     # Oil-only primary
     solution_gor_table: typing.Optional[NumberArray[TwoDimensions]] = None
-    """Solution GOR Rs(P, T) in scf/STB. Oil phase only."""
+    """Solution GOR Rs(P, T). Oil phase only. Units: SCF/STB (FIELD), Sm³/Sm³ (METRIC/SI), scc/scc (LAB). Dimensionless ratios are unit-system independent."""
 
     # Gas-only primary
     compressibility_factor_table: typing.Optional[NumberArray[TwoDimensions]] = None
@@ -184,7 +190,7 @@ class PVTData(StoreSerializable):
 
     solubility_in_water_table: typing.Optional[NumberArray[ThreeDimensions]] = None
     """
-    Gas solubility in water Rsw(P, T, S) in scf/STB.
+    Gas solubility in water Rsw(P, T, S) in SCF/STB.
     Gas phase only. 3-D shape `(n_p, n_t, n_s)`; requires `salinities`.
     """
 
@@ -194,7 +200,9 @@ class PVTData(StoreSerializable):
 
     gas_free_water_fvf_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
-    Gas-free water FVF Bw_gf(P, T) in bbl/STB. Water phase only.
+    Gas-free water FVF Bw_gf(P, T). Water phase only.
+
+    Units depend on `unit_system` (bbl/STB in FIELD, m³/Sm³ in METRIC/SI, cc/scc in LAB).
 
     Used internally to compute `density_table` and `compressibility_table`
     for the water phase; not exposed as a direct query method on `PVTTable`.
@@ -205,8 +213,11 @@ class PVTData(StoreSerializable):
     """
     Unit system in which all dimensional quantities in this data are expressed.
 
-    Pressure axes and density values in FIELD are in psi and lbm/ft³;
-    in METRIC they are bar and kg/m³; in LAB they are atm and g/cm³.
+    Determines units for all dimensional fields (pressure, temperature, density, viscosity, etc.):
+    - FIELD: psi, °F, lbm/ft³, cP, etc.
+    - METRIC: bar, °C, kg/m³, cP, etc.
+    - LAB: atm, °C, g/cm³, cP, etc.
+    - SI: Pa, K, kg/m³, Pa·s, etc.
     """
 
     def __attrs_post_init__(self) -> None:
@@ -347,6 +358,44 @@ class PVTDataSet(StoreSerializable):
 
     water: typing.Optional[PVTData] = None
     """Raw PVT data for the water phase."""
+
+    _unit_system: UnitSystem = attrs.field(init=False, repr=False)
+
+    def __attrs_post_init__(self) -> None:
+        # Check that not all phases are None
+        if self.oil is None and self.gas is None and self.water is None:
+            raise ValidationError(
+                f"{type(self).__name__}: At least one of oil, gas, or water must be provided."
+            )
+
+        # Check that the phase field of each PVTData matches the attribute name
+        for phase, data in (
+            (FluidPhase.OIL, self.oil),
+            (FluidPhase.GAS, self.gas),
+            (FluidPhase.WATER, self.water),
+        ):
+            if data is not None and data.phase != phase:
+                raise ValidationError(
+                    f"{type(self).__name__}: {phase.value!r} PVTData has phase={data.phase}"
+                )
+
+        # Check that all present PVTData have the same unit system
+        unit_systems = {
+            data.unit_system
+            for data in (self.oil, self.gas, self.water)
+            if data is not None
+        }
+        if len(unit_systems) > 1:
+            raise ValidationError(
+                f"{type(self).__name__}: All PVTData must have the same unit system. Found: {unit_systems}"
+            )
+
+        object.__setattr__(self, "_unit_system", unit_systems.pop())
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system in which all PVTData are expressed."""
+        return self._unit_system
 
     @classmethod
     def from_files(

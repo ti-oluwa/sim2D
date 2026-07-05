@@ -26,8 +26,8 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
-from bores.reservoir import BlackOilModel
 from bores.precision import get_dtype
+from bores.reservoir import BlackOilModel
 from bores.states import ModelState
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.visualization.base import (
@@ -464,10 +464,12 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array([
-                [x_surf, y_surf, z_surface],
-                [x_surf, y_surf, z_perf],
-            ])
+            casing_pts = np.array(
+                [
+                    [x_surf, y_surf, z_surface],
+                    [x_surf, y_surf, z_perf],
+                ]
+            )
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(
@@ -566,10 +568,12 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array([
-                [x_surf, y_surf, z_surface],
-                [x_surf, y_surf, z_perf],
-            ])
+            casing_pts = np.array(
+                [
+                    [x_surf, y_surf, z_surface],
+                    [x_surf, y_surf, z_perf],
+                ]
+            )
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(

@@ -8,6 +8,10 @@ initialisation routines, and the flow solver.
 import typing
 
 import attrs
+from bores.reservoir.blackoil.pvt import StaticPVT
+from bores.reservoir.blackoil.regions import Regions
+from bores.reservoir.blackoil.rock import Rock
+from bores.reservoir.blackoil.state import Hysteresis, State
 from typing_extensions import Self
 
 from bores.constants import (
@@ -17,10 +21,6 @@ from bores.constants import (
 )
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.reservoir.blackoil.pvt import StaticPVT
-from bores.reservoir.blackoil.regions import Regions
-from bores.reservoir.blackoil.rock import Rock
-from bores.reservoir.blackoil.state import Hysteresis, State
 from bores.reservoir.transmissibility import (
     ConnectionTransmissibilities,
     compute_connection_transmissibilities,

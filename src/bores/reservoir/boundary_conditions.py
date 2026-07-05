@@ -13,13 +13,13 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.blackoil.pvt import StaticPVT
-from bores.reservoir.state import State
 from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
 from bores.reservoir.model import ReservoirModel
 from bores.reservoir.rock import Rock
+from bores.reservoir.state import State
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
 from bores.typing import (
@@ -1711,15 +1711,17 @@ class CarterTracyAquifer(BoundaryCondition):
             "dimensionless_radius_ratio": self.dimensionless_radius_ratio,
         }
         if self._hydraulic_diffusivity is not None:
-            data.update({
-                "aquifer_permeability": self.aquifer_permeability,
-                "aquifer_porosity": self.aquifer_porosity,
-                "aquifer_compressibility": self.aquifer_compressibility,
-                "water_viscosity": self.water_viscosity,
-                "inner_radius": self.inner_radius,
-                "outer_radius": self.outer_radius,
-                "aquifer_thickness": self.aquifer_thickness,
-            })
+            data.update(
+                {
+                    "aquifer_permeability": self.aquifer_permeability,
+                    "aquifer_porosity": self.aquifer_porosity,
+                    "aquifer_compressibility": self.aquifer_compressibility,
+                    "water_viscosity": self.water_viscosity,
+                    "inner_radius": self.inner_radius,
+                    "outer_radius": self.outer_radius,
+                    "aquifer_thickness": self.aquifer_thickness,
+                }
+            )
         else:
             data["aquifer_constant"] = self.aquifer_constant
         return data

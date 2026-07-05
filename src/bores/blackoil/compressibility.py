@@ -515,16 +515,16 @@ class RockCompressibilityTable(StoreSerializable):
             )
 
         # Atmospheric pressure floor in the given unit system
-        atm_pressures: typing.Dict[UnitSystem, float] = {
-            UnitSystem.FIELD: c.STANDARD_PRESSURE_PSI,
-            UnitSystem.METRIC: c.STANDARD_PRESSURE_BAR,
-            UnitSystem.LAB: c.STANDARD_PRESSURE_ATM,
-            UnitSystem.SI: c.STANDARD_PRESSURE_PASCAL,
-        }
+        if unit_system == UnitSystem.FIELD:
+            atm_pressure = c.STANDARD_PRESSURE_PSI
+        elif unit_system == UnitSystem.METRIC:
+            atm_pressure = c.STANDARD_PRESSURE_BAR
+        elif unit_system == UnitSystem.LAB:
+            atm_pressure = c.STANDARD_PRESSURE_ATM
+        else:
+            atm_pressure = c.STANDARD_PRESSURE_PASCAL
 
-        min_pressure = max(
-            atm_pressures[unit_system], reference_pressure / pressure_range_factor
-        )
+        min_pressure = max(atm_pressure, reference_pressure / pressure_range_factor)
         max_pressure = reference_pressure * pressure_range_factor
 
         dtype = np.dtype(dtype if dtype is not None else get_dtype())
@@ -590,9 +590,9 @@ class RockCompressibilityTable(StoreSerializable):
         )
 
         # Reference pressure: row where pore_volume_multiplier is nearest to 1.0
-        ref_idx = int(np.argmin(np.abs(pore_volume_multipliers - 1.0)))
-        reference_pressure = float(pressures[ref_idx])
-        reference_pore_volume = float(pore_volume_multipliers[ref_idx])
+        reference_idx = int(np.argmin(np.abs(pore_volume_multipliers - 1.0)))
+        reference_pressure = float(pressures[reference_idx])
+        reference_pore_volume = float(pore_volume_multipliers[reference_idx])
 
         if abs(reference_pore_volume - 1.0) > 1e-3:
             warnings.warn(
@@ -701,12 +701,26 @@ class RockCompressibilityRegions(
         """
         if not tables:
             raise ValidationError("`tables` must contain at least one entry.")
-        self.tables = tables
+
+        # Ensure all tables have the same unit system
+        unit_systems = {table.unit_system for table in tables.values()}
+        if len(unit_systems) > 1:
+            raise ValidationError(
+                "All `RockCompressibilityTable` instances must have the same unit system; "
+                f"found {unit_systems}."
+            )
+        self._tables = tables
 
     @property
     def n_regions(self) -> int:
         """Number of rock compressibility regions."""
-        return len(self.tables)
+        return len(self._tables)
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system of all tables in this `RockCompressibilityRegions`."""
+        assert self._tables
+        return next(iter(self._tables.values())).unit_system
 
     def for_region(self, rocknum: int) -> RockCompressibilityTable:
         """
@@ -716,9 +730,9 @@ class RockCompressibilityRegions(
         :returns: `RockCompressibilityTable` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        table = self.tables.get(rocknum)
+        table = self._tables.get(rocknum)
         if table is None:
-            available = sorted(self.tables.keys())
+            available = sorted(self._tables.keys())
             raise KeyError(
                 f"Rock compressibility region {rocknum} not found. "
                 f"Available regions: {available}."
@@ -786,11 +800,11 @@ class RockCompressibilityRegions(
         :returns: Per-cell `RockCompressibility`.
         """
         n_cells = len(pressure)
-        dtype = np.dtype(self.tables[next(iter(self.tables))].dtype)
+        dtype = np.dtype(self._tables[next(iter(self._tables))].dtype)
         target_unit_system = (
             unit_system
             if unit_system is not None
-            else self.tables[next(iter(self.tables))].unit_system
+            else self._tables[next(iter(self._tables))].unit_system
         )
         effective_compressibility = np.empty(n_cells, dtype=dtype)
         reference_pressure = np.empty(n_cells, dtype=dtype)
@@ -859,7 +873,7 @@ class RockCompressibilityRegions(
         return self.__class__(
             tables={
                 rocknum: tables.convert(target, table=table)
-                for rocknum, tables in self.tables.items()
+                for rocknum, tables in self._tables.items()
             }
         )
 
@@ -867,19 +881,19 @@ class RockCompressibilityRegions(
         return self.for_region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self.tables)
+        return iter(self._tables)
 
     def __len__(self) -> int:
-        return len(self.tables)
+        return len(self._tables)
 
     def __contains__(self, key: object) -> bool:
-        return key in self.tables
+        return key in self._tables
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
                 str(rocknum): table.dump(recurse)
-                for rocknum, table in self.tables.items()
+                for rocknum, table in self._tables.items()
             }
         }
 
@@ -892,7 +906,7 @@ class RockCompressibilityRegions(
         return cls(tables=tables)
 
     def __repr__(self) -> str:
-        region_keys = sorted(self.tables.keys())
+        region_keys = sorted(self._tables.keys())
         return (
             f"{self.__class__.__name__}("
             f"n_regions={self.n_regions}, "

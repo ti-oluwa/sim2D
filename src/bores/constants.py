@@ -265,7 +265,17 @@ DEFAULT_CONSTANTS: typing.Dict[
     "STANDARD_WATER_DENSITY_IMPERIAL": Constant(
         value=62.37,
         description="Standard water density at Standard temperature (15.6°C) (Imperial units)",
-        unit="lb/ft³",
+        unit="lbm/ft³",
+    ),
+    "STANDARD_WATER_DENSITY_METRIC": Constant(
+        value=999.0,
+        description="Standard water density at Standard temperature (15.6°C) (Metric units)",
+        unit="kg/m³",
+    ),
+    "STANDARD_WATER_DENSITY_LAB": Constant(
+        value=0.999,
+        description="Standard water density at Standard temperature (15.6°C) (Lab units)",
+        unit="g/cm³",
     ),
     # Air
     "STANDARD_AIR_DENSITY_SI": Constant(
@@ -276,7 +286,17 @@ DEFAULT_CONSTANTS: typing.Dict[
     "STANDARD_AIR_DENSITY_IMPERIAL": Constant(
         value=0.0765,
         description="Standard air density at Standard temperature (15.6°C) (Imperial units)",
-        unit="lb/ft³",
+        unit="lbm/ft³",
+    ),
+    "STANDARD_AIR_DENSITY_METRIC": Constant(
+        value=1.225,
+        description="Standard air density at Standard temperature (15.6°C) (Metric units)",
+        unit="kg/m³",
+    ),
+    "STANDARD_AIR_DENSITY_LAB": Constant(
+        value=1.225e-3,
+        description="Standard air density at Standard temperature (15.6°C) (Lab units)",
+        unit="g/cm³",
     ),
     # Molecular Weights
     "MOLECULAR_WEIGHT_WATER": Constant(

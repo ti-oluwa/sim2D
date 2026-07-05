@@ -5,6 +5,7 @@ import typing
 import numba
 import numpy as np
 
+from bores.blackoil.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
 from bores.errors import ValidationError
 from bores.grids.base import (
     CapillaryPressureGrids,
@@ -12,9 +13,8 @@ from bores.grids.base import (
     RelPermGrids,
     build_uniform_grid,
 )
-from bores.reservoir import HysteresisState
 from bores.precision import get_dtype
-from bores.blackoil.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
+from bores.reservoir import HysteresisState
 from bores.typing import NDimension, NDimensionalGrid, ThreeDimensions
 
 logger = logging.getLogger(__name__)

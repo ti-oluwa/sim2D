@@ -17,8 +17,8 @@ from typing_extensions import TypedDict
 
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
-from bores.reservoir import BlackOilModel
 from bores.precision import get_dtype
+from bores.reservoir import BlackOilModel
 from bores.states import ModelState
 from bores.typing import (
     NDimension,

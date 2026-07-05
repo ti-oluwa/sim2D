@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 
+from bores.blackoil.tables.pvt import PVTTables
 from bores.constants import c
 from bores.correlations.arrays import estimate_solution_gor
 from bores.correlations.scalars import (
@@ -37,13 +38,12 @@ from bores.grids.pvt import (
     build_water_viscosity_grid,
 )
 from bores.reservoir import (
+    BlackOilModel,
     FluidProperties,
     HysteresisState,
-    BlackOilModel,
     RockPermeability,
     RockProperties,
 )
-from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import Coordinates, NDimension, NDimensionalGrid
 from bores.wells import (
     InjectedFluid,

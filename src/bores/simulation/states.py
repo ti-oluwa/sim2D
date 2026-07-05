@@ -16,14 +16,14 @@ from bores.grids.base import (
     RelPermGrids,
 )
 from bores.material_balance import MaterialBalanceErrors
+from bores.precision import get_dtype
 from bores.reservoir import (
+    BlackOilModel,
     FluidProperties,
     HysteresisState,
-    BlackOilModel,
     RockPermeability,
     RockProperties,
 )
-from bores.precision import get_dtype
 from bores.serialization import Serializable
 from bores.timing import TimerState
 from bores.typing import NDimension

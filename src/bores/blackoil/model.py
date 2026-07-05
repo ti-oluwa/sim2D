@@ -1,385 +1,127 @@
-"""
-Reservoir model: Top-level assembly of grid, rock, pvt, metadata and dynamic state.
-
-`BlackOilModel` is the single entity passed (implicitly or explicitly) between the deck reader, the
-initialisation routines, and the flow solver.
-"""
+"""Black-oil fluid physics model."""
 
 import typing
 
-import attrs
 from typing_extensions import Self
 
-from bores.constants import (
-    UnitConversionTable,
-    build_unit_conversion_table,
-    get_conversion_factors,
-)
+from bores.blackoil.compressibility import RockCompressibilityRegions
+from bores.blackoil.pvt.regions import PVTRegions
+from bores.blackoil.rock_fluid.regions import RockFluidRegions
+from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
-from bores.grids.base import Grid
-from bores.reservoir.blackoil.pvt import StaticPVT
-from bores.reservoir.blackoil.regions import Regions
-from bores.reservoir.blackoil.rock import Rock
-from bores.reservoir.blackoil.state import Hysteresis, State
-from bores.reservoir.transmissibility import (
-    ConnectionTransmissibilities,
-    compute_connection_transmissibilities,
-    get_face_transmissibility_map,
-)
-from bores.serialization import Serializable
-from bores.typing import CellArray, Number, UnitSystem
+from bores.stores import StoreSerializable
+from bores.typing import UnitSystem
 
 __all__ = ["BlackOilModel"]
 
 
-def _validate_state(state: State, n_cells: int) -> None:
-    """
-    Verify that all mandatory per-cell arrays in `state` have length
-    `n_cells`.
-
-    Optional EOR arrays (`solvent_concentration` etc.) are validated only
-    when non-empty.
-
-    :param state: `State` to validate.
-    :param n_cells: Expected array length.
-    :raises ValidationError: On any mismatch.
-    """
-    mandatory = {
-        "state.pressure": state.pressure,
-        "state.oil_saturation": state.oil_saturation,
-        "state.water_saturation": state.water_saturation,
-        "state.gas_saturation": state.gas_saturation,
-        "state.oil_mass": state.oil_mass,
-        "state.water_mass": state.water_mass,
-        "state.free_gas_mass": state.free_gas_mass,
-        "state.dissolved_gas_mass_in_oil": state.dissolved_gas_mass_in_oil,
-        "state.dissolved_gas_mass_in_water": state.dissolved_gas_mass_in_water,
-        "state.vaporized_oil_mass_in_gas": state.vaporized_oil_mass_in_gas,
-        "state.solution_gor": state.solution_gor,
-        "state.vaporized_oil_ratio": state.vaporized_oil_ratio,
-        "state.gas_solubility_in_water": state.gas_solubility_in_water,
-        "state.oil_bubble_point_pressure": state.oil_bubble_point_pressure,
-        "state.gas_dew_point_pressure": state.gas_dew_point_pressure,
-        "state.water_bubble_point_pressure": state.water_bubble_point_pressure,
-        "state.gas_solubility_in_water": state.gas_solubility_in_water,
-    }
-    for name, arr in mandatory.items():
-        if arr.shape != (n_cells,):
-            raise ValidationError(
-                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-            )
-
-    for name, arr in (("state.solvent_concentration", state.solvent_concentration),):
-        if arr.size > 0 and arr.shape != (n_cells,):
-            raise ValidationError(
-                f"`{name}` has shape {arr.shape}; expected ({n_cells},) or empty."
-            )
-
-    if state.hysteresis is not None:
-        _validate_hysteresis(state.hysteresis, n_cells)
-
-
-def _validate_hysteresis(hysteresis: Hysteresis, n_cells: int) -> None:
-    """
-    Verify that all per-cell arrays in `hysteresis` have length `n_cells`.
-
-    :param hysteresis: `Hysteresis` to validate.
-    :param n_cells: Expected array length.
-    :raises ValidationError: On any mismatch.
-    """
-    checks = {
-        "hysteresis.max_water_saturation": hysteresis.max_water_saturation,
-        "hysteresis.max_gas_saturation": hysteresis.max_gas_saturation,
-        "hysteresis.water_imbibition_flag": hysteresis.water_imbibition_flag,
-        "hysteresis.gas_imbibition_flag": hysteresis.gas_imbibition_flag,
-        "hysteresis.water_reversal_saturation": hysteresis.water_reversal_saturation,
-        "hysteresis.gas_reversal_saturation": hysteresis.gas_reversal_saturation,
-    }
-    for name, arr in checks.items():
-        if arr.shape != (n_cells,):
-            raise ValidationError(
-                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-            )
-
-
-def _validate_rock(rock: Rock, n_cells: int) -> None:
-    """
-    Verify that all per-cell arrays in `rock` have length `n_cells`.
-
-    :param rock: `Rock` to validate.
-    :param n_cells: Expected array length.
-    :raises ValidationError: On any mismatch.
-    """
-    checks = {
-        "rock.porosity": rock.porosity,
-        "rock.temperature": rock.temperature,
-        "rock.absolute_permeability.x": rock.absolute_permeability.x,
-        "rock.absolute_permeability.y": rock.absolute_permeability.y,
-        "rock.absolute_permeability.z": rock.absolute_permeability.z,
-        "rock.net_to_gross": rock.net_to_gross,
-        "rock.connate_water_saturation": rock.connate_water_saturation,
-        "rock.irreducible_water_saturation": rock.irreducible_water_saturation,
-        "rock.residual_oil_saturation_water_flood": (
-            rock.residual_oil_saturation_water_flood
-        ),
-        "rock.residual_oil_saturation_gas_flood": (
-            rock.residual_oil_saturation_gas_flood
-        ),
-        "rock.residual_gas_saturation": rock.residual_gas_saturation,
-    }
-    for name, arr in checks.items():
-        if arr.shape != (n_cells,):
-            raise ValidationError(
-                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-            )
-
-
 class BlackOilModel(
-    Serializable,
+    StoreSerializable,
     fields={
-        "grid": Grid,
-        "rock": Rock,
-        "pvt": StaticPVT,
-        "state": State,
-        "regions": typing.Optional[Regions],
-        "datum_depth": typing.Optional[Number],
-        "unit_system": typing.Optional[UnitSystem],
+        "pvt_regions": PVTRegions,
+        "rock_fluid_regions": RockFluidRegions,
+        "compressibility_regions": typing.Optional[RockCompressibilityRegions],
+        "unit_system": UnitSystem,
     },
 ):
     """
-    Reservoir model for black-oil simulation.
+    Black-oil fluid physics model.
 
-    Binds a polyhedral `Grid` to per-cell rock, pvt, metadata, and dynamic state
-    arrays. On construction all property groups are normalised to the
-    declared `unit_system` (defaults to the grid's own unit system).
+    Holds the three multi-region table objects that define the fluid and
+    rock physics for a black-oil simulation:
+
+    - `pvt_regions` - PVT tables and static fluid properties, one
+      `PVTRegion` per Eclipse `PVTNUM` region.
+    - `rock_fluid_regions` - relative permeability and capillary pressure
+      tables, one per Eclipse `SATNUM` region.
+    - `compressibility_regions` - rock compressibility tables, one per
+      Eclipse `ROCKNUM` region. Optional; `None` when rock compressibility
+      is not modelled (cr = 0 everywhere).
+
+    Grid geometry, rock properties, dynamic state, and region metadata
+    live on `bores.reservoir.model.ReservoirModel`. This class holds only
+    the fluid physics lookup tables.
+
+    All region tables are normalised to `unit_system` at construction.
+    Use `convert(target)` to produce a fully rescaled copy.
     """
 
     def __init__(
         self,
-        grid: Grid,
-        rock: Rock,
-        pvt: StaticPVT,
-        state: State,
-        regions: typing.Optional[Regions] = None,
-        datum_depth: typing.Optional[Number] = None,
+        pvt_regions: PVTRegions,
+        rock_fluid_regions: RockFluidRegions,
+        compressibility_regions: typing.Optional[RockCompressibilityRegions] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Initialize the reservoir model.
-
-        :param grid: Fully constructed `bores.grids.base.Grid`.
-        :param rock: Static petrophysical properties. Array lengths must equal `grid.n_cells`.
-        :param pvt: Static PVT characterisation of the reservoir fluids.
-        :param state: Initial (or current) dynamic simulation state. Array lengths must
-            equal `grid.n_cells`. Should never be modified during simulation.
-            If modification is necessary, create a copy.
-        :param datum_depth: Reference depth (positive downward, grid length units) of the datum
-            plane used for pressure initialisation by the equilibration routine.
-            `None` means no explicit datum is declared.
-        :param unit_system: Target unit system for all property groups. When `None`, defaults
-            to `grid.unit_system`.
-
-        :raises ValidationError: If any array length in `rock`, `state`, or `hysteresis` does not
-            match `grid.n_cells`, or if `datum_depth` is negative.
+        :param pvt_regions: PVT region tables keyed by 1-based `PVTNUM` index.
+        :param rock_fluid_regions: Relperm and capillary pressure tables keyed
+            by 1-based `SATNUM` index.
+        :param compressibility_regions: Rock compressibility tables keyed by
+            1-based `ROCKNUM` index. `None` when rock compressibility is not
+            modelled.
+        :param unit_system: Target unit system for all region tables. When
+            `None`, all supplied tables must share the same unit system -
+            if they do not, a `ValidationError` is raised. When provided,
+            each table group is converted to `unit_system` as needed.
+        :raises ValidationError: If `unit_system` is `None` and the supplied
+            tables do not all share the same unit system.
         """
-        target_unit_system = (
-            unit_system if unit_system is not None else grid.unit_system
-        )
         unit_conversion_table = build_unit_conversion_table()
-        if target_unit_system != grid.unit_system:
-            # Normalise grid to the target unit system.
-            grid = grid.convert(target_unit_system, table=unit_conversion_table)
 
-        if datum_depth is not None and datum_depth < 0.0:
-            raise ValidationError(
-                f"`datum_depth` must be non-negative (positive downward); "
-                f"got {datum_depth}."
+        # Resolve unit systems of each supplied group
+        pvt_unit_system = pvt_regions.unit_system
+        rock_fluid_unit_system = rock_fluid_regions.unit_system
+        compressibility_unit_system = (
+            compressibility_regions.unit_system
+            if compressibility_regions is not None
+            else None
+        )
+
+        if unit_system is None:
+            # All present groups must agree
+            systems = {pvt_unit_system, rock_fluid_unit_system}
+            if compressibility_unit_system is not None:
+                systems.add(compressibility_unit_system)
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All region tables must share the same unit system when "
+                    "`unit_system` is not explicitly provided. "
+                    f"Found: {sorted(s.value for s in systems)}. "
+                    "Pass `unit_system` explicitly to convert all tables to a "
+                    "common system."
+                )
+            unit_system = pvt_unit_system
+
+        # Convert each group to the target unit system
+        if pvt_unit_system != unit_system:
+            pvt_regions = pvt_regions.convert(unit_system, table=unit_conversion_table)
+        if rock_fluid_unit_system != unit_system:
+            rock_fluid_regions = rock_fluid_regions.convert(
+                unit_system, table=unit_conversion_table
+            )
+        if (
+            compressibility_regions is not None
+            and compressibility_unit_system != unit_system
+        ):
+            compressibility_regions = compressibility_regions.convert(
+                unit_system, table=unit_conversion_table
             )
 
-        # Normalise property groups to the target unit system.
-        rock = rock.convert(target_unit_system, table=unit_conversion_table)
-        pvt = pvt.convert(target_unit_system, table=unit_conversion_table)
-        state = state.convert(target_unit_system, table=unit_conversion_table)
+        self.pvt_regions = pvt_regions
+        """PVT region tables - one `PVTRegion` per `PVTNUM` region."""
 
-        n_cells = grid.n_cells
-        _validate_rock(rock, n_cells)
-        _validate_state(state, n_cells)
+        self.rock_fluid_regions = rock_fluid_regions
+        """Relperm and capillary pressure tables - one per `SATNUM` region."""
 
-        self.grid = grid
-        """The unstructured polyhedral grid with all geometry and topology."""
-
-        self.rock = rock
-        """Static petrophysical properties in `unit_system`."""
-
-        self.pvt = pvt
-        """Static PVT characterisation in `unit_system`."""
-
-        self.state = state
-        """Dynamic per-cell simulation state in `unit_system`."""
-
-        self.regions = regions
-        """Per-cell region assignments metadata."""
-
-        self.datum_depth = datum_depth
+        self.compressibility_regions = compressibility_regions
         """
-        Reference depth (grid length units, positive downward) for pressure
-        equilibration. `None` when no explicit datum is declared.
+        Rock compressibility tables - one per `ROCKNUM` region.
+        `None` when rock compressibility is not modelled.
         """
 
-        self.unit_system = target_unit_system
-        """
-        Unit system in which all property groups are expressed.
-
-        Matches `grid.unit_system` by construction.
-        """
-        self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
-        self._face_transmissibility_map: typing.Optional[typing.Dict[int, Number]] = (
-            None
-        )
-
-    @property
-    def n_cells(self) -> int:
-        """Total number of active cells in the grid."""
-        return self.grid.n_cells
-
-    @property
-    def n_faces(self) -> int:
-        """Total number of faces (boundary + interior) in the grid."""
-        return self.grid.n_faces
-
-    @property
-    def n_nnc(self) -> int:
-        """Total number of non-neighbour connections in the grid."""
-        return self.grid.n_nnc
-
-    @property
-    def n_interior_faces(self) -> int:
-        """Number of interior faces (shared between two active cells)."""
-        return self.grid.n_interior_faces
-
-    @property
-    def n_boundary_faces(self) -> int:
-        """Number of boundary faces (one side is the exterior domain)."""
-        return self.grid.n_boundary_faces
-
-    @property
-    def depth(self) -> CellArray:
-        """
-        Shape `(n_cells,)` — depth of each cell centroid (positive downward).
-
-        Alias for `grid.cell_center_depths`. Units follow `unit_system`.
-        """
-        return self.grid.cell_center_depths  # type: ignore[return-value]
-
-    @property
-    def elevation(self) -> CellArray:
-        """
-        Shape `(n_cells,)` — elevation of each cell centroid (positive upward).
-
-        Alias for `grid.cell_center_elevations`. Units follow `unit_system`.
-        """
-        return self.grid.cell_center_elevations  # type: ignore[return-value]
-
-    @property
-    def pore_volumes(self) -> CellArray:
-        """
-        Shape `(n_cells,)` — bulk pore volume of each active cell.
-
-        Computed as `φ x NTG x Vcell`.
-
-        Units: ft³ (FIELD), m³ (METRIC / SI), cm³ (LAB).
-        """
-        assert self.grid.cell_volumes is not None, (
-            "`grid.cell_volumes` is None; the grid was constructed without "
-            "pre-computed volumes and the divergence-theorem computation failed."
-        )
-        return (  # type: ignore[return-value]
-            self.rock.porosity * self.rock.net_to_gross * self.grid.cell_volumes
-        )
-
-    @property
-    def hydrocarbon_pore_volumes(self) -> CellArray:
-        """
-        Shape `(n_cells,)` — hydrocarbon pore volume of each active cell.
-
-        Computed as `pore_volumes x (1 - Swc)` where Swc is the connate
-        water saturation from `rock`.
-
-        Units: same as `pore_volumes`.
-        """
-        return (  # type: ignore[return-value]
-            self.pore_volumes * (1.0 - self.rock.connate_water_saturation)
-        )
-
-    @property
-    def transmissibilities(self) -> ConnectionTransmissibilities:
-        """
-        TPFA connection transmissibilities, computed on first access and
-        then cached for subsequent access.
-
-        Returns a `ConnectionTransmissibilities` named tuple with:
-
-        - `interior`      — shape `(n_interior,)` harmonic-mean T.
-        - `boundary`      — shape `(n_boundary,)` owner half-T.
-        - `nnc`           — shape `(n_nnc,)` or `None`.
-        - `interior_map`  — global face index for each interior entry.
-        - `boundary_map`  — global face index for each boundary entry.
-
-        To force recomputation (e.g. after updating `rock`), call
-        `invalidate_transmissibilities()` first.
-        """
-        if self._transmissibilities is None:
-            transmissibilities = compute_connection_transmissibilities(
-                grid=self.grid, rock=self.rock, unit_system=self.unit_system
-            )
-            assert transmissibilities.unit_system == self.unit_system
-            self._transmissibilities = transmissibilities
-        return self._transmissibilities
-
-    @property
-    def face_transmissibility_map(self) -> typing.Dict[int, Number]:
-        if self._face_transmissibility_map is None:
-            self._face_transmissibility_map = get_face_transmissibility_map(
-                self.grid, self.transmissibilities
-            )
-        return self._face_transmissibility_map
-
-    def invalidate_transmissibilities(self) -> None:
-        """
-        Clear the cached transmissibilities.
-
-        Call this whenever `rock.absolute_permeability` or `rock.net_to_gross`
-        is updated (e.g. history-matching) so the next access to
-        `transmissibilities` triggers a fresh computation.
-        """
-        self._transmissibilities = None
-        self._face_transmissibility_map = None
-
-    def evolve_state(self, new_state: State) -> Self:
-        """
-        Return a new `BlackOilModel` with the dynamic state replaced.
-
-        The grid, rock, pvt, datum depth, and unit system are
-        carried forward unchanged.  The transmissibility cache is **preserved**
-        (it depends only on grid geometry and rock, which have not changed).
-
-        :param new_state: Updated `State` from the solver.
-        :returns: New `BlackOilModel`.
-        :raises ValidationError: If `new_state` array lengths do not match
-            `grid.n_cells`.
-        """
-        _validate_state(new_state, self.n_cells)
-        new_model = self.__class__(
-            grid=self.grid,
-            rock=self.rock,
-            pvt=self.pvt,
-            regions=self.regions,
-            state=new_state,
-            datum_depth=self.datum_depth,
-            unit_system=self.unit_system,
-        )
-        new_model._transmissibilities = self._transmissibilities
-        return new_model
+        self.unit_system = unit_system
+        """Unit system in which all region tables are expressed."""
 
     def convert(
         self,
@@ -389,98 +131,33 @@ class BlackOilModel(
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `BlackOilModel` with all property groups rescaled to `target`.
+        Return a new `BlackOilModel` with all region tables rescaled to *target*.
 
-        For a true coordinate reprojection (e.g. ft -> m for all vertex
-        positions), use a grid factory or IO utility that rebuilds the grid.
-
-        :param target: Desired `UnitSystem`.
-        :returns: New `BlackOilModel` in `target` units.
+        :param target: Target `UnitSystem`.
+        :param table: Optional custom conversion table.
+        :returns: New `BlackOilModel` in *target* units.
         """
         if target == self.unit_system:
             return self
 
-        table = table or build_unit_conversion_table()
-        factors = get_conversion_factors(self.unit_system, target, table=table)
-        new_model = self.__class__(
-            grid=self.grid.convert(target, table=table),
-            rock=self.rock.convert(target, table=table),
-            pvt=self.pvt.convert(target, table=table),
-            state=self.state.convert(target, table=table),
-            regions=self.regions,
-            datum_depth=(
-                self.datum_depth * factors["length"]
-                if self.datum_depth is not None
+        return self.__class__(
+            pvt_regions=self.pvt_regions.convert(target, table=table),
+            rock_fluid_regions=self.rock_fluid_regions.convert(target, table=table),
+            compressibility_regions=(
+                self.compressibility_regions.convert(target, table=table)
+                if self.compressibility_regions is not None
                 else None
             ),
             unit_system=target,
         )
-        # Transmissibility cache is invalidated automatically since rock was
-        # converted and the new model starts with a clean cache.
-        return new_model
-
-    def get_transmissibility_for_face(self, face_index: int) -> Number:
-        """
-        Return the transmissibility (or half-transmissibility for boundary) of a single face.
-
-        :param face_index: Index into `grid.face_cell_indices`.
-        :returns: Transmissibility in grid units (mD·ft in FIELD etc.).
-        :raises KeyError: If `face_index` is not a valid face.
-        """
-        t = self.face_transmissibility_map.get(face_index)
-        if t is None:
-            raise KeyError(
-                f"Face {face_index} not found in interior or boundary faces of this grid."
-            )
-        return t
-
-    def summary(self) -> typing.Dict[str, typing.Any]:
-        """
-        Return a lightweight diagnostic summary dictionary.
-
-        Includes cell counts, pore-volume totals, pressure statistics, and
-        saturation range checks. Useful for logging and quick sanity checks.
-
-        :returns: Dictionary of scalar statistics.
-        """
-        pv = self.pore_volumes
-        p = self.state.pressure
-        sw = self.state.water_saturation
-        so = self.state.oil_saturation
-        sg = self.state.gas_saturation
-        return {
-            "n_cells": self.n_cells,
-            "n_faces": self.n_faces,
-            "n_interior_faces": self.n_interior_faces,
-            "n_boundary_faces": self.n_boundary_faces,
-            "n_nnc": self.grid.n_nnc,
-            "unit_system": self.unit_system.value,
-            "total_pore_volume": float(pv.sum()),
-            "min_pressure": float(p.min()),
-            "max_pressure": float(p.max()),
-            "mean_pressure": float(p.mean()),
-            "min_water_saturation": float(sw.min()),
-            "max_water_saturation": float(sw.max()),
-            "min_oil_saturation": float(so.min()),
-            "max_oil_saturation": float(so.max()),
-            "min_gas_saturation": float(sg.min()),
-            "max_gas_saturation": float(sg.max()),
-            "saturation_balance_max_error": float(abs(so + sw + sg - 1.0).max()),
-            "has_transmissibility_multipliers": (
-                self.grid.has_transmissibility_multipliers
-            ),
-            "datum_depth": self.datum_depth,
-        }
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"n_cells={self.n_cells}, "
-            f"n_faces={self.n_faces}, "
-            f"n_interior={self.n_interior_faces}, "
-            f"n_boundary={self.n_boundary_faces}, "
-            f"n_nnc={self.n_nnc}, "
-            f"unit_system={self.unit_system.value!r}, "
-            f"has_hysteresis={self.state.hysteresis is not None}"
+            f"n_pvt_regions={self.pvt_regions.n_regions}, "
+            f"n_rock_fluid_regions={self.rock_fluid_regions.n_regions}, "
+            f"n_compressibility_regions="
+            f"{self.compressibility_regions.n_regions if self.compressibility_regions is not None else 0}, "
+            f"unit_system={self.unit_system.value!r}"  # type: ignore[union-attr]
             f")"
         )

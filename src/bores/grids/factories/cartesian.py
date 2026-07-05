@@ -164,11 +164,13 @@ def make_cartesian_grid(
         fault_nnc_transmissibilities = np.full(
             len(fault_nnc_pairs), np.nan, dtype=np.float64
         )
-        all_nnc_parts.append((
-            fault_pairs,
-            fault_nnc_connection_types,
-            fault_nnc_transmissibilities,
-        ))
+        all_nnc_parts.append(
+            (
+                fault_pairs,
+                fault_nnc_connection_types,
+                fault_nnc_transmissibilities,
+            )
+        )
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
         for local_idx, (_, _, name) in enumerate(fault_nnc_pairs):
             fault_nnc_indices.setdefault(name, []).append(fault_nnc_offset + local_idx)
@@ -183,11 +185,13 @@ def make_cartesian_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append((
-            user_nnc_pairs,
-            user_nnc_connection_types,
-            user_nnc_transmissibilities,
-        ))
+        all_nnc_parts.append(
+            (
+                user_nnc_pairs,
+                user_nnc_connection_types,
+                user_nnc_transmissibilities,
+            )
+        )
 
     merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
     merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
@@ -198,9 +202,9 @@ def make_cartesian_grid(
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate([
-            t for _, t, _ in all_nnc_parts
-        ]).astype(np.int8, copy=False)
+        merged_nnc_connection_types = np.concatenate(
+            [t for _, t, _ in all_nnc_parts]
+        ).astype(np.int8, copy=False)
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         merged_nnc_transmissibilities = (
             merged_transmissibilities
@@ -459,11 +463,13 @@ def _build_vertex_coordinates(
     xx, yy, zz = np.meshgrid(x_nodes, y_nodes, z_nodes, indexing="ij")
     return typing.cast(
         VertexCoordinates,
-        np.column_stack([
-            xx.ravel(order="F"),
-            yy.ravel(order="F"),
-            zz.ravel(order="F"),
-        ]),
+        np.column_stack(
+            [
+                xx.ravel(order="F"),
+                yy.ravel(order="F"),
+                zz.ravel(order="F"),
+            ]
+        ),
     )
 
 

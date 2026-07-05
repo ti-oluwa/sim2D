@@ -54,12 +54,26 @@ class RockFluidRegions(StoreSerializable, Mapping[int, RockFluidTables]):
         """
         if not tables:
             raise ValidationError("`tables` must contain at least one entry.")
-        self.tables = tables
+
+        # All tables must have the same unit system
+        unit_systems = {table.unit_system for table in tables.values()}
+        if len(unit_systems) > 1:
+            raise ValidationError(
+                "All RockFluidTables in `tables` must have the same unit system. "
+                f"Found unit systems: {unit_systems}."
+            )
+        self._tables = tables
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system shared by all regions."""
+        assert self._tables
+        return next(iter(self._tables.values())).unit_system
 
     @property
     def n_regions(self) -> int:
         """Number of saturation function regions."""
-        return len(self.tables)
+        return len(self._tables)
 
     def for_region(self, satnum: int) -> RockFluidTables:
         """
@@ -69,9 +83,9 @@ class RockFluidRegions(StoreSerializable, Mapping[int, RockFluidTables]):
         :returns: `RockFluidTables` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        tables = self.tables.get(satnum)
+        tables = self._tables.get(satnum)
         if tables is None:
-            available = sorted(self.tables.keys())
+            available = sorted(self._tables.keys())
             raise KeyError(
                 f"Saturation function region {satnum} not found. "
                 f"Available regions: {available}."
@@ -109,7 +123,7 @@ class RockFluidRegions(StoreSerializable, Mapping[int, RockFluidTables]):
         return self.__class__(
             tables={
                 satnum: tables.convert(target, table=table)
-                for satnum, tables in self.tables.items()
+                for satnum, tables in self._tables.items()
             }
         )
 
@@ -224,19 +238,19 @@ class RockFluidRegions(StoreSerializable, Mapping[int, RockFluidTables]):
         return self.for_region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self.tables)
+        return iter(self._tables)
 
     def __len__(self) -> int:
-        return len(self.tables)
+        return len(self._tables)
 
     def __contains__(self, key: object) -> bool:
-        return key in self.tables
+        return key in self._tables
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
                 str(satnum): tables.dump(recurse)
-                for satnum, tables in self.tables.items()
+                for satnum, tables in self._tables.items()
             }
         }
 

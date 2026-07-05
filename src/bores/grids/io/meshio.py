@@ -39,14 +39,16 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 # `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
-_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset({
-    "tetra",
-    "hexahedron",
-    "wedge",
-    "pyramid",
-    "tetra10",  # quadratic - treated as linear (first 4 nodes)
-    "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
-})
+_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
+    {
+        "tetra",
+        "hexahedron",
+        "wedge",
+        "pyramid",
+        "tetra10",  # quadratic - treated as linear (first 4 nodes)
+        "hexahedron20",  # quadratic - treated as linear (first 8 nodes)
+    }
+)
 
 # Map from `meshio` quadratic type to the linear equivalent and node count.
 _QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {

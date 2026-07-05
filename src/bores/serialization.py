@@ -529,23 +529,27 @@ def _deserialize(
 
     if _is_typed_dict_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ({
-            k: _deserialize(v, annotations[k], deserializers)
-            for k, v in value.items()
-            # Ignore keys not found in existing annotations incase typed-dict
-            # structure changed for backwards compatibility
-            if k in annotations
-        })
+        return typ(
+            {
+                k: _deserialize(v, annotations[k], deserializers)
+                for k, v in value.items()
+                # Ignore keys not found in existing annotations incase typed-dict
+                # structure changed for backwards compatibility
+                if k in annotations
+            }
+        )
 
     if _is_namedtuple_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(**{
-            k: _deserialize(v, annotations[k], deserializers)
-            for k, v in value.items()
-            # Ignore keys not found in existing annotations incase namedtuple
-            # structure changed for backwards compatibility
-            if k in annotations
-        })
+        return typ(
+            **{
+                k: _deserialize(v, annotations[k], deserializers)
+                for k, v in value.items()
+                # Ignore keys not found in existing annotations incase namedtuple
+                # structure changed for backwards compatibility
+                if k in annotations
+            }
+        )
 
     # Handle ndarray dicts for non-ndarray declared types (e.g. tuple, list)
     # from data serialized before the serialization fix.

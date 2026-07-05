@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.sparse import coo_matrix
 
+from bores.blackoil.tables.pvt import PVTTable, PVTTables
 from bores.config import Config
 from bores.constants import c
 from bores.correlations.arrays import (
@@ -26,7 +27,6 @@ from bores.solvers.base import (
     to_1D_index,
 )
 from bores.solvers.rates import WellRates, compute_well_rates
-from bores.blackoil.tables.pvt import PVTTable, PVTTables
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import (
     MiscibilityModel,

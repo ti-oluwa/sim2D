@@ -4,11 +4,11 @@ import typing
 import attrs
 from typing_extensions import Self
 
+from bores.blackoil.rock_fluid import RockFluidTables
+from bores.blackoil.tables.pvt import PVTTables
 from bores.boundary_conditions import BoundaryConditions
 from bores.constants import Constants
 from bores.stores import StoreSerializable
-from bores.blackoil.tables.pvt import PVTTables
-from bores.blackoil.rock_fluid import RockFluidTables
 from bores.timing import Timer
 from bores.typing import (
     EvolutionScheme,

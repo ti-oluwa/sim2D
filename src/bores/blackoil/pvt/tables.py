@@ -14,8 +14,8 @@ from scipy.interpolate import (  # type: ignore[import-untyped]
 )
 from typing_extensions import Self
 
-from bores.blackoil.pvt import StaticPVT
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
+from bores.blackoil.pvt.static import StaticPVT
 from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -169,6 +169,13 @@ class PVTTable(StoreSerializable):
     The cubic path preserves monotonicity independently along each axis,
     avoiding oscillation on noisy PVT data.
 
+    **Unit-system agnostic**
+
+    All dimensional quantities (pressure, temperature, viscosity, density, FVF, compressibility, etc.)
+    follow the unit system specified in the input `PVTData`. Query results are in
+    the same unit system as the underlying data and the optional `StaticPVT`. Units do not affect
+    the interpolation algorithms, which are purely numerical.
+
     **Water phase**
 
     When only one salinity value is present the 3-D tables are pre-sliced to
@@ -199,10 +206,10 @@ class PVTTable(StoreSerializable):
         :param validate: Run physical-consistency checks on `data`.
         :param warn_on_extrapolation: Log a warning when queries fall outside
             the table pressure / temperature / salinity bounds.
-        :param pvt: Optional `PVT` carrying stock-tank
-            reference densities (`stock_tank_oil_density`, `stock_tank_gas_density`,
-            `stock_tank_water_density`). When provided, missing `density_table` and
-            `compressibility_table` entries are built automatically.
+        :param pvt: Optional `StaticPVT` carrying stock-tank reference densities
+            (`stock_tank_oil_density`, `stock_tank_gas_density`, `stock_tank_water_density`).
+            When provided, missing `density_table` and `compressibility_table` entries are
+            built automatically. Units must match the `data.unit_system`.
         """
         if interpolation_method not in INTERPOLATION_DEGREES:
             raise ValidationError(
@@ -272,6 +279,8 @@ class PVTTable(StoreSerializable):
 
         # Potentially augment data with derived tables before building interpolators
         if pvt is not None:
+            if pvt.unit_system != self.unit_system:
+                pvt = pvt.convert(self.unit_system)
             data = self._build_derived_tables(data, pvt)
 
         self._data = data
@@ -313,6 +322,9 @@ class PVTTable(StoreSerializable):
         dtype = self.dtype
 
         updates: typing.Dict[str, typing.Any] = {}
+        stock_tank_oil_density = pvt.stock_tank_oil_density
+        stock_tank_gas_density = pvt.stock_tank_gas_density
+        stock_tank_water_density = pvt.stock_tank_water_density
 
         # Oil Phase
         if phase == FluidPhase.OIL:
@@ -324,9 +336,9 @@ class PVTTable(StoreSerializable):
                 data.density_table is None
                 and oil_fvf_table is not None
                 and solution_gor_table is not None
+                and stock_tank_oil_density is not None
+                and stock_tank_gas_density is not None
             ):
-                stock_tank_oil_density = pvt.stock_tank_oil_density
-                stock_tank_gas_density = pvt.stock_tank_gas_density
                 density_table = (
                     stock_tank_oil_density + solution_gor_table * stock_tank_gas_density
                 ) / oil_fvf_table
@@ -355,9 +367,12 @@ class PVTTable(StoreSerializable):
             compressibility_factor_table = data.compressibility_factor_table
 
             # Density: ρg = (ρg,SC + Rv·ρo,SC) / Bg  [wet] or ρg,SC / Bg [dry]
-            if data.density_table is None and gas_fvf_table is not None:
-                stock_tank_oil_density = pvt.stock_tank_oil_density
-                stock_tank_gas_density = pvt.stock_tank_gas_density
+            if (
+                data.density_table is None
+                and gas_fvf_table is not None
+                and stock_tank_oil_density is not None
+                and stock_tank_gas_density is not None
+            ):
                 if vaporized_oil_ratio_table is not None:
                     density = (
                         stock_tank_gas_density
@@ -416,9 +431,12 @@ class PVTTable(StoreSerializable):
             gas_free_water_fvf_table = data.gas_free_water_fvf_table
 
             # Density: ρw = (ρw,SC + Rsw · ρg,SC) / Bw
-            if data.density_table is None and gas_free_water_fvf_table is not None:
-                stock_tank_water_density = pvt.stock_tank_water_density
-                stock_tank_gas_density = pvt.stock_tank_gas_density
+            if (
+                data.density_table is None
+                and gas_free_water_fvf_table is not None
+                and stock_tank_water_density is not None
+                and stock_tank_gas_density is not None
+            ):
                 salinities = data.salinities
                 if salinities is not None:
                     n_s = len(salinities)
@@ -877,7 +895,7 @@ class PVTTable(StoreSerializable):
 
         :param name: Key in `_interpolatants` / `_derivative_interpolatants`.
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param derivative: If `True`, return `∂/∂P` instead of the value.
         :returns: Interpolated value (or derivative), or `None` when the
             table was not built.
@@ -946,7 +964,7 @@ class PVTTable(StoreSerializable):
 
         :param name: Interpolator key.
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl).
         :param derivative: Return `∂/∂P` when `True`.
         :returns: Interpolated value or `None`.
@@ -1000,7 +1018,11 @@ class PVTTable(StoreSerializable):
         bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get formation volume factor `B` (bbl/STB for oil/water, ft³/scf for gas).
+        Get formation volume factor `B`.
+
+        Units depend on `unit_system` and phase:
+        - Oil/water: bbl/STB (FIELD), m³/Sm³ (METRIC/SI), cc/scc (LAB)
+        - Gas: ft³/SCF (FIELD), m³/Sm³ (METRIC/SI), cc/scc (LAB)
 
         **Oil phase** - saturated / undersaturated switching:
 
@@ -1012,9 +1034,9 @@ class PVTTable(StoreSerializable):
         **Gas and water** - direct table interpolation; no saturation switching.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
-        :param solution_gor: Solution GOR (scf/STB). Oil, 2-D bubble_point_arr table only.
+        :param solution_gor: Solution GOR (SCF/STB). Oil, 2-D bubble_point_arr table only.
         :param bubble_point_pressure: Pre-computed bubble_point_arr (psi). Oil only; skips
             internal bubble_point_arr lookup when supplied.
         :returns: FVF or `None` if the table is not present.
@@ -1102,12 +1124,15 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂B/∂P` (psi⁻¹ · bbl/STB or psi⁻¹ · ft³/scf).
+        Return `∂B/∂P`. Units depend on `unit_system`.
+
+        For oil/water: (psi⁻¹ · bbl/STB) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI
+        For gas: (psi⁻¹ · ft³/SCF) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI
 
         Direct derivative of the FVF interpolator - no finite differences.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: `∂B/∂P` or `None` if table is absent.
         """
@@ -1132,7 +1157,7 @@ class PVTTable(StoreSerializable):
         bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get fluid viscosity `μ` (cP).
+        Get fluid viscosity `μ`. Units depend on `unit_system` (cP in FIELD/METRIC/LAB, Pa·s in SI).
 
         **Oil phase** - saturated / undersaturated switching using the
         Beggs-Robinson undersaturated correction above bubble point.
@@ -1140,9 +1165,9 @@ class PVTTable(StoreSerializable):
         **Water / gas** - direct table interpolation.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
-        :param solution_gor: Solution GOR (scf/STB). Oil, 2-D bubble_point_arr table only.
+        :param solution_gor: Solution GOR (SCF/STB). Oil, 2-D bubble_point_arr table only.
         :param bubble_point_pressure: Pre-computed bubble_point_arr (psi). Oil only.
         :returns: Viscosity in cP, or `None` if table is absent.
         """
@@ -1220,7 +1245,7 @@ class PVTTable(StoreSerializable):
         Return `∂μ/∂P` (cP/psi).
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: `∂μ/∂P` or `None`.
         """
@@ -1241,7 +1266,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get fluid density `ρ` (lbm/ft³).
+        Get fluid density `ρ`. Units depend on `unit_system` (lbm/ft³ in FIELD, kg/m³ in METRIC/SI, g/cm³ in LAB).
 
         Returned from the pre-built density table which was constructed using
         the standard formula at `PVTTable` initialisation time:
@@ -1251,8 +1276,8 @@ class PVTTable(StoreSerializable):
                  `ρg = ρg,SC / Bg`                 [dry gas]
         - Water: `ρw = ρw,SC / Bw`
 
-        :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param pressure: Pressure. Units depend on `unit_system`.
+        :param temperature: Temperature. Units depend on `unit_system`.
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: Density in lbm/ft³, or `None` if table not present.
         """
@@ -1275,7 +1300,7 @@ class PVTTable(StoreSerializable):
         Return `∂ρ/∂P` (lbm/ft³/psi).
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: `∂ρ/∂P` or `None`.
         """
@@ -1296,7 +1321,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get fluid compressibility `c` (psi⁻¹).
+        Get fluid compressibility `c`. Units depend on `unit_system` (1/psi in FIELD, 1/bar in METRIC, 1/atm in LAB, 1/Pa in SI).
 
         Returned from the pre-built compressibility table constructed at
         `PVTTable` initialisation time using:
@@ -1304,10 +1329,10 @@ class PVTTable(StoreSerializable):
         - Oil / water: `c = -(1/B) · (∂B/∂P)`
         - Gas:         `cg = 1/P - (1/z) · (∂z/∂P)`
 
-        :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param pressure: Pressure. Units depend on `unit_system`.
+        :param temperature: Temperature. Units depend on `unit_system`.
         :param salinity: Salinity (ppm NaCl). Water phase only.
-        :returns: Compressibility in psi⁻¹, or `None`.
+        :returns: Compressibility. Units depend on `unit_system`, or `None`.
         """
         if self._phase == FluidPhase.WATER:
             return self._pts_query(
@@ -1328,7 +1353,7 @@ class PVTTable(StoreSerializable):
         Return `∂c/∂P` (psi⁻²).
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: `∂c/∂P` or `None`.
         """
@@ -1350,7 +1375,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get bubble-point pressure `bubble_point_arr` (psi).
+        Get bubble-point pressure `bubble_point_arr`. Units depend on `unit_system`.
 
         **Oil phase:**
 
@@ -1362,8 +1387,8 @@ class PVTTable(StoreSerializable):
 
         **Gas phase:** returns `None`.
 
-        :param temperature: TemperatureRegions (°F).
-        :param solution_gor: Solution GOR (scf/STB). Required for 2-D bubble_point_arr table.
+        :param temperature: Temperature (°F).
+        :param solution_gor: Solution GOR (SCF/STB). Required for 2-D bubble_point_arr table.
         :param pressure: Pressure (psi). Required for water bubble_point_arr table.
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: Bubble-point pressure in psi, or `None`.
@@ -1430,13 +1455,13 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Pb/∂Rs` (psi · STB/scf).
+        Return `∂Pb/∂Rs` (psi · STB/SCF).
 
         Only available when the bubble-point table is 2-D (bubble_point_arr(Rs, T)).
         Returns `None` for 1-D bubble_point_arr(T) tables or gas / water phases.
 
-        :param solution_gor: Solution GOR (scf/STB).
-        :param temperature: TemperatureRegions (°F).
+        :param solution_gor: Solution GOR (SCF/STB).
+        :param temperature: Temperature (°F).
         :returns: `∂Pb/∂Rs` or `None`.
         """
         if self._phase != FluidPhase.OIL or self._bubble_point_ndim != 2:
@@ -1469,15 +1494,15 @@ class PVTTable(StoreSerializable):
         bubble_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get solution gas-to-oil ratio `Rs` (scf/STB).
+        Get solution gas-to-oil ratio `Rs`. Units: SCF/STB (FIELD), Sm³/Sm³ (METRIC/SI), scc/scc (LAB).
 
         **Oil phase only.**  Rs is frozen at Rsb above bubble point.
 
-        :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
-        :param solution_gor: Solution GOR (scf/STB). Required for 2-D bubble_point_arr table.
-        :param bubble_point_pressure: Pre-computed bubble_point_arr (psi).
-        :returns: Rs in scf/STB, or `None`.
+        :param pressure: Pressure. Units depend on `unit_system`.
+        :param temperature: Temperature. Units depend on `unit_system`.
+        :param solution_gor: Solution GOR (dimensionless ratio). Required for 2-D `bubble_point_arr` table.
+        :param bubble_point_pressure: Pre-computed `bubble_point_arr`. Units depend on `unit_system`.
+        :returns: Rs. Units depend on `unit_system`, or `None`.
         """
         if self._phase != FluidPhase.OIL:
             return None
@@ -1532,10 +1557,10 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Rs/∂P` (scf/STB/psi). Oil phase only.
+        Return `∂Rs/∂P` (SCF/STB/psi). Oil phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :returns: `∂Rs/∂P` or `None`.
         """
         if self._phase != FluidPhase.OIL:
@@ -1552,8 +1577,8 @@ class PVTTable(StoreSerializable):
         Determine whether conditions are saturated (P ≤ bubble_point_arr). Oil phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
-        :param solution_gor: Solution GOR (scf/STB). Required for 2-D bubble_point_arr table.
+        :param temperature: Temperature (°F).
+        :param solution_gor: Solution GOR (SCF/STB). Required for 2-D bubble_point_arr table.
         :returns: Boolean mask (True = saturated), or `None` for gas.
         """
         if self._phase == FluidPhase.GAS:
@@ -1582,7 +1607,7 @@ class PVTTable(StoreSerializable):
         Get gas z-factor `z` (dimensionless). Gas phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :returns: z-factor or `None`.
         """
         if self._phase != FluidPhase.GAS:
@@ -1598,7 +1623,7 @@ class PVTTable(StoreSerializable):
         Return `∂z/∂P` (psi⁻¹). Gas phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :returns: `∂z/∂P` or `None`.
         """
         if self._phase != FluidPhase.GAS:
@@ -1620,7 +1645,7 @@ class PVTTable(StoreSerializable):
         point, analogous to Rs being capped at Rsb above bubble point for oil.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param dew_point_pressure: Pre-computed dew-point pressure (psi). When
             provided, skips the internal dew-point lookup.
         :returns: Rv in STB/Mscf, or `None` if table is absent.
@@ -1676,7 +1701,7 @@ class PVTTable(StoreSerializable):
         Return `∂Rv/∂P` (STB/Mscf/psi). Gas / condensate phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :returns: `∂Rv/∂P` or `None`.
         """
         if self._phase != FluidPhase.GAS:
@@ -1692,7 +1717,7 @@ class PVTTable(StoreSerializable):
         """
         Get gas dew-point pressure `Pdew(T)` (psi). Gas phase only.
 
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :returns: Dew-point pressure in psi, or `None` if table is absent.
         """
         if self._phase != FluidPhase.GAS:
@@ -1717,12 +1742,12 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get gas solubility in water `Rsw` (scf/STB). Gas phase only.
+        Get gas solubility in water `Rsw` (SCF/STB). Gas phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl); uses default if `None`.
-        :returns: Rsw in scf/STB, or `None`.
+        :returns: Rsw in SCF/STB, or `None`.
         """
         if self._phase != FluidPhase.GAS:
             return None
@@ -1740,10 +1765,10 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Rsw/∂P` (scf/STB/psi). Gas phase only.
+        Return `∂Rsw/∂P` (SCF/STB/psi). Gas phase only.
 
         :param pressure: Pressure (psi).
-        :param temperature: TemperatureRegions (°F).
+        :param temperature: Temperature (°F).
         :param salinity: Salinity (ppm NaCl).
         :returns: `∂Rsw/∂P` or `None`.
         """
@@ -1788,6 +1813,46 @@ class PVTTables(StoreSerializable):
 
     water: typing.Optional[PVTTable] = None
     """PVT table for the water phase."""
+
+    _unit_system: UnitSystem = attrs.field(init=False, repr=False, eq=False, hash=False)
+
+    def __attrs_post_init__(self) -> None:
+        if self.oil is None and self.gas is None and self.water is None:
+            raise ValidationError(
+                "At least one of `oil`, `gas`, or `water` must be provided."
+            )
+
+        # Check that the phase tables are consistent with their declared phases
+        for phase, table in (
+            (FluidPhase.OIL, self.oil),
+            (FluidPhase.GAS, self.gas),
+            (FluidPhase.WATER, self.water),
+        ):
+            if table is not None and table.phase != phase:
+                raise ValidationError(
+                    f"Phase table mismatch: {phase.value} table has phase {table.phase.value}."
+                )
+
+        # All unit systems must be the same across phases
+        unit_systems = {
+            table.unit_system
+            for table in (self.oil, self.gas, self.water)
+            if table is not None
+        }
+        if len(unit_systems) > 1:
+            raise ValidationError("All phase tables must have the same unit system.")
+
+        unit_system = unit_systems.pop()
+        object.__setattr__(self, "_unit_system", unit_system)
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """
+        Unit system of the underlying tables.
+
+        :returns: `UnitSystem` instance.
+        """
+        return self._unit_system
 
     @classmethod
     def from_dataset(

@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.sparse import coo_matrix
 
+from bores.blackoil.rock_fluid import RockFluidTables
 from bores.config import Config
 from bores.constants import c
 from bores.datastructures import BottomHolePressures
@@ -24,7 +25,6 @@ from bores.solvers.base import (
 from bores.solvers.explicit.transport import compute_face_fluxes
 from bores.solvers.implicit.linesearch import line_search
 from bores.solvers.rates import WellRates
-from bores.blackoil.rock_fluid import RockFluidTables
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.wells.indices import WellsIndices

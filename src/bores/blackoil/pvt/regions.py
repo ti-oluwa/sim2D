@@ -47,6 +47,21 @@ class PVTRegion(Serializable):
     tables: PVTTables
     """Dynamic PVT tables for this region (e.g. PVTO, PVTG, PVTW)."""
 
+    unit_system: UnitSystem
+    """Unit system of the tables and static properties."""
+
+    def __attrs_post_init__(self) -> None:
+        if self.static.unit_system != self.unit_system:
+            raise ValidationError(
+                f"Static PVT unit system {self.static.unit_system} does not match "
+                f"region unit system {self.unit_system}."
+            )
+        if self.tables.unit_system != self.unit_system:
+            raise ValidationError(
+                f"Tables unit system {self.tables.unit_system} does not match "
+                f"region unit system {self.unit_system}."
+            )
+
     def convert(
         self,
         target: UnitSystem,
@@ -60,9 +75,11 @@ class PVTRegion(Serializable):
         :param target: Target `UnitSystem`.
         :returns: New `PVTRegion` in *target* units.
         """
-        return self.__class__(
+        return attrs.evolve(
+            self,
             static=self.static.convert(target, table=table),
             tables=self.tables.convert(target, table=table),
+            unit_system=self.unit_system,
         )
 
 
@@ -100,7 +117,15 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         """
         if not regions:
             raise ValidationError("`regions` must contain at least one entry.")
-        self.regions = regions
+
+        # Assert all regions have the same unit system
+        unit_systems = {region.unit_system for region in regions.values()}
+        if len(unit_systems) > 1:
+            raise ValidationError(
+                "All PVT regions must share the same unit system. "
+                f"Found: {sorted(unit_system.value for unit_system in unit_systems)}."
+            )
+        self._regions = regions
 
     def for_region(self, pvtnum: int) -> PVTRegion:
         """
@@ -110,18 +135,24 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         :returns: `PVTRegion` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        regions = self.regions.get(pvtnum)
+        regions = self._regions.get(pvtnum)
         if regions is None:
-            available = sorted(self.regions.keys())
+            available = sorted(self._regions.keys())
             raise KeyError(
                 f"PVT region {pvtnum} not found. Available regions: {available}."
             )
         return regions
 
     @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system of all region tables and static properties."""
+        assert self._regions
+        return next(iter(self._regions.values())).unit_system
+
+    @property
     def n_regions(self) -> int:
         """Number of PVT regions."""
-        return len(self.regions)
+        return len(self._regions)
 
     @classmethod
     def single_region(cls, region: PVTRegion) -> Self:
@@ -188,7 +219,7 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         return self.__class__(
             regions={
                 pvtnum: region.convert(target, table=table)
-                for pvtnum, region in self.regions.items()
+                for pvtnum, region in self._regions.items()
             }
         )
 
@@ -196,19 +227,19 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         return self.for_region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self.regions)
+        return iter(self._regions)
 
     def __len__(self) -> int:
-        return len(self.regions)
+        return len(self._regions)
 
     def __contains__(self, key: object) -> bool:
-        return key in self.regions
+        return key in self._regions
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
         return {
             "regions": {
                 str(pvtnum): region.dump(recurse)
-                for pvtnum, region in self.regions.items()
+                for pvtnum, region in self._regions.items()
             }
         }
 
@@ -316,10 +347,10 @@ def _build_oil_data_from_pvto(
 
     for i, solution_gor in enumerate(solution_gor_values):
         rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
-        sat_row = rows[0]
-        bubble_point_pressure_values[i] = float(sat_row["pressure"])
-        saturated_oil_fvf[i] = float(sat_row["bo"])
-        saturated_oil_viscosity[i] = float(sat_row["viscosity"])
+        saturated_row = rows[0]
+        bubble_point_pressure_values[i] = float(saturated_row["pressure"])
+        saturated_oil_fvf[i] = float(saturated_row["bo"])
+        saturated_oil_viscosity[i] = float(saturated_row["viscosity"])
 
     # Pressure grid: bubble-point pressures + extension to max undersaturated pressure.
     # We do NOT merge all undersaturated rows into one flat grid - that would mix
@@ -557,7 +588,7 @@ def _build_gas_data_from_pvdg(
     Build dry-gas `PVTData` from a parsed `PVDG` record set.
 
     `PVDG` format: single table of `(pressure, bg, viscosity)` rows.
-    Eclipse stores Bg in rb/Mscf; this builder converts to ft³/scf:
+    Eclipse stores Bg in rb/Mscf; this builder converts to ft³/SCF:
     `Bg_ft3_scf = Bg_rb_Mscf x 5.615 / 1000`.
 
     :param pvdg_records: List of row dicts with keys `"pressure"`, `"bg"`,
@@ -576,7 +607,7 @@ def _build_gas_data_from_pvdg(
         raise ValidationError(f"PVDG table requires at least 2 rows; got {len(rows)}.")
 
     pressures = np.array([r["pressure"] for r in rows], dtype=dtype)
-    # Convert rb/Mscf → ft³/scf
+    # Convert rb/Mscf → ft³/SCF
     gas_fvf_1d = np.array([r["bg"] * 5.615 / 1000.0 for r in rows], dtype=dtype)
     gas_viscosity_1d = np.array([r["viscosity"] for r in rows], dtype=dtype)
 
@@ -685,7 +716,7 @@ def _build_gas_data_from_pvtg(
     for i, pressure in enumerate(pressure_values):
         rows = sorted(pressure_to_rows[pressure], key=lambda r: r["rv"])
         rv_arr = np.array([r["rv"] for r in rows], dtype=dtype)
-        # Convert rb/Mscf → ft³/scf
+        # Convert rb/Mscf → ft³/SCF
         gas_fvf_arr = np.array([r["bg"] * 5.615 / 1000.0 for r in rows], dtype=dtype)
         gas_viscosity_arr = np.array([r["viscosity"] for r in rows], dtype=dtype)
 
@@ -1039,43 +1070,21 @@ def load_pvt_regions(
         # `StaticPVT` for this region
         # Resolve stock-tank densities from DENSITY record
         stock_tank_oil_density = (
-            density_record["oil"] if density_record is not None else 53.0
+            density_record["oil"] if density_record is not None else None
         )
         stock_tank_water_density = (
-            density_record["water"] if density_record is not None else 62.4
+            density_record["water"] if density_record is not None else None
         )
         stock_tank_gas_density = (
-            density_record["gas"] if density_record is not None else 0.0765
+            density_record["gas"] if density_record is not None else None
         )
 
-        # Derive oil specific gravity from stock-tank oil density relative to
-        # fresh water at standard conditions in unit_system.
-        _standard_water_density: typing.Dict[UnitSystem, Number] = {
-            UnitSystem.FIELD: 62.37,
-            UnitSystem.METRIC: 999.0,
-            UnitSystem.SI: 999.0,
-            UnitSystem.LAB: 0.999,
-        }
-        ref_water_density = _standard_water_density[unit_system]
-        oil_specific_gravity = stock_tank_oil_density / ref_water_density
-
-        # Derive gas gravity from stock-tank gas density relative to air.
-        _standard_air_density: typing.Dict[UnitSystem, Number] = {
-            UnitSystem.FIELD: 0.0765,
-            UnitSystem.METRIC: 1.225,
-            UnitSystem.SI: 1.225,
-            UnitSystem.LAB: 1.225e-3,
-        }
-        ref_air_density = _standard_air_density[unit_system]
-        gas_gravity = stock_tank_gas_density / ref_air_density
-
         # PVTW scalars for this region
-        water_reference_pressure = 14.696
-        water_reference_fvf = 1.0
-        water_reference_viscosity = 0.5
-        water_reference_compressibility = 3.0e-6
-        water_viscosibility = 0.0
-
+        water_reference_pressure: typing.Optional[Number] = None
+        water_reference_fvf: typing.Optional[Number] = None
+        water_reference_viscosity: typing.Optional[Number] = None
+        water_reference_compressibility: typing.Optional[Number] = None
+        water_viscosibility: typing.Optional[Number] = None
         if pvtw_all is not None and region_idx < len(pvtw_all):
             pvtw_rows = pvtw_all[region_idx]
             if pvtw_rows:
@@ -1087,14 +1096,12 @@ def load_pvt_regions(
                 water_viscosibility = pvtw_record.get("cv", 0.0)
 
         static = StaticPVT(
-            oil_specific_gravity=oil_specific_gravity,
             stock_tank_oil_density=stock_tank_oil_density,
             water_reference_pressure=water_reference_pressure,
             water_reference_fvf=water_reference_fvf,
             water_reference_viscosity=water_reference_viscosity,
             water_reference_compressibility=water_reference_compressibility,
             stock_tank_water_density=stock_tank_water_density,
-            gas_gravity=gas_gravity,
             stock_tank_gas_density=stock_tank_gas_density,
             water_viscosibility=water_viscosibility,
             water_salinity=salinity,
@@ -1104,7 +1111,9 @@ def load_pvt_regions(
         # Assemble `PVTRegion`
         dataset = PVTDataSet(oil=oil_data, gas=gas_data, water=water_data)
         tables = PVTTables.from_dataset(dataset, **table_kwargs)
-        regions[pvtnum] = PVTRegion(tables=tables, static=static)
+        regions[pvtnum] = PVTRegion(
+            static=static, tables=tables, unit_system=unit_system
+        )
 
         logger.debug(
             "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s, salinity=%.0f ppm",

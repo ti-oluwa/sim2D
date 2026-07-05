@@ -3,6 +3,7 @@ import typing
 
 import attrs
 
+from bores.blackoil.tables.pvt import PVTTables
 from bores.grids.pvt import (
     build_gas_compressibility_factor_grid,
     build_gas_compressibility_grid,
@@ -27,7 +28,6 @@ from bores.grids.pvt import (
 )
 from bores.grids.rock_fluid import build_effective_residual_saturation_grids
 from bores.reservoir import FluidProperties, HysteresisState, RockProperties
-from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import MiscibilityModel, NDimensionalGrid, ThreeDimensions
 from bores.wells.base import Wells
 

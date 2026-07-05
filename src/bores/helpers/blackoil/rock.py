@@ -3,13 +3,13 @@ import typing
 import attrs
 import numpy as np
 import numpy.typing as npt
+from bores.reservoir.blackoil.regions import _load_region
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.reservoir.blackoil.regions import _load_region
 from bores.precision import get_dtype
 from bores.stores import StoreSerializable
 from bores.typing import (

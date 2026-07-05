@@ -8,7 +8,7 @@ This module provides three layers:
 **Data layer** - `PVTData`, `PVTDataSet`
     Raw tabulated arrays exactly as read from a deck or built by a correlation
     builder.  No interpolators.  Fully serialisable.  Units are always FIELD
-    (psi, °F, bbl/STB, ft³/scf, cP, lbm/ft³, scf/STB) unless documented
+    (psi, °F, bbl/STB, ft³/SCF, cP, lbm/ft³, SCF/STB) unless documented
     otherwise.
 
 **Table layer** - `PVTTable`, `PVTTables`, `PVTRegions`

@@ -10,6 +10,7 @@ import attrs
 import numpy as np
 from typing_extensions import Self
 
+from bores.blackoil.tables.pvt import PVTTables
 from bores.errors import ValidationError
 from bores.serialization import (
     make_registry_deserializer,
@@ -19,7 +20,6 @@ from bores.serialization import (
     register_type_serializer,
 )
 from bores.stores import StoreSerializable
-from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import (
     Coordinates,
     FluidPhase,

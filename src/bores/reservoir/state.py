@@ -342,7 +342,7 @@ class State(StoreSerializable):
     """
     Shape (n_cells,) - solution gas-to-oil ratio (Rs).
 
-    Units: scf/STB (FIELD), sm³/sm³ (METRIC / SI), scc/scc (LAB).
+    Units: SCF/STB (FIELD), sm³/sm³ (METRIC / SI), scc/scc (LAB).
 
     Gas dissolved in oil per unit stock-tank oil volume at current pressure.
 

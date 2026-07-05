@@ -203,11 +203,13 @@ class FaultRecord(typing.NamedTuple):
     face_direction: str
 
 
-VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset({
-    "X",
-    "X-",
-    "Y",
-    "Y-",
-    "Z",
-    "Z-",
-})
+VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset(
+    {
+        "X",
+        "X-",
+        "Y",
+        "Y-",
+        "Z",
+        "Z-",
+    }
+)

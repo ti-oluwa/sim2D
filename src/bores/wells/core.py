@@ -7,6 +7,8 @@ import attrs
 import numba
 import numpy as np
 
+from bores.blackoil.pseudo_pressure import PseudoPressureTable
+from bores.blackoil.tables.pvt import PVTTables
 from bores.constants import c
 from bores.correlations.arrays import (
     compute_gas_compressibility as compute_gas_compressibility_vectorized,
@@ -53,8 +55,6 @@ from bores.correlations.scalars import (
 )
 from bores.errors import ComputationError, ValidationError
 from bores.fluids import Fluid
-from bores.blackoil.pseudo_pressure import PseudoPressureTable
-from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import (
     FluidPhase,
     NumberOrArray,

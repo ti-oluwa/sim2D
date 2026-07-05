@@ -54,7 +54,33 @@ class RockFluidTables(StoreSerializable):
     """
 
     relative_permeability: RelativePermeabilityTable
+    """Relative permeability table for the rock-fluid system."""
+
     capillary_pressure: typing.Optional[CapillaryPressureTable] = None
+    """Capillary pressure table for the rock-fluid system, or `None` if not present."""
+
+    _unit_system: typing.Optional[UnitSystem] = attrs.field(
+        default=None, init=False, repr=False
+    )
+
+    def __attrs_post_init__(self) -> None:
+        # All units must be consistent across the two tables, if both are present.
+        unit_systems = set()
+        unit_systems.add(self.relative_permeability.unit_system)
+        if self.capillary_pressure is not None:
+            unit_systems.add(self.capillary_pressure.unit_system)
+
+        if len(unit_systems) > 1:
+            raise ValidationError(
+                "Relative permeability and capillary pressure tables must have the same unit system."
+            )
+
+        object.__setattr__(self, "_unit_system", unit_systems.pop())
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system of the rock-fluid tables."""
+        return self._unit_system
 
     def convert(
         self,

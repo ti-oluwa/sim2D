@@ -12,8 +12,8 @@ from bores.correlations.scalars import compute_harmonic_mean
 from bores.datastructures import PhaseTensorsProxy
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids
 from bores.grids.utils import unpad_grid
-from bores.reservoir import FluidProperties, RockProperties
 from bores.precision import get_dtype
+from bores.reservoir import FluidProperties, RockProperties
 from bores.solvers.base import (
     Solution,
     _warn_injection_rate,

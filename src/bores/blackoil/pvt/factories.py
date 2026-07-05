@@ -6,8 +6,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import RectBivariateSpline  # type: ignore[import-untyped]
 
-from bores.blackoil.pvt.tables import PVTTable
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
+from bores.blackoil.pvt.tables import PVTTable
 from bores.constants import c
 from bores.correlations import arrays, scalars
 from bores.errors import ValidationError
@@ -152,7 +152,7 @@ def build_oil_pvt_data(
     :param temperatures: 1-D array of temperatures (°F), strictly increasing.
     :param oil_specific_gravity: Oil specific gravity (dimensionless, water=1).
     :param gas_gravity: Gas specific gravity (air=1). Derived from `gas` if absent.
-    :param estimated_solution_gor: Estimated Rs (scf/STB) for the 1-D Pb
+    :param estimated_solution_gor: Estimated Rs (SCF/STB) for the 1-D Pb
         correlation. Estimated from API if absent.
     :param bubble_point_pressures: Pre-computed Pb array. 1-D Pb(T) or 2-D Pb(Rs, T).
     :param solution_gas_to_oil_ratios: Rs axis for the 2-D Pb table.
@@ -161,7 +161,7 @@ def build_oil_pvt_data(
     :param density_table: Pre-computed ρo(P, T) (n_p, n_t) in lbm/ft³.
     :param formation_volume_factor_table: Pre-computed Bo(P, T) (n_p, n_t) in bbl/STB.
     :param compressibility_table: Pre-computed co(P, T) (n_p, n_t) in psi⁻¹.
-    :param solution_gas_to_oil_ratio_table: Pre-computed Rs(P, T) (n_p, n_t) in scf/STB.
+    :param solution_gas_to_oil_ratio_table: Pre-computed Rs(P, T) (n_p, n_t) in SCF/STB.
     :param stock_tank_oil_density: Stock-tank oil density (lbm/ft³). Used to derive
         `density_table` when absent.
     :param stock_tank_gas_density: Stock-tank gas density (lbm/ft³). Used to derive
@@ -233,7 +233,7 @@ def build_oil_pvt_data(
                 )
                 warnings.warn(
                     f"No `estimated_solution_gor` provided. Estimating Rs = "
-                    f"{estimated_solution_gor:.1f} scf/STB from API = {oil_api_gravity:.1f}°. "
+                    f"{estimated_solution_gor:.1f} SCF/STB from API = {oil_api_gravity:.1f}°. "
                     "Pass `estimated_solution_gor` for best results.",
                     UserWarning,
                     stacklevel=2,
@@ -443,7 +443,7 @@ def build_gas_pvt_data(
     :param water_salinities: 1-D salinity array (ppm) for Rsw(P, T, S) table.
     :param viscosity_table: Pre-computed μg(P, T) (n_p, n_t) in cP.
     :param density_table: Pre-computed ρg(P, T) (n_p, n_t) in lbm/ft³.
-    :param formation_volume_factor_table: Pre-computed Bg(P, T) (n_p, n_t) in ft³/scf.
+    :param formation_volume_factor_table: Pre-computed Bg(P, T) (n_p, n_t) in ft³/SCF.
     :param compressibility_table: Pre-computed cg(P, T) (n_p, n_t) in psi⁻¹.
     :param compressibility_factor_table: Pre-computed z(P, T) (n_p, n_t).
     :param molecular_weight: Pre-computed Mg in lbm/lb-mol.
@@ -846,7 +846,7 @@ def build_pvt_dataset(
     :param gas_gravity: Gas specific gravity (air=1).
     :param water_salinity: Single salinity scalar (ppm).
     :param salinities: 1-D salinity array (ppm).
-    :param estimated_solution_gor: Estimated Rs (scf/STB) for bubble-point correlation.
+    :param estimated_solution_gor: Estimated Rs (SCF/STB) for bubble-point correlation.
     :param bubble_point_pressures: Pre-computed Pb array.
     :param solution_gas_to_oil_ratios: Rs axis for 2-D Pb table.
     :param gas: Gas identity (string or `Fluid`).

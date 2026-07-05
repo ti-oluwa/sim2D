@@ -687,10 +687,12 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
-    "grdecl_corner_point",
-    "grdecl_cartesian",
-})
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
+    {
+        "grdecl_corner_point",
+        "grdecl_cartesian",
+    }
+)
 
 
 def _build_grdecl_text(
@@ -782,8 +784,7 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np
-        .asarray(arr, dtype=np.float64)
+        np.asarray(arr, dtype=np.float64)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
