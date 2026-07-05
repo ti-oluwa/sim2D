@@ -12,9 +12,9 @@ from bores.grids.base import (
     RelPermGrids,
     build_uniform_grid,
 )
-from bores.model import HysteresisState
+from bores.reservoir import HysteresisState
 from bores.precision import get_dtype
-from bores.tables.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
+from bores.blackoil.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
 from bores.typing import NDimension, NDimensionalGrid, ThreeDimensions
 
 logger = logging.getLogger(__name__)

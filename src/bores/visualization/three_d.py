@@ -26,7 +26,7 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
-from bores.model import BlackOilModel
+from bores.reservoir import BlackOilModel
 from bores.precision import get_dtype
 from bores.states import ModelState
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions

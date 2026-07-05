@@ -37,7 +37,7 @@ from bores.material_balance import (
     MaterialBalanceErrors,
     compute_material_balance_errors,
 )
-from bores.model import (
+from bores.reservoir import (
     FluidProperties,
     HysteresisState,
     BlackOilModel,
@@ -50,7 +50,7 @@ from bores.solvers.base import normalize_saturations
 from bores.solvers.rates import WellRates, compute_well_rates
 from bores.states import ModelState, RatesInfo
 from bores.stores import StoreSerializable
-from bores.tables.pvt import PVTDataSet, PVTTables
+from bores.blackoil.tables.pvt import PVTDataSet, PVTTables
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import MiscibilityModel, NDimension, NDimensionalGrid, ThreeDimensions
 from bores.updates import update_fluid_properties, update_residual_saturation_grids

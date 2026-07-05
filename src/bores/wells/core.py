@@ -53,8 +53,8 @@ from bores.correlations.scalars import (
 )
 from bores.errors import ComputationError, ValidationError
 from bores.fluids import Fluid
-from bores.tables.pseudo_pressure import PseudoPressureTable
-from bores.tables.pvt import PVTTables
+from bores.blackoil.pseudo_pressure import PseudoPressureTable
+from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import (
     FluidPhase,
     NumberOrArray,
@@ -409,7 +409,6 @@ def compute_required_bhp_for_oil_rate(
         return float(pressure)
 
     denominator = 7.08e-3 * well_index * phase_mobility
-
     is_compressible = (
         fluid_compressibility is not None
         and fluid_compressibility >= incompressibility_threshold

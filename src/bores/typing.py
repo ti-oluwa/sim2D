@@ -430,54 +430,237 @@ ZFactorMethod = typing.Literal["papay", "hall-yarborough", "dak"]
 
 
 class UnitConversionFactors(TypedDict):
+    """
+    Multiplicative conversion factors from one `UnitSystem` to another.
+
+    Every factor converts a value expressed in the source unit system into
+    the corresponding value in the target unit system by simple multiplication.
+    Temperature is the only exception, requiring both a multiplicative factor
+    and an additive offset:
+
+        T_target = T_source * temperature + temperature_offset
+
+    All factors are dimensionless ratios; negative values are never valid.
+    """
+
+    # Fundamental units
+
     pressure: Number
-    """Pressure conversion factor."""
+    """
+    Pressure conversion factor.
+
+    FIELD : psi
+    METRIC: bar
+    LAB   : atm
+    SI    : Pa
+    """
 
     length: Number
-    """Length conversion factor."""
-
-    density: Number
-    """Density conversion factor."""
-
-    viscosity: Number
-    """Dynamic viscosity conversion factor."""
-
-    permeability: Number
-    """Permeability conversion factor."""
-
-    compressibility: Number
-    """Compressibility conversion factor."""
-
-    liquid_fvf: Number
-    """Liquid formation volume factor conversion factor."""
-
-    gas_fvf: Number
-    """Gas formation volume factor conversion factor."""
-
-    gor: Number
-    """Gas-oil ratio conversion factor."""
-
-    temperature: Number
-    """Multiplicative temperature conversion factor."""
-
-    temperature_offset: Number
-    """Additive temperature conversion offset."""
-
-    volumetric_rate: Number
     """
-    Volumetric flow rate conversion factor (volume/time).
+    Length conversion factor.
 
-    FIELD: ft³/day, METRIC: m³/day, LAB: cm³/hour, SI: m³/s.
-    Derived as `volume_factor / time_factor` where time is always in days
-    for FIELD/METRIC, hours for LAB, and seconds for SI.
+    FIELD : ft
+    METRIC: m
+    LAB   : cm
+    SI    : m
+    """
+
+    area: Number
+    """
+    Area conversion factor (= length²).
+
+    FIELD : ft²
+    METRIC: m²
+    LAB   : cm²
+    SI    : m²
+    """
+
+    volume: Number
+    """
+    Reservoir (in-situ) volume conversion factor (= length³).
+
+    FIELD : ft³  (reservoir cubic feet)
+    METRIC: m³   (reservoir cubic metres)
+    LAB   : cm³  (reservoir cubic centimetres)
+    SI    : m³   (reservoir cubic metres)
+    """
+
+    time: Number
+    """
+    Time conversion factor.
+
+    FIELD : day
+    METRIC: day
+    LAB   : hour
+    SI    : second
     """
 
     mass: Number
     """
     Mass conversion factor.
 
-    FIELD: lbm, METRIC: kg, LAB: g, SI: kg.
-    Derived as `density_factor * length_factor³`.
+    FIELD : lbm
+    METRIC: kg
+    LAB   : g
+    SI    : kg
+    """
+
+    temperature: Number
+    """
+    Multiplicative temperature conversion factor.
+
+    Applied as: `T_target = T_source * temperature + temperature_offset`.
+    """
+
+    temperature_offset: Number
+    """
+    Additive temperature conversion offset (in target units).
+
+    Applied after the multiplicative factor:
+    `T_target = T_source * temperature + temperature_offset`.
+    """
+
+    # Derived units
+
+    density: Number
+    """
+    Density conversion factor (= mass / volume = mass / length³).
+
+    FIELD : lbm/ft³
+    METRIC: kg/m³
+    LAB   : g/cm³
+    SI    : kg/m³
+    """
+
+    viscosity: Number
+    """
+    Dynamic viscosity conversion factor.
+
+    FIELD : cP
+    METRIC: cP
+    LAB   : cP
+    SI    : Pa·s
+    """
+
+    permeability: Number
+    """
+    Permeability conversion factor.
+
+    FIELD : mD
+    METRIC: mD
+    LAB   : mD
+    SI    : m²
+    """
+
+    compressibility: Number
+    """
+    Compressibility conversion factor (= 1 / pressure).
+
+    FIELD : 1/psi
+    METRIC: 1/bar
+    LAB   : 1/atm
+    SI    : 1/Pa
+    """
+
+    # Surface volumes
+
+    liquid_surface_volume: Number
+    """
+    Surface liquid volume conversion factor.
+
+    FIELD : STB  (stock-tank barrel)
+    METRIC: Sm³  (standard cubic metre)
+    LAB   : scc  (standard cubic centimetre)
+    SI    : Sm³
+    """
+
+    gas_surface_volume: Number
+    """
+    Surface gas volume conversion factor.
+
+    FIELD : SCF  (standard cubic foot)
+    METRIC: Sm³
+    LAB   : scc
+    SI    : Sm³
+    """
+
+    # Reservoir-volume ratios (formation volume factors)
+
+    liquid_fvf: Number
+    """
+    Liquid formation volume factor conversion factor.
+
+    Converts the ratio reservoir-volume / surface-volume:
+
+    FIELD  -> METRIC: rb/STB  -> rm³/Sm³  (ratio stays 1.0 since both sides
+                                          use the same volume system)
+    FIELD  -> LAB:   rb/STB  -> rcc/scc
+    FIELD  -> SI:    rb/STB  -> rm³/Sm³
+    """
+
+    gas_fvf: Number
+    """
+    Gas formation volume factor conversion factor.
+
+    Converts the ratio reservoir-volume / surface-volume:
+
+    FIELD  -> METRIC: rcf/SCF -> rm³/Sm³
+    FIELD  -> LAB:   rcf/SCF -> rcc/scc
+    FIELD  -> SI:    rcf/SCF -> rm³/Sm³
+    """
+
+    # Solution ratios
+
+    gas_oil_ratio: Number
+    """
+    Solution gas-oil ratio (GOR) conversion factor.
+
+    FIELD : SCF/STB
+    METRIC: Sm³/Sm³
+    LAB   : scc/scc
+    SI    : Sm³/Sm³
+    """
+
+    oil_gas_ratio: Number
+    """
+    Vaporised oil ratio (OGR / Rv) conversion factor.
+
+    FIELD : STB/SCF
+    METRIC: Sm³/Sm³
+    LAB   : scc/scc
+    SI    : Sm³/Sm³
+    """
+
+    # Flow rates
+
+    liquid_surface_rate: Number
+    """
+    Surface liquid volumetric flow rate conversion factor.
+
+    FIELD : STB/day
+    METRIC: Sm³/day
+    LAB   : scc/hour
+    SI    : Sm³/second
+    """
+
+    gas_surface_rate: Number
+    """
+    Surface gas volumetric flow rate conversion factor.
+
+    FIELD : SCF/day
+    METRIC: Sm³/day
+    LAB   : scc/hour
+    SI    : Sm³/second
+    """
+
+    reservoir_rate: Number
+    """
+    Reservoir (in-situ) volumetric flow rate conversion factor.
+
+    FIELD : ft³/day
+    METRIC: m³/day
+    LAB   : cm³/hour
+    SI    : m³/second
     """
 
 

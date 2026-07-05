@@ -26,8 +26,8 @@ from bores.grids.pvt import (
     build_water_viscosity_grid,
 )
 from bores.grids.rock_fluid import build_effective_residual_saturation_grids
-from bores.model import FluidProperties, HysteresisState, RockProperties
-from bores.tables.pvt import PVTTables
+from bores.reservoir import FluidProperties, HysteresisState, RockProperties
+from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import MiscibilityModel, NDimensionalGrid, ThreeDimensions
 from bores.wells.base import Wells
 

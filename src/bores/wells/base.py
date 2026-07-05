@@ -19,7 +19,7 @@ from bores.serialization import (
     register_type_serializer,
 )
 from bores.stores import StoreSerializable
-from bores.tables.pvt import PVTTables
+from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import (
     Coordinates,
     FluidPhase,

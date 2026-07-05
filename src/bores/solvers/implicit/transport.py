@@ -12,7 +12,7 @@ from bores.constants import c
 from bores.datastructures import BottomHolePressures
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids
 from bores.grids.rock_fluid import build_rock_fluid_properties_grids
-from bores.model import FluidProperties, HysteresisState, RockProperties
+from bores.reservoir import FluidProperties, HysteresisState, RockProperties
 from bores.solvers.base import (
     Solution,
     compute_mobility_grids,
@@ -24,7 +24,7 @@ from bores.solvers.base import (
 from bores.solvers.explicit.transport import compute_face_fluxes
 from bores.solvers.implicit.linesearch import line_search
 from bores.solvers.rates import WellRates
-from bores.tables.rock_fluid import RockFluidTables
+from bores.blackoil.rock_fluid import RockFluidTables
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.wells.indices import WellsIndices

@@ -1336,15 +1336,18 @@ class Grid(
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        factor = factors["length"]
+        length_factor = factors["length"]
+        volume_factor = length_factor**3
         # Rescale vertex coordinates only.
         # All other geometry is derived and will be recomputed on Grid initialization.
-        vertex_coordinates = self.vertex_coordinates * factor
+        vertex_coordinates = self.vertex_coordinates * length_factor
         cell_volumes = (
-            self.cell_volumes * (factor**3) if self.cell_volumes is not None else None
+            self.cell_volumes * volume_factor if self.cell_volumes is not None else None
         )
         cell_centroids = (
-            self.cell_centroids * factor if self.cell_centroids is not None else None
+            self.cell_centroids * length_factor
+            if self.cell_centroids is not None
+            else None
         )
         return attrs.evolve(
             self,

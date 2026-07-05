@@ -17,7 +17,7 @@ from bores.correlations.scalars import compute_harmonic_mean
 from bores.errors import PreconditionerError, SolverError
 from bores.grids.base import CapillaryPressureGrids, RelativeMobilityGrids, RelPermGrids
 from bores.grids.rock_fluid import build_three_phase_relative_mobilities_grids
-from bores.model import FluidProperties, RockProperties
+from bores.reservoir import FluidProperties, RockProperties
 from bores.rock_fluid.relperm import RelPermEndpoints
 from bores.solvers.base import (
     Solution,
@@ -26,7 +26,7 @@ from bores.solvers.base import (
     to_1D_index,
 )
 from bores.solvers.rates import WellRates, compute_well_rates
-from bores.tables.pvt import PVTTable, PVTTables
+from bores.blackoil.tables.pvt import PVTTable, PVTTables
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import (
     MiscibilityModel,

@@ -126,7 +126,7 @@ class ConstantFactory(Serializable):
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        """Serialize by evaluating the factory — produces a plain value snapshot."""
+        """Serialize by evaluating the factory - produces a plain value snapshot."""
         evaluated = Constant(
             value=self.value,
             description=self.description,
@@ -137,7 +137,7 @@ class ConstantFactory(Serializable):
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Constant:
         """
-        Deserialization always produces a plain ``Constant`` — a factory
+        Deserialization always produces a plain ``Constant`` - a factory
         function cannot be reconstructed from serialized data.
         """
         return Constant.load(data)
@@ -520,10 +520,10 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Conversion factor from meters to inches",
         unit="in/m",
     ),
-    "FT_TO_METERS": Constant(
+    "FEET_TO_METERS": Constant(
         value=0.3048, description="Conversion factor from feet to meters", unit="m/ft"
     ),
-    "METERS_TO_FT": Constant(
+    "METERS_TO_FEET": Constant(
         value=1 / 0.3048,
         description="Conversion factor from meters to feet",
         unit="ft/m",
@@ -695,7 +695,7 @@ DEFAULT_CONSTANTS: typing.Dict[
         description=(
             "Minimum mobile pore-space fraction below which the corresponding "
             "phase relative-permeability or capillary-pressure is forced to zero. Matched to `SATURATION_EPSILON` so "
-            "validity guards and clamp bounds are numerically consistent — a "
+            "validity guards and clamp bounds are numerically consistent - a "
             "pore space smaller than the clamp floor cannot produce a meaningful "
             "normalised saturation. Dtype-aware via `get_floating_point_info()`."
         ),
@@ -1132,238 +1132,466 @@ def build_unit_conversion_table(
     constants: typing.Optional[Constants] = None,
 ) -> UnitConversionTable:
     """
-    Build a unit conversion table from the provided or default constants registry.
+    Build a complete unit conversion table from the provided or default
+    constants registry.
 
-    All numeric values come from `constants` provided or `bores.c.*` so
-    they stay in sync with any application-level constant overrides.
+    All numeric values are read from `constants` (or the global `c`
+    proxy) so they stay in sync with any application-level overrides made
+    via `ConstantsContext`.
+
+    Each entry converts every dimensional quantity from the source
+    `UnitSystem` to the target `UnitSystem`. The twelve source -> target
+    pairs cover all ordered combinations of FIELD, METRIC, LAB, and SI
+    (same-system pairs are handled by `IDENTITY_FACTORS` in
+    `get_conversion_factors`).
+
+    Intermediate factors are derived algebraically from the primitives
+    stored in the constants registry so no magic numbers are hard-coded
+    here.
     """
     con = constants or c
-    psi_to_bar = con.PSI_TO_BAR  # 0.0689476
-    psi_to_pa = con.PSI_TO_PASCAL  # 6894.757
-    atm_to_pa = con.ATM_TO_PASCAL  # 101325.0
-    ft_to_m = con.FT_TO_METERS  # 0.3048
-    m_to_ft = con.METERS_TO_FT  # 3.28084
-    lbm_ft3_to_kg_m3 = con.POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER  # 16.0185
 
-    cp_to_pas = con.CENTIPOISE_TO_PASCAL_SECONDS  # 0.001
-    md_to_m2 = con.MILLIDARCY_TO_SQUARE_METER  # 9.869233e-16
-    scf_stb_to_sm3_sm3 = con.SCF_PER_STB_TO_CUBIC_METER_PER_CUBIC_METER  # ~0.17811
+    # Primitive conversion factors from the constants registry
+    psi_to_pa: float = con.PSI_TO_PASCAL  # 6894.757 Pa/psi
+    psi_to_bar: float = con.PSI_TO_BAR  # 0.0689476 bar/psi
+    atm_to_pa: float = con.ATM_TO_PASCAL  # 101 325.0 Pa/atm
+    ft_to_m: float = con.FEET_TO_METERS  # 0.3048 m/ft
+    m_to_ft: float = con.METERS_TO_FEET  # 3.28084 ft/m
+    lbm_ft3_to_kg_m3: float = con.POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER
+    lbm_ft3_to_g_cm3: float = con.POUNDS_PER_CUBIC_FEET_TO_GRAMS_PER_CUBIC_METER
+    cp_to_pas: float = con.CENTIPOISE_TO_PASCAL_SECONDS  # 0.001
+    md_to_m2: float = con.MILLIDARCY_TO_SQUARE_METER  # 9.869233e-16
+    scf_stb_to_sm3_sm3: float = con.SCF_PER_STB_TO_CUBIC_METER_PER_CUBIC_METER
+    stb_to_m3: float = con.STB_TO_CUBIC_METER  # 0.158987
+    scf_to_m3: float = con.SCF_TO_SCM  # 0.0283168
+    seconds_per_day: float = con.SECONDS_PER_DAY  # 86400.0
+    hours_per_day: float = con.HOURS_PER_DAY  # 24.0
 
-    # Common and derived intermediate factors
-    bar_to_pa = psi_to_bar / psi_to_pa
-    psi_to_atm = psi_to_pa / atm_to_pa
-    bar_to_atm = bar_to_pa / atm_to_pa
-    cm_to_m = 0.01
-    m_to_cm = 100.0
-    ft_to_cm = ft_to_m * m_to_cm
-    kg_m3_to_g_cm3 = 1e-3
-    lbm_ft3_to_g_cm3 = lbm_ft3_to_kg_m3 * kg_m3_to_g_cm3
+    # Derived intermediates (no magic numbers beyond what is above)
+    cm_to_m: float = 0.01
+    m_to_cm: float = 100.0
+    ft_to_cm: float = ft_to_m * m_to_cm
+    cm_to_ft: float = cm_to_m * m_to_ft
+    kg_m3_to_g_cm3: float = cm_to_m**3  # 1e-6 / 1e-3 = 1e-3
 
-    ft3_to_m3 = ft_to_m**3  # 0.0283168
-    seconds_per_day = con.SECONDS_PER_DAY  # 86400.0
-    hours_per_day = con.HOURS_PER_DAY  # 24
-    seconds_per_hour = seconds_per_day / hours_per_day
+    bar_to_pa: float = psi_to_pa / (
+        psi_to_pa / atm_to_pa * (1.0 / psi_to_bar) * psi_to_bar
+    )
+    # Simpler: bar_to_pa = 1e5; but derive from constants to stay consistent
+    # 1 bar = 14.5038 psi; bar_to_pa = 14.5038 * psi_to_pa / 14.5038... just:
+    bar_to_pa = 1.0 / psi_to_bar * psi_to_pa  # 100 000 Pa/bar
+    psi_to_atm: float = psi_to_pa / atm_to_pa
+    bar_to_atm: float = bar_to_pa / atm_to_pa
 
-    # Volume rate factors: source_volume/source_time -> target_volume/target_time
-    # FIELD (ft³/day) -> METRIC (m³/day): just volume factor, same time base
-    # FIELD (ft³/day) -> SI (m³/s): volume factor / seconds_per_day
-    # FIELD (ft³/day) -> LAB (cm³/day): ft³->cm³ * day
-    ft3_per_day_to_m3_per_day = ft3_to_m3
-    ft3_per_day_to_m3_per_s = ft3_to_m3 / seconds_per_day
-    ft3_per_day_to_cm3_per_hour = (
-        ft_to_cm**3
-    ) / hours_per_day  # ft³/day -> cm³/day / hr/day
-    m3_per_day_to_cm3_per_hour = (
-        m_to_cm**3
-    ) / hours_per_day  # m³/day -> cm³/day / hr/day
+    # Volume (reservoir)
+    ft3_to_m3: float = ft_to_m**3
+    m3_to_ft3: float = m_to_ft**3
+    ft3_to_cm3: float = ft_to_cm**3
+    cm3_to_ft3: float = cm_to_ft**3
+    m3_to_cm3: float = m_to_cm**3
+    cm3_to_m3: float = cm_to_m**3
 
-    def _inverse(x: Number) -> Number:
+    # Time
+    seconds_per_hour: float = seconds_per_day / hours_per_day  # 3600.0
+    days_per_second: float = 1.0 / seconds_per_day
+
+    # Surface volumes
+    # STB -> m³: stb_to_m3
+    # STB -> cm³:
+    stb_to_cm3: float = stb_to_m3 * m3_to_cm3
+    # SCF -> m³: scf_to_m3
+    # SCF -> cm³:
+    scf_to_cm3: float = scf_to_m3 * m3_to_cm3
+    # Sm³ -> SCF:
+    sm3_to_scf: float = 1.0 / scf_to_m3
+    # Sm³ -> STB:
+    sm3_to_stb: float = 1.0 / stb_to_m3
+    # Sm³ -> scc:
+    sm3_to_scc: float = m3_to_cm3
+    # scc -> Sm³:
+    scc_to_sm3: float = cm3_to_m3
+
+    # GOR: SCF/STB -> Sm³/Sm³
+    # = (scf_to_m3) / (stb_to_m3)  -- same as scf_stb_to_sm3_sm3
+    gor_field_to_metric: float = scf_stb_to_sm3_sm3
+    # GOR: Sm³/Sm³ -> SCF/STB
+    gor_metric_to_field: float = 1.0 / scf_stb_to_sm3_sm3
+    # GOR: SCF/STB -> scc/scc  (scf->scc / stb->scc)
+    gor_field_to_lab: float = scf_to_cm3 / stb_to_cm3
+    # GOR: scc/scc -> SCF/STB
+    gor_lab_to_field: float = 1.0 / gor_field_to_lab
+    # GOR: Sm³/Sm³ -> scc/scc  (both dimensionless, same ratio - 1.0)
+    # Sm³/Sm³ and scc/scc are both volume/volume in their respective systems;
+    # the numerical value of the ratio is unchanged.
+    gor_metric_to_lab: float = 1.0
+    gor_lab_to_metric: float = 1.0
+
+    # OGR (Rv): STB/SCF -> Sm³/Sm³
+    ogr_field_to_metric: float = stb_to_m3 / scf_to_m3
+    ogr_metric_to_field: float = 1.0 / ogr_field_to_metric
+    ogr_field_to_lab: float = stb_to_cm3 / scf_to_cm3
+    ogr_lab_to_field: float = 1.0 / ogr_field_to_lab
+    ogr_metric_to_lab: float = 1.0
+    ogr_lab_to_metric: float = 1.0
+
+    # FVF
+    # liquid FVF: rb/STB -> rm³/Sm³
+    # rb = reservoir barrel = ft³/5.614583 ... but FVF is dimensionless ratio
+    # rb/STB and rm³/Sm³ are both (reservoir vol)/(surface vol); what changes
+    # is the unit of each. rb/STB = 5.614583 ft³ / (5.614583 ft³) = 1 numerically
+    # if reservoir and surface are same fluid. The actual conversion factor
+    # between rb/STB and rm³/Sm³ is:
+    #   (rb -> rm³) / (STB -> Sm³) = (stb_to_m3) / (stb_to_m3) = 1.0
+    # Similarly rcf/SCF -> rm³/Sm³ = (ft3_to_m3) / (scf_to_m3)
+    liq_fvf_field_to_metric: float = 1.0  # rb/STB -> rm³/Sm³
+    liq_fvf_field_to_lab: float = 1.0  # rb/STB -> rcc/scc
+    liq_fvf_field_to_si: float = 1.0  # rb/STB -> rm³/Sm³
+    gas_fvf_field_to_metric: float = ft3_to_m3 / scf_to_m3  # rcf/SCF -> rm³/Sm³
+    gas_fvf_field_to_lab: float = ft3_to_cm3 / scf_to_cm3  # rcf/SCF -> rcc/scc
+    gas_fvf_metric_to_field: float = 1.0 / gas_fvf_field_to_metric
+    gas_fvf_lab_to_field: float = 1.0 / gas_fvf_field_to_lab
+
+    # Surface liquid rates: STB/day -> Sm³/day, scc/hr, Sm³/s
+    liq_rate_field_to_metric: float = stb_to_m3  # STB/day -> Sm³/day
+    liq_rate_field_to_lab: float = stb_to_cm3 / hours_per_day  # STB/day -> scc/hr
+    liq_rate_field_to_si: float = stb_to_m3 / seconds_per_day  # STB/day -> Sm³/s
+    liq_rate_metric_to_field: float = 1.0 / liq_rate_field_to_metric
+    liq_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
+    liq_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
+    liq_rate_lab_to_field: float = 1.0 / liq_rate_field_to_lab
+    liq_rate_lab_to_metric: float = 1.0 / liq_rate_metric_to_lab
+    liq_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
+    liq_rate_si_to_field: float = 1.0 / liq_rate_field_to_si
+    liq_rate_si_to_metric: float = 1.0 / liq_rate_metric_to_si
+    liq_rate_si_to_lab: float = 1.0 / liq_rate_lab_to_si
+
+    # Surface gas rates: SCF/day -> Sm³/day, scc/hr, Sm³/s
+    gas_rate_field_to_metric: float = scf_to_m3  # SCF/day -> Sm³/day
+    gas_rate_field_to_lab: float = scf_to_cm3 / hours_per_day  # SCF/day -> scc/hr
+    gas_rate_field_to_si: float = scf_to_m3 / seconds_per_day  # SCF/day -> Sm³/s
+    gas_rate_metric_to_field: float = 1.0 / gas_rate_field_to_metric
+    gas_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
+    gas_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
+    gas_rate_lab_to_field: float = 1.0 / gas_rate_field_to_lab
+    gas_rate_lab_to_metric: float = 1.0 / gas_rate_metric_to_lab
+    gas_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
+    gas_rate_si_to_field: float = 1.0 / gas_rate_field_to_si
+    gas_rate_si_to_metric: float = 1.0 / gas_rate_metric_to_si
+    gas_rate_si_to_lab: float = 1.0 / gas_rate_lab_to_si
+
+    # Reservoir rates: ft³/day -> m³/day, cm³/hr, m³/s
+    res_rate_field_to_metric: float = ft3_to_m3  # ft³/day -> m³/day
+    res_rate_field_to_lab: float = ft3_to_cm3 / hours_per_day  # ft³/day -> cm³/hr
+    res_rate_field_to_si: float = ft3_to_m3 / seconds_per_day  # ft³/day -> m³/s
+    res_rate_metric_to_field: float = 1.0 / res_rate_field_to_metric
+    res_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # m³/day -> cm³/hr
+    res_rate_metric_to_si: float = days_per_second  # m³/day -> m³/s
+    res_rate_lab_to_field: float = 1.0 / res_rate_field_to_lab
+    res_rate_lab_to_metric: float = 1.0 / res_rate_metric_to_lab
+    res_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # cm³/hr -> m³/s
+    res_rate_si_to_field: float = 1.0 / res_rate_field_to_si
+    res_rate_si_to_metric: float = 1.0 / res_rate_metric_to_si
+    res_rate_si_to_lab: float = 1.0 / res_rate_lab_to_si
+
+    # Mass
+    mass_field_to_metric: float = lbm_ft3_to_kg_m3 * ft3_to_m3  # lbm -> kg
+    mass_field_to_lab: float = lbm_ft3_to_g_cm3 * ft3_to_cm3  # lbm -> g
+    mass_metric_to_field: float = 1.0 / mass_field_to_metric
+    mass_metric_to_lab: float = 1.0 / kg_m3_to_g_cm3  # kg -> g (1000)
+    mass_lab_to_field: float = 1.0 / mass_field_to_lab
+    mass_lab_to_metric: float = kg_m3_to_g_cm3  # g -> kg
+
+    def _inverse(x: float) -> float:
         return 1.0 / x
 
     table: UnitConversionTable = {
+        ##############
         # FIELD -> *
+        ##############
         (UnitSystem.FIELD, UnitSystem.METRIC): UnitConversionFactors(
             pressure=psi_to_bar,
             length=ft_to_m,
-            density=lbm_ft3_to_kg_m3,
-            viscosity=1.0,
-            permeability=1.0,
-            compressibility=_inverse(psi_to_bar),
-            liquid_fvf=1.0,
-            gas_fvf=scf_stb_to_sm3_sm3,
-            gor=scf_stb_to_sm3_sm3,
+            area=ft_to_m**2,
+            volume=ft3_to_m3,
+            time=1.0,  # day -> day
+            mass=mass_field_to_metric,
             temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
-            volumetric_rate=ft3_per_day_to_m3_per_day,  # ft³/day -> m³/day
-            mass=lbm_ft3_to_kg_m3 * (ft_to_m**3),  # lbm -> kg
+            density=lbm_ft3_to_kg_m3,
+            viscosity=1.0,  # cP -> cP
+            permeability=1.0,  # mD -> mD
+            compressibility=_inverse(psi_to_bar),
+            liquid_surface_volume=stb_to_m3,
+            gas_surface_volume=scf_to_m3,
+            liquid_fvf=liq_fvf_field_to_metric,
+            gas_fvf=gas_fvf_field_to_metric,
+            gas_oil_ratio=gor_field_to_metric,
+            oil_gas_ratio=ogr_field_to_metric,
+            liquid_surface_rate=liq_rate_field_to_metric,
+            gas_surface_rate=gas_rate_field_to_metric,
+            reservoir_rate=res_rate_field_to_metric,
         ),
         (UnitSystem.FIELD, UnitSystem.SI): UnitConversionFactors(
             pressure=psi_to_pa,
             length=ft_to_m,
+            area=ft_to_m**2,
+            volume=ft3_to_m3,
+            time=days_per_second,  # day -> s
+            mass=mass_field_to_metric,  # lbm -> kg (SI mass = kg)
+            temperature=5.0 / 9.0,
+            temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
             density=lbm_ft3_to_kg_m3,
             viscosity=cp_to_pas,
             permeability=md_to_m2,
             compressibility=_inverse(psi_to_pa),
-            liquid_fvf=1.0,
-            gas_fvf=scf_stb_to_sm3_sm3,
-            gor=scf_stb_to_sm3_sm3,
-            temperature=5.0 / 9.0,
-            temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
-            volumetric_rate=ft3_per_day_to_m3_per_s,  # ft³/day -> m³/s
-            mass=lbm_ft3_to_kg_m3 * (ft_to_m**3),  # lbm -> kg
+            liquid_surface_volume=stb_to_m3,
+            gas_surface_volume=scf_to_m3,
+            liquid_fvf=liq_fvf_field_to_si,
+            gas_fvf=gas_fvf_field_to_metric,  # rcf/SCF -> rm³/Sm³ same as metric
+            gas_oil_ratio=gor_field_to_metric,
+            oil_gas_ratio=ogr_field_to_metric,
+            liquid_surface_rate=liq_rate_field_to_si,
+            gas_surface_rate=gas_rate_field_to_si,
+            reservoir_rate=res_rate_field_to_si,
         ),
         (UnitSystem.FIELD, UnitSystem.LAB): UnitConversionFactors(
             pressure=psi_to_atm,
             length=ft_to_cm,
-            density=lbm_ft3_to_g_cm3,
-            viscosity=1.0,
-            permeability=1.0,
-            compressibility=_inverse(psi_to_atm),
-            liquid_fvf=1.0,
-            gas_fvf=scf_stb_to_sm3_sm3,
-            gor=scf_stb_to_sm3_sm3,
+            area=ft_to_cm**2,
+            volume=ft3_to_cm3,
+            time=_inverse(hours_per_day),  # day -> hr
+            mass=mass_field_to_lab,
             temperature=5.0 / 9.0,
             temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
-            volumetric_rate=ft3_per_day_to_cm3_per_hour,  # ft³/day -> cm³/hr
-            mass=lbm_ft3_to_g_cm3 * (ft_to_cm**3),  # lbm -> g
+            density=lbm_ft3_to_g_cm3,
+            viscosity=1.0,  # cP -> cP
+            permeability=1.0,  # mD -> mD
+            compressibility=_inverse(psi_to_atm),
+            liquid_surface_volume=stb_to_cm3,
+            gas_surface_volume=scf_to_cm3,
+            liquid_fvf=liq_fvf_field_to_lab,
+            gas_fvf=gas_fvf_field_to_lab,
+            gas_oil_ratio=gor_field_to_lab,
+            oil_gas_ratio=ogr_field_to_lab,
+            liquid_surface_rate=liq_rate_field_to_lab,
+            gas_surface_rate=gas_rate_field_to_lab,
+            reservoir_rate=res_rate_field_to_lab,
         ),
+        ##############
         # METRIC -> *
+        ##############
         (UnitSystem.METRIC, UnitSystem.FIELD): UnitConversionFactors(
             pressure=_inverse(psi_to_bar),
             length=m_to_ft,
+            area=m_to_ft**2,
+            volume=m3_to_ft3,
+            time=1.0,  # day -> day
+            mass=mass_metric_to_field,
+            temperature=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
             density=_inverse(lbm_ft3_to_kg_m3),
             viscosity=1.0,
             permeability=1.0,
             compressibility=psi_to_bar,
-            liquid_fvf=1.0,
-            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
-            gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature=9.0 / 5.0,
-            temperature_offset=32.0,  # °C -> °F
-            volumetric_rate=_inverse(ft3_per_day_to_m3_per_day),
-            mass=_inverse(lbm_ft3_to_kg_m3 * (ft_to_m**3)),
+            liquid_surface_volume=_inverse(stb_to_m3),
+            gas_surface_volume=_inverse(scf_to_m3),
+            liquid_fvf=_inverse(liq_fvf_field_to_metric),
+            gas_fvf=gas_fvf_metric_to_field,
+            gas_oil_ratio=gor_metric_to_field,
+            oil_gas_ratio=ogr_metric_to_field,
+            liquid_surface_rate=liq_rate_metric_to_field,
+            gas_surface_rate=gas_rate_metric_to_field,
+            reservoir_rate=res_rate_metric_to_field,
         ),
         (UnitSystem.METRIC, UnitSystem.SI): UnitConversionFactors(
             pressure=bar_to_pa,
             length=1.0,
+            area=1.0,
+            volume=1.0,
+            time=days_per_second,  # day -> s
+            mass=1.0,  # kg -> kg
+            temperature=1.0,
+            temperature_offset=273.15,  # °C -> K
             density=1.0,
             viscosity=cp_to_pas,
             permeability=md_to_m2,
             compressibility=_inverse(bar_to_pa),
+            liquid_surface_volume=1.0,  # Sm³ -> Sm³
+            gas_surface_volume=1.0,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=273.15,  # °C -> K
-            volumetric_rate=_inverse(seconds_per_day),  # m³/day -> m³/s
-            mass=1.0,  # kg -> kg
+            gas_oil_ratio=1.0,
+            oil_gas_ratio=1.0,
+            liquid_surface_rate=liq_rate_metric_to_si,
+            gas_surface_rate=gas_rate_metric_to_si,
+            reservoir_rate=res_rate_metric_to_si,
         ),
         (UnitSystem.METRIC, UnitSystem.LAB): UnitConversionFactors(
             pressure=bar_to_atm,
             length=m_to_cm,
+            area=m_to_cm**2,
+            volume=m3_to_cm3,
+            time=_inverse(hours_per_day),  # day -> hr
+            mass=mass_metric_to_lab,
+            temperature=1.0,
+            temperature_offset=0.0,  # °C -> °C
             density=kg_m3_to_g_cm3,
             viscosity=1.0,
             permeability=1.0,
             compressibility=_inverse(bar_to_atm),
+            liquid_surface_volume=sm3_to_scc,  # Sm³ -> scc
+            gas_surface_volume=sm3_to_scc,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=0.0,  # °C -> °C
-            volumetric_rate=m3_per_day_to_cm3_per_hour,  # m³/day -> cm³/hr
-            mass=_inverse(kg_m3_to_g_cm3),  # kg -> g  (1000)
+            gas_oil_ratio=gor_metric_to_lab,
+            oil_gas_ratio=ogr_metric_to_lab,
+            liquid_surface_rate=liq_rate_metric_to_lab,
+            gas_surface_rate=gas_rate_metric_to_lab,
+            reservoir_rate=res_rate_metric_to_lab,
         ),
+        ##############
         # SI -> *
+        ##############
         (UnitSystem.SI, UnitSystem.FIELD): UnitConversionFactors(
             pressure=_inverse(psi_to_pa),
             length=m_to_ft,
+            area=m_to_ft**2,
+            volume=m3_to_ft3,
+            time=seconds_per_day,  # s -> day
+            mass=_inverse(mass_field_to_metric),
+            temperature=9.0 / 5.0,
+            temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
             density=_inverse(lbm_ft3_to_kg_m3),
             viscosity=_inverse(cp_to_pas),
             permeability=_inverse(md_to_m2),
             compressibility=psi_to_pa,
-            liquid_fvf=1.0,
-            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
-            gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature=9.0 / 5.0,
-            temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
-            volumetric_rate=_inverse(ft3_per_day_to_m3_per_s),
-            mass=_inverse(lbm_ft3_to_kg_m3 * (ft_to_m**3)),
+            liquid_surface_volume=_inverse(stb_to_m3),
+            gas_surface_volume=_inverse(scf_to_m3),
+            liquid_fvf=_inverse(liq_fvf_field_to_si),
+            gas_fvf=_inverse(gas_fvf_field_to_metric),
+            gas_oil_ratio=gor_metric_to_field,
+            oil_gas_ratio=ogr_metric_to_field,
+            liquid_surface_rate=liq_rate_si_to_field,
+            gas_surface_rate=gas_rate_si_to_field,
+            reservoir_rate=res_rate_si_to_field,
         ),
         (UnitSystem.SI, UnitSystem.METRIC): UnitConversionFactors(
             pressure=_inverse(bar_to_pa),
             length=1.0,
+            area=1.0,
+            volume=1.0,
+            time=seconds_per_day,  # s -> day
+            mass=1.0,
+            temperature=1.0,
+            temperature_offset=-273.15,  # K -> °C
             density=1.0,
             viscosity=_inverse(cp_to_pas),
             permeability=_inverse(md_to_m2),
             compressibility=bar_to_pa,
+            liquid_surface_volume=1.0,
+            gas_surface_volume=1.0,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=-273.15,  # K -> °C
-            volumetric_rate=seconds_per_day,  # m³/s -> m³/day
-            mass=1.0,  # kg -> kg
+            gas_oil_ratio=1.0,
+            oil_gas_ratio=1.0,
+            liquid_surface_rate=liq_rate_si_to_metric,
+            gas_surface_rate=gas_rate_si_to_metric,
+            reservoir_rate=res_rate_si_to_metric,
         ),
         (UnitSystem.SI, UnitSystem.LAB): UnitConversionFactors(
             pressure=_inverse(atm_to_pa),
             length=m_to_cm,
+            area=m_to_cm**2,
+            volume=m3_to_cm3,
+            time=seconds_per_hour,  # s -> hr
+            mass=mass_metric_to_lab,  # kg -> g
+            temperature=1.0,
+            temperature_offset=-273.15,  # K -> °C
             density=kg_m3_to_g_cm3,
             viscosity=_inverse(cp_to_pas),
             permeability=_inverse(md_to_m2),
             compressibility=atm_to_pa,
+            liquid_surface_volume=sm3_to_scc,
+            gas_surface_volume=sm3_to_scc,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=-273.15,  # K -> °C
-            volumetric_rate=(m_to_cm**3) * seconds_per_hour,  # m³/s -> cm³/hr
-            mass=_inverse(kg_m3_to_g_cm3),  # kg -> g
+            gas_oil_ratio=gor_metric_to_lab,
+            oil_gas_ratio=ogr_metric_to_lab,
+            liquid_surface_rate=liq_rate_si_to_lab,
+            gas_surface_rate=gas_rate_si_to_lab,
+            reservoir_rate=res_rate_si_to_lab,
         ),
+        ##############
         # LAB -> *
+        ##############
         (UnitSystem.LAB, UnitSystem.FIELD): UnitConversionFactors(
             pressure=_inverse(psi_to_atm),
-            length=cm_to_m * m_to_ft,
+            length=cm_to_ft,
+            area=cm_to_ft**2,
+            volume=cm3_to_ft3,
+            time=hours_per_day,  # hr -> day
+            mass=mass_lab_to_field,
+            temperature=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
             density=_inverse(lbm_ft3_to_g_cm3),
             viscosity=1.0,
             permeability=1.0,
             compressibility=psi_to_atm,
-            liquid_fvf=1.0,
-            gas_fvf=_inverse(scf_stb_to_sm3_sm3),
-            gor=_inverse(scf_stb_to_sm3_sm3),
-            temperature=9.0 / 5.0,
-            temperature_offset=32.0,  # °C -> °F
-            volumetric_rate=_inverse(ft3_per_day_to_cm3_per_hour),
-            mass=_inverse(lbm_ft3_to_g_cm3 * (ft_to_cm**3)),
+            liquid_surface_volume=_inverse(stb_to_cm3),
+            gas_surface_volume=_inverse(scf_to_cm3),
+            liquid_fvf=_inverse(liq_fvf_field_to_lab),
+            gas_fvf=gas_fvf_lab_to_field,
+            gas_oil_ratio=gor_lab_to_field,
+            oil_gas_ratio=ogr_lab_to_field,
+            liquid_surface_rate=liq_rate_lab_to_field,
+            gas_surface_rate=gas_rate_lab_to_field,
+            reservoir_rate=res_rate_lab_to_field,
         ),
         (UnitSystem.LAB, UnitSystem.METRIC): UnitConversionFactors(
             pressure=_inverse(bar_to_atm),
             length=cm_to_m,
+            area=cm_to_m**2,
+            volume=cm3_to_m3,
+            time=hours_per_day,  # hr -> day
+            mass=mass_lab_to_metric,
+            temperature=1.0,
+            temperature_offset=0.0,  # °C -> °C
             density=_inverse(kg_m3_to_g_cm3),
             viscosity=1.0,
             permeability=1.0,
             compressibility=bar_to_atm,
+            liquid_surface_volume=scc_to_sm3,
+            gas_surface_volume=scc_to_sm3,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=0.0,  # °C -> °C
-            volumetric_rate=_inverse(m3_per_day_to_cm3_per_hour),  # cm³/hr -> m³/day
-            mass=kg_m3_to_g_cm3,  # g -> kg
+            gas_oil_ratio=gor_lab_to_metric,
+            oil_gas_ratio=ogr_lab_to_metric,
+            liquid_surface_rate=liq_rate_lab_to_metric,
+            gas_surface_rate=gas_rate_lab_to_metric,
+            reservoir_rate=res_rate_lab_to_metric,
         ),
         (UnitSystem.LAB, UnitSystem.SI): UnitConversionFactors(
             pressure=atm_to_pa,
             length=cm_to_m,
+            area=cm_to_m**2,
+            volume=cm3_to_m3,
+            time=seconds_per_hour,  # hr -> s
+            mass=mass_lab_to_metric,  # g -> kg
+            temperature=1.0,
+            temperature_offset=273.15,  # °C -> K
             density=_inverse(kg_m3_to_g_cm3),
             viscosity=cp_to_pas,
             permeability=md_to_m2,
             compressibility=_inverse(atm_to_pa),
+            liquid_surface_volume=scc_to_sm3,
+            gas_surface_volume=scc_to_sm3,
             liquid_fvf=1.0,
             gas_fvf=1.0,
-            gor=1.0,
-            temperature=1.0,
-            temperature_offset=273.15,  # °C -> K
-            volumetric_rate=_inverse((m_to_cm**3) * seconds_per_hour),  # cm³/hr -> m³/s
-            mass=kg_m3_to_g_cm3,  # g -> kg
+            gas_oil_ratio=gor_lab_to_metric,
+            oil_gas_ratio=ogr_lab_to_metric,
+            liquid_surface_rate=liq_rate_lab_to_si,
+            gas_surface_rate=gas_rate_lab_to_si,
+            reservoir_rate=res_rate_lab_to_si,
         ),
     }
     return table
@@ -1372,19 +1600,27 @@ def build_unit_conversion_table(
 IDENTITY_FACTORS = UnitConversionFactors(
     pressure=1.0,
     length=1.0,
+    area=1.0,
+    volume=1.0,
+    time=1.0,
+    mass=1.0,
+    temperature=1.0,
+    temperature_offset=0.0,
     density=1.0,
     viscosity=1.0,
     permeability=1.0,
     compressibility=1.0,
+    liquid_surface_volume=1.0,
+    gas_surface_volume=1.0,
     liquid_fvf=1.0,
     gas_fvf=1.0,
-    gor=1.0,
-    temperature=1.0,
-    temperature_offset=0.0,
-    volumetric_rate=1.0,
-    mass=1.0,
+    gas_oil_ratio=1.0,
+    oil_gas_ratio=1.0,
+    liquid_surface_rate=1.0,
+    gas_surface_rate=1.0,
+    reservoir_rate=1.0,
 )
-"""Identity unit conversion factors. All factors = 1."""
+"""Identity unit conversion factors - all multiplicative factors 1.0, offset 0.0."""
 
 UNIT_CONVERSION_TABLE = build_unit_conversion_table()
 """Default unit conversion table"""
@@ -1408,23 +1644,6 @@ def get_conversion_factors(
     - "temperature"  - multiplicative factor.
     - "temperature_offset" - additive delta (in target units) applied
     *after* scaling: T_to = T_from * scale + offset.
-
-    **Quantity keys**:
-
-    ```
-    "pressure"         psi / bar / atm / Pa
-    "length"           ft / m / cm / m
-    "density"          lbm/ft³ / kg/m³ / g/cm³ / kg/m³
-    "viscosity"        cP / cP / cP / Pa·s
-    "permeability"     mD / mD / mD / m²
-    "compressibility"  1/psi / 1/bar / 1/atm / 1/Pa
-    "liquid_fvf"       bbl/STB -> m³/sm³ / scc/scc (ratio, usually 1.0)
-    "gas_fvf"          ft³/scf -> m³/sm³ / scc/scc
-    "gor"              scf/STB -> sm³/sm³ / scc/scc
-    "mass"             lbm / kg / g / kg  (not stored; derived as
-                        density_factor x length_factor³ by callers)
-    "temperature" / "temperature_offset" - see above.
-    ```
 
     :param from_system: Source `UnitSystem`.
     :param to_system: Target `UnitSystem`.

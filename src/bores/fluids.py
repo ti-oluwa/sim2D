@@ -10,11 +10,11 @@ import numpy.typing as npt
 from bores.correlations import arrays
 from bores.errors import ValidationError
 from bores.stores import StoreSerializable
-from bores.tables.pseudo_pressure import (
+from bores.blackoil.pseudo_pressure import (
     PseudoPressureTable,
     build_pseudo_pressure_table,
 )
-from bores.tables.pvt.base import PVTTable, PVTTables
+from bores.blackoil.pvt.tables import PVTTable, PVTTables
 from bores.typing import FluidPhase, Number, UnitSystem
 
 logger = logging.getLogger(__name__)

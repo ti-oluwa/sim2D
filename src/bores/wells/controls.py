@@ -10,7 +10,7 @@ from bores.constants import c
 from bores.errors import ComputationError, ValidationError
 from bores.serialization import Serializable, make_serializable_type_registrar
 from bores.stores import StoreSerializable
-from bores.tables.pvt import PVTTables
+from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import FluidPhase
 from bores.wells.core import (
     WellFluid,

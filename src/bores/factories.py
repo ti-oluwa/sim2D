@@ -36,14 +36,14 @@ from bores.grids.pvt import (
     build_water_formation_volume_factor_grid,
     build_water_viscosity_grid,
 )
-from bores.model import (
+from bores.reservoir import (
     FluidProperties,
     HysteresisState,
     BlackOilModel,
     RockPermeability,
     RockProperties,
 )
-from bores.tables.pvt import PVTTables
+from bores.blackoil.tables.pvt import PVTTables
 from bores.typing import Coordinates, NDimension, NDimensionalGrid
 from bores.wells import (
     InjectedFluid,
