@@ -218,12 +218,10 @@ def as_pyvista_grid(
 
     # Next, exclusive prefix sum -> start positions for each cell
     cell_starts = np.zeros(n_cells, dtype=np.int64)
-    cell_starts[valid_cell_mask] = np.concatenate(
-        [
-            [0],
-            np.cumsum(counts[valid_cell_mask])[:-1],
-        ]
-    )
+    cell_starts[valid_cell_mask] = np.concatenate([
+        [0],
+        np.cumsum(counts[valid_cell_mask])[:-1],
+    ])
     total_entries = int(counts.sum())
 
     # Lastly, fill buffer
@@ -240,6 +238,10 @@ def as_pyvista_grid(
     # Assemble PyVista `UnstructuredGrid`
     n_valid = int(valid_cell_mask.sum())
     cell_types = np.full(n_valid, 42, dtype=np.uint8)  # VTK_POLYHEDRON = 42
+    # Negate the z-coordinate before creating the mesh. so it can be shown right side up
+    # Data uses Z positive downward (depth) convention but PyVista uses Z positive upward
+    # (3D graphics or coordinate system) convention
+    all_points[:, 2] *= -1
     pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
 
     # Attach built-in geometric arrays (filtered to valid cells)
