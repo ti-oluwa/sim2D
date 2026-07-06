@@ -19,7 +19,7 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.temperature import TemperatureRegions
+from bores.reservoir.temperature import TemperatureRegions, TemperatureSpec
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
 from bores.typing import (
@@ -252,8 +252,8 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         return cls(regions=regions)
 
 
-def _degenerate_temperature_axis(
-    temperature: Number, dtype: npt.DTypeLike
+def _generate_temperature_axis(
+    temperature: TemperatureSpec, dtype: npt.DTypeLike
 ) -> npt.NDArray:
     """
     Build a minimal two-point temperature axis bracketing *temperature*.
@@ -265,7 +265,7 @@ def _degenerate_temperature_axis(
     `[T-1, T+1]` and broadcast values across it; the resulting 2-D table
     evaluates exactly to the 1-D values at T.
 
-    :param temperature: Reservoir temperature in °F.
+    :param temperature: Reservoir temperature.
     :returns: 1-D array `[T-1, T+1]`.
     """
     return np.array([temperature - 1.0, temperature + 1.0], dtype=dtype)
@@ -290,7 +290,7 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
 def _build_oil_data_from_pvto(
     pvto_records: typing.List[typing.Dict[str, typing.Any]],
     density_record: typing.Optional[typing.Dict[str, Number]],
-    temperature: Number,
+    temperature: TemperatureSpec,
     unit_system: UnitSystem,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
@@ -323,7 +323,7 @@ def _build_oil_data_from_pvto(
     :returns: `PVTData` for the oil phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _degenerate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
     n_t = len(temperatures)
 
     # Group records by Rs value
@@ -499,7 +499,7 @@ def _build_oil_data_from_pvto(
 def _build_oil_data_from_pvdo(
     pvdo_records: typing.List[typing.Dict[str, typing.Any]],
     density_record: typing.Optional[typing.Dict[str, Number]],
-    temperature: Number,
+    temperature: TemperatureSpec,
     unit_system: UnitSystem,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
@@ -513,12 +513,12 @@ def _build_oil_data_from_pvdo(
     :param pvdo_records: List of row dicts with keys `"pressure"`, `"bo"`,
         `"viscosity"`.
     :param density_record: `DENSITY` record; `"oil"` key used for ρo,SC.
-    :param temperature: Reservoir temperature (°F).
+    :param temperature: Reservoir temperature.
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the oil phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _degenerate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
     n_t = len(temperatures)
 
     rows = sorted(pvdo_records, key=lambda r: r["pressure"])
@@ -582,7 +582,7 @@ def _build_oil_data_from_pvdo(
 def _build_gas_data_from_pvdg(
     pvdg_records: typing.List[typing.Dict[str, typing.Any]],
     density_record: typing.Optional[typing.Dict[str, Number]],
-    temperature: Number,
+    temperature: TemperatureSpec,
     unit_system: UnitSystem,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
@@ -596,12 +596,12 @@ def _build_gas_data_from_pvdg(
     :param pvdg_records: List of row dicts with keys `"pressure"`, `"bg"`,
         `"viscosity"`.
     :param density_record: `DENSITY` record; `"gas"` key used for ρg,SC.
-    :param temperature: Reservoir temperature (°F).
+    :param temperature: Reservoir temperature.
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the gas phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _degenerate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
     n_t = len(temperatures)
 
     rows = sorted(pvdg_records, key=lambda r: r["pressure"])
@@ -813,7 +813,7 @@ def _build_gas_data_from_pvtg(
 def _build_water_data_from_pvtw(
     pvtw_record: typing.Dict[str, Number],
     density_record: typing.Optional[typing.Dict[str, Number]],
-    temperature: Number,
+    temperature: TemperatureSpec,
     unit_system: UnitSystem,
     salinity: Number = 0.0,
     n_pressure_points: int = 50,
@@ -838,14 +838,14 @@ def _build_water_data_from_pvtw(
     :param pvtw_record: Dict with keys `"p_ref"`, `"bw"`, `"cw"`,
         `"viscosity"`, and optionally `"cv"` (default 0).
     :param density_record: `DENSITY` record; `"water"` key used for ρw,SC.
-    :param temperature: Reservoir temperature (°F).
+    :param temperature: Reservoir temperature.
     :param salinity: Water salinity (ppm NaCl).
     :param n_pressure_points: Points in the synthetic pressure grid.
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the water phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _degenerate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
     n_t = len(temperatures)
     salinities = np.array([salinity], dtype=dtype)
 

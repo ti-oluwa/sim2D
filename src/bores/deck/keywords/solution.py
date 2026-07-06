@@ -57,6 +57,8 @@ __all__ = [
     "RTEMP",
     "TEMPVD",
     "RTEMPVD",
+    "RSVD",
+    "RVVD",
 ]
 
 
@@ -198,6 +200,49 @@ Each table (one per equilibration region) contains rows:
   °C in METRIC / LAB).
 
 Rows must be in ascending depth order.
+"""
+
+
+RSVD = PVTTableKeyword(
+    "RSVD",
+    columns=[
+        Field("depth", np.float64),
+        Field("rs", np.float64),
+    ],
+)
+"""
+`RSVD` - solution GOR versus depth table.
+
+One table per equilibration region (matched by `EQLNUM`). Gives Rs
+below the bubble point as a function of depth for saturated-oil
+columns; cells are linearly interpolated from this table at their
+centroid depth instead of using the PVT table's bubble-point Rs
+directly. Values outside the table range are clamped to the endpoint
+(no extrapolation), consistent with Eclipse.
+
+Columns:
+
+- `depth` - true vertical depth (ft in FIELD, m in METRIC).
+- `rs`    - solution gas-oil ratio at that depth (scf/stb in FIELD).
+"""
+
+RVVD = PVTTableKeyword(
+    "RVVD",
+    columns=[
+        Field("depth", np.float64),
+        Field("rv", np.float64),
+    ],
+)
+"""
+`RVVD` - vaporised oil-gas ratio versus depth table.
+
+Same convention as `RSVD` but for Rv above the dew point in
+gas-condensate columns.
+
+Columns:
+
+- `depth` - true vertical depth (ft in FIELD, m in METRIC).
+- `rv`    - vaporised oil-gas ratio at that depth (stb/scf in FIELD).
 """
 
 
