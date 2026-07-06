@@ -1,4 +1,5 @@
 from .boundary_conditions import *
+from .equilibrium import *
 from .faults import *
 from .model import *
 from .regions import *

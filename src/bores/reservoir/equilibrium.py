@@ -1,13 +1,4 @@
-"""
-Equilibrium (`EQUIL`) region data.
-
-Holds the raw gravity/capillary equilibration inputs parsed from the
-Eclipse `SOLUTION` section - one `EquilibriumInfo` per `EQLNUM` region.
-No pressures, saturations, or Rs/Rv are computed here; that is the job
-of `bores.reservoir.initialization.initialize_equilibrium_state`, which
-consumes an `EquilibriumRegions` instance alongside a `Grid`, `Rock`,
-and `BlackOilModel`.
-"""
+"""Reservoir equilibrium (`EQUIL`) region data."""
 
 import typing
 
@@ -186,8 +177,8 @@ class EquilibriumInfo(StoreSerializable):
         """
         Build a single `EquilibriumInfo` from a parsed `DeckFile`.
 
-        Locates the requested `EQLNUM` record and constructs an object;
-        performs no state initialization.
+        Reads only the requested EQLNUM record - does not construct
+        `EquilibriumInfo` objects for any other region.
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
@@ -196,14 +187,24 @@ class EquilibriumInfo(StoreSerializable):
         :raises ValidationError: If `EQUIL` is absent, or `eqlnum` is out
             of range.
         """
-        infos = load_equilibrium_infos(deck_file)
-        info = infos.get(eqlnum)
-        if info is None:
+        records = deck_file.get("EQUIL")
+        if not records:
+            raise ValidationError(
+                "No EQUIL keyword found in the DeckFile. Supply equilibration "
+                f"data explicitly via `{cls.__name__}(...)`, or add an `EQUIL` "
+                "block to the deck."
+            )
+        if not (1 <= eqlnum <= len(records)):
             raise ValidationError(
                 f"EQLNUM {eqlnum} not found in EQUIL. "
-                f"Available regions: {sorted(infos)}."
+                f"Available regions: 1..{len(records)}."
             )
-        return info
+        return typing.cast(
+            Self,
+            _equilibrium_info_from_record(
+                records[eqlnum - 1], eqlnum, deck_file.unit_system
+            ),
+        )
 
 
 @attrs.frozen(slots=True)
@@ -318,6 +319,29 @@ class EquilibriumRegions(StoreSerializable):
         return cls(regions=mapping, unit_system=deck_file.unit_system)
 
 
+def _equilibrium_info_from_record(
+    record: typing.Mapping[str, typing.Any],
+    eqlnum: int,
+    unit_system: UnitSystem,
+) -> EquilibriumInfo:
+    """Build one `EquilibriumInfo` from a single parsed EQUIL record dict."""
+    try:
+        return EquilibriumInfo(
+            datum_depth=float(record["datum_depth"]),
+            datum_pressure=float(record["datum_pressure"]),
+            woc_depth=float(record["woc_depth"] or 0.0),
+            pcow_woc=float(record["pcow_woc"] or 0.0),
+            goc_depth=float(record["goc_depth"] or 0.0),
+            pcog_goc=float(record["pcog_goc"] or 0.0),
+            rsvd_table=int(record["rsvd_table"] or 0),
+            rvvd_table=int(record["rvvd_table"] or 0),
+            accuracy_flag=int(record["accuracy_flag"] or 0),
+            unit_system=unit_system,
+        )
+    except (ValidationError, TypeError, KeyError) as exc:
+        raise ValidationError(f"EQUIL record {eqlnum}: {exc}") from exc
+
+
 def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumInfo]:
     """
     Parse every `EQUIL` record in *deck_file* into `EquilibriumInfo`
@@ -341,25 +365,8 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumI
             "`EquilibriumRegions(regions={...})`, or add an `EQUIL` block "
             "to the deck."
         )
-
     unit_system = deck_file.unit_system
-    infos: typing.Dict[int, EquilibriumInfo] = {}
-    for region_idx, record in enumerate(records):
-        eqlnum = region_idx + 1  # 1-based
-        try:
-            infos[eqlnum] = EquilibriumInfo(
-                datum_depth=float(record["datum_depth"]),
-                datum_pressure=float(record["datum_pressure"]),
-                woc_depth=float(record["woc_depth"] or 0.0),
-                pcow_woc=float(record["pcow_woc"] or 0.0),
-                goc_depth=float(record["goc_depth"] or 0.0),
-                pcog_goc=float(record["pcog_goc"] or 0.0),
-                rsvd_table=int(record["rsvd_table"] or 0),
-                rvvd_table=int(record["rvvd_table"] or 0),
-                accuracy_flag=int(record["accuracy_flag"] or 0),
-                unit_system=unit_system,
-            )
-        except (ValidationError, TypeError, KeyError) as exc:
-            raise ValidationError(f"EQUIL record {eqlnum}: {exc}") from exc
-
-    return infos
+    return {
+        idx + 1: _equilibrium_info_from_record(record, idx + 1, unit_system)
+        for idx, record in enumerate(records)
+    }
