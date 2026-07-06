@@ -81,7 +81,7 @@ class Hysteresis(StoreSerializable):
     """
 
     @classmethod
-    def from_initial_saturations(
+    def from_initial_saturation(
         cls,
         water_saturation: npt.ArrayLike,
         gas_saturation: npt.ArrayLike,

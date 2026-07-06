@@ -207,6 +207,27 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Standard atmospheric pressure in Atmospheres",
         unit="atm",
     ),
+    # Hydrostatic gradient factors
+    "HYDROSTATIC_GRADIENT_FACTOR_FIELD": Constant(
+        value=1.0 / 144.0,
+        description="Hydrostatic gradient factor for FIELD units: psi per (lbm/ft³ * ft)",
+        unit="psi / (lbm/ft³ * ft)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_METRIC": Constant(
+        value=9.80665e-5,
+        description="Hydrostatic gradient factor for METRIC units: bar per (kg/m³ * m)",
+        unit="bar / (kg/m³ * m)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_LAB": Constant(
+        value=9.6787e-4,
+        description="Hydrostatic gradient factor for LAB units: atm per (g/cm³ * cm)",
+        unit="atm / (g/cm³ * cm)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_SI": Constant(
+        value=9.80665,
+        description="Hydrostatic gradient factor for SI units: Pa per (kg/m³ * m)",
+        unit="Pa / (kg/m³ * m)",
+    ),
     # Temperature
     "STANDARD_TEMPERATURE_SI": Constant(
         value=288.7056, description="Standard temperature (SI units)", unit="K"

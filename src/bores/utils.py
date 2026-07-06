@@ -9,8 +9,16 @@ import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
 from typing_extensions import TypeVar
 
+from bores.constants import c
 from bores.precision import get_dtype
-from bores.typing import CellArray, NDimension, Number, NumberArray, NumberOrArray
+from bores.typing import (
+    CellArray,
+    NDimension,
+    Number,
+    NumberArray,
+    NumberOrArray,
+    UnitSystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -420,3 +428,22 @@ def scale_and_offset(
     if isinstance(a, np.ndarray):
         result = result.astype(a.dtype, copy=False)  # type: ignore[attr-defined]
     return typing.cast(NumberOrArray[NDimension], result)
+
+
+def get_hydrostatic_gradient_factor(unit_system: UnitSystem) -> float:
+    """
+    Return the hydrostatic pressure-gradient constant for the given unit
+    system.
+
+    The returned value is the multiplier used to convert density into the
+    local pressure gradient in each unit system.
+    """
+    if unit_system == UnitSystem.FIELD:
+        return c.HYDROSTATIC_GRADIENT_FACTOR_FIELD  # psi per (lbm/ft^3 * ft)
+    elif unit_system == UnitSystem.METRIC:
+        return c.HYDROSTATIC_GRADIENT_FACTOR_METRIC  # bar per (kg/m^3 * m)
+    elif unit_system == UnitSystem.LAB:
+        return c.HYDROSTATIC_GRADIENT_FACTOR_LAB  # atm per (g/cm^3 * cm)
+    elif unit_system == UnitSystem.SI:
+        return c.HYDROSTATIC_GRADIENT_FACTOR_SI  # Pa per (kg/m^3 * m)
+    raise ValueError(f"Unsupported unit system: {unit_system!r}")

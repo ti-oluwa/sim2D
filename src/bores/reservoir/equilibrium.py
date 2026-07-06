@@ -3,15 +3,170 @@
 import typing
 
 import attrs
+import numpy as np
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
+from bores.precision import get_dtype
 from bores.stores import StoreSerializable
-from bores.typing import Number, UnitSystem
+from bores.typing import (
+    Number,
+    NumberArray,
+    NumberOrArray,
+    OneDimension,
+    UnitSystem,
+)
 
-__all__ = ["EquilibriumInfo", "EquilibriumRegions", "load_equilibrium_infos"]
+__all__ = [
+    "DepthTable",
+    "EquilibriumInfo",
+    "EquilibriumRegions",
+    "load_equilibrium_infos",
+]
+
+
+@attrs.frozen(slots=True)
+class DepthTable(StoreSerializable):
+    """
+    A generic depth-indexed lookup table for a single equilibration region,
+    corresponding to one table from `RSVD` (solution GOR vs. depth) or
+    `RVVD` (vaporised oil-gas ratio vs. depth).
+
+    Deliberately generic (`values`, not `rs`/`rv`) rather than two near-
+    identical `RsvdTable` / `RvvdTable` classes - RSVD and RVVD are the same
+    shape (a monotone depth axis + one dependent column) and only differ in
+    which physical quantity they carry, which the caller already knows from
+    context (`EquilibriumRegions.rsvd_tables` vs. `.rvvd_tables`).
+
+    Values are linearly interpolated at a query depth; values outside the
+    table range are clamped to the endpoint (no extrapolation), matching
+    Eclipse behaviour and `bores.reservoir.temperature.TemperatureTable`.
+    """
+
+    depths: NumberArray[OneDimension]
+    """1-D strictly increasing depth array in `unit_system` length units."""
+
+    values: NumberArray[OneDimension]
+    """
+    1-D dependent-variable array (Rs in SCF/STB or Rv in STB/Mscf,
+    depending on which keyword this table was built from). Must have the
+    same length as `depths`.
+    """
+
+    unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system for `depths`. `values` unit conversion is not handled
+    here - GOR-type quantities are converted by the caller (same factor
+    used for `State.solution_gor` / `vaporized_oil_ratio`)."""
+
+    def __attrs_post_init__(self) -> None:
+        if self.depths.ndim != 1:
+            raise ValidationError("`depths` must be a 1-D array.")
+        if self.values.ndim != 1:
+            raise ValidationError("`values` must be a 1-D array.")
+        if len(self.depths) != len(self.values):
+            raise ValidationError(
+                f"`depths` length {len(self.depths)} must match "
+                f"`values` length {len(self.values)}."
+            )
+        if len(self.depths) < 2:
+            raise ValidationError(
+                "`DepthTable` requires at least 2 (depth, value) pairs."
+            )
+        if not np.all(np.diff(self.depths) > 0):
+            raise ValidationError("`depths` must be strictly increasing.")
+
+    def at_depth(
+        self, depth: NumberOrArray[OneDimension]
+    ) -> NumberOrArray[OneDimension]:
+        """
+        Return the interpolated value at the given depth or array of depths.
+
+        :param depth: Scalar or shape `(n_cells,)` depth array in
+            `unit_system` length units.
+        :returns: Interpolated value(s), clamped to the table endpoints
+            outside its range.
+        """
+        is_scalar = np.isscalar(depth)
+        depth_arr = np.atleast_1d(depth)
+        result = np.interp(depth_arr, self.depths, self.values)
+        return (
+            typing.cast(Number, result[0])
+            if is_scalar
+            else typing.cast(NumberArray[OneDimension], result)
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `DepthTable` with `depths` rescaled to *target*.
+        `values` are left unchanged - see the `unit_system` docstring.
+
+        :param target: Target `UnitSystem`.
+        :param table: Optional custom conversion table.
+        :returns: New `DepthTable` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        return self.__class__(
+            depths=typing.cast(
+                NumberArray[OneDimension], self.depths * factors["length"]
+            ),
+            values=self.values,
+            unit_system=target,
+        )
+
+
+def _load_depth_tables(
+    deck_file: DeckFile,
+    keyword: str,
+    value_column: str,
+    dtype: typing.Any = None,
+) -> typing.Optional[typing.Dict[int, DepthTable]]:
+    """
+    Parse an `RSVD`/`RVVD`-shaped keyword into `{table_number: DepthTable}`.
+
+    Shared helper for both `RSVD` and `RVVD`, which have identical shape
+    and differ only in which column holds the dependent variable.
+
+    :param deck_file: Parsed `DeckFile`.
+    :param keyword: `"RSVD"` or `"RVVD"`.
+    :param value_column: `"rs"` or `"rv"` - the column name to extract.
+    :returns: `{1-based table number: DepthTable}`, or `None` if the
+        keyword is absent from the deck.
+    :raises ValidationError: If the keyword is present but a table has
+        non-increasing depths.
+    """
+    all_tables: typing.Optional[typing.List] = deck_file.get(keyword)
+    if not all_tables:
+        return None
+
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    unit_system = deck_file.unit_system
+    tables: typing.Dict[int, DepthTable] = {}
+    for table_idx, rows in enumerate(all_tables):
+        if not rows:
+            continue
+        table_number = table_idx + 1  # 1-based
+        depths = np.array([row["depth"] for row in rows], dtype=dtype)
+        values = np.array([row[value_column] for row in rows], dtype=dtype)
+        try:
+            tables[table_number] = DepthTable(
+                depths=typing.cast(NumberArray[OneDimension], depths),
+                values=typing.cast(NumberArray[OneDimension], values),
+                unit_system=unit_system,
+            )
+        except ValidationError as exc:
+            raise ValidationError(f"{keyword} table {table_number}: {exc}") from exc
+
+    return tables or None
 
 
 @attrs.frozen(slots=True)
@@ -80,11 +235,6 @@ class EquilibriumInfo(StoreSerializable):
       (vertical-equilibrium averaging) initialization.
     - `<0` - `|N|` sub-divisions per cell using the tilted-cell variant,
       which additionally accounts for cell dip / non-horizontal faces.
-
-    Dispatched in `bores.reservoir.initialization` by
-    `_initialize_center_point_equilibrium`,
-    `_initialize_horizontal_subdivision_equilibrium`, and
-    `_initialize_tilted_subdivision_equilibrium` respectively.
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -177,8 +327,9 @@ class EquilibriumInfo(StoreSerializable):
         """
         Build a single `EquilibriumInfo` from a parsed `DeckFile`.
 
-        Reads only the requested EQLNUM record - does not construct
-        `EquilibriumInfo` objects for any other region.
+        Reads only the requested `EQLNUM` record - does not construct
+        `EquilibriumInfo` objects for any other region, unlike routing
+        through `load_equilibrium_infos`.
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
@@ -191,8 +342,8 @@ class EquilibriumInfo(StoreSerializable):
         if not records:
             raise ValidationError(
                 "No EQUIL keyword found in the DeckFile. Supply equilibration "
-                f"data explicitly via `{cls.__name__}(...)`, or add an `EQUIL` "
-                "block to the deck."
+                "data explicitly via `EquilibriumInfo(...)`, or add an "
+                "`EQUIL` block to the deck."
             )
         if not (1 <= eqlnum <= len(records)):
             raise ValidationError(
@@ -228,12 +379,38 @@ class EquilibriumRegions(StoreSerializable):
     regions: typing.Dict[int, EquilibriumInfo]
     """Mapping from 1-based EQLNUM index to that region's `EquilibriumInfo`."""
 
+    rsvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None
+    """
+    `{rsvd_table number: DepthTable}`, keyed by `EquilibriumInfo.rsvd_table`
+    (not by EQLNUM - multiple regions may share one `RSVD` table number).
+    `None` if no region uses `RSVD`.
+    """
+
+    rvvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None
+    """Same as `rsvd_tables` but for `RVVD`, keyed by `rvvd_table`."""
+
     unit_system: UnitSystem = UnitSystem.FIELD
-    """Unit system shared by all regions."""
+    """Unit system shared by all regions and depth tables."""
 
     def __attrs_post_init__(self) -> None:
         if not self.regions:
             raise ValidationError("`regions` must contain at least one entry.")
+
+        for info in self.regions.values():
+            if info.uses_rsvd and (
+                self.rsvd_tables is None or info.rsvd_table not in self.rsvd_tables
+            ):
+                raise ValidationError(
+                    f"EquilibriumInfo references rsvd_table={info.rsvd_table} "
+                    "but no matching table was supplied in `rsvd_tables`."
+                )
+            if info.uses_rvvd and (
+                self.rvvd_tables is None or info.rvvd_table not in self.rvvd_tables
+            ):
+                raise ValidationError(
+                    f"EquilibriumInfo references rvvd_table={info.rvvd_table} "
+                    "but no matching table was supplied in `rvvd_tables`."
+                )
 
         mismatched = {
             num: info.unit_system
@@ -299,6 +476,18 @@ class EquilibriumRegions(StoreSerializable):
                 num: info.convert(target, table=table)
                 for num, info in self.regions.items()
             },
+            rsvd_tables={
+                num: depth_table.convert(target, table=table)
+                for num, depth_table in self.rsvd_tables.items()
+            }
+            if self.rsvd_tables
+            else None,
+            rvvd_tables={
+                num: depth_table.convert(target, table=table)
+                for num, depth_table in self.rvvd_tables.items()
+            }
+            if self.rvvd_tables
+            else None,
             unit_system=target,
         )
 
@@ -307,16 +496,27 @@ class EquilibriumRegions(StoreSerializable):
         """
         Build `EquilibriumRegions` from a parsed `DeckFile`.
 
-        Delegates to `load_equilibrium_infos` so the parsing logic lives in
-        exactly one place, shared with `EquilibriumInfo.from_deck_file`.
+        Delegates to `load_equilibrium_infos` for the `EQUIL` records so
+        that parsing logic lives in exactly one place, shared with
+        `EquilibriumInfo.from_deck_file`. Also loads `RSVD`/`RVVD` tables
+        (see `bores.deck.keywords.solution`) if present in the deck.
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
         :returns: `EquilibriumRegions` keyed by 1-based EQLNUM index.
-        :raises ValidationError: If `EQUIL` is absent from the deck.
+        :raises ValidationError: If `EQUIL` is absent from the deck, or an
+            `EquilibriumInfo` references an `RSVD`/`RVVD` table number that
+            isn't present in the deck.
         """
         mapping = load_equilibrium_infos(deck_file)
-        return cls(regions=mapping, unit_system=deck_file.unit_system)
+        rsvd_tables = _load_depth_tables(deck_file, "RSVD", "rs")
+        rvvd_tables = _load_depth_tables(deck_file, "RVVD", "rv")
+        return cls(
+            regions=mapping,
+            rsvd_tables=rsvd_tables,
+            rvvd_tables=rvvd_tables,
+            unit_system=deck_file.unit_system,
+        )
 
 
 def _equilibrium_info_from_record(
@@ -324,18 +524,32 @@ def _equilibrium_info_from_record(
     eqlnum: int,
     unit_system: UnitSystem,
 ) -> EquilibriumInfo:
-    """Build one `EquilibriumInfo` from a single parsed EQUIL record dict."""
+    """
+    Build one `EquilibriumInfo` from a single parsed `EQUIL` record dict.
+
+    The single field-mapping implementation shared by
+    `EquilibriumInfo.from_deck_file` and `load_equilibrium_infos`, so the
+    two call sites can never drift out of sync on how raw record fields
+    map onto `EquilibriumInfo` fields.
+
+    :param record: One row of `deck_file.get("EQUIL")`.
+    :param eqlnum: 1-based EQLNUM index this record belongs to (used only
+        for error messages).
+    :param unit_system: Unit system of the source `DeckFile`.
+    :returns: `EquilibriumInfo` for this record.
+    :raises ValidationError: If the record fails validation.
+    """
     try:
         return EquilibriumInfo(
-            datum_depth=float(record["datum_depth"]),
-            datum_pressure=float(record["datum_pressure"]),
-            woc_depth=float(record["woc_depth"] or 0.0),
-            pcow_woc=float(record["pcow_woc"] or 0.0),
-            goc_depth=float(record["goc_depth"] or 0.0),
-            pcog_goc=float(record["pcog_goc"] or 0.0),
-            rsvd_table=int(record["rsvd_table"] or 0),
-            rvvd_table=int(record["rvvd_table"] or 0),
-            accuracy_flag=int(record["accuracy_flag"] or 0),
+            datum_depth=record["datum_depth"],
+            datum_pressure=record["datum_pressure"],
+            woc_depth=record["woc_depth"] or 0.0,
+            pcow_woc=record["pcow_woc"] or 0.0,
+            goc_depth=record["goc_depth"] or 0.0,
+            pcog_goc=record["pcog_goc"] or 0.0,
+            rsvd_table=record["rsvd_table"] or 0,
+            rvvd_table=record["rvvd_table"] or 0,
+            accuracy_flag=record["accuracy_flag"] or 0,
             unit_system=unit_system,
         )
     except (ValidationError, TypeError, KeyError) as exc:
@@ -347,9 +561,9 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumI
     Parse every `EQUIL` record in *deck_file* into `EquilibriumInfo`
     objects, keyed by 1-based EQLNUM index.
 
-    The single parsing implementation shared by both
-    `EquilibriumInfo.from_deck_file` and `EquilibriumRegions.from_deck_file` -
-    avoids duplicated parsing logic between the two call sites.
+    Unlike `EquilibriumInfo.from_deck_file`, this genuinely needs every
+    region, so building all of them here is not wasteful - it's the
+    single bulk-parsing implementation used by `EquilibriumRegions.from_deck_file`.
 
     :param deck_file: Parsed `DeckFile`.
     :returns: `{eqlnum: EquilibriumInfo}` mapping, one entry per `EQUIL`
@@ -365,6 +579,7 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumI
             "`EquilibriumRegions(regions={...})`, or add an `EQUIL` block "
             "to the deck."
         )
+
     unit_system = deck_file.unit_system
     return {
         idx + 1: _equilibrium_info_from_record(record, idx + 1, unit_system)
