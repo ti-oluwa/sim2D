@@ -358,7 +358,6 @@ class EquilibriumInfo(StoreSerializable):
         )
 
 
-@attrs.frozen(slots=True)
 class EquilibriumRegions(StoreSerializable):
     """
     Container mapping 1-based `EQLNUM` region index to `EquilibriumInfo`.
@@ -376,36 +375,41 @@ class EquilibriumRegions(StoreSerializable):
     ```
     """
 
-    regions: typing.Dict[int, EquilibriumInfo]
-    """Mapping from 1-based EQLNUM index to that region's `EquilibriumInfo`."""
+    __slots__ = ("regions", "rsvd_tables", "rvvd_tables", "unit_system")
 
-    rsvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None
-    """
-    `{rsvd_table number: DepthTable}`, keyed by `EquilibriumInfo.rsvd_table`
-    (not by EQLNUM - multiple regions may share one `RSVD` table number).
-    `None` if no region uses `RSVD`.
-    """
+    def __init__(
+        self,
+        regions: typing.Dict[int, EquilibriumInfo],
+        *,
+        rsvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
+        rvvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
+        unit_system: UnitSystem = UnitSystem.FIELD,
+    ) -> None:
+        """
+        Create a new `EquilibriumRegions` container.
 
-    rvvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None
-    """Same as `rsvd_tables` but for `RVVD`, keyed by `rvvd_table`."""
-
-    unit_system: UnitSystem = UnitSystem.FIELD
-    """Unit system shared by all regions and depth tables."""
-
-    def __attrs_post_init__(self) -> None:
-        if not self.regions:
+        :param regions: Mapping from 1-based EQLNUM index to that region's
+            `EquilibriumInfo`.
+        :param rsvd_tables: `{rsvd_table number: DepthTable}`, keyed by
+            `EquilibriumInfo.rsvd_table` (not by EQLNUM - multiple regions may
+            share one `RSVD` table number). `None` if no region uses `RSVD`.
+        :param rvvd_tables: Same as `rsvd_tables` but for `RVVD`, keyed by
+            `rvvd_table`.
+        :param unit_system: Unit system shared by all regions and depth tables.
+        """
+        if not regions:
             raise ValidationError("`regions` must contain at least one entry.")
 
-        for info in self.regions.values():
+        for info in regions.values():
             if info.uses_rsvd and (
-                self.rsvd_tables is None or info.rsvd_table not in self.rsvd_tables
+                rsvd_tables is None or info.rsvd_table not in rsvd_tables
             ):
                 raise ValidationError(
                     f"EquilibriumInfo references rsvd_table={info.rsvd_table} "
                     "but no matching table was supplied in `rsvd_tables`."
                 )
             if info.uses_rvvd and (
-                self.rvvd_tables is None or info.rvvd_table not in self.rvvd_tables
+                rvvd_tables is None or info.rvvd_table not in rvvd_tables
             ):
                 raise ValidationError(
                     f"EquilibriumInfo references rvvd_table={info.rvvd_table} "
@@ -414,16 +418,21 @@ class EquilibriumRegions(StoreSerializable):
 
         mismatched = {
             num: info.unit_system
-            for num, info in self.regions.items()
-            if info.unit_system != self.unit_system
+            for num, info in regions.items()
+            if info.unit_system != unit_system
         }
         if mismatched:
             raise ValidationError(
                 "All `EquilibriumInfo` entries must share `EquilibriumRegions."
-                f"unit_system` ({self.unit_system.value!r}); mismatches "
+                f"unit_system` ({unit_system.value!r}); mismatches "
                 f"(eqlnum -> unit_system): "
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
+
+        self.regions = regions
+        self.rsvd_tables = rsvd_tables
+        self.rvvd_tables = rvvd_tables
+        self.unit_system = unit_system
 
     @property
     def n_regions(self) -> int:

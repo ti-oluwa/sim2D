@@ -7,12 +7,9 @@ import numpy as np
 import numpy.typing as npt
 import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
-from typing_extensions import TypeVar
 
-from bores.constants import c
 from bores.precision import get_dtype
 from bores.typing import (
-    CellArray,
     NDimension,
     Number,
     NumberArray,
@@ -438,6 +435,8 @@ def get_hydrostatic_gradient_factor(unit_system: UnitSystem) -> float:
     The returned value is the multiplier used to convert density into the
     local pressure gradient in each unit system.
     """
+    from bores.constants import c
+
     if unit_system == UnitSystem.FIELD:
         return c.HYDROSTATIC_GRADIENT_FACTOR_FIELD  # psi per (lbm/ft^3 * ft)
     elif unit_system == UnitSystem.METRIC:

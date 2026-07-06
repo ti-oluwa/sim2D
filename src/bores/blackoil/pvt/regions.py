@@ -19,7 +19,12 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.temperature import TemperatureRegions, TemperatureSpec
+from bores.reservoir.temperature import (
+    TemperatureGradient,
+    TemperatureRegions,
+    TemperatureSpec,
+    TemperatureTable,
+)
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
 from bores.typing import (
@@ -252,23 +257,117 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         return cls(regions=regions)
 
 
-def _generate_temperature_axis(
-    temperature: TemperatureSpec, dtype: npt.DTypeLike
+def _min_temperature_points(interpolation_method: InterpolationMethod) -> int:
+    """Minimum temperature-axis length required by `PVTTable` for a given method."""
+    return 4 if interpolation_method == "cubic" else 2
+
+
+def _ensure_strictly_increasing(
+    values: npt.NDArray, min_points: int, dtype: npt.DTypeLike
 ) -> npt.NDArray:
     """
-    Build a minimal two-point temperature axis bracketing *temperature*.
+    Deduplicate, sort, and pad *values* so the result is strictly increasing
+    and has at least *min_points* entries (both required by `PVTTable`).
 
-    Eclipse PVT tables are isothermal, i.e there is only one reservoir
-    temperature. The existing `PVTTable` infrastructure requires a
-    2-D `(n_p, n_t)` table shape with `n_t >= 1`. To satisfy this while
-    keeping interpolation valid we create a degenerate two-point T axis
-    `[T-1, T+1]` and broadcast values across it; the resulting 2-D table
-    evaluates exactly to the 1-D values at T.
-
-    :param temperature: Reservoir temperature.
-    :returns: 1-D array `[T-1, T+1]`.
+    Padding interpolates additional points between the existing extremes
+    rather than fabricating unrelated ones, so the physical range of the
+    axis is preserved.
     """
-    return np.array([temperature - 1.0, temperature + 1.0], dtype=dtype)
+    values = np.unique(values.astype(dtype, copy=False))
+    if len(values) == 1:
+        # Degenerate (isothermal) case - bracket it with a tiny symmetric span.
+        min_value, max_value = values[0] - 1.0, values[0] + 1.0
+        values = np.linspace(min_value, max_value, max(min_points, 2), dtype=dtype)
+    elif len(values) < min_points:
+        # Preserve the real knots exactly; fill in between them to satisfy
+        # the interpolator's minimum-point requirement.
+        filler = np.linspace(values[0], values[-1], min_points, dtype=dtype)
+        values = np.unique(np.concatenate([values, filler])).astype(dtype, copy=False)
+    return values
+
+
+def _generate_temperature_axis(
+    temperature: TemperatureSpec,
+    dtype: npt.DTypeLike,
+    *,
+    interpolation_method: InterpolationMethod = "linear",
+    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
+    n_points: typing.Optional[int] = None,
+    max_points: int = 25,
+) -> npt.NDArray:
+    """
+    Build a temperature axis appropriate to *temperature*'s spec type.
+
+    Eclipse PVT tables are 2-D `(n_p, n_t)`. `PVTTable` requires the `n_t`
+    axis to be strictly increasing, with at least 2 points for `"linear"`
+    interpolation or 4 for `"cubic"`. This builds the smallest axis that
+    faithfully represents each spec type while satisfying that constraint:
+
+    - `Number` (scalar / isothermal): a tight symmetric bracket around the
+      value. All property columns are broadcast identically across it
+      (see `_broadcast_to_2d`), so extra points cost nothing and change
+      nothing physically - they only exist to satisfy `PVTTable`.
+    - `TemperatureGradient`: samples `gradient.at_depth(...)` across
+      *depth_range* (the actual depth extent of the region's cells, when
+      known) so the axis truly brackets the temperatures the region will
+      see. Without a known depth extent, falls back to a minimal bracket
+      around the reference temperature and warns, since the gradient's
+      true range can't be determined.
+    - `TemperatureTable`: uses the table's own (sorted, unique) temperature
+      knots directly. This is the most faithful axis possible - it
+      reproduces the table's actual breakpoints with zero extra
+      interpolation error, rather than resampling onto an arbitrary grid.
+      Very dense tables are downsampled to *max_points* (endpoints
+      preserved) to keep the resulting PVT table size bounded.
+
+    :param temperature: Reservoir temperature spec for this region.
+    :param dtype: Output dtype.
+    :param interpolation_method: `"linear"` or `"cubic"` - determines the
+        minimum number of axis points required downstream.
+    :param depth_range: Optional `(min_depth, max_depth)` of the cells this
+        region covers, in the same length units as `temperature`. Only
+        used for `TemperatureGradient`; ignored otherwise.
+    :param n_points: Override the number of points to sample (gradient) or
+        the target density (ignored for scalar/table, which use their own
+        natural sizing). Defaults to a method-appropriate value.
+    :param max_points: Cap on axis length for `TemperatureTable` downsampling.
+    :returns: 1-D strictly increasing array, dtype *dtype*.
+    """
+    dtype = np.dtype(dtype)
+    min_points = _min_temperature_points(interpolation_method)
+
+    if isinstance(temperature, TemperatureGradient):
+        count = n_points or max(min_points, 8)
+        if depth_range is not None:
+            min_value, max_value = sorted((depth_range[0], depth_range[1]))
+            if max_value <= min_value:
+                max_value = min_value + 1.0
+            depths = np.linspace(min_value, max_value, count, dtype=dtype)
+        else:
+            warnings.warn(
+                "TemperatureGradient without a `depth_range`: falling back to a "
+                "minimal bracket around the reference temperature. Pass the "
+                "region's actual cell-depth extent for a physically accurate "
+                "temperature axis.",
+                UserWarning,
+                stacklevel=3,
+            )
+            ref = temperature.reference_depth
+            depths = np.linspace(ref - 1.0, ref + 1.0, max(min_points, 2), dtype=dtype)
+        temperatures = temperature.at_depth(depths).astype(dtype, copy=False)  # type: ignore[arg-type]
+        return _ensure_strictly_increasing(temperatures, min_points, dtype)
+
+    if isinstance(temperature, TemperatureTable):
+        knots = np.unique(temperature.temperatures.astype(dtype, copy=False))
+        if len(knots) > max_points:
+            # Downsample onto an evenly spaced grid spanning the same range;
+            # endpoints (and thus the full physical range) are preserved.
+            knots = np.linspace(knots[0], knots[-1], max_points, dtype=dtype)
+        return _ensure_strictly_increasing(knots, min_points, dtype)
+
+    # Scalar Number - unchanged behavior, generalized to respect min_points.
+    count = n_points or min_points
+    return np.linspace(temperature - 1.0, temperature + 1.0, max(count, 2), dtype=dtype)
 
 
 def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
@@ -292,6 +391,8 @@ def _build_oil_data_from_pvto(
     density_record: typing.Optional[typing.Dict[str, Number]],
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
+    interpolation_method: InterpolationMethod = "linear",
+    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -323,7 +424,12 @@ def _build_oil_data_from_pvto(
     :returns: `PVTData` for the oil phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(
+        temperature,
+        dtype=dtype,
+        interpolation_method=interpolation_method,
+        depth_range=depth_range,
+    )
     n_t = len(temperatures)
 
     # Group records by Rs value
@@ -353,7 +459,7 @@ def _build_oil_data_from_pvto(
         saturated_oil_viscosity[i] = saturated_row["viscosity"]
 
     # Pressure grid: bubble-point pressures + extension to max undersaturated pressure.
-    # We do NOT merge all undersaturated rows into one flat grid - that would mix
+    # We do not merge all undersaturated rows into one flat grid - that would mix
     # physically distinct branches. Instead we extend monotonically from the
     # highest Pb to cover the undersaturated range.
     max_pressure = max(
@@ -501,6 +607,8 @@ def _build_oil_data_from_pvdo(
     density_record: typing.Optional[typing.Dict[str, Number]],
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
+    interpolation_method: InterpolationMethod = "linear",
+    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -518,7 +626,12 @@ def _build_oil_data_from_pvdo(
     :returns: `PVTData` for the oil phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(
+        temperature,
+        dtype=dtype,
+        interpolation_method=interpolation_method,
+        depth_range=depth_range,
+    )
     n_t = len(temperatures)
 
     rows = sorted(pvdo_records, key=lambda r: r["pressure"])
@@ -584,6 +697,8 @@ def _build_gas_data_from_pvdg(
     density_record: typing.Optional[typing.Dict[str, Number]],
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
+    interpolation_method: InterpolationMethod = "linear",
+    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -601,7 +716,12 @@ def _build_gas_data_from_pvdg(
     :returns: `PVTData` for the gas phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(
+        temperature,
+        dtype=dtype,
+        interpolation_method=interpolation_method,
+        depth_range=depth_range,
+    )
     n_t = len(temperatures)
 
     rows = sorted(pvdg_records, key=lambda r: r["pressure"])
@@ -703,9 +823,9 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups → common Rv grid
-    all_rv = sorted(
-        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
-    )
+    all_rv = sorted({
+        float(row["rv"]) for rows in pressure_to_rows.values() for row in rows
+    })
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 
@@ -817,6 +937,8 @@ def _build_water_data_from_pvtw(
     unit_system: UnitSystem,
     salinity: Number = 0.0,
     n_pressure_points: int = 50,
+    interpolation_method: InterpolationMethod = "linear",
+    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -845,7 +967,12 @@ def _build_water_data_from_pvtw(
     :returns: `PVTData` for the water phase.
     """
     dtype = np.dtype(dtype if dtype is not None else get_dtype())
-    temperatures = _generate_temperature_axis(temperature, dtype=dtype)
+    temperatures = _generate_temperature_axis(
+        temperature,
+        dtype=dtype,
+        interpolation_method=interpolation_method,
+        depth_range=depth_range,
+    )
     n_t = len(temperatures)
     salinities = np.array([salinity], dtype=dtype)
 
@@ -1016,6 +1143,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature.for_region(pvtnum),
                 unit_system=unit_system,
+                interpolation_method=interpolation_method,
                 dtype=dtype,
             )
         elif pvdo_all is not None and region_idx < len(pvdo_all):
@@ -1024,6 +1152,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature.for_region(pvtnum),
                 unit_system=unit_system,
+                interpolation_method=interpolation_method,
                 dtype=dtype,
             )
         elif pvco_all is not None and region_idx < len(pvco_all):
@@ -1051,6 +1180,7 @@ def load_pvt_regions(
                     density_record=density_record,
                     temperature=temperature.for_region(pvtnum),
                     unit_system=unit_system,
+                    interpolation_method=interpolation_method,
                     dtype=dtype,
                 )
 
@@ -1069,6 +1199,7 @@ def load_pvt_regions(
                 density_record=density_record,
                 temperature=temperature.for_region(pvtnum),
                 unit_system=unit_system,
+                interpolation_method=interpolation_method,
                 dtype=dtype,
             )
 
@@ -1084,6 +1215,7 @@ def load_pvt_regions(
                     temperature=temperature.for_region(pvtnum),
                     unit_system=unit_system,
                     salinity=salinity,
+                    interpolation_method=interpolation_method,
                     dtype=dtype,
                 )
 

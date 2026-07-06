@@ -12,7 +12,7 @@ from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
 from bores.serialization import Serializable
 from bores.stores import StoreSerializable
-from bores.typing import Number, UnitConversionFactors, UnitConversionTable, UnitSystem
+from bores.typing import UnitConversionFactors, UnitConversionTable, UnitSystem
 
 __all__ = [
     "Constant",
@@ -48,17 +48,26 @@ class Constant(Serializable):
     unit: typing.Optional[str] = None
     """Optional unit of measurement for this constant."""
 
+    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    """
+    Alternate names this constant is also known by (e.g. a unit-suffixed
+    name and a system-suffixed name for the same numeric value). This is
+    the single source of truth `Constants` reads to build its alias index -
+    it does not, by itself, create any dict entries.
+    """
+
     def __str__(self) -> str:
         """Return a human-readable string representation of the `Constant`."""
         return f"{self.value}{self.unit or ''}"
 
     def __repr__(self) -> str:
-        """Return a string representation of the `Constant`."""
         parts = [f"value={self.value}"]
         if self.description:
             parts.append(f"description='{self.description}'")
         if self.unit:
             parts.append(f"unit='{self.unit}'")
+        if self.aliases:
+            parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
 
@@ -102,7 +111,13 @@ class ConstantFactory(Serializable):
     """Zero-argument callable that returns the constant's current value."""
 
     description: typing.Optional[str] = None
+    """Optional description of what this constant represents."""
+
     unit: typing.Optional[str] = None
+    """Optional unit of measurement for this constant."""
+
+    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    """Alternate names - see `Constant.aliases`."""
 
     @property
     def value(self) -> typing.Any:
@@ -123,6 +138,8 @@ class ConstantFactory(Serializable):
             parts.append(f"description='{self.description}'")
         if self.unit:
             parts.append(f"unit='{self.unit}'")
+        if self.aliases:
+            parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
@@ -131,6 +148,7 @@ class ConstantFactory(Serializable):
             value=self.value,
             description=self.description,
             unit=self.unit,
+            aliases=self.aliases,
         )
         return evaluated.dump(recurse)
 
@@ -181,21 +199,17 @@ DEFAULT_CONSTANTS: typing.Dict[
 ] = {
     # Standard Conditions
     # Pressure
-    "STANDARD_PRESSURE_SI": Constant(
-        value=101325, description="Standard atmospheric pressure (SI units)", unit="Pa"
-    ),
-    "STANDARD_PRESSURE_IMPERIAL": Constant(
-        value=14.6959,
-        description="Standard atmospheric pressure (Imperial units)",
-        unit="psi",
-    ),
     "STANDARD_PRESSURE_PASCAL": Constant(
-        value=101325, description="Standard atmospheric pressure (SI units)", unit="Pa"
+        value=101325,
+        description="Standard atmospheric pressure in Pascals (SI units)",
+        unit="Pa",
+        aliases=("STANDARD_PRESSURE_SI",),
     ),
     "STANDARD_PRESSURE_PSI": Constant(
         value=14.6959,
         description="Standard atmospheric pressure in Pound-per-Square-Inch (psi)",
         unit="psi",
+        aliases=("STANDARD_PRESSURE_IMPERIAL",),
     ),
     "STANDARD_PRESSURE_BAR": Constant(
         value=1.01325,
@@ -229,17 +243,17 @@ DEFAULT_CONSTANTS: typing.Dict[
         unit="Pa / (kg/m³ * m)",
     ),
     # Temperature
-    "STANDARD_TEMPERATURE_SI": Constant(
-        value=288.7056, description="Standard temperature (SI units)", unit="K"
-    ),
-    "STANDARD_TEMPERATURE_IMPERIAL": Constant(
-        value=60.0, description="Standard temperature (Imperial units)", unit="°F"
-    ),
     "STANDARD_TEMPERATURE_KELVIN": Constant(
-        value=288.7056, description="Standard temperature in Kelvin", unit="K"
+        value=288.7056,
+        description="Standard temperature in Kelvin",
+        unit="K",
+        aliases=("STANDARD_TEMPERATURE_SI",),
     ),
     "STANDARD_TEMPERATURE_FAHRENHEIT": Constant(
-        value=60.0, description="Standard temperature in Fahrenheit", unit="°F"
+        value=60.0,
+        description="Standard temperature in Fahrenheit",
+        unit="°F",
+        aliases=("STANDARD_TEMPERATURE_IMPERIAL",),
     ),
     "STANDARD_TEMPERATURE_RANKINE": Constant(
         value=518.67, description="Standard temperature (15.6°C) in Rankine", unit="°R"
@@ -278,41 +292,34 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     # Standard Densities
     # Water
-    "STANDARD_WATER_DENSITY_SI": Constant(
-        value=998.2,
-        description="Standard water density at Standard temperature (15.6°C) (SI units)",
-        unit="kg/m³",
-    ),
     "STANDARD_WATER_DENSITY_IMPERIAL": Constant(
         value=62.37,
         description="Standard water density at Standard temperature (15.6°C) (Imperial/field units)",
         unit="lbm/ft³",
     ),
     "STANDARD_WATER_DENSITY_METRIC": Constant(
-        value=999.0,
+        value=998.2,
         description="Standard water density at Standard temperature (15.6°C) (Metric units)",
         unit="kg/m³",
+        aliases=("STANDARD_WATER_DENSITY_SI",),
     ),
     "STANDARD_WATER_DENSITY_LAB": Constant(
-        value=0.999,
+        value=0.9982,
         description="Standard water density at Standard temperature (15.6°C) (Lab units)",
         unit="g/cm³",
     ),
     # Air
-    "STANDARD_AIR_DENSITY_SI": Constant(
-        value=1.225,
-        description="Standard air density at Standard temperature (15.6°C) (SI units)",
-        unit="kg/m³",
-    ),
-    "STANDARD_AIR_DENSITY_IMPERIAL": Constant(
+    "STANDARD_AIR_DENSITY_FIELD": Constant(
         value=0.0765,
         description="Standard air density at Standard temperature (15.6°C) (Imperial/field units)",
         unit="lbm/ft³",
+        aliases=("STANDARD_AIR_DENSITY_IMPERIAL",),
     ),
     "STANDARD_AIR_DENSITY_METRIC": Constant(
         value=1.225,
         description="Standard air density at Standard temperature (15.6°C) (Metric units)",
         unit="kg/m³",
+        aliases=("STANDARD_AIR_DENSITY_SI",),
     ),
     "STANDARD_AIR_DENSITY_LAB": Constant(
         value=1.225e-3,
@@ -493,7 +500,7 @@ DEFAULT_CONSTANTS: typing.Dict[
         unit="dyne/cm·psi",
     ),
     # Gas Constant
-    "IDEAL_GAS_CONSTANT": Constant(
+    "IDEAL_GAS_CONSTANT_LAB": Constant(
         value=8.31446261815324,
         description="Universal gas constant (Lab units)",
         unit="J/(mol·K)",
@@ -503,10 +510,11 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Universal gas constant (SI units)",
         unit="kJ/(mol·K)",
     ),
-    "IDEAL_GAS_CONSTANT_IMPERIAL": Constant(
+    "IDEAL_GAS_CONSTANT_FIELD": Constant(
         value=10.73159,
         description="Universal gas constant (Imperial units)",
         unit="ft³·psi/(lb·mol·°R)",
+        aliases=("IDEAL_GAS_CONSTANT_IMPERIAL",),
     ),
     # Density Conversions
     "POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER": Constant(
@@ -786,30 +794,34 @@ class Constants(
     fields={"_store": typing.Dict[str, Constant]},
 ):
     """
-    Physical constants and conversion factors used in reservoir simulations.
+    Physical constants and conversion factors.
 
     All constants are stored in an internal dictionary and can be accessed via dot notation.
-    `Constants` can be modified at runtime if needed. Use __getattr__ for value access and
-    __getitem__ for `Constant` object access.
+    `Constants` can be modified at runtime if needed. Use `__getattr__` for value access and
+    `__getitem__` for `Constant` object access.
+
+    **Aliases**
+
+    A `Constant`/`ConstantFactory` may declare `aliases=(...)`, alternate
+    names for the same value. Aliases are *not* separate entries in the
+    store; they are name-resolution redirects to the one canonical entry.
+    Reading or writing through an alias always reaches the same underlying
+    object as reading or writing through the canonical name. There is
+    exactly one value in memory, not two copies to keep in sync.
     """
 
-    __slots__ = ("_store",)
+    __slots__ = ("_store", "_aliases")
 
     def __new__(cls, *args, **kwargs) -> Self:
         instance = super().__new__(cls)
         instance._store = {}
+        instance._aliases = {}
         return instance
 
     def __init__(
         self,
         defaults: typing.Optional[typing.Dict[str, typing.Any]] = None,
     ) -> None:
-        """
-        Initialize the constants store with default values.
-
-        :param defaults: Optional dictionary of default constants to initialize with.
-            If None, uses the predefined `DEFAULT_CONSTANTS`.
-        """
         defaults = (
             {**DEFAULT_CONSTANTS, **defaults}
             if defaults is not None
@@ -817,27 +829,54 @@ class Constants(
         )
         for name, value in defaults.items():
             if isinstance(value, (Constant, ConstantFactory)):
-                self._store[name] = value
+                wrapped = value
             elif callable(value):
-                # Wrap callables in `ConstantFactory` objects
-                self._store[name] = ConstantFactory(factory=value)
+                wrapped = ConstantFactory(factory=value)
             else:
-                # Wrap raw values in `Constant` objects
-                self._store[name] = Constant(value=value)
+                wrapped = Constant(value=value)
+            self._store[name] = wrapped
+            self._register_aliases(name, wrapped)
+
+    def _register_aliases(
+        self, canonical: str, constant: typing.Union[Constant, ConstantFactory]
+    ) -> None:
+        """
+        Index *constant*'s declared aliases against *canonical* in `_aliases`.
+
+        :raises ValidationError: If an alias collides with an existing
+            canonical name, or is already claimed by a different canonical.
+        """
+        for alias in getattr(constant, "aliases", ()):
+            if alias == canonical:
+                continue
+            if alias in self._store:
+                raise ValidationError(
+                    f"Alias {alias!r} for {canonical!r} collides with an "
+                    "existing canonical constant name."
+                )
+            existing = self._aliases.get(alias)
+            if existing is not None and existing != canonical:
+                raise ValidationError(
+                    f"Alias {alias!r} is already registered to "
+                    f"{existing!r}; cannot also register it to {canonical!r}."
+                )
+            self._aliases[alias] = canonical
+
+    def _unregister_aliases_for(self, canonical: str) -> None:
+        """Drop every alias currently pointing at *canonical* (used on delete)."""
+        for alias in [a for a, c in self._aliases.items() if c == canonical]:
+            del self._aliases[alias]
+
+    def _resolve(self, name: str) -> str:
+        """Resolve *name* to its canonical store key (identity if not an alias)."""
+        return self._aliases.get(name, name)
 
     def __getattr__(self, name: str) -> typing.Any:
-        """Get a constant's value using dot notation.
-
-        :param name: Name of the constant
-        :return: Value of the constant (unwrapped from `Constant` object)
-        :raises AttributeError: If the constant does not exist
-        """
         if name.startswith("_"):
-            # Allow access to private attributes normally
             return object.__getattribute__(self, name)
 
         try:
-            constant = self._store[name]
+            constant = self._store[self._resolve(name)]
             return (
                 constant.value
                 if isinstance(constant, (Constant, ConstantFactory))
@@ -849,120 +888,68 @@ class Constants(
             ) from None
 
     def __getitem__(self, name: str) -> Constant:
-        """Get the `Constant` object (with metadata) using bracket notation.
-
-        :param name: Name of the constant
-        :return: `Constant` object with value, description, and unit
-        :raises KeyError: If the constant does not exist
-        """
-        return self._store[name]
+        return self._store[self._resolve(name)]
 
     def __setattr__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
-        """Set a constant value using dot notation.
-
-        Accepts either a raw value (which will be wrapped in a `Constant`) or a `Constant` object.
-
-        :param name: Name of the constant
-        :param value: Value to set (raw value or `Constant` object)
-        """
         if name.startswith("_"):
-            # Allow setting private attributes normally
             object.__setattr__(self, name, value)
-        else:
-            if isinstance(value, Constant):
-                self._store[name] = value
-            else:
-                # Wrap raw values in `Constant` objects
-                self._store[name] = Constant(value=value)
+            return
+
+        canonical = self._resolve(name)
+        wrapped = value if isinstance(value, Constant) else Constant(value=value)
+        self._store[canonical] = wrapped
+        # A value set via `c.SOME_ALIAS = ...` doesn't retroactively rename
+        # the canonical slot, it just updates the value living there. If the
+        # replacement itself declares new aliases, register those too.
+        self._register_aliases(canonical, wrapped)
 
     def __setitem__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
-        """Set a constant using bracket notation.
-
-        :param name: Name of the constant
-        :param value: Value to set (raw value or Constant object)
-        """
-        if isinstance(value, Constant):
-            self._store[name] = value
-        else:
-            # Wrap raw values in `Constant` objects
-            self._store[name] = Constant(value=value)
+        canonical = self._resolve(name)
+        wrapped = value if isinstance(value, Constant) else Constant(value=value)
+        self._store[canonical] = wrapped
+        self._register_aliases(canonical, wrapped)
 
     def __delattr__(self, name: str) -> None:
-        """
-        Delete a constant from the store.
-
-        :param name: Name of the constant to delete
-        :raises AttributeError: If the constant does not exist
-        """
         if name.startswith("_"):
             object.__delattr__(self, name)
-        else:
-            try:
-                del self._store[name]
-            except KeyError:
-                raise AttributeError(
-                    f"'{type(self).__name__}' object has no attribute '{name}'"
-                ) from None
+            return
+
+        if name in self._aliases:
+            # Deleting via an alias only removes that pointer.
+            del self._aliases[name]
+            return
+        try:
+            del self._store[name]
+            self._unregister_aliases_for(name)
+        except KeyError:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            ) from None
 
     def __delitem__(self, name: str) -> None:
-        """
-        Delete a constant using bracket notation.
-
-        :param name: Name of the constant to delete
-        :raises KeyError: If the constant does not exist
-        """
+        if name in self._aliases:
+            del self._aliases[name]
+            return
         del self._store[name]
+        self._unregister_aliases_for(name)
 
     def __contains__(self, name: str) -> bool:
-        """
-        Check if a constant exists.
-
-        :param name: Name of the constant
-        :return: True if the constant exists, False otherwise
-        """
-        return name in self._store
+        return name in self._store or name in self._aliases
 
     def __iter__(self) -> typing.Iterator[str]:
-        """
-        Iterate over constant names.
-
-        :return: Iterator over constant names
-        """
         return iter(self._store)
 
     def keys(self) -> typing.KeysView[str]:
-        """
-        Get all constant names.
-
-        :return: View of all constant names
-        """
         return self._store.keys()
 
     def values(self) -> typing.ValuesView[Constant]:
-        """
-        Get all `Constant` objects.
-
-        :return: View of all Constant objects
-        """
         return self._store.values()
 
     def items(self) -> typing.ItemsView[str, Constant]:
-        """
-        Get all constant name-`Constant` object pairs.
-
-        :return: View of all constant name-Constant pairs
-        """
         return self._store.items()
 
     def get(self, name: str, default: typing.Any = None) -> typing.Any:
-        """
-        Get a constant's value with a default fallback.
-
-        :param name: Name of the constant
-        :param default: Default value if constant doesn't exist
-        :return: Value of the constant or default
-        """
-        constant = self._store.get(name)
+        constant = self._store.get(self._resolve(name))
         if constant is None:
             return default
         return constant.value if isinstance(constant, Constant) else constant
@@ -970,60 +957,30 @@ class Constants(
     def get_constant(
         self, name: str, default: typing.Optional[Constant] = None
     ) -> typing.Optional[Constant]:
-        """
-        Get a `Constant` object with a default fallback.
-
-        :param name: Name of the constant
-        :param default: Default `Constant` if constant doesn't exist
-        :return: `Constant` object or default
-        """
-        return self._store.get(name, default)
+        return self._store.get(self._resolve(name), default)
 
     def __dir__(self):
         default = super().__dir__()
-        constants = list(self.keys())
-        return sorted({*default, *constants})
+        return sorted({*default, *self._store.keys(), *self._aliases.keys()})
 
     def _ipython_key_completions_(self) -> typing.List[str]:
-        return sorted(self.keys())
-
-    def __repr__(self) -> str:
-        """Return a string representation of the Constants object."""
-        return f"{type(self).__name__}(constants={len(self._store)})"
+        return sorted({*self._store.keys(), *self._aliases.keys()})
 
     def __len__(self) -> int:
-        """Return the number of constants in the store."""
         return len(self._store)
-
-    def __call__(self) -> "ConstantsContext":
-        """
-        Create a context manager that within its context, temporarily overrides/set the default constants
-        accessed through the global constants proxy `bores.c`  to this `Constants` instance.
-
-        :return: `ConstantsContext` for temporary overrides
-        """
-        return ConstantsContext(self)
-
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        """Dump constants to dict."""
-        return {
-            name: const.dump(recurse)
-            if isinstance(const, (Constant, ConstantFactory))
-            else const
-            for name, const in self._store.items()
-        }
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        """Load constants from dict."""
-        store = {
-            name: Constant.load(val)
-            if isinstance(val, dict) and "value" in val
-            else Constant(value=val)
-            for name, val in data.items()
-        }
+        """Load constants from dict, re-deriving the alias index from each entry."""
         constants = cls(defaults={})  # type: ignore[arg-type]
-        constants._store = store
+        for name, val in data.items():
+            wrapped = (
+                Constant.load(val)
+                if isinstance(val, dict) and "value" in val
+                else Constant(value=val)
+            )
+            constants._store[name] = wrapped
+            constants._register_aliases(name, wrapped)
         return constants
 
 
