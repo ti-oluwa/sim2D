@@ -3,7 +3,7 @@ State initialization from EQUIL, explicit deck arrays, or user-supplied
 arrays.
 
 Owns every initialization algorithm - turning static reservoir description
-(`ReservoirModel` + `BlackOilModel`) plus initial-condition data
+(`Reservoir` + `BlackOilFluid`) plus initial-condition data
 (`EquilibriumRegions`, explicit deck keywords, or arrays passed directly)
 into a `State`. `State` itself knows nothing about `EQUIL`, decks, or
 initialization algorithms (see `bores.reservoir.state`); this module is the
@@ -79,9 +79,13 @@ from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.pvt.tables import PVTTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
+from bores.initialization.equilibrium import (
+    DepthTable,
+    EquilibriumInfo,
+    EquilibriumRegions,
+)
 from bores.precision import get_dtype
-from bores.reservoir.equilibrium import DepthTable, EquilibriumInfo, EquilibriumRegions
-from bores.reservoir.model import ReservoirModel
+from bores.reservoir.model import Reservoir
 from bores.reservoir.state import Hysteresis, State
 from bores.reservoir.temperature import (
     Temperature,
@@ -417,7 +421,7 @@ def _initialize_tilted_subdivision_equilibrium(
 
 
 def initialize_equilibrium_state(
-    reservoir_model: ReservoirModel,
+    reservoir: Reservoir,
     pvt_regions: PVTRegions,
     equilibrium_regions: EquilibriumRegions,
     temperature: CellArray,
@@ -431,9 +435,9 @@ def initialize_equilibrium_state(
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
 
-    :param reservoir_model: Reservoir geometry, rock properties, and region
-        assignments (`EQLNUM` via `reservoir_model.regions.equilibration_region`,
-        `PVTNUM` via `reservoir_model.regions.pvt_region`; both default to
+    :param reservoir: Reservoir geometry, rock properties, and region
+        assignments (`EQLNUM` via `reservoir.regions.equilibration_region`,
+        `PVTNUM` via `reservoir.regions.pvt_region`; both default to
         region 1 everywhere if absent).
     :param black_oil_model: PVT region tables.
     :param equilibrium_regions: Parsed `EQUIL` (+ `RSVD`/`RVVD`) data.
@@ -444,22 +448,22 @@ def initialize_equilibrium_state(
         `EquilibriumInfo`, an `EQLNUM` region spans more than one `PVTNUM`
         region, or a required PVT table is missing.
     """
-    n_cells = reservoir_model.n_cells
+    n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     eqlnum: IntCellArray = (
-        reservoir_model.regions.equilibration_region
-        if reservoir_model.regions is not None
-        and reservoir_model.regions.equilibration_region is not None
+        reservoir.regions.equilibration_region
+        if reservoir.regions is not None
+        and reservoir.regions.equilibration_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
     pvtnum: IntCellArray = (
-        reservoir_model.regions.pvt_region
-        if reservoir_model.regions is not None
-        and reservoir_model.regions.pvt_region is not None
+        reservoir.regions.pvt_region
+        if reservoir.regions is not None
+        and reservoir.regions.pvt_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
-    depths = reservoir_model.depth
-    connate_water_saturation = reservoir_model.rock.connate_water_saturation
+    depths = reservoir.depth
+    connate_water_saturation = reservoir.rock.connate_water_saturation
 
     pressure = np.zeros(n_cells, dtype=dtype)
     water_saturation = np.zeros(n_cells, dtype=dtype)
@@ -511,7 +515,7 @@ def initialize_equilibrium_state(
             rsvd_table=rsvd_table,
             rvvd_table=rvvd_table,
             temperature=temperature[mask],  # type: ignore[arg-type]
-            unit_system=reservoir_model.unit_system,
+            unit_system=reservoir.unit_system,
             depth_step=depth_step,
             dtype=dtype,
         )
@@ -567,7 +571,7 @@ def _temperature_array_from_regions(
 
 
 def _resolve_temperature(
-    reservoir_model: ReservoirModel,
+    reservoir: Reservoir,
     deck_file: typing.Optional[DeckFile],
     temperature: typing.Optional[typing.Union[Temperature, Number]],
     dtype: npt.DTypeLike = None,
@@ -578,7 +582,7 @@ def _resolve_temperature(
 
     :raises ValidationError: If no temperature source is available.
     """
-    n_cells = reservoir_model.n_cells
+    n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
     source: typing.Optional[Temperature] = None
@@ -598,18 +602,18 @@ def _resolve_temperature(
         )
 
     eqlnum: IntCellArray = (
-        reservoir_model.regions.equilibration_region
-        if reservoir_model.regions is not None
-        and reservoir_model.regions.equilibration_region is not None
+        reservoir.regions.equilibration_region
+        if reservoir.regions is not None
+        and reservoir.regions.equilibration_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
     return _temperature_array_from_regions(
-        source, eqlnum, reservoir_model.depth, dtype=dtype
+        source, eqlnum, reservoir.depth, dtype=dtype
     )
 
 
 def initialize_state(
-    reservoir_model: ReservoirModel,
+    reservoir: Reservoir,
     pvt_regions: PVTRegions,
     *,
     deck_file: typing.Optional[DeckFile] = None,
@@ -641,9 +645,9 @@ def initialize_state(
     `oil_saturation` is always derived as `1 - water_saturation -
     gas_saturation` per Step 7, never taken from an explicit array.
 
-    :param reservoir_model: Reservoir geometry, rock, and region assignments.
+    :param reservoir: Reservoir geometry, rock, and region assignments.
     :param black_oil_model: PVT region tables. Must share
-        `reservoir_model.unit_system`.
+        `reservoir.unit_system`.
     :param deck_file: Optional parsed `DeckFile`, used as a fallback source
         for `EQUIL`/`RSVD`/`RVVD`, explicit `PRESSURE`/`SWAT`/`SGAS`/`RS`/`RV`
         arrays, and `RTEMP`/`TEMPVD` temperature - for any of these not
@@ -666,7 +670,7 @@ def initialize_state(
         (Step 11 - not yet supported).
     :raises ValidationError: If some field is covered by neither an
         explicit array/keyword nor `EquilibriumRegions`/`deck_file`, if
-        `reservoir_model` and `black_oil_model` unit systems disagree, or
+        `reservoir` and `black_oil_model` unit systems disagree, or
         if saturations are physically inconsistent.
     """
     if deck_file is not None and deck_file.has("RESTART"):
@@ -675,18 +679,18 @@ def initialize_state(
             "Supply `equilibrium_regions` and/or explicit arrays instead."
         )
 
-    n_cells = reservoir_model.n_cells
+    n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    unit_system = reservoir_model.unit_system
+    unit_system = reservoir.unit_system
     if pvt_regions.unit_system != unit_system:
         raise ValidationError(
-            f"`reservoir_model.unit_system` ({unit_system.value!r}) does not "
+            f"`reservoir.unit_system` ({unit_system.value!r}) does not "
             "match `pvt_regions.unit_system` "
             f"({pvt_regions.unit_system.value!r})."
         )
 
     temperature_arr = _resolve_temperature(
-        reservoir_model, deck_file, temperature, dtype=dtype
+        reservoir, deck_file, temperature, dtype=dtype
     )
 
     explicit: typing.Dict[str, typing.Optional[CellArray]] = {
@@ -724,7 +728,7 @@ def initialize_state(
                     "for these fields."
                 )
         equilibrium = initialize_equilibrium_state(
-            reservoir_model,
+            reservoir,
             pvt_regions,
             equilibrium_regions,
             temperature_arr,
@@ -785,11 +789,11 @@ def initialize_state(
         1.0 - water_saturation_arr - gas_saturation_arr, 0.0, 1.0, dtype=dtype
     )
 
-    pore_volumes = reservoir_model.pore_volumes
+    pore_volumes = reservoir.pore_volumes
     pvtnum: IntCellArray = (
-        reservoir_model.regions.pvt_region
-        if reservoir_model.regions is not None
-        and reservoir_model.regions.pvt_region is not None
+        reservoir.regions.pvt_region
+        if reservoir.regions is not None
+        and reservoir.regions.pvt_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
 

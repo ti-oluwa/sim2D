@@ -28,7 +28,7 @@ def _load_region(
 @attrs.frozen(slots=True)
 class Regions(StoreSerializable):
     """
-    Per-cell region assignments metadata.
+    Reservoir per-cell region assignments metadata.
 
     Populated from the REGIONS section of an Eclipse deck, or supplied
     directly by the user. All region arrays are 1-based integer indices

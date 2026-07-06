@@ -10,6 +10,7 @@ import logging
 import typing
 import warnings
 
+import attrs
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator, interp1d
@@ -24,7 +25,6 @@ from bores.constants import (
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.rock import RockCompressibility
 from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     CellArray,
@@ -39,14 +39,67 @@ from bores.typing import (
     TableResult,
     UnitSystem,
 )
+from bores.utils import scale
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "RockCompressibility",
     "RockCompressibilityTable",
     "RockCompressibilityRegions",
     "load_rock_compressibility_regions",
 ]
+
+
+@attrs.frozen(slots=True)
+class RockCompressibility(StoreSerializable):
+    reference_pressure: CellArray
+    """
+    Shape (n_cells,) - reference pressure at which each cell's pore volume equals the
+    geometrically calculated value.
+
+    Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
+    """
+
+    compressibility: CellArray
+    """
+    Shape (n_cells,) - formation compressibility.
+
+    Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
+    Used in the pore-volume accumulation term: dPV/dP = PV · cr.
+    """
+
+    unit_system: UnitSystem = UnitSystem.FIELD
+    """
+    Unit system in which all quantities on this object are expressed.
+    """
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Return a new `RockCompressibility` with all quantities rescaled
+        to *target*.
+
+        Conversion factors are sourced from `get_conversion_factors`.
+
+        :param target: Desired `UnitSystem`.
+        :param table: Optional custom conversion table; `None` uses the default.
+        :returns: New `RockCompressibility` in *target* units.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        return self.__class__(
+            reference_pressure=scale(self.reference_pressure, factors["pressure"]),
+            compressibility=scale(self.compressibility, factors["compressibility"]),
+            unit_system=target,
+        )
 
 
 class RockCompressibilityTable(StoreSerializable):
@@ -142,7 +195,7 @@ class RockCompressibilityTable(StoreSerializable):
 
         self._build_interpolants()
         logger.debug(
-            "RockCompressibilityTable init: n_p=%d, method=%row, unit_system=%row, "
+            f"{self.__class__.__name__} init: n_p=%d, method=%row, unit_system=%row, "
             "p_range=[%.1f, %.1f], p_ref=%.1f",
             len(self.pressures),
             interpolation_method,

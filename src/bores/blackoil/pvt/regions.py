@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.static import StaticPVT
-from bores.blackoil.pvt.tables import InterpolationMethod, PVTTables
+from bores.blackoil.pvt.tables import PVTTables
 from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -29,6 +29,7 @@ from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     FloatArray,
     FluidPhase,
+    InterpolationMethod,
     Number,
     OneDimension,
     ThreeDimensions,

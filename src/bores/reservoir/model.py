@@ -22,7 +22,7 @@ from bores.reservoir.transmissibility import (
 from bores.serialization.base import Serializable
 from bores.typing import CellArray, Number, UnitSystem
 
-__all__ = ["ReservoirModel"]
+__all__ = ["Reservoir"]
 
 
 def _validate_rock(rock: Rock, n_cells: int) -> Rock:
@@ -57,7 +57,7 @@ def _validate_rock(rock: Rock, n_cells: int) -> Rock:
     return rock
 
 
-class ReservoirModel(
+class Reservoir(
     Serializable,
     fields={
         "grid": Grid,
@@ -254,13 +254,13 @@ class ReservoirModel(
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `ReservoirModel` with all property groups rescaled to `target`.
+        Return a new `Reservoir` with all property groups rescaled to `target`.
 
         For a true coordinate reprojection (e.g. ft -> m for all vertex
         positions), use a grid factory or IO utility that rebuilds the grid.
 
         :param target: Desired `UnitSystem`.
-        :returns: New `ReservoirModel` in `target` units.
+        :returns: New `Reservoir` in `target` units.
         """
         if target == self.unit_system:
             return self

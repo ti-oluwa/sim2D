@@ -15,7 +15,7 @@ from typing_extensions import Self
 from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.model import ReservoirModel
+from bores.reservoir.model import Reservoir
 from bores.reservoir.state import State
 from bores.serialization.base import Serializable, make_serializable_type_registrar
 from bores.serialization.stores import StoreSerializable
@@ -399,7 +399,7 @@ class BoundaryCondition(StoreSerializable):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -427,7 +427,7 @@ class BoundaryCondition(StoreSerializable):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -521,7 +521,7 @@ class ConstantFluxBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -625,7 +625,7 @@ class ConstantPressureBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -699,7 +699,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     alpha_function(
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -748,7 +748,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
             [
                 IntArray[OneDimension],
                 State,
-                ReservoirModel,
+                Reservoir,
                 Number,
             ],
             npt.NDArray,
@@ -763,7 +763,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     alpha_function(
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -786,7 +786,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -900,7 +900,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -930,7 +930,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
         [
             IntArray[OneDimension],
             State,
-            ReservoirModel,
+            Reservoir,
             Number,
         ],
         npt.NDArray,
@@ -943,7 +943,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: State,
-        rreservoir: ReservoirModel,
+        rreservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,), volume/time in `unit_system`
     ```
@@ -963,7 +963,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -1499,7 +1499,7 @@ class CarterTracyAquifer(BoundaryCondition):
         self,
         face_positions: IntArray[NDimension],
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[NDimension]:
@@ -1971,7 +1971,7 @@ class BoundaryConditions(StoreSerializable):
         self,
         n_boundary_faces: int,
         state: State,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> typing.Tuple[

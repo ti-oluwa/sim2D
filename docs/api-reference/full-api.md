@@ -30,7 +30,7 @@ These are the main entry points for building reservoir models and wells. The fac
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `reservoir_model()` | function | Build a `BlackOilModel` from raw grid data, fluid properties, and rock properties. Computes all derived PVT grids internally. |
+| `reservoir_model()` | function | Build a `BlackOilFluid` from raw grid data, fluid properties, and rock properties. Computes all derived PVT grids internally. |
 | `injection_well()` | function | Build an `InjectionWell` with fluid, control, perforations, and schedule. |
 | `production_well()` | function | Build a `ProductionWell` with fluid, control, perforations, and schedule. |
 | `wells_()` | function | Combine multiple wells into a `Wells` collection for use in `Config`. |
@@ -78,7 +78,7 @@ model = bores.reservoir_model(
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `BlackOilModel` | class | Immutable model holding all grid data, fluid properties, rock properties, and saturation state. Generic over `NDimension`. |
+| `BlackOilFluid` | class | Immutable model holding all grid data, fluid properties, rock properties, and saturation state. Generic over `NDimension`. |
 | `FluidProperties` | class | Oil, gas, and water PVT properties at reservoir conditions. |
 | `RockProperties` | class | Porosity, permeability, and compressibility. |
 | `RockPermeability` | class | Directional permeability (kx, ky, kz). |

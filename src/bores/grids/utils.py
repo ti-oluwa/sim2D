@@ -149,7 +149,7 @@ def as_pyvista_grid(
 
     **`MapAxes`**:
 
-    When `grid.metadata["map_axes"]` is present the grid's vertex
+    When `grid.metadata["map_axes"]` is present, the grid's vertex
     coordinates are rotated into map space before being passed to PyVista.
     The rotation is applied to the shared `vertex_coordinates` array (a
     copy), so the source `Grid` is not mutated.

@@ -40,7 +40,7 @@ from bores.material_balance import (
 )
 from bores.precision import get_dtype
 from bores.reservoir import (
-    BlackOilModel,
+    BlackOilFluid,
     FluidProperties,
     HysteresisState,
     RockProperties,
@@ -759,18 +759,16 @@ def _run_impes_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Transport solve completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1191,18 +1189,16 @@ def _run_sequential_implicit_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Sequential implicit step completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1737,18 +1733,16 @@ def _run_full_sequential_implicit_step(
         current_fluid_properties=iter_fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Full sequential implicit step completed.")
     return StepResult(
         fluid_properties=iter_fluid_properties,
@@ -1811,9 +1805,9 @@ class Run(StoreSerializable):
     Example:
 
     ```python
-    from bores import BlackOilModel, Config, Run
+    from bores import BlackOilFluid, Config, Run
 
-    model = BlackOilModel.from_file("path/to/3d_model.h5")
+    model = BlackOilFluid.from_file("path/to/3d_model.h5")
     config = Config.from_file("path/to/simulation_config.yaml")
 
     run = Run(model=model, config=config)
@@ -1822,7 +1816,7 @@ class Run(StoreSerializable):
     ```
     """
 
-    model: BlackOilModel[ThreeDimensions]
+    model: BlackOilFluid[ThreeDimensions]
     """The reservoir model to simulate."""
 
     config: Config
@@ -1915,11 +1909,11 @@ class Run(StoreSerializable):
         :param pvt_tables_path: Optional path to a dumped `PVTTables` file.
         :param pvt_data_path: Optional path to a dumped `PVTDataSet` file.
         :return: `Run` instance with loaded model and config.
-        :raises ValidationError: If the loaded model is not a 3-D `BlackOilModel`.
+        :raises ValidationError: If the loaded model is not a 3-D `BlackOilFluid`.
         """
-        model = BlackOilModel.from_file(model_path)
-        if not isinstance(model, BlackOilModel) or model.dimensions != 3:
-            raise ValidationError("Loaded model must be a 3D `BlackOilModel` instance.")
+        model = BlackOilFluid.from_file(model_path)
+        if not isinstance(model, BlackOilFluid) or model.dimensions != 3:
+            raise ValidationError("Loaded model must be a 3D `BlackOilFluid` instance.")
 
         config = Config.from_file(config_path)
         if config is None:
@@ -1974,7 +1968,7 @@ def stop(reason: typing.Optional[str] = None):
 
 
 def run(
-    input: typing.Union[BlackOilModel[ThreeDimensions], Run],
+    input: typing.Union[BlackOilFluid[ThreeDimensions], Run],
     config: typing.Optional[Config] = None,
     *,
     on_step_rejected: typing.Optional[StepCallback] = None,
@@ -1986,10 +1980,10 @@ def run(
     The simulation evolves pressure and saturation over time using the chosen
     evolution scheme.
 
-    :param input: Either a `BlackOilModel` or a `Run` instance. If a `Run` is
+    :param input: Either a `BlackOilFluid` or a `Run` instance. If a `Run` is
         supplied and *config* is also provided, the explicit *config* takes precedence.
     :param config: Simulation configuration. Required when *input* is a
-        `BlackOilModel`; optional when *input* is a `Run`.
+        `BlackOilFluid`; optional when *input* is a `Run`.
     :param on_step_rejected: Optional callback invoked each time a step is
         rejected due to stability or convergence issues. Receives the
         `StepResult`, the attempted step size (seconds), and the total elapsed
@@ -2007,7 +2001,7 @@ def run(
 
     import bores
 
-    model = bores.BlackOilModel.from_file("path/to/3d_model.h5")
+    model = bores.BlackOilFluid.from_file("path/to/3d_model.h5")
     config = bores.Config.from_file("path/to/simulation_config.yaml")
     for state in bores.run(model, config):
         process(state)
@@ -2027,7 +2021,7 @@ def run(
         else:
             if config is None:
                 raise ValidationError(
-                    "Must provide `config` when `input` is a `BlackOilModel`."
+                    "Must provide `config` when `input` is a `BlackOilFluid`."
                 )
             model = input
 

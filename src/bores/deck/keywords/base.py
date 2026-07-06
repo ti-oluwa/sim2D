@@ -153,15 +153,15 @@ def _parse_tokens(
         invalid value.
     """
     result: typing.Dict[str, typing.Optional[T]] = {}
-    token_count = len(tokens)
+    n_tokens = len(tokens)
     for idx, field in enumerate(fields):
-        if idx < token_count:
+        if idx < n_tokens:
             raw = tokens[idx]
             result[field.name] = field.parse(raw, keyword_name)
         elif field.required:
             raise DeckParseError(
                 f"{keyword_name} record: missing required field {field.name!r} "
-                f"(got {token_count} token(s), expected at least {idx + 1})."
+                f"(got {n_tokens} token(s), expected at least {idx + 1})."
             )
         else:
             result[field.name] = field.default
@@ -724,7 +724,6 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
                 if not tokens:
                     continue
                 dates.append(_parse_date(tokens, self.name))
-
         return dates or None
 
 
@@ -852,55 +851,71 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         """
         Parse a miscible (PVTO/PVTG-style) keyword body.
 
-        The convention is:
-        - A segment with exactly one token that is a number acts as a
-          primary-key introducer (e.g. Rs value for PVTO).
-        - Subsequent segments (until the next single-token segment or an
-          empty segment that follows a full table) are inner rows.
+        Two row shapes are recognised, matching how these tables are
+        actually written in practice:
 
-        Each primary-key value starts a new inner table; one keyword
-        occurrence can contain multiple inner tables separated by blank `/`
-        lines. The function returns a **list of tables** (one per
-        outer-key group, concatenated across all `//`-separated blocks).
+        - `n_columns` tokens - a continuation row for the current
+        primary-key group (e.g. an undersaturated pressure point).
+        - `n_columns + 1` tokens - a new primary-key group: the leading
+        token is the primary-key value (Rs for PVTO, pressure for
+        PVTG), the rest is that group's first row.
+
+        A standalone single-token segment is also accepted as an explicit
+        primary-key introducer with no row data on the same line, for
+        decks written that way.
+
+        An empty segment (a bare `/`) closes the current group.
         """
         tables: typing.List[PVTTable] = []
         current_table: PVTTable = []
         current_pk_value: typing.Optional[float] = None
         pk_column_name = self.primary_key
         assert pk_column_name is not None  # guarded by caller
+        n_columns = len(self.columns)
 
-        segments = body.split("/")
-        i = 0
-        while i < len(segments):
-            seg = segments[i]
-            tokens = tokenize(seg)
-            i += 1
-
+        for segment in body.split("/"):
+            tokens = tokenize(segment)
+            n_tokens = len(tokens)
             if not tokens:
-                # An empty segment signals the end of the current inner
-                # table group. If we have accumulated rows, save the table.
                 if current_table:
                     tables.append(current_table)
                     current_table = []
                     current_pk_value = None
                 continue
 
-            if len(tokens) == 1:
-                # Single numeric token -> primary-key introducer.
+            if n_tokens == 1:
                 try:
                     current_pk_value = float(tokens[0])
                 except ValueError:
-                    # Shouldn't happen in well-formed decks, but be lenient.
                     pass
                 continue
 
-            # Multiple tokens -> a data row. Prepend the primary-key column.
-            row = self._row_from_tokens(tokens)
-            if current_pk_value is not None:
-                row[pk_column_name] = current_pk_value
+            if n_tokens == n_columns + 1:
+                try:
+                    current_pk_value = float(tokens[0])
+                except ValueError as exc:
+                    raise DeckParseError(
+                        f"{self.name}: expected a numeric {pk_column_name!r} value, "
+                        f"got {tokens[0]!r}."
+                    ) from exc
+                row = self._row_from_tokens(tokens[1:])
+            elif n_tokens == n_columns:
+                row = self._row_from_tokens(tokens)
+            else:
+                raise DeckParseError(
+                    f"{self.name}: row has {n_tokens} token(s); expected "
+                    f"{n_columns} (continuation row) or {n_columns + 1} "
+                    f"(new {pk_column_name!r} group)."
+                )
+
+            if current_pk_value is None:
+                raise DeckParseError(
+                    f"{self.name}: data row encountered before any "
+                    f"{pk_column_name!r} value was introduced."
+                )
+            row[pk_column_name] = current_pk_value
             current_table.append(row)
 
-        # Flush any remaining rows.
         if current_table:
             tables.append(current_table)
         return tables

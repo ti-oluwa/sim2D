@@ -30,7 +30,7 @@ __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilitie
 @attrs.frozen(slots=True)
 class ConnectionTransmissibilities:
     """
-    Precomputed transmissibilities for all connections in a `BlackOilModel`.
+    Precomputed transmissibilities for all connections in a `BlackOilFluid`.
 
     **Attributes**:
 
