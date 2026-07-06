@@ -21,7 +21,7 @@ This module provides three layers:
 
 **Region layer** - `PVTRegions`
     `Dict[int, PVTTables]` keyed by 1-based `PVTNUM` region index.
-    `from_deck_file` builds all regions from a parsed `DeckFile`.
+    `from_deck` builds all regions from a parsed `DeckFile`.
 
 Deck keyword support
 --------------------

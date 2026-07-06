@@ -17,8 +17,8 @@ __all__ = ["BlackOilFluid"]
 class BlackOilFluid(
     StoreSerializable,
     fields={
-        "pvt_regions": PVTRegions,
-        "rock_fluid_regions": RockFluidRegions,
+        "pvt": PVTRegions,
+        "rock_fluid": RockFluidRegions,
         "unit_system": UnitSystem,
     },
 ):
@@ -28,9 +28,9 @@ class BlackOilFluid(
     Holds the three multi-region table objects that define the
     fluid physics for a black-oil simulation:
 
-    - `pvt_regions` - PVT tables and static fluid properties, one
+    - `pvt` - PVT tables and static fluid properties, one
       `PVTRegion` per Eclipse `PVTNUM` region.
-    - `rock_fluid_regions` - relative permeability and capillary pressure
+    - `rock_fluid` - relative permeability and capillary pressure
       tables, one per Eclipse `SATNUM` region.
 
     All region tables are normalised to `unit_system` at construction.
@@ -39,13 +39,13 @@ class BlackOilFluid(
 
     def __init__(
         self,
-        pvt_regions: PVTRegions,
-        rock_fluid_regions: RockFluidRegions,
+        pvt: PVTRegions,
+        rock_fluid: RockFluidRegions,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        :param pvt_regions: PVT region tables keyed by 1-based `PVTNUM` index.
-        :param rock_fluid_regions: Relperm and capillary pressure tables keyed
+        :param pvt: PVT region tables keyed by 1-based `PVTNUM` index.
+        :param rock_fluid: Relperm and capillary pressure tables keyed
             by 1-based `SATNUM` index.
         :param unit_system: Target unit system for all region tables. When
             `None`, all supplied tables must share the same unit system -
@@ -57,8 +57,8 @@ class BlackOilFluid(
         unit_conversion_table = build_unit_conversion_table()
 
         # Resolve unit systems of each supplied group
-        pvt_unit_system = pvt_regions.unit_system
-        rock_fluid_unit_system = rock_fluid_regions.unit_system
+        pvt_unit_system = pvt.unit_system
+        rock_fluid_unit_system = rock_fluid.unit_system
 
         if unit_system is None:
             # All present groups must agree
@@ -75,16 +75,16 @@ class BlackOilFluid(
 
         # Convert each group to the target unit system
         if pvt_unit_system != unit_system:
-            pvt_regions = pvt_regions.convert(unit_system, table=unit_conversion_table)
+            pvt = pvt.convert(unit_system, table=unit_conversion_table)
         if rock_fluid_unit_system != unit_system:
-            rock_fluid_regions = rock_fluid_regions.convert(
+            rock_fluid = rock_fluid.convert(
                 unit_system, table=unit_conversion_table
             )
 
-        self.pvt_regions = pvt_regions
+        self.pvt = pvt
         """PVT region tables - one `PVTRegion` per `PVTNUM` region."""
 
-        self.rock_fluid_regions = rock_fluid_regions
+        self.rock_fluid = rock_fluid
         """Relperm and capillary pressure tables - one per `SATNUM` region."""
 
         self.unit_system = unit_system
@@ -108,16 +108,16 @@ class BlackOilFluid(
             return self
 
         return self.__class__(
-            pvt_regions=self.pvt_regions.convert(target, table=table),
-            rock_fluid_regions=self.rock_fluid_regions.convert(target, table=table),
+            pvt=self.pvt.convert(target, table=table),
+            rock_fluid=self.rock_fluid.convert(target, table=table),
             unit_system=target,
         )
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"n_pvt_regions={self.pvt_regions.n_regions}, "
-            f"n_rock_fluid_regions={self.rock_fluid_regions.n_regions}, "
+            f"n_pvt_regions={self.pvt.n_regions}, "
+            f"n_rock_fluid_regions={self.rock_fluid.n_regions}, "
             f"unit_system={self.unit_system.value!r}"  # type: ignore[union-attr]
             f")"
         )

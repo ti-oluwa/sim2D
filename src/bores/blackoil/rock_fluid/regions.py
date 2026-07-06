@@ -36,7 +36,7 @@ class RockFluidRegions(StoreSerializable):
     `RockFluidTables` instance.
 
     Use `for_region(satnum)` to retrieve the tables for a given region, and
-    `from_deck_file` to construct from a deck.
+    `from_deck` to construct from a deck.
     """
 
     __abstract_serializable__ = True
@@ -127,7 +127,7 @@ class RockFluidRegions(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,
@@ -197,7 +197,7 @@ class RockFluidRegions(StoreSerializable):
         for region_index in range(n_regions):
             satnum = region_index + 1  # 1-based
 
-            relative_permeability = ThreePhaseRelPermTable.from_deck_file(
+            relative_permeability = ThreePhaseRelPermTable.from_deck(
                 deck_file=deck_file,
                 satnum=satnum,
                 mixing_rule=mixing_rule,
@@ -212,7 +212,7 @@ class RockFluidRegions(StoreSerializable):
 
             capillary_pressure: typing.Optional[ThreePhaseCapillaryPressureTable] = None
             if include_capillary_pressure:
-                capillary_pressure = ThreePhaseCapillaryPressureTable.from_deck_file(
+                capillary_pressure = ThreePhaseCapillaryPressureTable.from_deck(
                     deck_file=deck_file,
                     satnum=satnum,
                     keyword_family=keyword_family,

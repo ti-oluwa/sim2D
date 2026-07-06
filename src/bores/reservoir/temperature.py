@@ -301,7 +301,7 @@ class Temperature(StoreSerializable):
 
     def as_cell_array(
         self,
-        region: IntCellArray,
+        x_regions: IntCellArray,
         cell_depths: CellArray,
         dtype: npt.DTypeLike = None,
     ) -> CellArray:
@@ -319,7 +319,7 @@ class Temperature(StoreSerializable):
         Cells whose region index is absent from `regions` use the fallback
         at key `-1`.
 
-        :param region: Shape `(n_cells,)` int array of 1-based PVT/EQL region
+        :param x_regions: Shape `(n_cells,)` int array of 1-based PVT/EQL region
             indices.
         :param cell_depths: Shape `(n_cells,)` depth array in
             `unit_system` length units (positive downward). Required for
@@ -331,7 +331,7 @@ class Temperature(StoreSerializable):
         """
         assert self.regions is not None
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-        n_cells = region.size
+        n_cells = x_regions.size
         default_spec = self.regions[-1]
 
         # Pre-fill with default
@@ -345,8 +345,8 @@ class Temperature(StoreSerializable):
             if region_idx == -1:
                 continue
 
-            num = region_idx + 1
-            mask = region == num
+            xnum = region_idx + 1
+            mask = x_regions == xnum
             if not np.any(mask):
                 continue
             if isinstance(spec, (TemperatureGradient, TemperatureTable)):
@@ -396,9 +396,7 @@ class Temperature(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
-        cls, deck_file: DeckFile, *, dtype: npt.DTypeLike = None
-    ) -> Self:
+    def from_deck(cls, deck_file: DeckFile, *, dtype: npt.DTypeLike = None) -> Self:
         """
         Build a `Temperature` from a parsed `DeckFile`.
 
@@ -437,17 +435,17 @@ class Temperature(StoreSerializable):
                 if not rows:
                     continue
 
-                num = region_idx + 1  # 1-based
+                region_num = region_idx + 1  # 1-based
                 depths = np.array([row["depth"] for row in rows], dtype=dtype)
                 temperatures = np.array(
                     [row["temperature"] for row in rows], dtype=dtype
                 )
                 if not np.all(np.diff(depths) > 0):
                     raise ValidationError(
-                        f"TEMPVD region {num}: `depth` values must be "
+                        f"TEMPVD region {region_num}: `depth` values must be "
                         "strictly increasing."
                     )
-                regions[num] = TemperatureTable(
+                regions[region_num] = TemperatureTable(
                     depths=typing.cast(NumberArray[OneDimension], depths),
                     temperatures=typing.cast(NumberArray[OneDimension], temperatures),
                     unit_system=unit_system,

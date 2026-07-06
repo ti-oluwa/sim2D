@@ -12,7 +12,7 @@ from bores.typing import IntCellArray
 __all__ = ["Regions"]
 
 
-def _load_region(
+def _load_region_array(
     deck_file: DeckFile, keyword: str, n_cells: int
 ) -> typing.Optional[IntCellArray]:
     arr = deck_file.get(keyword)
@@ -39,38 +39,38 @@ class Regions(StoreSerializable):
     cell (Eclipse default behaviour).
     """
 
-    pvt_region: typing.Optional[IntCellArray] = None
+    pvt_regions: typing.Optional[IntCellArray] = None
     """
-    Shape (n_cells,) - PVT region index per cell (1-based).
+    Shape (n_cells,) - PVT region number per cell (1-based).
     Selects which PVTTables entry from PVTRegions applies.
     Read from PVTNUM. Default: 1 everywhere.
     """
 
-    saturation_region: typing.Optional[IntCellArray] = None
+    saturation_regions: typing.Optional[IntCellArray] = None
     """
-    Shape (n_cells,) - saturation function region index (1-based).
+    Shape (n_cells,) - saturation function region number (1-based).
     Selects SWOF/SGOF/SWFN/SGFN table. Read from SATNUM.
     """
 
-    imbibition_region: typing.Optional[IntCellArray] = None
+    imbibition_regions: typing.Optional[IntCellArray] = None
     """
-    Shape (n_cells,) - imbibition saturation function region index (1-based).
+    Shape (n_cells,) - imbibition saturation function region number (1-based).
     Used for hysteresis scanning curves. Read from IMBNUM.
     """
 
-    equilibration_region: typing.Optional[IntCellArray] = None
+    equilibrium_regions: typing.Optional[IntCellArray] = None
     """
-    Shape (n_cells,) - equilibration region index (1-based).
+    Shape (n_cells,) - equilibration region number (1-based).
     Selects which EQUIL record governs initialisation. Read from EQLNUM.
     """
 
-    rock_region: typing.Optional[IntCellArray] = None
+    rock_regions: typing.Optional[IntCellArray] = None
     """
-    Shape (n_cells,) - rock compaction region index (1-based).
+    Shape (n_cells,) - rock compaction region number (1-based).
     Selects ROCK/ROCKTAB table. Read from ROCKNUM.
     """
 
-    fluid_in_place_region: typing.Optional[IntCellArray] = None
+    fluid_in_place_regions: typing.Optional[IntCellArray] = None
     """
     Shape (n_cells,) - fluid-in-place reporting region (1-based).
     Controls which cells contribute to ROIP/RGIP/RWIP output groups.
@@ -78,7 +78,7 @@ class Regions(StoreSerializable):
     """
 
     @classmethod
-    def from_deck_file(cls, deck_file: DeckFile, *, n_cells: int) -> Self:
+    def from_deck(cls, deck_file: DeckFile, *, n_cells: int) -> Self:
         """
         Build `Regions` from a parsed DeckFile.
 
@@ -89,46 +89,46 @@ class Regions(StoreSerializable):
         :returns: `Regions` object loaded from ECLIPSE deck.
         """
         return cls(
-            pvt_region=_load_region(deck_file, "PVTNUM", n_cells),
-            saturation_region=_load_region(deck_file, "SATNUM", n_cells),
-            imbibition_region=_load_region(deck_file, "IMBNUM", n_cells),
-            equilibration_region=_load_region(deck_file, "EQLNUM", n_cells),
-            rock_region=_load_region(deck_file, "ROCKNUM", n_cells),
-            fluid_in_place_region=_load_region(deck_file, "FIPNUM", n_cells),
+            pvt_regions=_load_region_array(deck_file, "PVTNUM", n_cells),
+            saturation_regions=_load_region_array(deck_file, "SATNUM", n_cells),
+            imbibition_regions=_load_region_array(deck_file, "IMBNUM", n_cells),
+            equilibrium_regions=_load_region_array(deck_file, "EQLNUM", n_cells),
+            rock_regions=_load_region_array(deck_file, "ROCKNUM", n_cells),
+            fluid_in_place_regions=_load_region_array(deck_file, "FIPNUM", n_cells),
         )
 
-    def get_pvt_region(self, cell_index: int) -> int:
+    def get_pvt_region(self, cell_idx: int) -> int:
         """Return the PVT region for a cell, defaulting to 1."""
-        if self.pvt_region is None:
+        if self.pvt_regions is None:
             return 1
-        return int(self.pvt_region[cell_index])
+        return int(self.pvt_regions[cell_idx])
 
-    def get_saturation_region(self, cell_index: int) -> int:
+    def get_saturation_region(self, cell_idx: int) -> int:
         """Return the saturation function region for a cell, defaulting to 1."""
-        if self.saturation_region is None:
+        if self.saturation_regions is None:
             return 1
-        return int(self.saturation_region[cell_index])
+        return int(self.saturation_regions[cell_idx])
 
-    def get_imbibition_region(self, cell_index: int) -> int:
+    def get_imbibition_region(self, cell_idx: int) -> int:
         """Return the imbibition region for a cell, defaulting to 1."""
-        if self.imbibition_region is None:
+        if self.imbibition_regions is None:
             return 1
-        return int(self.imbibition_region[cell_index])
+        return int(self.imbibition_regions[cell_idx])
 
-    def get_equilibration_region(self, cell_index: int) -> int:
+    def get_equilibration_region(self, cell_idx: int) -> int:
         """Return the equilibration region for a cell, defaulting to 1."""
-        if self.equilibration_region is None:
+        if self.equilibrium_regions is None:
             return 1
-        return int(self.equilibration_region[cell_index])
+        return int(self.equilibrium_regions[cell_idx])
 
-    def get_fluid_in_place_region(self, cell_index: int) -> int:
+    def get_fluid_in_place_region(self, cell_idx: int) -> int:
         """Return the fluid-in-place region for a cell, defaulting to 1."""
-        if self.fluid_in_place_region is None:
+        if self.fluid_in_place_regions is None:
             return 1
-        return int(self.fluid_in_place_region[cell_index])
+        return int(self.fluid_in_place_regions[cell_idx])
 
-    def get_rock_region(self, cell_index: int) -> int:
+    def get_rock_region(self, cell_idx: int) -> int:
         """Return the rock function region for a cell, defaulting to 1."""
-        if self.rock_region is None:
+        if self.rock_regions is None:
             return 1
-        return int(self.rock_region[cell_index])
+        return int(self.rock_regions[cell_idx])

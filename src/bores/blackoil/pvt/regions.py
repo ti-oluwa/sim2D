@@ -97,13 +97,13 @@ class PVTRegions(StoreSerializable):
     the corresponding `PVTTables` instance.
 
     Use `for_region(pvtnum)` to retrieve the tables and static properties for a given region, and
-    `from_deck_file` to construct from a deck.
+    `from_deck` to construct from a deck.
 
     Example:
 
     ```python
-    pvt_regions = PVTRegions.from_deck_file(deck_file, temperature=200.0)
-    region = pvt_regions.for_region(pvtnum_array[cell_idx])
+    pvt = PVTRegions.from_deck(deck_file, temperature=200.0)
+    region = pvt.for_region(pvtnum_array[cell_idx])
     bo = region.tables.oil.formation_volume_factor(p, t)
     ```
     """
@@ -172,7 +172,7 @@ class PVTRegions(StoreSerializable):
         return cls(regions={1: region})
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         temperature: typing.Union[Temperature, Number],

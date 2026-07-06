@@ -1124,7 +1124,7 @@ class TwoPhaseRelPermTable(
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         satnum: int = 1,
@@ -1145,7 +1145,7 @@ class TwoPhaseRelPermTable(
 
         The first family packs both relperm curves and capillary pressure into a
         single keyword. Only the relperm columns are consumed here; capillary
-        pressure is handled by `TwoPhaseCapillaryPressureTable.from_deck_file`.
+        pressure is handled by `TwoPhaseCapillaryPressureTable.from_deck`.
 
         - Oil-water: reads `SWOF` -> `(sw, krw, krow)`. Reference phase is `"wetting"`
           (Sw axis), wetting phase is WATER, non-wetting is OIL.
@@ -1843,7 +1843,7 @@ class ThreePhaseRelPermTable(
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         satnum: int = 1,
@@ -1955,7 +1955,7 @@ class ThreePhaseRelPermTable(
             warnings.warn(
                 f"Oil-water keyword(s) `{oil_water_keyword}` not found for region index "
                 f"{region_index}. Cannot build a three-phase table. "
-                "Use `TwoPhaseRelPermTable.from_deck_file(..., system='gas_oil')` "
+                "Use `TwoPhaseRelPermTable.from_deck(..., system='gas_oil')` "
                 "to build a gas-oil only table.",
                 UserWarning,
                 stacklevel=2,
@@ -1970,7 +1970,7 @@ class ThreePhaseRelPermTable(
             warnings.warn(
                 f"Gas-oil keyword(s) `{gas_oil_keyword}` not found for region index "
                 f"{region_index}. Cannot build a three-phase table. "
-                "Use `TwoPhaseRelPermTable.from_deck_file(..., system='oil_water')` "
+                "Use `TwoPhaseRelPermTable.from_deck(..., system='oil_water')` "
                 "to build an oil-water only table.",
                 UserWarning,
                 stacklevel=2,
@@ -1980,13 +1980,13 @@ class ThreePhaseRelPermTable(
                 f"not found at region index {region_index}."
             )
 
-        oil_water_table = TwoPhaseRelPermTable.from_deck_file(
+        oil_water_table = TwoPhaseRelPermTable.from_deck(
             deck_file=deck_file,
             system="oil_water",
             keyword_family=family,
             **shared_kwargs,
         )
-        gas_oil_table = TwoPhaseRelPermTable.from_deck_file(
+        gas_oil_table = TwoPhaseRelPermTable.from_deck(
             deck_file=deck_file,
             system="gas_oil",
             keyword_family=family,

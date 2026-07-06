@@ -176,7 +176,7 @@ class StaticPVT(StoreSerializable):
         return scalars.compute_gas_molecular_weight(self.gas_gravity)
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,

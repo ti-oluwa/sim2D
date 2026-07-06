@@ -9,18 +9,16 @@ from bores.reservoir import Regions, Reservoir, Rock, Temperature
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # The reservoir
-grid = Grid.from_deck_file(df)
-regions = Regions.from_deck_file(df, n_cells=grid.n_cells)
-rock = Rock.from_deck_file(df, grid=grid, rock_region=regions.rock_region)
+grid = Grid.from_deck(df)
+regions = Regions.from_deck(df, n_cells=grid.n_cells)
+rock = Rock.from_deck(df, grid=grid, rock_regions=regions.rock_regions)
 reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 
 # The fluid
-# temperature = Temperature(200)
-# pvt_regions = PVTRegions.from_deck_file(df, temperature=temperature)
-# rock_fluid_regions = RockFluidRegions.from_deck_file(df)
-# black_oil = BlackOilFluid(
-#     pvt_regions=pvt_regions, rock_fluid_regions=rock_fluid_regions
-# )
+temperature = Temperature(200)
+pvt = PVTRegions.from_deck(df, temperature=temperature)
+rock_fluid = RockFluidRegions.from_deck(df)
+black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
 
 # Plot the grid
 print(f"cells   : {grid.n_cells}")

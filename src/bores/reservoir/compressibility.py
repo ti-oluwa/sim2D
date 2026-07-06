@@ -670,7 +670,7 @@ class RockCompressibilityTable(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         region_index: int = 0,
@@ -733,7 +733,7 @@ class RockCompressibilityRegions(StoreSerializable):
     Multi-region rock compressibility tables keyed by 1-based `ROCKNUM` index.
 
     All tables in a `RockCompressibilityRegions` instance (should) share the same
-    `unit_system` and `dtype` (enforced at construction by `from_deck_file`
+    `unit_system` and `dtype` (enforced at construction by `from_deck`
     and `load_rock_compressibility_regions`).
     """
 
@@ -800,7 +800,7 @@ class RockCompressibilityRegions(StoreSerializable):
         return cls(tables={1: table})
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,
@@ -830,7 +830,7 @@ class RockCompressibilityRegions(StoreSerializable):
     def to_rock_compressibility(
         self,
         pressure: CellArray,
-        rock_region: typing.Optional[IntCellArray] = None,
+        rock_regions: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
@@ -844,7 +844,7 @@ class RockCompressibilityRegions(StoreSerializable):
 
         :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match the tables' `unit_system`.
-        :param rock_region: Shape `(n_cells,)` int array of 1-based ROCKNUM
+        :param rock_regions: Shape `(n_cells,)` int array of 1-based ROCKNUM
             values. When `None`, region 1 is used for all cells.
         :param unit_system: Unit system for the returned `RockCompressibility`.
             Defaults to the unit system of region 1.
@@ -859,7 +859,7 @@ class RockCompressibilityRegions(StoreSerializable):
         effective_compressibility = np.empty(n_cells, dtype=dtype)
         reference_pressure = np.empty(n_cells, dtype=dtype)
 
-        if rock_region is None:
+        if rock_regions is None:
             table = self.for_region(1)
             pore_volume_multiplier = table._pore_volume_interp(pressure)
             dpv_dp = table._pore_volume_dp_interp(pressure)
@@ -874,8 +874,8 @@ class RockCompressibilityRegions(StoreSerializable):
                 effective_compressibility *= factors["compressibility"]  # type: ignore
         else:
             unit_conversion_table = build_unit_conversion_table()
-            for rocknum in np.unique(rock_region):
-                mask = rock_region == rocknum
+            for rocknum in np.unique(rock_regions):
+                mask = rock_regions == rocknum
                 table = self.for_region(int(rocknum))
                 region_pressures = pressure[mask]
                 pore_volume_multiplier = table._pore_volume_interp(region_pressures)

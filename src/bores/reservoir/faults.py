@@ -81,24 +81,24 @@ class Fault(Serializable):
             )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,
-        fault_name: typing.Optional[str] = None,
+        name: typing.Optional[str] = None,
     ) -> typing.Union[Self, typing.List[Self]]:
         """
         Construct one or all `Fault` objects from a parsed `DeckFile`.
 
         Reads the `FAULTS` keyword for geometry and `MULTFLT` for multipliers.
-        When `fault_name` is given, returns a single `Fault` for that fault.
-        When `fault_name` is `None`, returns a list of all faults in the deck.
+        When `name` is given, returns a single `Fault` for that fault.
+        When `name` is `None`, returns a list of all faults in the deck.
 
         :param deck_file: Parsed `bores.deck.file.DeckFile`.
-        :param fault_name: Name of a specific fault to extract, or `None` for all.
-        :returns: A single `Fault` if `fault_name` is given; a
+        :param name: Name of a specific fault to extract, or `None` for all.
+        :returns: A single `Fault` if `name` is given; a
             `List[Fault]` otherwise.
-        :raises ValidationError: If `fault_name` is given but not found in the deck.
+        :raises ValidationError: If `name` is given but not found in the deck.
         :raises ValidationError: If the deck contains no `FAULTS` keyword.
         """
         fault_records = deck_file.get("FAULTS")
@@ -110,14 +110,12 @@ class Fault(Serializable):
             record["name"]: record["multiplier"] for record in multflt_records
         }
 
-        if fault_name is not None:
-            matching = [
-                record for record in fault_records if record["name"] == fault_name
-            ]
+        if name is not None:
+            matching = [record for record in fault_records if record["name"] == name]
             if not matching:
                 available = sorted({record["name"] for record in fault_records})
                 raise ValidationError(
-                    f"Fault {fault_name!r} not found in FAULTS keyword. "
+                    f"Fault {name!r} not found in FAULTS keyword. "
                     f"Available faults: {available}."
                 )
             record = matching[0]
@@ -217,7 +215,7 @@ def apply_faults(grid: Grid, *faults: Fault) -> Grid:
     return _apply_faults_to_grid(grid, faults, nx, ny, nz)
 
 
-def remove_faults(grid: Grid, *fault_names: str) -> Grid:
+def remove_faults(grid: Grid, *names: str) -> Grid:
     """
     Remove named faults from a grid and return a new grid.
 
@@ -226,29 +224,29 @@ def remove_faults(grid: Grid, *fault_names: str) -> Grid:
     NNC entries belonging to those faults are removed, and their transmissibility
     multipliers are dropped.
 
-    When `fault_names` is empty, **all** faults are removed.
+    When `names` is empty, **all** faults are removed.
 
     :param grid: The `Grid` to remove faults from.
-    :param fault_names: Names of faults to remove. If none are given, all faults
+    :param names: Names of faults to remove. If none are given, all faults
         are removed.
     :returns: A new `Grid` with the specified faults removed.
     :raises ValidationError: If a named fault does not exist on the grid.
     """
-    existing_fault_names: typing.Set[str] = set()
+    existing_names: typing.Set[str] = set()
     if grid.fault_face_indices:
-        existing_fault_names.update(grid.fault_face_indices.keys())
+        existing_names.update(grid.fault_face_indices.keys())
     if grid.nnc_fault_indices:
-        existing_fault_names.update(grid.nnc_fault_indices.keys())
+        existing_names.update(grid.nnc_fault_indices.keys())
 
     names_to_remove: typing.FrozenSet[str] = (
-        frozenset(fault_names) if fault_names else frozenset(existing_fault_names)
+        frozenset(names) if names else frozenset(existing_names)
     )
 
-    unknown = names_to_remove - existing_fault_names
+    unknown = names_to_remove - existing_names
     if unknown:
         raise ValidationError(
             f"Faults not found on grid: {sorted(unknown)}. "
-            f"Available faults: {sorted(existing_fault_names)}."
+            f"Available faults: {sorted(existing_names)}."
         )
     return _remove_faults_from_grid(grid, names_to_remove)
 
@@ -433,10 +431,10 @@ def _apply_faults_to_grid(
     # Drop existing NNC entries for faults being replaced
     names_being_replaced: typing.Set[str] = {f.name for f in faults}
     indices_to_drop: typing.Set[int] = set()
-    for fault_name in names_being_replaced:
-        if fault_name in nnc_fault_indices_lists:
-            indices_to_drop.update(nnc_fault_indices_lists.pop(fault_name))
-        fault_face_indices.pop(fault_name, None)
+    for name in names_being_replaced:
+        if name in nnc_fault_indices_lists:
+            indices_to_drop.update(nnc_fault_indices_lists.pop(name))
+        fault_face_indices.pop(name, None)
 
     if indices_to_drop:
         # Build compacted NNC arrays excluding dropped indices
@@ -556,7 +554,7 @@ def _apply_faults_to_grid(
     )
 
 
-def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> Grid:
+def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
     """
     Produce a new `Grid` with the specified faults stripped out.
 
@@ -566,7 +564,7 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
     the removed faults are dropped.
 
     :param grid: The source grid.
-    :param fault_names: Names of faults to remove.
+    :param names: Names of faults to remove.
     :returns: A new `Grid` with those faults absent.
     """
     assert grid.face_connection_types is not None
@@ -574,8 +572,8 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
 
     # Revert face classifications for removed faults
     if grid.fault_face_indices:
-        for fault_name in fault_names:
-            face_indices = grid.fault_face_indices.get(fault_name)
+        for name in names:
+            face_indices = grid.fault_face_indices.get(name)
             if face_indices is None:
                 continue
             for face_idx in face_indices:
@@ -591,8 +589,8 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
     # Determine NNC indices to drop
     indices_to_drop: typing.Set[int] = set()
     if grid.nnc_fault_indices:
-        for fault_name in fault_names:
-            nnc_indices = grid.nnc_fault_indices.get(fault_name)
+        for name in names:
+            nnc_indices = grid.nnc_fault_indices.get(name)
             if nnc_indices is not None:
                 indices_to_drop.update(int(i) for i in nnc_indices)
 
@@ -628,7 +626,7 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
         {
             name: indices
             for name, indices in grid.fault_face_indices.items()
-            if name not in fault_names
+            if name not in names
         }
         if grid.fault_face_indices
         else None
@@ -639,7 +637,7 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
                 [old_to_new[int(i)] for i in idxs if i in old_to_new], dtype=np.int32
             )
             for name, idxs in grid.nnc_fault_indices.items()
-            if name not in fault_names
+            if name not in names
         }
         if grid.nnc_fault_indices
         else None
@@ -648,7 +646,7 @@ def _remove_faults_from_grid(grid: Grid, fault_names: typing.FrozenSet[str]) -> 
         {
             name: mult
             for name, mult in grid.fault_transmissibility_multipliers.items()
-            if name not in fault_names
+            if name not in names
         }
         if grid.fault_transmissibility_multipliers
         else None

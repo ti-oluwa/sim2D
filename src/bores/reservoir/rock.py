@@ -14,7 +14,7 @@ from bores.reservoir.compressibility import (
     RockCompressibility,
     RockCompressibilityRegions,
 )
-from bores.reservoir.regions import _load_region
+from bores.reservoir.regions import _load_region_array
 from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     CellArray,
@@ -152,7 +152,7 @@ class RockPermeability(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,
@@ -287,7 +287,7 @@ class Rock(StoreSerializable):
         self,
         *,
         pressure: CellArray,
-        rock_region: typing.Optional[IntCellArray] = None,
+        rock_regions: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
@@ -311,7 +311,7 @@ class Rock(StoreSerializable):
 
         compressibility = self.compressibility_regions.to_rock_compressibility(
             pressure=pressure,
-            rock_region=rock_region,
+            rock_regions=rock_regions,
             unit_system=target_unit_system,
             dtype=dtype,
         )
@@ -359,12 +359,12 @@ class Rock(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,
         grid: Grid,
-        rock_region: typing.Optional[IntCellArray] = None,
+        rock_regions: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
     ) -> Self:
@@ -399,17 +399,17 @@ class Rock(StoreSerializable):
                 return np.full(n_cells, default, dtype=dtype)
             return data
 
-        permeability = RockPermeability.from_deck_file(
+        permeability = RockPermeability.from_deck(
             deck_file, n_cells=n_cells, dtype=dtype
         )
         compressibility_regions: typing.Optional[RockCompressibilityRegions] = None
         if deck_file.has("ROCK") or deck_file.has("ROCKTAB"):
-            compressibility_regions = RockCompressibilityRegions.from_deck_file(
+            compressibility_regions = RockCompressibilityRegions.from_deck(
                 deck_file, interpolation_method=interpolation_method, dtype=dtype
             )
 
-        if rock_region is None:
-            rock_region = _load_region(deck_file, "ROCKNUM", n_cells)
+        if rock_regions is None:
+            rock_regions = _load_region_array(deck_file, "ROCKNUM", n_cells)
 
         return cls(
             porosity=_required("PORO"),

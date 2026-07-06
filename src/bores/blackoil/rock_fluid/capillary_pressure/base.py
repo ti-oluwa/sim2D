@@ -518,7 +518,7 @@ class TwoPhaseCapillaryPressureTable(
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         satnum: int = 1,
@@ -536,7 +536,7 @@ class TwoPhaseCapillaryPressureTable(
         Capillary pressure is only available in the **first** saturation-function
         family (`SWOF` / `SGOF`); the **second** family (`SWFN` / `SGFN`) also
         carries a Pc column, so both families are supported here, unlike
-        `TwoPhaseRelPermTable.from_deck_file` which needs `SOF2`/`SOF3` for the
+        `TwoPhaseRelPermTable.from_deck` which needs `SOF2`/`SOF3` for the
         second family's oil curve.
 
         **First keyword family** (`SWOF` / `SGOF`):
@@ -937,7 +937,7 @@ class ThreePhaseCapillaryPressureTable(
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         satnum: int = 1,
@@ -965,7 +965,7 @@ class ThreePhaseCapillaryPressureTable(
         `SWFN` supplies the oil-water capillary pressure `(sw, pcow)`.
         `SGFN` supplies the gas-oil capillary pressure `(sg, pcog)`.
 
-        Unlike `ThreePhaseRelPermTable.from_deck_file`, the second family does
+        Unlike `ThreePhaseRelPermTable.from_deck`, the second family does
         not need `SOF2`/`SOF3` here since capillary pressure has no oil-relative
         component — both `SWFN` and `SGFN` already carry their own Pc column.
 
@@ -1028,7 +1028,7 @@ class ThreePhaseCapillaryPressureTable(
             warnings.warn(
                 f"Oil-water keyword `{oil_water_keyword}` not found for region index "
                 f"{region_index}. Cannot build a three-phase capillary pressure table. "
-                "Use `TwoPhaseCapillaryPressureTable.from_deck_file(..., system='gas_oil')` "
+                "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='gas_oil')` "
                 "to build a gas-oil only table.",
                 UserWarning,
                 stacklevel=2,
@@ -1042,7 +1042,7 @@ class ThreePhaseCapillaryPressureTable(
             warnings.warn(
                 f"Gas-oil keyword `{gas_oil_keyword}` not found for region index "
                 f"{region_index}. Cannot build a three-phase capillary pressure table. "
-                "Use `TwoPhaseCapillaryPressureTable.from_deck_file(..., system='oil_water')` "
+                "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='oil_water')` "
                 "to build an oil-water only table.",
                 UserWarning,
                 stacklevel=2,
@@ -1052,13 +1052,13 @@ class ThreePhaseCapillaryPressureTable(
                 f"ThreePhaseCapillaryPressureTable not found at region index {region_index}."
             )
 
-        oil_water_table = TwoPhaseCapillaryPressureTable.from_deck_file(
+        oil_water_table = TwoPhaseCapillaryPressureTable.from_deck(
             deck_file=deck_file,
             system="oil_water",
             keyword_family=family,
             **shared_kwargs,
         )
-        gas_oil_table = TwoPhaseCapillaryPressureTable.from_deck_file(
+        gas_oil_table = TwoPhaseCapillaryPressureTable.from_deck(
             deck_file=deck_file,
             system="gas_oil",
             keyword_family=family,

@@ -1254,7 +1254,7 @@ class Grid(
                 )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         *,

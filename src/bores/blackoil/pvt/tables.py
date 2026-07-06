@@ -1801,7 +1801,7 @@ class PVTTables(StoreSerializable):
     ```python
     tables = PVTTables.from_dataset(dataset, interpolation_method="cubic")
     tables = PVTTables.from_files(oil="oil.h5", gas="gas.h5")
-    tables = PVTTables.from_deck_file(deck_file, temperature=200.0)
+    tables = PVTTables.from_deck(deck_file, temperature=200.0)
     ```
     """
 
@@ -1937,7 +1937,7 @@ class PVTTables(StoreSerializable):
         )
 
     @classmethod
-    def from_deck_file(
+    def from_deck(
         cls,
         deck_file: DeckFile,
         temperature: typing.Union[Temperature, Number],
@@ -1951,7 +1951,7 @@ class PVTTables(StoreSerializable):
         """
         Build `PVTTables` for a single PVT region from a parsed `DeckFile`.
 
-        Convenience wrapper around `PVTRegions.from_deck_file` for the
+        Convenience wrapper around `PVTRegions.from_deck` for the
         common single-region case.
 
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
@@ -1967,7 +1967,7 @@ class PVTTables(StoreSerializable):
         """
         from bores.blackoil.pvt.regions import PVTRegions
 
-        regions = PVTRegions.from_deck_file(
+        regions = PVTRegions.from_deck(
             deck_file=deck_file,
             temperature=temperature,
             interpolation_method=interpolation_method,
