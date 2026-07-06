@@ -20,7 +20,7 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.temperature import TemperatureRegions
+from bores.reservoir.temperature import Temperature
 from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     Boolean,
@@ -859,7 +859,7 @@ class PVTTable(StoreSerializable):
             temperature_arr > max_temperature
         ):
             logger.warning(
-                "TemperatureRegions extrapolation: queried T ∈ [%.1f, %.1f] °F, "
+                "Temperature extrapolation: queried T ∈ [%.1f, %.1f] °F, "
                 "table range [%.1f, %.1f] °F",
                 float(temperature_arr.min()),
                 float(temperature_arr.max()),
@@ -984,13 +984,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:
@@ -1942,7 +1940,7 @@ class PVTTables(StoreSerializable):
     def from_deck_file(
         cls,
         deck_file: DeckFile,
-        temperature: typing.Union[TemperatureRegions, Number],
+        temperature: typing.Union[Temperature, Number],
         pvtnum: int = 1,
         *,
         interpolation_method: InterpolationMethod = "linear",
@@ -1959,7 +1957,7 @@ class PVTTables(StoreSerializable):
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
         :param temperature: Reservoir temperature (°F) - used as the single
             temperature value for deck-loaded isothermal tables, or a reservoir
-            regional `TemperatureRegions` instance.
+            regional `Temperature` instance.
         :param pvtnum: 1-based PVT region index to extract (default 1).
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param validate: Run physical-consistency checks.

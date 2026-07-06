@@ -1,6 +1,5 @@
 import logging
 import typing
-from collections.abc import Mapping
 
 import numpy as np
 import numpy.typing as npt
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["RockFluidRegions"]
 
 
-class RockFluidRegions(StoreSerializable, Mapping[int, RockFluidTables]):
+class RockFluidRegions(StoreSerializable):
     """
     Multi-region rock-fluid tables keyed by 1-based `SATNUM` region index.
 

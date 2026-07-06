@@ -2,7 +2,6 @@
 
 import typing
 
-import attrs
 from typing_extensions import Self
 
 from bores.constants import (
@@ -12,8 +11,7 @@ from bores.constants import (
 )
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.reservoir.boundary_conditions import BoundaryConditions
-from bores.reservoir.faults import Fault, apply_faults, remove_faults
+from bores.reservoir.faults import Fault, apply_faults
 from bores.reservoir.regions import Regions
 from bores.reservoir.rock import Rock
 from bores.reservoir.transmissibility import (
@@ -65,7 +63,6 @@ class ReservoirModel(
         "grid": Grid,
         "rock": Rock,
         "regions": typing.Optional[Regions],
-        "boundary_conditions": typing.Optional[BoundaryConditions],
         "unit_system": typing.Optional[UnitSystem],
     },
 ):
@@ -82,7 +79,6 @@ class ReservoirModel(
         grid: Grid,
         rock: Rock,
         regions: typing.Optional[Regions] = None,
-        boundary_conditions: typing.Optional[BoundaryConditions] = None,
         faults: typing.Optional[typing.Collection[Fault]] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
@@ -109,10 +105,6 @@ class ReservoirModel(
 
         # Normalise property groups to the target unit system.
         rock = rock.convert(target_unit_system, table=unit_conversion_table)
-        if boundary_conditions is not None:
-            boundary_conditions = boundary_conditions.convert(
-                target_unit_system, table=unit_conversion_table
-            )
         if faults is not None:
             grid = apply_faults(grid, *faults)
 
@@ -124,8 +116,6 @@ class ReservoirModel(
 
         self.regions = regions
         """Per-cell region assignments metadata."""
-
-        self.boundary_conditions = boundary_conditions
 
         self.unit_system = target_unit_system
         """
@@ -281,11 +271,6 @@ class ReservoirModel(
             grid=self.grid.convert(target, table=table),
             rock=self.rock.convert(target, table=table),
             regions=self.regions,
-            boundary_conditions=(
-                self.boundary_conditions.convert(target, table=table)
-                if self.boundary_conditions is not None
-                else None
-            ),
             unit_system=target,
         )
         # Transmissibility cache is invalidated automatically since rock was

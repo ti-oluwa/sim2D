@@ -1,7 +1,6 @@
 import logging
 import typing
 import warnings
-from collections.abc import Mapping
 
 import attrs
 import numpy as np
@@ -20,8 +19,8 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.reservoir.temperature import (
+    Temperature,
     TemperatureGradient,
-    TemperatureRegions,
     TemperatureSpec,
     TemperatureTable,
 )
@@ -88,7 +87,7 @@ class PVTRegion(Serializable):
         )
 
 
-class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
+class PVTRegions(StoreSerializable):
     """
     Multi-region PVT tables keyed by 1-based `PVTNUM` region index.
 
@@ -175,7 +174,7 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
     def from_deck_file(
         cls,
         deck_file: DeckFile,
-        temperature: typing.Union[TemperatureRegions, Number],
+        temperature: typing.Union[Temperature, Number],
         *,
         interpolation_method: InterpolationMethod = "linear",
         validate: bool = True,
@@ -190,7 +189,7 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
 
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
         :param temperature: Reservoir temperature (°F) used for all regions,
-            or a reservoir regional `TemperatureRegions` instance.
+            or a reservoir regional `Temperature` instance.
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param validate: Run physical-consistency checks.
         :param warn_on_extrapolation: Log warnings on extrapolation.
@@ -199,8 +198,8 @@ class PVTRegions(StoreSerializable, Mapping[int, PVTRegion]):
         regions = load_pvt_regions(
             deck_file=deck_file,
             temperature=temperature
-            if isinstance(temperature, TemperatureRegions)
-            else TemperatureRegions(temperature, unit_system=UnitSystem.FIELD),
+            if isinstance(temperature, Temperature)
+            else Temperature(temperature, unit_system=UnitSystem.FIELD),
             interpolation_method=interpolation_method,
             validate=validate,
             warn_on_extrapolation=warn_on_extrapolation,
@@ -435,7 +434,7 @@ def _build_oil_data_from_pvto(
     # Group records by Rs value
     solution_gor_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
     for row in pvto_records:
-        solution_gor = float(row["rs"])
+        solution_gor = row["rs"]
         solution_gor_to_rows.setdefault(solution_gor, []).append(row)
 
     if len(solution_gor_to_rows) < 2:
@@ -1063,7 +1062,7 @@ def _build_water_data_from_pvtw(
 
 def load_pvt_regions(
     deck_file: DeckFile,
-    temperature: TemperatureRegions,
+    temperature: Temperature,
     *,
     interpolation_method: InterpolationMethod = "linear",
     validate: bool = True,
@@ -1086,7 +1085,7 @@ def load_pvt_regions(
     takes precedence.
 
     :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
-    :param temperature: `TemperatureRegions` instance.
+    :param temperature: `Temperature` instance.
     :param interpolation_method: `"linear"` (default) or `"cubic"`.
     :param validate: Run physical-consistency checks.
     :param warn_on_extrapolation: Log warnings when queries exceed table bounds.

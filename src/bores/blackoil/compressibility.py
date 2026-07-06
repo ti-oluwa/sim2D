@@ -9,7 +9,6 @@ transmissibility multiplier as explicit functions of pressure).
 import logging
 import typing
 import warnings
-from collections.abc import Mapping
 
 import numpy as np
 import numpy.typing as npt
@@ -676,9 +675,7 @@ class RockCompressibilityTable(StoreSerializable):
         )
 
 
-class RockCompressibilityRegions(
-    StoreSerializable, Mapping[int, RockCompressibilityTable]
-):
+class RockCompressibilityRegions(StoreSerializable):
     """
     Multi-region rock compressibility tables keyed by 1-based `ROCKNUM` index.
 
@@ -782,6 +779,7 @@ class RockCompressibilityRegions(
         pressure: CellArray,
         rock_region: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
+        dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
         """
         Derive per-cell `RockCompressibility` from this `RockCompressibilityRegions`.
@@ -800,11 +798,10 @@ class RockCompressibilityRegions(
         :returns: Per-cell `RockCompressibility`.
         """
         n_cells = len(pressure)
-        dtype = np.dtype(self._tables[next(iter(self._tables))].dtype)
+        first_table = self._tables[next(iter(self._tables))]
+        dtype = np.dtype(first_table.dtype) if dtype is None else dtype
         target_unit_system = (
-            unit_system
-            if unit_system is not None
-            else self._tables[next(iter(self._tables))].unit_system
+            unit_system if unit_system is not None else first_table.unit_system
         )
         effective_compressibility = np.empty(n_cells, dtype=dtype)
         reference_pressure = np.empty(n_cells, dtype=dtype)

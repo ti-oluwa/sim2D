@@ -255,7 +255,7 @@ def as_pyvista_grid(
     # Attach caller-supplied arrays
     if cell_data:
         for name, array in cell_data.items():
-            arr = np.asarray(array, copy=False)
+            arr = np.asarray(array)
             if arr.shape[0] != n_cells:
                 raise ValueError(
                     f"cell_data[{name!r}] has {arr.shape[0]} entries "

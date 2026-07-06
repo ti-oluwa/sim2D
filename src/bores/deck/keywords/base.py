@@ -866,8 +866,8 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         tables: typing.List[PVTTable] = []
         current_table: PVTTable = []
         current_pk_value: typing.Optional[float] = None
-        pk_col_name = self.primary_key
-        assert pk_col_name is not None  # guarded by caller
+        pk_column_name = self.primary_key
+        assert pk_column_name is not None  # guarded by caller
 
         segments = body.split("/")
         i = 0
@@ -897,11 +897,10 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
             # Multiple tokens -> a data row. Prepend the primary-key column.
             row = self._row_from_tokens(tokens)
             if current_pk_value is not None:
-                row[pk_col_name] = current_pk_value
+                row[pk_column_name] = current_pk_value
             current_table.append(row)
 
         # Flush any remaining rows.
         if current_table:
             tables.append(current_table)
-
         return tables

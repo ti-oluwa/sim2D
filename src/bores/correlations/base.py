@@ -1,3 +1,6 @@
+import typing
+
+
 def PropsSI(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
     """
     Wrapper for `CoolProp.CoolProp.PropsSI`.

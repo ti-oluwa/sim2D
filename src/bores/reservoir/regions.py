@@ -78,7 +78,7 @@ class Regions(StoreSerializable):
     """
 
     @classmethod
-    def from_deck_file(cls, deck_file: DeckFile, n_cells: int) -> Self:
+    def from_deck_file(cls, deck_file: DeckFile, *, n_cells: int) -> Self:
         """
         Build `Regions` from a parsed DeckFile.
 

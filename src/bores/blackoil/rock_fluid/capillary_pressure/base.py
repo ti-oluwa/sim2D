@@ -38,13 +38,15 @@ __all__ = [
 ]
 
 
-class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
+class CapillaryPressureTable(StoreSerializable):
     """
     Protocol for a capillary pressure model that computes
     capillary pressures based on fluid saturations.
     """
 
     __abstract_serializable__ = True
+
+    unit_system: UnitSystem
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         return FluidPhase.WATER
@@ -112,6 +114,15 @@ class CapillaryPressureTable(StoreSerializable, SupportsUnitSystem):
             **kwargs,
         )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        raise NotImplementedError
+
 
 _CAPILLARY_PRESSURE_TABLES: typing.Dict[str, typing.Type[CapillaryPressureTable]] = {}
 """Registry for capillary pressure table types."""
@@ -155,7 +166,6 @@ def get_capillary_pressure_table(name: str) -> typing.Type[CapillaryPressureTabl
         return _CAPILLARY_PRESSURE_TABLES[name]
 
 
-@capillary_pressure_table
 @attrs.frozen
 class TwoPhaseCapillaryPressureTable(
     Serializable,
@@ -519,7 +529,7 @@ class TwoPhaseCapillaryPressureTable(
         number_of_endpoint_extra_points: int = 30,
         spacing: Spacing = "cosine",
         dtype: npt.DTypeLike = None,
-    ) -> "TwoPhaseCapillaryPressureTable":
+    ) -> Self:
         """
         Build a `TwoPhaseCapillaryPressureTable` for one saturation region from a `DeckFile`.
 

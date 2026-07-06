@@ -21,7 +21,7 @@ from bores.typing import (
 )
 from bores.utils import scale, scale_and_offset
 
-__all__ = ["TemperatureRegions", "TemperatureGradient", "TemperatureTable"]
+__all__ = ["Temperature", "TemperatureGradient", "TemperatureTable"]
 
 
 @attrs.frozen(slots=True)
@@ -199,7 +199,7 @@ TemperatureSpec = typing.Union[Number, TemperatureGradient, TemperatureTable]
 
 
 @attrs.frozen(slots=True)
-class TemperatureRegions(StoreSerializable):
+class Temperature(StoreSerializable):
     """
     Reservoir temperature specification supporting per-region scalars,
     gradients, and depth-indexed tables.
@@ -224,12 +224,12 @@ class TemperatureRegions(StoreSerializable):
     The simplest case - one temperature for all cells:
 
     ```python
-    temps = TemperatureRegions(default=200.0, unit_system=UnitSystem.FIELD)
+    temps = Temperature(default=200.0, unit_system=UnitSystem.FIELD)
     ```
 
     Per-region scalars:
     ```python
-    temps = TemperatureRegions(
+    temps = Temperature(
         regions={1: 180.0, 2: 210.0},
         unit_system=UnitSystem.FIELD,
     )
@@ -238,7 +238,7 @@ class TemperatureRegions(StoreSerializable):
     Mixed - some regions use a gradient, one a table:
 
     ```python
-    temps = TemperatureRegions(
+    temps = Temperature(
         default=200.0,
         regions={
             1: TemperatureGradient(reference_temperature=180.0, ...),
@@ -372,7 +372,7 @@ class TemperatureRegions(StoreSerializable):
 
         :param target: Target `UnitSystem`.
         :param table: Optional custom conversion table.
-        :returns: New `TemperatureRegions` in *target* units.
+        :returns: New `Temperature` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -400,7 +400,7 @@ class TemperatureRegions(StoreSerializable):
         cls, deck_file: DeckFile, *, dtype: npt.DTypeLike = None
     ) -> Self:
         """
-        Build a `TemperatureRegions` from a parsed `DeckFile`.
+        Build a `Temperature` from a parsed `DeckFile`.
 
         Keyword priority (highest to lowest):
 
@@ -416,7 +416,7 @@ class TemperatureRegions(StoreSerializable):
 
         :param deck_file: Parsed `DeckFile` containing SOLUTION-section
             keywords.
-        :returns: `TemperatureRegions` or raises `ValidationError` when
+        :returns: `Temperature` or raises `ValidationError` when
             no temperature keyword is found.
         :raises ValidationError: If neither `TEMPVD` nor `RTEMP` is
             present in the deck.

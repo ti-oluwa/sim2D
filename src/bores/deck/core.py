@@ -129,7 +129,7 @@ def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
             source_dir = candidate.parent
             try:
                 text = candidate.read_text(encoding=encoding)
-            except OSError as exc:
+            except (OSError, UnicodeDecodeError) as exc:
                 raise DeckParseError(
                     f"Cannot read deck file {source!r}: {exc}"
                 ) from exc

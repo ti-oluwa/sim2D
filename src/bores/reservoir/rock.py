@@ -414,6 +414,7 @@ class Rock(StoreSerializable):
             pressure=pressure,
             rock_region=rock_region,
             unit_system=unit_system,
+            dtype=dtype,
         )
         return cls(
             porosity=_required("PORO"),

@@ -26,7 +26,6 @@ from bores.typing import (
     Number,
     NumberArray,
     OneDimension,
-    SupportsUnitSystem,
     UnitConversionTable,
     UnitSystem,
 )
@@ -347,7 +346,7 @@ class BoundaryConditionType(enum.Enum):
     FLUX = "flux"
 
 
-class BoundaryCondition(StoreSerializable, SupportsUnitSystem):
+class BoundaryCondition(StoreSerializable):
     """
     Base class for all boundary conditions.
 
@@ -383,6 +382,8 @@ class BoundaryCondition(StoreSerializable, SupportsUnitSystem):
     """
 
     __abstract_serializable__ = True
+
+    unit_system: UnitSystem
 
     @property
     def condition_type(self) -> BoundaryConditionType:
@@ -440,6 +441,15 @@ class BoundaryCondition(StoreSerializable, SupportsUnitSystem):
         :returns: Shape `(n_faces,)` array from `evaluate`.
         """
         return self.evaluate(face_positions, state, reservoir, time, dtype)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        raise NotImplementedError
 
 
 # Registry of concrete boundary condition classes

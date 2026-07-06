@@ -1,5 +1,5 @@
 """
-PVT (Pressure-Volume-TemperatureRegions) property tables for reservoir simulation.
+PVT (Pressure-Volume-Temperature) property tables for reservoir simulation.
 
 Architecture overview
 ---------------------
@@ -47,7 +47,8 @@ This means that at simulation time every property - primary or derived - is
 evaluated by a single interpolator call with no per-step arithmetic.
 """
 
-from ...pvt.base import *  # noqa
-from ...pvt.data import *  # noqa
-from ...pvt.factories import *  # noqa
-from ...pvt.regions import *  # noqa
+from .data import *
+from .factories import *
+from .regions import *
+from .static import *
+from .tables import *

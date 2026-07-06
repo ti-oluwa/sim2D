@@ -358,7 +358,15 @@ class EquilibriumInfo(StoreSerializable):
         )
 
 
-class EquilibriumRegions(StoreSerializable):
+class EquilibriumRegions(
+    StoreSerializable,
+    fields={
+        "regions": typing.Dict[int, EquilibriumInfo],
+        "rsvd_tables": typing.Optional[typing.Dict[int, DepthTable]],
+        "rvvd_tables": typing.Optional[typing.Dict[int, DepthTable]],
+        "unit_system": UnitSystem,
+    },
+):
     """
     Container mapping 1-based `EQLNUM` region index to `EquilibriumInfo`.
 

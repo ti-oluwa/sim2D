@@ -62,7 +62,7 @@ first cut:**
   constants (density x standard gravity, expressed per `UnitSystem`), not
   derived from `bores.constants`. Worth double-checking against that
   module's conventions, particularly for LAB units.
-- `TemperatureRegions.from_deck_file` is called with just `deck_file`;
+- `Temperature.from_deck_file` is called with just `deck_file`;
   verify this matches its actual signature - it was not directly
   re-confirmed while writing this module.
 - An `EQLNUM` region spanning multiple `PVTNUM` regions is not supported
@@ -75,7 +75,7 @@ import typing
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.model import BlackOilModel
+from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.pvt.tables import PVTTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -84,8 +84,8 @@ from bores.reservoir.equilibrium import DepthTable, EquilibriumInfo, Equilibrium
 from bores.reservoir.model import ReservoirModel
 from bores.reservoir.state import Hysteresis, State
 from bores.reservoir.temperature import (
+    Temperature,
     TemperatureGradient,
-    TemperatureRegions,
     TemperatureTable,
 )
 from bores.typing import CellArray, IntCellArray, Number, UnitSystem
@@ -418,7 +418,7 @@ def _initialize_tilted_subdivision_equilibrium(
 
 def initialize_equilibrium_state(
     reservoir_model: ReservoirModel,
-    black_oil_model: BlackOilModel,
+    pvt_regions: PVTRegions,
     equilibrium_regions: EquilibriumRegions,
     temperature: CellArray,
     *,
@@ -481,7 +481,7 @@ def initialize_equilibrium_state(
                 "region must map to exactly one PVT region for "
                 "`initialize_equilibrium_state`."
             )
-        pvt_region = black_oil_model.pvt_regions.for_region(int(region_pvtnum[0]))
+        pvt_region = pvt_regions.for_region(int(region_pvtnum[0]))
 
         rsvd_table = (
             equilibrium_regions.rsvd_tables.get(info.rsvd_table)
@@ -536,20 +536,20 @@ def initialize_equilibrium_state(
 
 
 def _temperature_array_from_regions(
-    temperature_regions: TemperatureRegions,
+    temperature_regions: Temperature,
     eqlnum: IntCellArray,
     depths: CellArray,
     dtype: npt.DTypeLike = None,
 ) -> CellArray:
     """
-    Evaluate a `TemperatureRegions` at every cell's depth, grouped by
+    Evaluate a `Temperature` at every cell's depth, grouped by
     `EQLNUM` to avoid redundant `for_region` lookups.
 
     Duck-types each region's spec: a bare number is broadcast, anything
     with an `at_depth` method (e.g. a depth-dependent table) is evaluated
     per cell.
 
-    :param temperature_regions: Source `TemperatureRegions`.
+    :param temperature_regions: Source `Temperature`.
     :param eqlnum: Shape `(n_cells,)` equilibration region per cell.
     :param depths: Shape `(n_cells,)` cell centroid depths.
     :returns: Shape `(n_cells,)` temperature per cell.
@@ -569,7 +569,7 @@ def _temperature_array_from_regions(
 def _resolve_temperature(
     reservoir_model: ReservoirModel,
     deck_file: typing.Optional[DeckFile],
-    temperature: typing.Optional[typing.Union[TemperatureRegions, Number]],
+    temperature: typing.Optional[typing.Union[Temperature, Number]],
     dtype: npt.DTypeLike = None,
 ) -> CellArray:
     """
@@ -581,19 +581,19 @@ def _resolve_temperature(
     n_cells = reservoir_model.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-    source: typing.Optional[TemperatureRegions] = None
-    if isinstance(temperature, TemperatureRegions):
+    source: typing.Optional[Temperature] = None
+    if isinstance(temperature, Temperature):
         source = temperature
     elif temperature is not None:
         return typing.cast(CellArray, np.full(n_cells, float(temperature), dtype=dtype))
     elif deck_file is not None and (
         deck_file.has("RTEMP") or deck_file.has("TEMPVD") or deck_file.has("RTEMPVD")
     ):
-        source = TemperatureRegions.from_deck_file(deck_file, dtype=dtype)
+        source = Temperature.from_deck_file(deck_file, dtype=dtype)
     else:
         raise ValidationError(
             "No temperature source available. Pass `temperature=` explicitly "
-            "(a constant, or a `TemperatureRegions`), or supply a `deck_file` "
+            "(a constant, or a `Temperature`), or supply a `deck_file` "
             "with `RTEMP`/`TEMPVD`."
         )
 
@@ -610,11 +610,11 @@ def _resolve_temperature(
 
 def initialize_state(
     reservoir_model: ReservoirModel,
-    black_oil_model: BlackOilModel,
+    pvt_regions: PVTRegions,
     *,
     deck_file: typing.Optional[DeckFile] = None,
     equilibrium_regions: typing.Optional[EquilibriumRegions] = None,
-    temperature: typing.Optional[typing.Union[TemperatureRegions, Number]] = None,
+    temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
     water_saturation: typing.Optional[CellArray] = None,
     gas_saturation: typing.Optional[CellArray] = None,
@@ -650,7 +650,7 @@ def initialize_state(
         supplied directly via the kwargs below.
     :param equilibrium_regions: Parsed `EquilibriumRegions`; takes
         precedence over `deck_file`'s `EQUIL` keyword if both are given.
-    :param temperature: Constant or `TemperatureRegions`; takes precedence
+    :param temperature: Constant or `Temperature`; takes precedence
         over `deck_file`'s `RTEMP`/`TEMPVD`.
     :param pressure: Explicit per-cell pressure; overrides EQUIL for these
         cells only (other fields for the same cells may still come from EQUIL).
@@ -678,11 +678,11 @@ def initialize_state(
     n_cells = reservoir_model.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     unit_system = reservoir_model.unit_system
-    if black_oil_model.unit_system != unit_system:
+    if pvt_regions.unit_system != unit_system:
         raise ValidationError(
             f"`reservoir_model.unit_system` ({unit_system.value!r}) does not "
-            "match `black_oil_model.unit_system` "
-            f"({black_oil_model.unit_system.value!r})."
+            "match `pvt_regions.unit_system` "
+            f"({pvt_regions.unit_system.value!r})."
         )
 
     temperature_arr = _resolve_temperature(
@@ -725,7 +725,7 @@ def initialize_state(
                 )
         equilibrium = initialize_equilibrium_state(
             reservoir_model,
-            black_oil_model,
+            pvt_regions,
             equilibrium_regions,
             temperature_arr,
             depth_step=depth_step,
@@ -804,7 +804,7 @@ def initialize_state(
 
     for region_number in np.unique(pvtnum):
         mask = pvtnum == region_number
-        pvt_region = black_oil_model.pvt_regions.for_region(int(region_number))
+        pvt_region = pvt_regions.for_region(int(region_number))
         static = pvt_region.static
         if static.stock_tank_oil_density is None:
             raise ValidationError(
