@@ -21,7 +21,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.reservoir.temperature import TemperatureRegions
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     Boolean,
     BooleanArray,

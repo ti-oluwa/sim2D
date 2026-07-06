@@ -23,8 +23,8 @@ from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype, get_floating_point_info
-from bores.serialization import make_serializable_type_registrar
-from bores.stores import StoreSerializable
+from bores.serialization.base import make_serializable_type_registrar
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     FluidPhase,
     NDimension,

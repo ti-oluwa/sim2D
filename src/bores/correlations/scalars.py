@@ -7,10 +7,10 @@ import warnings
 
 import numba  # type: ignore[import-untyped]
 import numpy as np
-from CoolProp.CoolProp import PropsSI  # type: ignore[import, import-untyped]
 from scipy.optimize import brentq, root_scalar  # type: ignore[import-untyped]
 
 from bores.constants import c
+from bores.correlations.base import PropsSI
 from bores.errors import ComputationError, ValidationError
 from bores.typing import NDimension, Number, NumberOrArray, ZFactorMethod
 from bores.utils import clip

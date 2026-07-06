@@ -10,7 +10,7 @@ from typing_extensions import Self, TypedDict
 
 from bores.constants import c
 from bores.errors import TimingError, ValidationError
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 
 __all__ = ["Time", "Timer", "TimerState"]
 

@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization import Serializable
+from bores.serialization.base import Serializable
 from bores.typing import ArrayLike, NDimension, NDimensionalGrid, Orientation
 
 __all__ = [

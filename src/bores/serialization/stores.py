@@ -24,7 +24,7 @@ from typing_extensions import ParamSpec, Self
 from zarr.storage import StoreLike  # type: ignore[import-untyped]
 
 from bores.errors import StorageError, ValidationError
-from bores.serialization import Serializable, SerializableT
+from bores.serialization.base import Serializable, SerializableT
 from bores.utils import safe_json_dumps, safe_json_loads
 
 __all__ = [

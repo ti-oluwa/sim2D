@@ -14,7 +14,7 @@ from typing_extensions import Self
 
 from bores.errors import StorageError, StreamError
 from bores.states import ModelState, validate_state
-from bores.stores import DataStore, EntryMeta
+from bores.serialization.stores import DataStore, EntryMeta
 from bores.typing import NDimension
 from bores.utils import _close_iter
 

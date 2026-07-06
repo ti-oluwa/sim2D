@@ -9,7 +9,7 @@ from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.rock_fluid.regions import RockFluidRegions
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import UnitSystem
 
 __all__ = ["BlackOilModel"]

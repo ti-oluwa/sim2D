@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 __all__ = ["array", "clip", "is_array"]
 
 
+# NOTE: Future me! Do not import `bores.constant` at top level in this file. It leads to a circular import issue.
+
+
 def array(obj: typing.Any, **kwargs: typing.Any):
     """
     Wrapper around `np.array` to enforce global dtype.

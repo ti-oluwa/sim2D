@@ -25,7 +25,7 @@ from bores.blackoil.rock_fluid.relperm.mixing_rules import (
 )
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.serialization import Serializable
+from bores.serialization.base import Serializable
 from bores.typing import (
     FluidPhase,
     NDimension,

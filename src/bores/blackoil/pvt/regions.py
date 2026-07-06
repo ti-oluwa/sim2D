@@ -25,8 +25,8 @@ from bores.reservoir.temperature import (
     TemperatureSpec,
     TemperatureTable,
 )
-from bores.serialization import Serializable
-from bores.stores import StoreSerializable
+from bores.serialization.base import Serializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     FloatArray,
     FluidPhase,

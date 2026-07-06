@@ -9,7 +9,7 @@ from bores.correlations import scalars
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import CellArray, Number, UnitSystem
 from bores.utils import scale
 

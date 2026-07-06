@@ -11,7 +11,7 @@ from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
 from bores.reservoir.regions import _load_region
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     CellArray,
     IntCellArray,

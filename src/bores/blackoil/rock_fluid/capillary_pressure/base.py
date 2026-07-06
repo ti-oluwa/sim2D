@@ -15,8 +15,8 @@ from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization import Serializable, make_serializable_type_registrar
-from bores.stores import StoreSerializable
+from bores.serialization.base import Serializable, make_serializable_type_registrar
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     CapillaryPressureDerivatives,
     CapillaryPressures,

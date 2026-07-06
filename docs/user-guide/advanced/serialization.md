@@ -209,7 +209,7 @@ restored_config = type(config).load(data)
 If you create custom classes that need to be serialized, you can implement the `__dump__` and `__load__` methods:
 
 ```python
-from bores.serialization import Serializable
+from bores.serialization.base import Serializable
 
 class MyData(Serializable):
     def __init__(self, values):

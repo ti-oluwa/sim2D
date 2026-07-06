@@ -50,7 +50,7 @@ from bores.solvers import explicit, implicit
 from bores.solvers.base import normalize_saturations
 from bores.solvers.rates import WellRates, compute_well_rates
 from bores.states import ModelState, RatesInfo
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.transmissibility import FaceTransmissibilities
 from bores.typing import MiscibilityModel, NDimension, NDimensionalGrid, ThreeDimensions
 from bores.updates import update_fluid_properties, update_residual_saturation_grids

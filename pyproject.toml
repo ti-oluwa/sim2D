@@ -11,7 +11,7 @@ where = ["src"]
 [project]
 name = "bores-framework"
 version = "0.1.0"
-description = "3D 3-Phase Black-Oil Reservoir Modelling and Simulation Framework (BORES)."
+description = "Black-Oil REservoir Modelling and Simulation in Python."
 authors = [
     { name = "tioluwa", email = "tioluwa.dev@gmail.com" }
 ]
@@ -21,9 +21,9 @@ maintainers = [
 license = { file = "LICENSE" }
 readme = "README.md"
 keywords = [
-    "reservoir-simulation", "black-oil", "petroleum-engineering", "reservoir-modeling",
-    "oil-gas", "eor", "reservoir-engineering", "numerical-simulation", "flow-simulation",
-    "multiphase-flow", "impes", "finite-volume", "reservoir-physics", "pvt",
+    "reservoir-simulation", "black-oil", "eor", 
+    "reservoir-engineering", "numerical-simulation",
+    "multiphase-flow",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -43,7 +43,6 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "attrs>=25.3.0",
-    "coolprop>=6.8.0",
     "imageio>=2.37.0",
     "intel-cmplr-lib-rt>=2025.3.1; sys_platform != 'darwin'",
     "ipython>=8.37.0",
@@ -52,7 +51,6 @@ dependencies = [
     "plotly>=6.2.0",
     "pyamg>=5.3.0",
     "scikit-image>=0.25.2",
-    "thermo>=0.4.2",
     "trame>=3.12.0",
     "typing-extensions>=4.15.0",
     # Install MKL versions only on x86_64 Windows/Linux (via uv with numpy-mkl index)
@@ -63,9 +61,6 @@ dependencies = [
     "numpy>=2.0.0; sys_platform == 'darwin' or platform_machine != 'x86_64'",
     "scipy>=1.13.0; sys_platform == 'darwin' or platform_machine != 'x86_64'",
     "cachetools>=6.2.4",
-    "h5py>=3.15.1",
-    "zarr>=2.18.3",
-    "numcodecs>=0.12.1",
     "cattrs>=25.3.0",
     "orjson>=3.11.5",
     "types-pyyaml>=6.0.12.20250915",
@@ -73,11 +68,6 @@ dependencies = [
     "scipy-stubs>=1.15.3.0",
     "tqdm>=4.67.3",
     "rich>=14.3.3",
-    "tbb>=2022.3.1",
-    "tbb-devel>=2022.3.1",
-    "tbb4py>=2022.3.1",
-    "meshio>=5.3.5",
-    "pyvista>=0.47.2",
 ]
 
 
@@ -113,6 +103,22 @@ select = ["I"]  # Enable all isort rules, including I001
 pyvista = [
     "pyvista[jupyter]>=0.44.0",
     "imageio-ffmpeg>=0.6.0",
+]
+stores = [
+    "h5py>=3.15.1",
+    "zarr>=2.18.3",
+    "numcodecs>=0.12.1",
+]
+meshio = [
+    "meshio>=5.3.5",
+]
+coolprop = [
+    "coolprop>=6.8.0",
+]
+tbb = [
+    "tbb>=2022.3.1",
+    "tbb-devel>=2022.3.1",
+    "tbb4py>=2022.3.1",
 ]
 
 [dependency-groups]

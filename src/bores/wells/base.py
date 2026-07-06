@@ -12,14 +12,14 @@ from typing_extensions import Self
 
 from bores.blackoil.tables.pvt import PVTTables
 from bores.errors import ValidationError
-from bores.serialization import (
+from bores.serialization.base import (
     make_registry_deserializer,
     make_registry_serializer,
     make_serializable_type_registrar,
     register_type_deserializer,
     register_type_serializer,
 )
-from bores.stores import StoreSerializable
+from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     Coordinates,
     FluidPhase,
