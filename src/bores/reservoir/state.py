@@ -195,18 +195,13 @@ class State(StoreSerializable):
     """
 
     water_saturation: CellArray
-    """
-    Shape (n_cells,) - water-phase saturation (fraction, [0, 1]).
-
-    Updated explicitly in the IMPES saturation step.
-    """
+    """Shape (n_cells,) - water-phase saturation (fraction, [0, 1])."""
 
     gas_saturation: CellArray
     """
     Shape (n_cells,) - free gas-phase saturation (fraction, [0, 1]).
 
     Includes only free (non-dissolved, non-vaporized) gas.
-    Updated explicitly in the IMPES saturation step.
     """
 
     solution_gor: CellArray

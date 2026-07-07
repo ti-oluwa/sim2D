@@ -12,14 +12,14 @@ df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # The reservoir
 grid = Grid.from_deck(df)
-regions = Regions.from_deck(df, n_cells=grid.n_cells)
+regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
 rock = Rock.from_deck(df, grid=grid, rock_regions=regions.rock_regions)
 reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 
 # The fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-rock_fluid = RockFluidRegions.from_deck(df)
+rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="stone_II_rule")
 black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
 # print(pvt.region(1).tables.oil.formation_volume_factor([4700, 3000], [200, 139], solution_gor=27))
 
@@ -29,9 +29,10 @@ initial_state = initialize_state(
     reservoir=reservoir,
     pvt=pvt,
     equilibrium=equilibrium,
+    rock_fluid=rock_fluid,
     temperature=temperature,
 )
-print(initial_state.vaporized_oil_ratio.mean())
+print(initial_state.water_saturation.mean())
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

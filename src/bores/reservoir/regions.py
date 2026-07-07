@@ -13,10 +13,15 @@ __all__ = ["Regions"]
 
 
 def _load_region_array(
-    deck_file: DeckFile, keyword: str, n_cells: int
+    deck_file: DeckFile,
+    keyword: str,
+    n_cells: int,
+    default_region: typing.Optional[int] = None,
 ) -> typing.Optional[IntCellArray]:
     arr = deck_file.get(keyword)
     if arr is None:
+        if default_region is not None:
+            return np.full(n_cells, default_region, dtype=np.int32)
         return None
 
     arr = arr.astype(np.int32, copy=False)
@@ -35,8 +40,8 @@ class Regions(StoreSerializable):
     selecting which PVT, saturation-function, equilibration, or rock
     compaction table applies to each cell.
 
-    All fields are optional - when absent, region 1 is assumed for every
-    cell (Eclipse default behaviour).
+    All fields are optional, but an important behaviour to note is that when absent,
+    region 1 is assumed for every cell in the `get_*_region` methods.
     """
 
     pvt_regions: typing.Optional[IntCellArray] = None
@@ -78,7 +83,9 @@ class Regions(StoreSerializable):
     """
 
     @classmethod
-    def from_deck(cls, deck_file: DeckFile, *, n_cells: int) -> Self:
+    def from_deck(
+        cls, deck_file: DeckFile, *, n_cells: int, use_default: bool = False
+    ) -> Self:
         """
         Build `Regions` from a parsed DeckFile.
 
@@ -86,15 +93,30 @@ class Regions(StoreSerializable):
 
         :param deck_file: Parsed DeckFile.
         :param n_cells: Number of active cells, for validation.
+        :param use_default: If True, missing keywords are filled with region 1.
+            Else, they are left as None. Default: False.
         :returns: `Regions` object loaded from ECLIPSE deck.
         """
+        default_region = 1 if use_default else None
         return cls(
-            pvt_regions=_load_region_array(deck_file, "PVTNUM", n_cells),
-            saturation_regions=_load_region_array(deck_file, "SATNUM", n_cells),
-            imbibition_regions=_load_region_array(deck_file, "IMBNUM", n_cells),
-            equilibrium_regions=_load_region_array(deck_file, "EQLNUM", n_cells),
-            rock_regions=_load_region_array(deck_file, "ROCKNUM", n_cells),
-            fluid_in_place_regions=_load_region_array(deck_file, "FIPNUM", n_cells),
+            pvt_regions=_load_region_array(
+                deck_file, "PVTNUM", n_cells=n_cells, default_region=default_region
+            ),
+            saturation_regions=_load_region_array(
+                deck_file, "SATNUM", n_cells=n_cells, default_region=default_region
+            ),
+            imbibition_regions=_load_region_array(
+                deck_file, "IMBNUM", n_cells=n_cells, default_region=default_region
+            ),
+            equilibrium_regions=_load_region_array(
+                deck_file, "EQLNUM", n_cells=n_cells, default_region=default_region
+            ),
+            rock_regions=_load_region_array(
+                deck_file, "ROCKNUM", n_cells=n_cells, default_region=default_region
+            ),
+            fluid_in_place_regions=_load_region_array(
+                deck_file, "FIPNUM", n_cells=n_cells, default_region=default_region
+            ),
         )
 
     def get_pvt_region(self, cell_idx: int) -> int:

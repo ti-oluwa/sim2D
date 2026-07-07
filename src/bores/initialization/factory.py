@@ -9,6 +9,7 @@ RESTART (not yet supported but planned) -> explicit array/keyword -> EQUIL
 """
 
 import typing
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -559,12 +560,9 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(
-        **{
-            name: _average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def _initialize_tilted_subdivision_equilibrium(
@@ -600,10 +598,20 @@ def initialize_equilibrium_arrays(
 
     :param rock_fluid: Optional `RockFluidRegions`; when given, saturations
         are computed via capillary-pressure inversion instead of a sharp
-        contact (see `_get_saturations_from_capillary_pressure`).
+        contact (see `_get_saturations_from_capillary_pressure`). Doing so
+        requires a `SATNUM` region per cell to select the right
+        capillary-pressure curve; if `reservoir.regions.saturation_regions`
+        is unavailable, every cell defaults to saturation region 1 and a
+        `UserWarning` is raised (see `Warns`).
     :raises ValidationError: If a cell's `EQLNUM` has no matching
         `EquilibriumRegion`, an `EQLNUM` region spans more than one
         `PVTNUM`/`SATNUM` region, or a required PVT table is missing.
+    :warns UserWarning: If `rock_fluid` is supplied but
+        `reservoir.regions.saturation_regions` (SATNUM) is unavailable;
+        every cell is assigned to saturation region 1 in that case. Supply
+        `reservoir.regions.saturation_regions` explicitly (e.g.
+        `np.ones(n_cells, dtype=np.int32)` for a single-region reservoir)
+        to make the assignment explicit and silence the warning.
     """
     n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
@@ -621,6 +629,17 @@ def initialize_equilibrium_arrays(
     saturation_regions: typing.Optional[IntCellArray] = (
         reservoir.regions.saturation_regions if reservoir.regions is not None else None
     )
+    if rock_fluid is not None and saturation_regions is None:
+        warnings.warn(
+            "`rock_fluid` was supplied but `reservoir.regions.saturation_regions` "
+            "(SATNUM) is unavailable; defaulting every cell to saturation region 1. "
+            "Set `reservoir.regions.saturation_regions` explicitly (e.g. "
+            "`np.ones(reservoir.n_cells, dtype=np.int32)` for a single-region "
+            "reservoir) to make this assignment explicit and silence this warning.",
+            UserWarning,
+        )
+        saturation_regions = typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
+
     depth = reservoir.depth
     connate_water_saturation = reservoir.rock.connate_water_saturation
     residual_oil_saturation_water = reservoir.rock.residual_oil_saturation_water_flood
@@ -651,12 +670,9 @@ def initialize_equilibrium_arrays(
 
         capillary_pressure: typing.Optional[CapillaryPressureTable] = None
         if rock_fluid is not None:
-            if saturation_regions is None:
-                raise ValidationError(
-                    "`rock_fluid` was supplied but `reservoir.regions."
-                    "saturation_regions` (SATNUM) is unavailable."
-                )
-
+            # Guaranteed non-`None` here: defaulted to region 1 (with a
+            # warning) above whenever `rock_fluid` is supplied.
+            assert saturation_regions is not None
             region_satnum = np.unique(saturation_regions[mask])
             if len(region_satnum) != 1:
                 raise ValidationError(
@@ -711,8 +727,8 @@ def initialize_equilibrium_arrays(
             )
         else:
             region_arrays = _initialize_tilted_subdivision_equilibrium(
-                depths=depth[mask],
-                **common_kwargs,  # type: ignore[arg-type]
+                depths=depth[mask],  # type: ignore[arg-type]
+                **common_kwargs,
             )
 
         pressure[mask] = region_arrays.pressure
@@ -827,6 +843,16 @@ def initialize_state(
     field needs it. `oil_saturation` is always derived as
     `1 - water_saturation - gas_saturation`, never taken from an explicit array.
 
+    `oil_bubble_point_pressure` and `gas_dew_point_pressure` are taken from
+    equilibration when it runs. Otherwise (fully explicit arrays, no EQUIL
+    involved), each PVTNUM region's own PVT tables are queried per-cell -
+    `oil_bubble_point_pressure` from `PVTTable.bubble_point_pressure(temperature,
+    solution_gor)` on the oil table, `gas_dew_point_pressure` from
+    `PVTTable.dew_point_pressure(temperature)` on the gas table - and only
+    fall back to an assumption where a table has no such data: saturated oil
+    (`oil_bubble_point_pressure = pressure`) and no free gas ever
+    (`gas_dew_point_pressure = 0`).
+
     Note:
         Ensure the unit system of all inputs (`reservoir`, `pvt`,..., and any explicit arrays) is consistent.
         The function will raise a `ValidationError` if there is a detected mismatch.
@@ -837,7 +863,10 @@ def initialize_state(
     :param equilibrium: Optional `EquilibriumRegions` for any fields not covered by an
         explicit array/keyword.
     :param rock_fluid: Optional `RockFluidRegions` for capillary-pressure-based
-        saturations instead of a sharp contact.
+        saturations instead of a sharp contact. If supplied and
+        `reservoir.regions.saturation_regions` (SATNUM) is unavailable, every
+        cell defaults to saturation region 1 and a `UserWarning` is raised
+        (see `initialize_equilibrium_arrays`).
     :param temperature: Optional per-cell temperature (constant or `Temperature`)
         for equilibration. If `None`, will be read from `deck_file` if available.
     :param pressure: Optional explicit pressure array (overrides `PRESSURE` keyword).
@@ -856,6 +885,9 @@ def initialize_state(
         explicit array/keyword nor `equilibrium`/`deck_file`, if `reservoir`
         and `pvt` unit systems disagree, or if saturations are physically
         inconsistent.
+    :warns UserWarning: If `rock_fluid` is supplied but
+        `reservoir.regions.saturation_regions` (SATNUM) is unavailable; see
+        `initialize_equilibrium_arrays`.
     """
     if equilibrium is None and deck_file is not None and deck_file.has("RESTART"):
         raise NotImplementedError(
@@ -958,16 +990,17 @@ def initialize_state(
         if equilibrium_arrays is not None
         else None,
     )
-    oil_bubble_point_pressure_arr = (
-        equilibrium_arrays.oil_bubble_point_pressure
-        if equilibrium_arrays is not None
-        else pressure_arr.copy()
-    )
-    gas_dew_point_pressure_arr = (
-        equilibrium_arrays.gas_dew_point_pressure
-        if equilibrium_arrays is not None
-        else np.zeros(n_cells, dtype=dtype)
-    )
+    if equilibrium_arrays is not None:
+        oil_bubble_point_pressure_arr = equilibrium_arrays.oil_bubble_point_pressure
+        gas_dew_point_pressure_arr = equilibrium_arrays.gas_dew_point_pressure
+    else:
+        # Filled in per-PVTNUM below from each region's own PVT tables.
+        # `oil_bubble_point_pressure_arr` falls back to `pressure_arr` (assume
+        # saturated oil) and `gas_dew_point_pressure_arr` falls back to zero
+        # (assume no free gas) only where a region's table has no
+        # bubble-/dew-point data of its own.
+        oil_bubble_point_pressure_arr = pressure_arr.copy()
+        gas_dew_point_pressure_arr = np.zeros(n_cells, dtype=dtype)
 
     saturation_sum_excess = (water_saturation_arr + gas_saturation_arr) - 1.0
     if np.any(saturation_sum_excess > 1e-6):
@@ -1023,6 +1056,18 @@ def initialize_state(
                 f"PVTNUM {pvtnum}: oil formation volume factor table is unavailable."
             )
         oil_mass[mask] = so * pv / bo * rho_o_sc
+
+        if equilibrium_arrays is None:
+            oil_bubble_point = pvt_region.tables.oil.bubble_point_pressure(  # type: ignore[union-attr]
+                temperature=t, solution_gor=rs
+            )
+            if oil_bubble_point is not None:
+                oil_bubble_point_pressure_arr[mask] = oil_bubble_point
+
+            if pvt_region.tables.gas is not None:
+                gas_dew_point = pvt_region.tables.gas.dew_point_pressure(temperature=t)
+                if gas_dew_point is not None:
+                    gas_dew_point_pressure_arr[mask] = gas_dew_point
 
         if np.any(sg > 0.0):
             if pvt_region.tables.gas is None:
