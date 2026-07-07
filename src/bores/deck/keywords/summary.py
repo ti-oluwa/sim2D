@@ -84,7 +84,7 @@ class SummaryVectorKeyword(Keyword[typing.List[str]]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        return tokenize(record.body)
+        return tokenize(record.body.split("/", 1)[0])
 
 
 FOPR = SummaryVectorKeyword("FOPR")
@@ -165,7 +165,7 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
         if record is None:
             return None
 
-        tokens = tokenize(record.body)
+        tokens = tokenize(record.body.split("/", 1)[0])
         result: typing.Dict[str, typing.Optional[int]] = {}
         for token in tokens:
             if "=" in token:

@@ -110,7 +110,8 @@ class TStepKeyword(Keyword[typing.List[float]]):
 
         steps: typing.List[float] = []
         for record in records:
-            tokens = tokenize(record.body)
+            body = record.body.split("/", 1)[0]
+            tokens = tokenize(body)
             for token in tokens:
                 try:
                     steps.append(float(token))

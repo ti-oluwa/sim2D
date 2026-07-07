@@ -1,4 +1,4 @@
-"""Reservoir equilibrium (`EQUIL`) region data."""
+"""Reservoir equilibration (`EQUIL`) region data."""
 
 import typing
 
@@ -373,6 +373,7 @@ class EquilibriumRegions(StoreSerializable):
     region = equilibrium.region(eqlnum_array[cell_idx])
     ```
     """
+    __abstract_serializable__ = True
 
     __slots__ = ("_regions", "rsvd_tables", "rvvd_tables", "unit_system")
 

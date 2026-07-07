@@ -275,12 +275,14 @@ class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
         if record is None:
             return None
 
-        tokens = tokenize(record.body)
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         if len(tokens) < 2:
             raise DeckParseError(
                 f"RESTART: expected 2 tokens (ROOT_NAME REPORT_STEP); "
                 f"got {len(tokens)}: {list(tokens)!r}."
             )
+
         try:
             report_step = int(tokens[1])
         except ValueError as exc:

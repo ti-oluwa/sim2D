@@ -1,73 +1,11 @@
 """
-State initialization from EQUIL, explicit deck arrays, or user-supplied
+Utilities for reservoir equilibrium state initialization from EQUIL, explicit deck arrays, or user-supplied
 arrays.
 
-Owns every initialization algorithm - turning static reservoir description
-(`Reservoir` + `BlackOilFluid`) plus initial-condition data
-(`EquilibriumRegions`, explicit deck keywords, or arrays passed directly)
-into a `State`. `State` itself knows nothing about `EQUIL`, decks, or
-initialization algorithms (see `bores.reservoir.state`); this module is the
-only place that logic lives.
-
-**Precedence** (per field, matching Eclipse - see `initialize_state`):
-
-    Restart > explicit deck/keyword array > EQUIL > error
-
-Restart-file initialization (Step 11 of the architecture plan) is not yet
-implemented - a `deck_file` with a `RESTART` keyword raises
-`NotImplementedError` rather than silently doing the wrong thing.
-
-**Equilibration model (v1 - center-point, sharp-contact)**
-
-`initialize_equilibrium_state` computes a self-consistent pressure and
-saturation profile for each `EQLNUM` region by:
-
-1. Integrating the oil-referenced hydrostatic pressure `Po(z)` outward from
-   the `EQUIL` datum via fixed-step RK4, using phase density evaluated at
-   local `(P, T)` from the region's `PVTTable`s. In the gas cap and
-   aquifer, `Pg`/`Pw` are integrated using gas/water density from the
-   contact outward and re-referenced to `Po` using `pcog_goc`/`pcow_woc`
-   as **constant** offsets - i.e. capillary pressure is *not* modelled as a
-   function of saturation here, only as the fixed value supplied at the
-   contact.
-2. Assigning saturations via a **sharp** contact: `Sw = 1` below the WOC,
-   `Sw = Swc` (connate) in the oil zone, `Sg = 1 - Swc` above the GOC.
-   There is no smooth capillary transition zone in this version.
-3. Assuming saturated oil/gas throughout each zone (`Rs = Rs_sat(P)`,
-   `Rv = 0`) unless the region supplies an `RSVD`/`RVVD`
-   `bores.reservoir.equilibrium.DepthTable`, in which case Rs/Rv (and, for
-   Rs, the resulting bubble-point pressure) come from that table instead,
-   allowing undersaturated oil columns.
-
-**Known limitations - read before relying on this for anything but a
-first cut:**
-
-- No capillary-pressure-vs-saturation transition zone (see above). Accurate
-  near contacts only if the true transition zone is thin relative to cell
-  size, or capillary pressure is genuinely negligible in the field.
-- `accuracy_flag` dispatch: only center-point (`accuracy_flag == 0`) is
-  implemented. Horizontal-subdivision (`> 0`) and tilted-cell (`< 0`)
-  variants raise `NotImplementedError` - they are the natural place to add
-  the capillary transition zone, since sub-dividing each cell is what makes
-  resolving it worthwhile.
-- Wet-gas / gas-condensate `EQUIL` is not supported: when a region's gas
-  table was built from `PVTG`, the underlying `PVTTable`'s second axis is
-  Rv rather than temperature (see `bores.blackoil.pvt.regions`), and this
-  module does not yet handle that convention - raises `NotImplementedError`.
-  Dry-gas (`PVDG`) is fully supported.
-- `datum_depth` must lie within the oil zone (between `goc_depth` and
-  `woc_depth`, treating an absent contact as unbounded). Datum points in
-  the gas cap or aquifer are not yet supported.
-- `_HYDROSTATIC_GRADIENT_FACTOR` below is a set of standard physical
-  constants (density x standard gravity, expressed per `UnitSystem`), not
-  derived from `bores.constants`. Worth double-checking against that
-  module's conventions, particularly for LAB units.
-- `Temperature.from_deck` is called with just `deck_file`;
-  verify this matches its actual signature - it was not directly
-  re-confirmed while writing this module.
-- An `EQLNUM` region spanning multiple `PVTNUM` regions is not supported
-  (raises `ValidationError`) - each equilibration region must map to
-  exactly one PVT region.
+Precedence per field is:
+```
+RESTART (not yet implemented) > explicit array/keyword > EQUIL > error (finally).
+```
 """
 
 import typing
@@ -77,6 +15,8 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.pvt.tables import PVTTable
+from bores.blackoil.rock_fluid.capillary_pressure.tables import CapillaryPressureTable
+from bores.blackoil.rock_fluid.regions import RockFluidRegions
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.initialization.equilibrium import (
@@ -92,10 +32,20 @@ from bores.reservoir.temperature import (
     TemperatureGradient,
     TemperatureTable,
 )
-from bores.typing import CellArray, IntCellArray, Number, UnitSystem
+from bores.typing import (
+    CellArray,
+    IntCellArray,
+    Number,
+    NumberArray,
+    OneDimension,
+    UnitSystem,
+)
 from bores.utils import get_hydrostatic_gradient_factor
 
-__all__ = ["initialize_state", "initialize_equilibrium_state", "EquilibriumArrays"]
+__all__ = ["initialize_state", "initialize_equilibrium_arrays", "EquilibriumArrays"]
+
+_N_SATURATION_SAMPLES = 100
+"""Sample count for the capillary-pressure inversion grid (see `_invert_monotonic_curve`)."""
 
 
 class EquilibriumArrays(typing.NamedTuple):
@@ -123,14 +73,7 @@ def _rk4_march(
     Integrate `dP/dz = gradient_factor * density_fn(P, z)` from `z0` to
     `z_end` via fixed-step RK4.
 
-    :param density_fn: `(pressure, depth) -> density` at that point.
-    :param z0: Starting depth.
-    :param p0: Pressure at `z0`.
-    :param z_end: Ending depth; may be less than `z0` (marches upward).
-    :param gradient_factor: Unit-system hydrostatic-gradient constant.
-    :param step: Target step size; the interval is divided into a whole
-        number of steps no larger than this.
-    :returns: `(depth, pressures)`, both ascending in depth and spanning
+    :returns: `(depths, pressures)`, both ascending in depth and spanning
         `[min(z0, z_end), max(z0, z_end)]`.
     """
     if np.isclose(z0, z_end):
@@ -140,9 +83,9 @@ def _rk4_march(
     n_steps = max(1, int(np.ceil(abs(z_end - z0) / step)))
     h = direction * abs(z_end - z0) / n_steps
 
-    depth = np.empty(n_steps + 1, dtype=dtype)
+    depths = np.empty(n_steps + 1, dtype=dtype)
     pressures = np.empty(n_steps + 1, dtype=dtype)
-    depth[0], pressures[0] = z0, p0
+    depths[0], pressures[0] = z0, p0
     z, p = z0, p0
     for i in range(n_steps):
         k1 = gradient_factor * density_fn(p, z)
@@ -151,12 +94,149 @@ def _rk4_march(
         k4 = gradient_factor * density_fn(p + h * k3, z + h)
         p = p + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
         z = z + h
-        depth[i + 1], pressures[i + 1] = z, p
+        depths[i + 1], pressures[i + 1] = z, p
 
     if direction < 0:
-        depth = depth[::-1]
+        depths = depths[::-1]
         pressures = pressures[::-1]
-    return depth, pressures
+    return depths, pressures
+
+
+def _march_full_range(
+    density_fn: typing.Callable[[Number, Number], Number],
+    reference_depth: Number,
+    reference_pressure: Number,
+    min_depth: Number,
+    max_depth: Number,
+    gradient_factor: Number,
+    step: Number,
+    dtype: npt.DTypeLike,
+) -> typing.Tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
+    """
+    March `density_fn` outward from `reference_depth` in both directions, covering
+    `[min_depth, max_depth]` in one sorted, concatenated profile.
+    """
+    depths_up, pressures_up = _rk4_march(
+        density_fn,
+        reference_depth,
+        reference_pressure,
+        min_depth,
+        gradient_factor,
+        step=step,
+        dtype=dtype,
+    )
+    depths_down, pressures_down = _rk4_march(
+        density_fn,
+        reference_depth,
+        reference_pressure,
+        max_depth,
+        gradient_factor,
+        step=step,
+        dtype=dtype,
+    )
+    depths = np.concatenate([depths_up[:-1], depths_down], dtype=dtype)
+    pressures = np.concatenate([pressures_up[:-1], pressures_down], dtype=dtype)
+    return typing.cast(NumberArray[OneDimension], depths), typing.cast(
+        NumberArray[OneDimension], pressures
+    )
+
+
+def _invert_monotonic_curve(
+    saturation_grid: NumberArray[OneDimension],
+    capillary_pressure_grid: NumberArray[OneDimension],
+    target_capillary_pressure: Number,
+) -> Number:
+    """
+    Invert a (assumed monotonic) Pc(saturation) curve at a target Pc value.
+
+    Sorts by `capillary_pressure_grid` before interpolating so this works regardless of
+    whether Pc increases or decreases with saturation. Not meaningful for
+    non-monotonic curves - not checked here, since every capillary pressure
+    model in this codebase is monotonic in saturation by construction.
+    """
+    order = np.argsort(capillary_pressure_grid)
+    return np.interp(
+        target_capillary_pressure,
+        capillary_pressure_grid[order],
+        saturation_grid[order],
+    )
+
+
+def _get_saturations_from_capillary_pressure(
+    *,
+    depth: CellArray,
+    pressure: CellArray,
+    connate_water_saturation: CellArray,
+    residual_oil_saturation_water: CellArray,
+    residual_oil_saturation_gas: CellArray,
+    residual_gas_saturation: CellArray,
+    capillary_pressure: CapillaryPressureTable,
+    water_profile: typing.Optional[typing.Tuple[npt.NDArray, npt.NDArray]],
+    gas_profile: typing.Optional[typing.Tuple[npt.NDArray, npt.NDArray]],
+    dtype: npt.DTypeLike,
+) -> typing.Tuple[CellArray, CellArray]:
+    """
+    Invert the region's Pcow/Pcgo curves against depth-varying Pcow(z) /
+    Pcgo(z) to get a smooth Sw(z)/Sg(z), rather than a sharp step at the
+    contacts.
+
+    `water_profile`/`gas_profile` are full-column `(depth, pressure)` Pw(z)/
+    Pg(z) profiles (see `_march_full_range`); `None` when the region has no
+    WOC/GOC respectively.
+    """
+    n = len(depth)
+    swc = connate_water_saturation
+    sorw = residual_oil_saturation_water
+    sorg = residual_oil_saturation_gas
+    sgr = residual_gas_saturation
+
+    water_saturation = swc.astype(dtype, copy=False).copy()
+    gas_saturation = np.zeros(n, dtype=dtype)
+
+    if water_profile is not None:
+        pw_at_depth = np.interp(depth, water_profile[0], water_profile[1])
+        pcow_target = pressure - pw_at_depth  # Pcow = Po - Pw
+        fractions = np.linspace(0.0, 1.0, _N_SATURATION_SAMPLES, dtype=dtype)
+        sw_grid = swc[:, None] + fractions[None, :] * (1.0 - swc - sorw)[:, None]
+        for i in range(n):
+            pcow_grid = capillary_pressure.evaluate(
+                sw_grid[i],
+                1.0 - sw_grid[i],
+                np.zeros(_N_SATURATION_SAMPLES, dtype=dtype),
+                irreducible_water_saturation=swc[i],
+                residual_oil_saturation_water=sorw[i],
+                residual_oil_saturation_gas=sorg[i],
+                residual_gas_saturation=sgr[i],
+            )["oil_water"]
+            pcow_grid = typing.cast(NumberArray[OneDimension], pcow_grid)
+            water_saturation[i] = _invert_monotonic_curve(
+                sw_grid[i], pcow_grid, pcow_target[i]
+            )
+
+    if gas_profile is not None:
+        pg_at_depth = np.interp(depth, gas_profile[0], gas_profile[1])
+        pcgo_target = pg_at_depth - pressure  # Pcgo = Pg - Po
+        fractions = np.linspace(0.0, 1.0, _N_SATURATION_SAMPLES, dtype=dtype)
+        sg_grid = sgr[:, None] + fractions[None, :] * (1.0 - swc - sorg - sgr)[:, None]
+        for i in range(n):
+            pcgo_grid = capillary_pressure.evaluate(
+                np.full(_N_SATURATION_SAMPLES, swc[i], dtype=dtype),
+                1.0 - swc[i] - sg_grid[i],
+                sg_grid[i],
+                irreducible_water_saturation=swc[i],
+                residual_oil_saturation_water=sorw[i],
+                residual_oil_saturation_gas=sorg[i],
+                residual_gas_saturation=sgr[i],
+            )["gas_oil"]
+            pcgo_grid = typing.cast(NumberArray[OneDimension], pcgo_grid)
+            gas_saturation[i] = _invert_monotonic_curve(
+                sg_grid[i], pcgo_grid, pcgo_target[i]
+            )
+
+    return (
+        typing.cast(CellArray, water_saturation),
+        typing.cast(CellArray, gas_saturation),
+    )
 
 
 def _initialize_center_point_equilibrium(
@@ -171,33 +251,22 @@ def _initialize_center_point_equilibrium(
     rvvd_table: typing.Optional[DepthTable],
     temperature: CellArray,
     unit_system: UnitSystem,
+    capillary_pressure: typing.Optional[CapillaryPressureTable] = None,
+    residual_oil_saturation_water: typing.Optional[CellArray] = None,
+    residual_oil_saturation_gas: typing.Optional[CellArray] = None,
+    residual_gas_saturation: typing.Optional[CellArray] = None,
     depth_step: Number = 1.0,
     dtype: npt.DTypeLike = None,
+    **kwargs: typing.Any,
 ) -> EquilibriumArrays:
     """
     Center-point EQUIL initialization: evaluate pressure and saturation once
     at each cell's centroid depth (`region.accuracy_flag == 0`).
 
-    See the module docstring for the sharp-contact / no-transition-zone
-    caveat and other v1 limitations.
-
-    :param region: `EquilibriumRegion` for this region.
-    :param depth: Shape `(n_cells,)` centroid depth of cells in this region.
-    :param connate_water_saturation: Shape `(n_cells,)` Swc for cells in this
-        region (from `Rock`).
-    :param oil_table: Region's oil `PVTTable`.
-    :param gas_table: Region's gas `PVTTable`, or `None`.
-    :param water_table: Region's water `PVTTable`, or `None`.
-    :param rsvd_table: `DepthTable` for `region.rsvd_table`, or `None`.
-    :param rvvd_table: `DepthTable` for `region.rvvd_table`, or `None`.
-    :param temperature: Shape `(n_cells,)` temperature at each cell's depth.
-    :param unit_system: Unit system of all inputs.
-    :param depth_step: RK4 step size for the pressure integration grid.
-    :returns: `EquilibriumArrays` for this region's cells, same order as
-        `depth`.
     :raises ValidationError: If `datum_depth` is outside the oil zone, or a
         contact is present without its corresponding PVT table.
-    :raises NotImplementedError: If the gas table is wet-gas (`PVTG`-based).
+    :raises NotImplementedError: If the gas table is wet-gas (`PVTG`-based)
+        and no `rvvd_table` is supplied.
     """
     is_wet_gas = gas_table is not None and gas_table.exists("vaporized_oil_ratio")
     if is_wet_gas and rvvd_table is None:
@@ -220,14 +289,12 @@ def _initialize_center_point_equilibrium(
     )
     if not (oil_zone_low <= region.datum_depth <= oil_zone_high):
         raise ValidationError(
-            f"EQUIL datum_depth ({region.datum_depth}) must lie within the oil "
+            f"EQUIL `datum_depth` ({region.datum_depth}) must lie within the oil "
             f"zone [{oil_zone_low}, {oil_zone_high}] for center-point "
             "initialization; datum points in the gas cap or aquifer are not "
             "yet supported."
         )
 
-    # Representative temperature at an arbitrary integration depth, via
-    # linear interpolation against this region's cell depth/temperatures.
     order = np.argsort(depth)
     sorted_depths = depth[order]
     sorted_temperature = temperature[order]
@@ -247,8 +314,8 @@ def _initialize_center_point_equilibrium(
         assert water_table is not None
         return water_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[return-value]
 
-    z_min = min(depth.min(), region.datum_depth, oil_zone_low)
-    z_max = max(depth.max(), region.datum_depth, oil_zone_high)
+    min_depth = min(depth.min(), region.datum_depth, oil_zone_low)
+    max_depth = max(depth.max(), region.datum_depth, oil_zone_high)
 
     # Oil zone: integrate from datum outward to the zone edges.
     oil_depths_up, oil_pressures_up = _rk4_march(
@@ -272,49 +339,61 @@ def _initialize_center_point_equilibrium(
     all_depths = [oil_depths_up[:-1], oil_depths_down]
     all_pressures = [oil_pressures_up[:-1], oil_pressures_down]
 
-    # Gas cap: integrate Pg from GOC upward, re-reference to Po via pcog_goc.
-    if region.has_goc and z_min < region.goc_depth:
+    # Gas cap: full-range Pg(z) march from GOC, re-referenced to Po via pcog_goc.
+    # Full range (not just the gas-cap zone) so Pcgo(z) is defined everywhere,
+    # which the capillary-pressure saturation path needs.
+    gas_profile: typing.Optional[typing.Tuple[npt.NDArray, npt.NDArray]] = None
+    if region.has_goc:
         if gas_table is None:
             raise ValidationError(
                 "Region has a gas-oil contact but no gas PVT table was supplied."
             )
-        pg_at_goc = (
+        gas_pressure_at_goc = (
             np.interp(region.goc_depth, oil_depths_up, oil_pressures_up)
             + region.pcog_goc
         )
-        gas_depths, gas_pressures = _rk4_march(
+        gas_depths_full, gas_pressures_full = _march_full_range(
             gas_density,
             region.goc_depth,
-            pg_at_goc,
-            z_min,
+            gas_pressure_at_goc,
+            min_depth,
+            max_depth,
             gradient_factor,
-            step=depth_step,
-            dtype=dtype,
+            depth_step,
+            dtype,
         )
-        all_depths.append(gas_depths[:-1])
-        all_pressures.append(gas_pressures[:-1] - region.pcog_goc)
+        gas_profile = (gas_depths_full, gas_pressures_full)
+        in_gas_zone = gas_depths_full < region.goc_depth
+        if min_depth < region.goc_depth:
+            all_depths.append(gas_depths_full[in_gas_zone])
+            all_pressures.append(gas_pressures_full[in_gas_zone] - region.pcog_goc)
 
-    # Aquifer: integrate Pw from WOC downward, re-reference to Po via pcow_woc.
-    if region.has_woc and z_max > region.woc_depth:
+    # Aquifer: full-range Pw(z) march from WOC, re-referenced to Po via pcow_woc.
+    water_profile: typing.Optional[typing.Tuple[npt.NDArray, npt.NDArray]] = None
+    if region.has_woc:
         if water_table is None:
             raise ValidationError(
                 "Region has a water-oil contact but no water PVT table was supplied."
             )
-        pw_at_woc = (
+        water_pressure_at_woc = (
             np.interp(region.woc_depth, oil_depths_down, oil_pressures_down)
             - region.pcow_woc
         )
-        water_depths, water_pressures = _rk4_march(
+        water_depths_full, water_pressures_full = _march_full_range(
             water_density,
             region.woc_depth,
-            pw_at_woc,
-            z_max,
+            water_pressure_at_woc,
+            min_depth,
+            max_depth,
             gradient_factor,
-            step=depth_step,
-            dtype=dtype,
+            depth_step,
+            dtype,
         )
-        all_depths.append(water_depths[1:])
-        all_pressures.append(water_pressures[1:] + region.pcow_woc)
+        water_profile = (water_depths_full, water_pressures_full)
+        in_aquifer = water_depths_full > region.woc_depth
+        if max_depth > region.woc_depth:
+            all_depths.append(water_depths_full[in_aquifer])
+            all_pressures.append(water_pressures_full[in_aquifer] + region.pcow_woc)
 
     grid_depths = np.concatenate(all_depths, dtype=dtype)
     grid_pressures = np.concatenate(all_pressures, dtype=dtype)
@@ -322,20 +401,50 @@ def _initialize_center_point_equilibrium(
     grid_depths = grid_depths[grid_order]
     grid_pressures = grid_pressures[grid_order]
 
-    pressure = np.interp(depth, grid_depths, grid_pressures).astype(dtype, copy=False)
+    pressure = typing.cast(
+        CellArray,
+        np.interp(depth, grid_depths, grid_pressures).astype(dtype, copy=False),
+    )
 
-    # Saturations: sharp contact (see module docstring)
     n = len(depth)
-    water_saturation = connate_water_saturation.astype(dtype, copy=False).copy()
-    gas_saturation = np.zeros(n, dtype=dtype)
-    if region.has_goc:
-        in_gas_cap = depth < region.goc_depth
-        gas_saturation[in_gas_cap] = 1.0 - connate_water_saturation[in_gas_cap]
-        water_saturation[in_gas_cap] = connate_water_saturation[in_gas_cap]
-    if region.has_woc:
-        in_aquifer = depth > region.woc_depth
-        water_saturation[in_aquifer] = 1.0
-        gas_saturation[in_aquifer] = 0.0
+    if capillary_pressure is not None:
+        water_saturation, gas_saturation = _get_saturations_from_capillary_pressure(
+            depth=depth,
+            pressure=pressure,
+            connate_water_saturation=connate_water_saturation,
+            residual_oil_saturation_water=(
+                residual_oil_saturation_water
+                if residual_oil_saturation_water is not None
+                else np.zeros(n, dtype=dtype)
+            ),
+            residual_oil_saturation_gas=(
+                residual_oil_saturation_gas
+                if residual_oil_saturation_gas is not None
+                else np.zeros(n, dtype=dtype)
+            ),
+            residual_gas_saturation=(
+                residual_gas_saturation
+                if residual_gas_saturation is not None
+                else np.zeros(n, dtype=dtype)
+            ),
+            capillary_pressure=capillary_pressure,
+            water_profile=water_profile,
+            gas_profile=gas_profile,
+            dtype=dtype,
+        )
+    else:
+        # Sharp contact: Sw = 1 below WOC, Sw = Swc in the oil zone,
+        # Sg = 1 - Swc above GOC. No smooth transition zone.
+        water_saturation = connate_water_saturation.astype(dtype, copy=False).copy()
+        gas_saturation = np.zeros(n, dtype=dtype)
+        if region.has_goc:
+            in_gas_cap = depth < region.goc_depth
+            gas_saturation[in_gas_cap] = 1.0 - connate_water_saturation[in_gas_cap]
+            water_saturation[in_gas_cap] = connate_water_saturation[in_gas_cap]
+        if region.has_woc:
+            in_aquifer = depth > region.woc_depth
+            water_saturation[in_aquifer] = 1.0
+            gas_saturation[in_aquifer] = 0.0
 
     has_oil = (1.0 - water_saturation - gas_saturation) > 0.0
 
@@ -399,21 +508,48 @@ def _initialize_center_point_equilibrium(
 
 
 def _initialize_horizontal_subdivision_equilibrium(
+    *,
+    region: EquilibriumRegion,
+    cell_top: CellArray,
+    cell_bottom: CellArray,
+    n_subdivisions: typing.Optional[int] = None,
     **kwargs: typing.Any,
 ) -> EquilibriumArrays:
     """
     Vertical-equilibrium averaging via `N` horizontal sub-divisions per cell
     (`region.accuracy_flag > 0`).
 
-    Not yet implemented. This is the natural place to add a capillary-
-    pressure-vs-saturation transition zone (currently a sharp contact
-    everywhere - see the module docstring), since sub-dividing each cell is
-    what makes resolving a smooth transition worthwhile.
+    Samples `N` depths between each cell's top/bottom (from the grid's
+    per-cell AABB), evaluates `_initialize_center_point_equilibrium` at all
+    of them, and averages back down to one value per cell. Arithmetic mean
+    assumes uniform cross-sectional area across depth - doesn't account for
+    cell dip (see the tilted variant).
     """
-    raise NotImplementedError(
-        "Horizontal-subdivision EQUIL initialization (accuracy_flag > 0) is "
-        "not yet implemented. Use accuracy_flag = 0 (center-point) for now."
+    n_sub = n_subdivisions or abs(region.accuracy_flag)
+    n_cells = len(cell_top)
+    fractions = (np.arange(n_sub, dtype=cell_top.dtype) + 0.5) / n_sub
+    sub_depth = (
+        cell_top[:, None] + fractions[None, :] * (cell_bottom - cell_top)[:, None]
     )
+
+    repeated_kwargs = {
+        key: np.repeat(value, n_sub)
+        if isinstance(value, np.ndarray) and value.shape == (n_cells,)
+        else value
+        for key, value in kwargs.items()
+    }
+    sub_arrays = _initialize_center_point_equilibrium(
+        region=region,
+        depth=sub_depth.ravel(),
+        **repeated_kwargs,  # type: ignore[arg-type]
+    )
+
+    def _average(field: CellArray) -> CellArray:
+        return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
+
+    return EquilibriumArrays(**{
+        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def _initialize_tilted_subdivision_equilibrium(
@@ -421,20 +557,23 @@ def _initialize_tilted_subdivision_equilibrium(
 ) -> EquilibriumArrays:
     """
     Tilted-cell variant of horizontal subdivision, additionally accounting
-    for cell dip (`region.accuracy_flag < 0`). Not yet implemented.
+    for cell dip (`region.accuracy_flag < 0`). Not yet implemented - needs
+    dip-aware top/bottom-face geometry, not just the cell AABB.
     """
     raise NotImplementedError(
         "Tilted-cell EQUIL initialization (accuracy_flag < 0) is not yet "
-        "implemented. Use accuracy_flag = 0 (center-point) for now."
+        "implemented. Use accuracy_flag = 0 (center-point) or > 0 "
+        "(horizontal-subdivision) for now."
     )
 
 
-def initialize_equilibrium_state(
+def initialize_equilibrium_arrays(
     reservoir: Reservoir,
     pvt: PVTRegions,
     equilibrium: EquilibriumRegions,
     temperature: CellArray,
     *,
+    rock_fluid: typing.Optional[RockFluidRegions] = None,
     depth_step: Number = 1.0,
     dtype: npt.DTypeLike = None,
 ) -> EquilibriumArrays:
@@ -444,18 +583,12 @@ def initialize_equilibrium_state(
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
 
-    :param reservoir: Reservoir geometry, rock properties, and region
-        assignments (`EQLNUM` via `reservoir.regions.equilibrium_regions`,
-        `PVTNUM` via `reservoir.regions.pvt_regions`; both default to
-        region 1 everywhere if absent).
-    :param black_oil_model: PVT region tables.
-    :param equilibrium: Parsed `EQUIL` (+ `RSVD`/`RVVD`) data.
-    :param temperature: Shape `(n_cells,)` per-cell temperature.
-    :param depth_step: RK4 step size for the pressure integration grid.
-    :returns: Full-grid `EquilibriumArrays`.
+    :param rock_fluid: Optional `RockFluidRegions`; when given, saturations
+        are computed via capillary-pressure inversion instead of a sharp
+        contact (see `_get_saturations_from_capillary_pressure`).
     :raises ValidationError: If a cell's `EQLNUM` has no matching
-        `EquilibriumRegion`, an `EQLNUM` region spans more than one `PVTNUM`
-        region, or a required PVT table is missing.
+        `EquilibriumRegion`, an `EQLNUM` region spans more than one
+        `PVTNUM`/`SATNUM` region, or a required PVT table is missing.
     """
     n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
@@ -470,8 +603,14 @@ def initialize_equilibrium_state(
         if reservoir.regions is not None and reservoir.regions.pvt_regions is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
+    saturation_regions: typing.Optional[IntCellArray] = (
+        reservoir.regions.saturation_regions if reservoir.regions is not None else None
+    )
     depth = reservoir.depth
     connate_water_saturation = reservoir.rock.connate_water_saturation
+    residual_oil_saturation_water = reservoir.rock.residual_oil_saturation_water_flood
+    residual_oil_saturation_gas = reservoir.rock.residual_oil_saturation_gas_flood
+    residual_gas_saturation = reservoir.rock.residual_gas_saturation
 
     pressure = np.zeros(n_cells, dtype=dtype)
     water_saturation = np.zeros(n_cells, dtype=dtype)
@@ -491,10 +630,30 @@ def initialize_equilibrium_state(
                 f"EQLNUM {eqlnum} cells span multiple PVTNUM regions "
                 f"({sorted(region_pvtnum.tolist())}); each equilibration "
                 "region must map to exactly one PVT region for "
-                "`initialize_equilibrium_state`."
+                "`initialize_equilibrium_arrays`."
             )
-
         pvt_region = pvt.region(int(region_pvtnum[0]))
+
+        capillary_pressure: typing.Optional[CapillaryPressureTable] = None
+        if rock_fluid is not None:
+            if saturation_regions is None:
+                raise ValidationError(
+                    "`rock_fluid` was supplied but `reservoir.regions."
+                    "saturation_regions` (SATNUM) is unavailable."
+                )
+
+            region_satnum = np.unique(saturation_regions[mask])
+            if len(region_satnum) != 1:
+                raise ValidationError(
+                    f"EQLNUM {eqlnum} cells span multiple SATNUM regions "
+                    f"({sorted(region_satnum.tolist())}); each equilibration "
+                    "region must map to exactly one saturation-function "
+                    "region for capillary-pressure-based initialization."
+                )
+            capillary_pressure = rock_fluid.region(
+                int(region_satnum[0])
+            ).capillary_pressure
+
         rsvd_table = (
             equilibrium.rsvd_tables.get(equilibrium_region.rsvd_table)
             if equilibrium_region.uses_rsvd and equilibrium.rsvd_tables
@@ -506,27 +665,40 @@ def initialize_equilibrium_state(
             else None
         )
 
-        if equilibrium_region.accuracy_flag == 0:
-            algorithm = _initialize_center_point_equilibrium
-        elif equilibrium_region.accuracy_flag > 0:
-            algorithm = _initialize_horizontal_subdivision_equilibrium
-        else:
-            algorithm = _initialize_tilted_subdivision_equilibrium
-
-        region_arrays = algorithm(
+        common_kwargs: typing.Dict[str, typing.Any] = dict(
             region=equilibrium_region,
-            depth=depth[mask],  # type: ignore[arg-type]
-            connate_water_saturation=connate_water_saturation[mask],  # type: ignore[arg-type]
-            oil_table=pvt_region.tables.oil,  # type: ignore[arg-type]
+            connate_water_saturation=connate_water_saturation[mask],
+            oil_table=pvt_region.tables.oil,
             gas_table=pvt_region.tables.gas,
             water_table=pvt_region.tables.water,
             rsvd_table=rsvd_table,
             rvvd_table=rvvd_table,
-            temperature=temperature[mask],  # type: ignore[arg-type]
+            temperature=temperature[mask],
             unit_system=reservoir.unit_system,
+            capillary_pressure=capillary_pressure,
+            residual_oil_saturation_water=residual_oil_saturation_water[mask],
+            residual_oil_saturation_gas=residual_oil_saturation_gas[mask],
+            residual_gas_saturation=residual_gas_saturation[mask],
             depth_step=depth_step,
             dtype=dtype,
         )
+
+        if equilibrium_region.accuracy_flag == 0:
+            region_arrays = _initialize_center_point_equilibrium(
+                depth=depth[mask],  # type: ignore[arg-type]
+                **common_kwargs,
+            )
+        elif equilibrium_region.accuracy_flag > 0:
+            region_arrays = _initialize_horizontal_subdivision_equilibrium(
+                cell_top=reservoir.grid.cell_min_xyz[mask, 2],  # type: ignore[arg-type]
+                cell_bottom=reservoir.grid.cell_max_xyz[mask, 2],  # type: ignore[arg-type]
+                **common_kwargs,
+            )
+        else:
+            region_arrays = _initialize_tilted_subdivision_equilibrium(
+                depth=depth[mask],
+                **common_kwargs,  # type: ignore[arg-type]
+            )
 
         pressure[mask] = region_arrays.pressure
         water_saturation[mask] = region_arrays.water_saturation
@@ -547,24 +719,20 @@ def initialize_equilibrium_state(
     )
 
 
-def _temperature_array_from_regions(
+def _get_temperature_array_from_regions(
     temperature: Temperature,
     pvt_regions: IntCellArray,
     depth: CellArray,
     dtype: npt.DTypeLike = None,
 ) -> CellArray:
     """
-    Evaluate a `Temperature` at every cell's depth, grouped by
-    `EQLNUM` to avoid redundant `region` lookups.
+    Evaluate a `Temperature` at every cell's depth, grouped by `PVTNUM` (the
+    same grain `PVTRegions.from_deck` resolves `Temperature` against, so PVT
+    tables and this array stay consistent).
 
     Duck-types each region's spec: a bare number is broadcast, anything
     with an `at_depth` method (e.g. a depth-dependent table) is evaluated
     per cell.
-
-    :param temperature: Source `Temperature`.
-    :param pvt_regions: Shape `(n_cells,)` PVT region per cell.
-    :param depth: Shape `(n_cells,)` cell centroid depth.
-    :returns: Shape `(n_cells,)` temperature per cell.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     result = np.empty(len(pvt_regions), dtype=dtype)
@@ -574,7 +742,7 @@ def _temperature_array_from_regions(
         if isinstance(spec, (TemperatureGradient, TemperatureTable)):
             result[mask] = spec.at_depth(depth[mask]).astype(dtype, copy=False)  # type: ignore[union-attr]
         else:
-            result[mask] = float(spec)  # type: ignore[arg-type]
+            result[mask] = spec  # type: ignore[arg-type]
     return typing.cast(CellArray, result)
 
 
@@ -587,8 +755,6 @@ def _resolve_temperature(
     """
     Resolve per-cell temperature: explicit `temperature` kwarg > deck
     `RTEMP`/`TEMPVD` > error. (Restart temperature is not yet supported.)
-
-    :raises ValidationError: If no temperature source is available.
     """
     n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
@@ -614,7 +780,7 @@ def _resolve_temperature(
         if reservoir.regions is not None and reservoir.regions.pvt_regions is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
-    return _temperature_array_from_regions(
+    return _get_temperature_array_from_regions(
         source, pvt_regions=pvt_regions, depth=reservoir.depth, dtype=dtype
     )
 
@@ -625,6 +791,7 @@ def initialize_state(
     *,
     deck_file: typing.Optional[DeckFile] = None,
     equilibrium: typing.Optional[EquilibriumRegions] = None,
+    rock_fluid: typing.Optional[RockFluidRegions] = None,
     temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
     water_saturation: typing.Optional[CellArray] = None,
@@ -638,49 +805,24 @@ def initialize_state(
     """
     Build a complete `State` from EQUIL and/or explicit arrays.
 
-    Precedence for each of `pressure`, `water_saturation`, `gas_saturation`,
-    `solution_gor`, `vaporized_oil_ratio` independently:
-
-    `Restart (not yet implemented) > explicit array/keyword > EQUIL > error`
-
     "Explicit array/keyword" means either the corresponding kwarg here, or
     (if the kwarg is `None`) the matching `PRESSURE`/`SWAT`/`SGAS`/`RS`/`RV`
     keyword in `deck_file`. Any field left uncovered by both is filled in
-    from equilibration - which therefore only runs at all if at least one
-    field needs it.
+    from equilibration, which therefore only runs at all if at least one
+    field needs it. `oil_saturation` is always derived as
+    `1 - water_saturation - gas_saturation`, never taken from an explicit array.
 
-    `oil_saturation` is always derived as `1 - water_saturation -
-    gas_saturation` per Step 7, never taken from an explicit array.
-
-    :param reservoir: Reservoir geometry, rock, and region assignments.
-    :param black_oil_model: PVT region tables. Must share
-        `reservoir.unit_system`.
-    :param deck_file: Optional parsed `DeckFile`, used as a fallback source
-        for `EQUIL`/`RSVD`/`RVVD`, explicit `PRESSURE`/`SWAT`/`SGAS`/`RS`/`RV`
-        arrays, and `RTEMP`/`TEMPVD` temperature - for any of these not
-        supplied directly via the kwargs below.
-    :param equilibrium: Parsed `EquilibriumRegions`; takes
-        precedence over `deck_file`'s `EQUIL` keyword if both are given.
-    :param temperature: Constant or `Temperature`; takes precedence
-        over `deck_file`'s `RTEMP`/`TEMPVD`.
-    :param pressure: Explicit per-cell pressure; overrides EQUIL for these
-        cells only (other fields for the same cells may still come from EQUIL).
-    :param water_saturation: Explicit per-cell Sw; overrides EQUIL.
-    :param gas_saturation: Explicit per-cell Sg; overrides EQUIL.
-    :param solution_gor: Explicit per-cell Rs; overrides EQUIL.
-    :param vaporized_oil_ratio: Explicit per-cell Rv; overrides EQUIL.
-    :param depth_step: RK4 step size for EQUIL pressure integration.
-    :param with_hysteresis: If `True`, attach an initial `Hysteresis`
-        derived from the resulting saturations.
-    :returns: Fully populated `State`.
+    :param rock_fluid: Optional `RockFluidRegions`, passed through to
+        `initialize_equilibrium_arrays` for capillary-pressure-based
+        saturations instead of a sharp contact.
     :raises NotImplementedError: If `deck_file` has a `RESTART` keyword
-        (Step 11 - not yet supported).
+        (not yet supported).
     :raises ValidationError: If some field is covered by neither an
-        explicit array/keyword nor `EquilibriumRegions`/`deck_file`, if
-        `reservoir` and `black_oil_model` unit systems disagree, or
-        if saturations are physically inconsistent.
+        explicit array/keyword nor `equilibrium`/`deck_file`, if `reservoir`
+        and `pvt` unit systems disagree, or if saturations are physically
+        inconsistent.
     """
-    if deck_file is not None and deck_file.has("RESTART"):
+    if deck_file is not None and equilibrium is None and deck_file.has("RESTART"):
         raise NotImplementedError(
             "Restart-file state initialization is not yet implemented. "
             "Supply `equilibrium` and/or explicit arrays instead."
@@ -692,14 +834,15 @@ def initialize_state(
     if pvt.unit_system != unit_system:
         raise ValidationError(
             f"`reservoir.unit_system` ({unit_system.value!r}) does not "
-            "match `pvt.unit_system` "
-            f"({pvt.unit_system.value!r})."
+            f"match `pvt.unit_system` ({pvt.unit_system.value!r})."
         )
 
     temperature_arr = _resolve_temperature(
-        reservoir, deck_file, temperature, dtype=dtype
+        reservoir=reservoir,
+        deck_file=deck_file,
+        temperature=temperature,
+        dtype=dtype,
     )
-
     explicit: typing.Dict[str, typing.Optional[CellArray]] = {
         "pressure": pressure,
         "water_saturation": water_saturation,
@@ -707,7 +850,7 @@ def initialize_state(
         "solution_gor": solution_gor,
         "vaporized_oil_ratio": vaporized_oil_ratio,
     }
-    deck_keyword_by_field = {
+    field_keywords = {
         "pressure": "PRESSURE",
         "water_saturation": "SWAT",
         "gas_saturation": "SGAS",
@@ -715,30 +858,31 @@ def initialize_state(
         "vaporized_oil_ratio": "RV",
     }
     if deck_file is not None:
-        for field, keyword in deck_keyword_by_field.items():
+        for field, keyword in field_keywords.items():
             if explicit[field] is None:
                 deck_array = deck_file.get(keyword)
                 if deck_array is not None:
                     explicit[field] = typing.cast(CellArray, deck_array)
 
     equilibrium_arrays: typing.Optional[EquilibriumArrays] = None
-    if any(v is None for v in explicit.values()):
+    if any(value is None for value in explicit.values()):
         if equilibrium is None:
             if deck_file is not None and deck_file.get("EQUIL"):
                 equilibrium = EquilibriumRegions.from_deck(deck_file)
             else:
-                missing = [f for f, v in explicit.items() if v is None]
+                missing = [field for field, value in explicit.items() if value is None]
                 raise ValidationError(
                     f"No explicit array/keyword and no EQUIL data available "
                     f"for: {missing}. Supply `equilibrium`, a "
                     "`deck_file` with an `EQUIL` keyword, or explicit arrays "
                     "for these fields."
                 )
-        equilibrium_arrays = initialize_equilibrium_state(
-            reservoir,
-            pvt,
-            equilibrium,
-            temperature_arr,
+        equilibrium_arrays = initialize_equilibrium_arrays(
+            reservoir=reservoir,
+            pvt=pvt,
+            equilibrium=equilibrium,
+            temperature=temperature_arr,
+            rock_fluid=rock_fluid,
             depth_step=depth_step,
             dtype=dtype,
         )
@@ -811,9 +955,7 @@ def initialize_state(
     water_mass = np.zeros(n_cells, dtype=dtype)
     free_gas_mass = np.zeros(n_cells, dtype=dtype)
     dissolved_gas_mass_in_oil = np.zeros(n_cells, dtype=dtype)
-    # Zero for standard black-oil (see State docstring); left unset here
-    # rather than wired up, since Rv is not condensate-aware in v1 (see
-    # module docstring wet-gas caveat).
+    # Zero for standard black-oil; Rv is not condensate-aware in v1.
     vaporized_oil_mass_in_gas = np.zeros(n_cells, dtype=dtype)
 
     for pvtnum in np.unique(pvt_regions):

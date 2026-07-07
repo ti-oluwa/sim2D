@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 from bores.grids.base import Grid
+from bores.typing import CellArray
 
 __all__ = ["as_pyvista_grid"]
 
@@ -129,7 +130,7 @@ def _fill_cell_entries(
 def as_pyvista_grid(
     grid: Grid,
     *,
-    cell_data: typing.Optional[typing.Dict[str, npt.NDArray]] = None,
+    cell_data: typing.Optional[typing.Dict[str, CellArray]] = None,
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `pyvista.UnstructuredGrid`.

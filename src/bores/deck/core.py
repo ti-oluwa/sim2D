@@ -273,6 +273,14 @@ _KEYWORD_LINE_RE = re.compile(
 )
 
 
+# Keywords whose data is free text with no `/` terminator, i.e, the data simply
+# runs until the next keyword line. Without this exception, `_scan`'s
+# general "no slash before the next keyword line -> bare/nullary" rule would
+# (incorrectly) swallow their body as empty, since they never contain a
+# literal `/` in practice.
+_FREE_TEXT_KEYWORDS: typing.FrozenSet[str] = frozenset({"TITLE"})
+
+
 class ScanResult(typing.NamedTuple):
     """Result of scanning an Eclipse deck."""
 
@@ -343,17 +351,27 @@ class Deck:
                 else len(text)
             )
             window = text[body_start:next_keyword_start]
-            slash_pos = window.find("/")
+            slash_position = window.find("/")
 
-            if slash_pos == -1:
-                # No terminator before the next keyword line (or end of
-                # file): treat as bare/nullary keyword.
-                record = Record(
-                    keyword=keyword,
-                    body="",
-                    start=match.start(),
-                    end=body_start,
-                )
+            if slash_position == -1:
+                if keyword in _FREE_TEXT_KEYWORDS:
+                    # No `/` at all, and none expected - the free text
+                    # itself runs until the next keyword line.
+                    record = Record(
+                        keyword=keyword,
+                        body=window,
+                        start=match.start(),
+                        end=next_keyword_start,
+                    )
+                else:
+                    # No terminator before the next keyword line (or end of
+                    # file): treat as bare/nullary keyword.
+                    record = Record(
+                        keyword=keyword,
+                        body="",
+                        start=match.start(),
+                        end=body_start,
+                    )
             else:
                 # Capture the *entire* span up to the next keyword line, not just
                 # up to the first `/`. Single-record keywords (SPECGRID, PORO, ...)
