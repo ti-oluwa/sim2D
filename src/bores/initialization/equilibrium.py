@@ -363,14 +363,14 @@ class EquilibriumRegions(StoreSerializable):
 
     Responsibilities: map EQLNUM -> `EquilibriumRegion`, provide lookup and
     iteration, support (de)serialization and Eclipse loading. Use
-    `for_region(eqlnum)` to retrieve a region's data, and `from_deck`
+    `region(eqlnum)` to retrieve a region's data, and `from_deck`
     to construct from a deck.
 
     Example:
 
     ```python
     equilibrium = EquilibriumRegions.from_deck(deck_file)
-    region = equilibrium.for_region(eqlnum_array[cell_idx])
+    region = equilibrium.region(eqlnum_array[cell_idx])
     ```
     """
 
@@ -489,7 +489,7 @@ class EquilibriumRegions(StoreSerializable):
         """Number of equilibration regions."""
         return len(self._regions)
 
-    def for_region(self, eqlnum: int) -> EquilibriumRegion:
+    def region(self, eqlnum: int) -> EquilibriumRegion:
         """
         Return the `EquilibriumRegion` for a given 1-based EQLNUM index.
 

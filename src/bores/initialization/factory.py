@@ -199,11 +199,14 @@ def _initialize_center_point_equilibrium(
         contact is present without its corresponding PVT table.
     :raises NotImplementedError: If the gas table is wet-gas (`PVTG`-based).
     """
-    if gas_table is not None and gas_table.exists("vaporized_oil_ratio"):
+    is_wet_gas = gas_table is not None and gas_table.exists("vaporized_oil_ratio")
+    if is_wet_gas and rvvd_table is None:
         raise NotImplementedError(
-            "Wet-gas / gas-condensate EQUIL initialization (PVTG-based gas "
-            "tables) is not yet supported. Use a PVDG (dry-gas) table, or "
-            "supply pressure/saturations explicitly for this region."
+            "Wet-gas / gas-condensate EQUIL initialization without an RVVD table "
+            "is not yet supported (no way to determine Rv(depth) to query the "
+            "gas PVT table's Rv-indexed axis). Supply an RVVD table for this "
+            "region, use a PVDG (dry-gas) table, or supply pressure/saturations "
+            "explicitly for this region."
         )
 
     gradient_factor = get_hydrostatic_gradient_factor(unit_system)
@@ -233,15 +236,16 @@ def _initialize_center_point_equilibrium(
         return np.interp(z, sorted_depths, sorted_temperature)
 
     def oil_density(p: Number, z: Number) -> Number:
-        return oil_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[arg-type]
+        return oil_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[return-value]
 
     def gas_density(p: Number, z: Number) -> Number:
         assert gas_table is not None
-        return gas_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[arg-type]
+        second_axis = rvvd_table.at_depth(z) if is_wet_gas else temperature_at(z)  # type: ignore[union-attr]
+        return gas_table.density(p, second_axis).astype(dtype, copy=False)  # type: ignore[return-value]
 
     def water_density(p: Number, z: Number) -> Number:
         assert water_table is not None
-        return water_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[arg-type]
+        return water_table.density(p, temperature_at(z)).astype(dtype, copy=False)  # type: ignore[return-value]
 
     z_min = min(depth.min(), region.datum_depth, oil_zone_low)
     z_max = max(depth.max(), region.datum_depth, oil_zone_high)
@@ -372,9 +376,12 @@ def _initialize_center_point_equilibrium(
         ).astype(dtype, copy=False)  # type: ignore[union-attr]
 
         if gas_table is not None:
-            dew_point = gas_table.dew_point_pressure(
-                temperature=temperature[has_free_gas]
+            dew_point_arg = (
+                rvvd_table.at_depth(depth[has_free_gas])  # type: ignore[arg-type]
+                if is_wet_gas
+                else temperature[has_free_gas]
             )
+            dew_point = gas_table.dew_point_pressure(temperature=dew_point_arg)
             if dew_point is not None:
                 gas_dew_point_pressure[has_free_gas] = dew_point.astype(  # type: ignore[union-attr]
                     dtype, copy=False
@@ -476,7 +483,7 @@ def initialize_equilibrium_state(
 
     for eqlnum in np.unique(equilibrium_regions):
         mask = equilibrium_regions == eqlnum
-        equilibrium_region = equilibrium.for_region(int(eqlnum))
+        equilibrium_region = equilibrium.region(int(eqlnum))
 
         region_pvtnum = np.unique(pvt_regions[mask])
         if len(region_pvtnum) != 1:
@@ -487,7 +494,7 @@ def initialize_equilibrium_state(
                 "`initialize_equilibrium_state`."
             )
 
-        pvt_region = pvt.for_region(int(region_pvtnum[0]))
+        pvt_region = pvt.region(int(region_pvtnum[0]))
         rsvd_table = (
             equilibrium.rsvd_tables.get(equilibrium_region.rsvd_table)
             if equilibrium_region.uses_rsvd and equilibrium.rsvd_tables
@@ -548,7 +555,7 @@ def _temperature_array_from_regions(
 ) -> CellArray:
     """
     Evaluate a `Temperature` at every cell's depth, grouped by
-    `EQLNUM` to avoid redundant `for_region` lookups.
+    `EQLNUM` to avoid redundant `region` lookups.
 
     Duck-types each region's spec: a bare number is broadcast, anything
     with an `at_depth` method (e.g. a depth-dependent table) is evaluated
@@ -563,7 +570,7 @@ def _temperature_array_from_regions(
     result = np.empty(len(pvt_regions), dtype=dtype)
     for pvtnum in np.unique(pvt_regions):
         mask = pvt_regions == pvtnum
-        spec = temperature.for_region(int(pvtnum))
+        spec = temperature.region(int(pvtnum))
         if isinstance(spec, (TemperatureGradient, TemperatureTable)):
             result[mask] = spec.at_depth(depth[mask]).astype(dtype, copy=False)  # type: ignore[union-attr]
         else:
@@ -811,7 +818,7 @@ def initialize_state(
 
     for pvtnum in np.unique(pvt_regions):
         mask = pvt_regions == pvtnum
-        pvt_region = pvt.for_region(int(pvtnum))
+        pvt_region = pvt.region(int(pvtnum))
         static = pvt_region.static
         if static.stock_tank_oil_density is None:
             raise ValidationError(

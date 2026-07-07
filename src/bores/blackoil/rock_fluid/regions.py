@@ -35,7 +35,7 @@ class RockFluidRegions(StoreSerializable):
     permeability and capillary pressure are evaluated from the corresponding
     `RockFluidTables` instance.
 
-    Use `for_region(satnum)` to retrieve the tables for a given region, and
+    Use `region(satnum)` to retrieve the tables for a given region, and
     `from_deck` to construct from a deck.
     """
 
@@ -78,7 +78,7 @@ class RockFluidRegions(StoreSerializable):
         """Number of saturation function regions."""
         return len(self._tables)
 
-    def for_region(self, satnum: int) -> RockFluidTables:
+    def region(self, satnum: int) -> RockFluidTables:
         """
         Return the `RockFluidTables` for a given 1-based region index.
 
@@ -238,7 +238,7 @@ class RockFluidRegions(StoreSerializable):
         return cls(tables=tables)
 
     def __getitem__(self, key: int) -> RockFluidTables:
-        return self.for_region(key)
+        return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
         return iter(self._tables)

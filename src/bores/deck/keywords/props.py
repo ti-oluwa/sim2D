@@ -29,7 +29,7 @@ and relative permeability / capillary pressure curves.
 
 import numpy as np
 
-from bores.deck.keywords.base import Field, PVTTableKeyword
+from bores.deck.keywords.base import Field, TableKeyword
 
 __all__ = [
     "DENSITY",
@@ -49,7 +49,7 @@ __all__ = [
     "SOF3",
 ]
 
-DENSITY = PVTTableKeyword(
+DENSITY = TableKeyword(
     "DENSITY",
     columns=[
         Field("oil", np.float64),
@@ -78,7 +78,7 @@ Columns:
 contains a single-row table (one density record per PVT region).
 """
 
-PVTW = PVTTableKeyword(
+PVTW = TableKeyword(
     "PVTW",
     columns=[
         Field("p_ref", np.float64),
@@ -101,7 +101,7 @@ Columns:
 """
 
 
-PVDO = PVTTableKeyword(
+PVDO = TableKeyword(
     "PVDO",
     columns=[
         Field("pressure", np.float64),
@@ -122,7 +122,7 @@ by `/`, with columns:
 Rows must be in ascending pressure order.
 """
 
-PVTO = PVTTableKeyword(
+PVTO = TableKeyword(
     "PVTO",
     columns=[
         Field("pressure", np.float64),
@@ -148,7 +148,7 @@ bracketing primary-key line):
 """
 
 
-PVCO = PVTTableKeyword(
+PVCO = TableKeyword(
     "PVCO",
     columns=[
         Field("p_ref", np.float64),
@@ -174,7 +174,7 @@ Columns:
 """
 
 
-PVDG = PVTTableKeyword(
+PVDG = TableKeyword(
     "PVDG",
     columns=[
         Field("pressure", np.float64),
@@ -195,7 +195,7 @@ Rows must be in ascending pressure order.
 """
 
 
-PVTG = PVTTableKeyword(
+PVTG = TableKeyword(
     "PVTG",
     columns=[
         Field("rv", np.float64),
@@ -220,7 +220,7 @@ primary-key line):
 """
 
 
-ROCK = PVTTableKeyword(
+ROCK = TableKeyword(
     "ROCK",
     columns=[Field("p_ref", np.float64), Field("cr", np.float64)],
 )
@@ -235,7 +235,7 @@ Columns:
 - `cr` - rock compressibility (1/psi / 1/bar).
 """
 
-ROCKTAB = PVTTableKeyword(
+ROCKTAB = TableKeyword(
     "ROCKTAB",
     columns=[
         Field("pressure", np.float64),
@@ -254,7 +254,7 @@ compressibility value. Each table (one per rock region) contains rows:
 - `trans_mult` - transmissibility multiplier (optional, default 1.0).
 """
 
-SWOF = PVTTableKeyword(
+SWOF = TableKeyword(
     "SWOF",
     columns=[
         Field("sw", np.float64),
@@ -276,7 +276,7 @@ Each table (one per saturation region) contains rows:
 Rows must be in ascending `sw` order.
 """
 
-SGOF = PVTTableKeyword(
+SGOF = TableKeyword(
     "SGOF",
     columns=[
         Field("sg", np.float64),
@@ -298,7 +298,7 @@ Each table (one per saturation region) contains rows:
 Rows must be in ascending `sg` order.
 """
 
-SWFN = PVTTableKeyword(
+SWFN = TableKeyword(
     "SWFN",
     columns=[
         Field("sw", np.float64),
@@ -319,7 +319,7 @@ Used alongside `SOF2` or `SOF3` in the second saturation-function
 family (as opposed to the `SWOF`/`SGOF` first family).
 """
 
-SGFN = PVTTableKeyword(
+SGFN = TableKeyword(
     "SGFN",
     columns=[
         Field("sg", np.float64),
@@ -338,7 +338,7 @@ Each table contains rows:
 """
 
 
-SOF2 = PVTTableKeyword(
+SOF2 = TableKeyword(
     "SOF2",
     columns=[
         Field("so", np.float64),
@@ -357,7 +357,7 @@ Used in two-phase (oil-water or oil-gas) runs with the second
 saturation-function family.
 """
 
-SOF3 = PVTTableKeyword(
+SOF3 = TableKeyword(
     "SOF3",
     columns=[
         Field("so", np.float64),

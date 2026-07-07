@@ -97,14 +97,14 @@ class PVTRegions(StoreSerializable):
     cell is assigned a region index and its PVT properties are evaluated from
     the corresponding `PVTTables` instance.
 
-    Use `for_region(pvtnum)` to retrieve the tables and static properties for a given region, and
+    Use `region(pvtnum)` to retrieve the tables and static properties for a given region, and
     `from_deck` to construct from a deck.
 
     Example:
 
     ```python
     pvt = PVTRegions.from_deck(deck_file, temperature=200.0)
-    region = pvt.for_region(pvtnum_array[cell_idx])
+    region = pvt.region(pvtnum_array[cell_idx])
     bo = region.tables.oil.formation_volume_factor(p, t)
     ```
     """
@@ -133,7 +133,7 @@ class PVTRegions(StoreSerializable):
             )
         self._regions = regions
 
-    def for_region(self, pvtnum: int) -> PVTRegion:
+    def region(self, pvtnum: int) -> PVTRegion:
         """
         Return the `PVTRegion` for a given 1-based region index.
 
@@ -230,7 +230,7 @@ class PVTRegions(StoreSerializable):
         )
 
     def __getitem__(self, key: int) -> PVTRegion:
-        return self.for_region(key)
+        return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
         return iter(self._regions)
@@ -955,6 +955,44 @@ def _build_gas_data_from_pvtg(
                 fill_value=(gas_viscosity_arr[0], gas_viscosity_arr[-1]),
             )(rv_values)
 
+    # Dew-point curve: at each tabulated pressure, the largest listed Rv is the
+    # saturated (dew-point) value for that pressure - the (rv_max, P) pairs trace
+    # out the dew-point curve, the gas-side analogue of Pb(Rs) for oil.
+    rv_max_per_pressure = np.array(
+        [
+            max(row["rv"] for row in pressure_to_rows[pressure])
+            for pressure in pressure_values
+        ],
+        dtype=dtype,
+    )
+    dew_sort_order = np.argsort(rv_max_per_pressure)
+    rv_max_sorted = rv_max_per_pressure[dew_sort_order]
+    dew_pressure_sorted = pressure_values[dew_sort_order]
+
+    if not np.all(np.diff(rv_max_sorted) > 0):
+        warnings.warn(
+            "PVTG dew-point Rv envelope (max Rv per tabulated pressure) is not "
+            "strictly monotonic. Dew-point pressure lookups may be inaccurate "
+            "for some Rv values.",
+            UserWarning,
+            stacklevel=4,
+        )
+        # interp1d requires a strictly increasing x-axis; keep the first-seen
+        # pressure for repeated rv_max values.
+        rv_max_sorted, unique_idx = np.unique(rv_max_sorted, return_index=True)
+        dew_pressure_sorted = dew_pressure_sorted[unique_idx]
+
+    dew_point_pressure_of_rv = interp1d(
+        rv_max_sorted,
+        dew_pressure_sorted,
+        kind="linear",
+        bounds_error=False,
+        fill_value=(dew_pressure_sorted[0], dew_pressure_sorted[-1]),
+    )
+    dew_point_pressure_table = dew_point_pressure_of_rv(rv_values).astype(
+        dtype, copy=False
+    )
+
     # Resolve reference densities
     stock_tank_gas_density: typing.Optional[Number] = None
     stock_tank_oil_density: typing.Optional[Number] = None
@@ -1008,6 +1046,9 @@ def _build_gas_data_from_pvtg(
         else None,
         compressibility_table=typing.cast(
             FloatArray[TwoDimensions], gas_compressibility_2d
+        ),
+        dew_point_pressures=typing.cast(
+            FloatArray[OneDimension], dew_point_pressure_table
         ),
         dtype=dtype,
         unit_system=unit_system,
@@ -1225,7 +1266,7 @@ def load_pvt_regions(
             oil_data = _build_oil_data_from_pvto(
                 pvto_records=pvto_all[region_idx],
                 density_record=density_record,
-                temperature=temperature.for_region(pvtnum),
+                temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
                 interpolation_method=interpolation_method,
                 dtype=dtype,
@@ -1234,7 +1275,7 @@ def load_pvt_regions(
             oil_data = _build_oil_data_from_pvdo(
                 pvdo_records=pvdo_all[region_idx],
                 density_record=density_record,
-                temperature=temperature.for_region(pvtnum),
+                temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
                 interpolation_method=interpolation_method,
                 dtype=dtype,
@@ -1264,7 +1305,7 @@ def load_pvt_regions(
                 oil_data = _build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,
                     density_record=density_record,
-                    temperature=temperature.for_region(pvtnum),
+                    temperature=temperature.region(pvtnum),
                     unit_system=unit_system,
                     interpolation_method=interpolation_method,
                     dtype=dtype,
@@ -1283,7 +1324,7 @@ def load_pvt_regions(
             gas_data = _build_gas_data_from_pvdg(
                 pvdg_records=pvdg_all[region_idx],
                 density_record=density_record,
-                temperature=temperature.for_region(pvtnum),
+                temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
                 interpolation_method=interpolation_method,
                 dtype=dtype,
@@ -1298,7 +1339,7 @@ def load_pvt_regions(
                 water_data = _build_water_data_from_pvtw(
                     pvtw_record=pvtw_rows[0],
                     density_record=density_record,
-                    temperature=temperature.for_region(pvtnum),
+                    temperature=temperature.region(pvtnum),
                     unit_system=unit_system,
                     salinity=salinity,
                     interpolation_method=interpolation_method,

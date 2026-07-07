@@ -25,24 +25,24 @@ All keywords default to `1` (first table) when absent.
 
 import numpy as np
 
-from bores.deck.keywords.base import GridArrayKeyword
+from bores.deck.keywords.base import ArrayKeyword
 
 __all__ = ["SATNUM", "PVTNUM", "EQLNUM", "ROCKNUM", "IMBNUM"]
 
 
-SATNUM = GridArrayKeyword("SATNUM", dtype=np.int32, default_value=1)
+SATNUM = ArrayKeyword("SATNUM", dtype=np.int32, default_value=1)
 """`SATNUM` - saturation function region number (1-based int)."""
 
-PVTNUM = GridArrayKeyword("PVTNUM", dtype=np.int32, default_value=1)
+PVTNUM = ArrayKeyword("PVTNUM", dtype=np.int32, default_value=1)
 """`PVTNUM` - PVT region number (1-based int)."""
 
-EQLNUM = GridArrayKeyword("EQLNUM", dtype=np.int32, default_value=1)
+EQLNUM = ArrayKeyword("EQLNUM", dtype=np.int32, default_value=1)
 """`EQLNUM` - equilibration region number (1-based int)."""
 
-FIPNUM = GridArrayKeyword("FIPNUM", dtype=np.int32, default_value=1)
+FIPNUM = ArrayKeyword("FIPNUM", dtype=np.int32, default_value=1)
 """`FIPNUM` - fluid-in-place region number (1-based int)."""
 
-ROCKNUM = GridArrayKeyword("ROCKNUM", dtype=np.int32, default_value=1)
+ROCKNUM = ArrayKeyword("ROCKNUM", dtype=np.int32, default_value=1)
 """
 `ROCKNUM` - rock-compaction region number (1-based int).
  
@@ -51,7 +51,7 @@ applies to each cell, when more than one rock region is defined. Default
 is `1` (the first/only rock region) when absent.
 """
 
-IMBNUM = GridArrayKeyword("IMBNUM", dtype=np.int32, default_value=1)
+IMBNUM = ArrayKeyword("IMBNUM", dtype=np.int32, default_value=1)
 """
 `IMBNUM` - imbibition saturation-function region number (1-based int).
  

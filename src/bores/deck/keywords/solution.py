@@ -34,11 +34,11 @@ import numpy as np
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import (
+    ArrayKeyword,
     Field,
-    GridArrayKeyword,
     Keyword,
-    PVTTableKeyword,
     RepeatedRecordKeyword,
+    TableKeyword,
 )
 from bores.deck.operators import Operation
 
@@ -62,22 +62,22 @@ __all__ = [
 ]
 
 
-SWAT = SW = GridArrayKeyword("SWAT", dtype=np.float64, default_value=0.0)
+SWAT = SW = ArrayKeyword("SWAT", dtype=np.float64, default_value=0.0)
 """`SWAT` / `SW` - initial water saturation `[0, 1]`."""
 
-SOIL = SO = GridArrayKeyword("SOIL", dtype=np.float64, default_value=0.0)
+SOIL = SO = ArrayKeyword("SOIL", dtype=np.float64, default_value=0.0)
 """`SOIL` / `SO` - initial oil saturation `[0, 1]`."""
 
-SGAS = SG = GridArrayKeyword("SGAS", dtype=np.float64, default_value=0.0)
+SGAS = SG = ArrayKeyword("SGAS", dtype=np.float64, default_value=0.0)
 """`SGAS` / `SG` - initial gas saturation `[0, 1]`."""
 
-PRESSURE = GridArrayKeyword("PRESSURE", dtype=np.float64, default_value=0.0)
+PRESSURE = ArrayKeyword("PRESSURE", dtype=np.float64, default_value=0.0)
 """`PRESSURE` - initial reservoir pressure (psi in FIELD, barsa in METRIC)."""
 
-RS = GridArrayKeyword("RS", dtype=np.float64, default_value=0.0)
+RS = ArrayKeyword("RS", dtype=np.float64, default_value=0.0)
 """`RS` - initial solution gas-oil ratio (scf/stb in FIELD)."""
 
-RV = GridArrayKeyword("RV", dtype=np.float64, default_value=0.0)
+RV = ArrayKeyword("RV", dtype=np.float64, default_value=0.0)
 """`RV` - initial vaporised oil-gas ratio (stb/scf in FIELD)."""
 
 EQUIL = RepeatedRecordKeyword[float](
@@ -133,7 +133,7 @@ Note:
     plain black-oil equilibration.
 """
 
-RTEMP = PVTTableKeyword(
+RTEMP = TableKeyword(
     "RTEMP",
     columns=[Field("temperature", np.float64)],
 )
@@ -150,7 +150,7 @@ Columns:
 - `temperature` - reservoir temperature (°F in FIELD, °C in METRIC / LAB).
 """
 
-TEMPVD = PVTTableKeyword(
+TEMPVD = TableKeyword(
     "TEMPVD",
     columns=[
         Field("depth", np.float64),
@@ -175,7 +175,7 @@ Each table (one per equilibration region) contains rows:
 Rows must be in ascending depth order.
 """
 
-RTEMPVD = PVTTableKeyword(
+RTEMPVD = TableKeyword(
     "RTEMPVD",
     columns=[
         Field("depth", np.float64),
@@ -203,7 +203,7 @@ Rows must be in ascending depth order.
 """
 
 
-RSVD = PVTTableKeyword(
+RSVD = TableKeyword(
     "RSVD",
     columns=[
         Field("depth", np.float64),
@@ -226,7 +226,7 @@ Columns:
 - `rs`    - solution gas-oil ratio at that depth (scf/stb in FIELD).
 """
 
-RVVD = PVTTableKeyword(
+RVVD = TableKeyword(
     "RVVD",
     columns=[
         Field("depth", np.float64),

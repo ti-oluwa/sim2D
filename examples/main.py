@@ -20,7 +20,7 @@ pvt = PVTRegions.from_deck(df, temperature=temperature)
 rock_fluid = RockFluidRegions.from_deck(df)
 black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
 
-print(pvt.for_region(1).tables.gas.viscosity(3200, 200))
+print(pvt.region(1).tables.gas.viscosity_dp(3200, 200))
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

@@ -293,15 +293,15 @@ class DeckFile:
     **Adding a new keyword**:
 
     ```python
-    from bores.deck.keywords.base import GridArrayKeyword
+    from bores.deck.keywords.base import ArrayKeyword
 
-    df.add_keywords(GridArrayKeyword("MYARRAY"))
+    df.add_keywords(ArrayKeyword("MYARRAY"))
     val = df.get("MYARRAY")
     ```
 
     **Or pass it at construction time**:
     ```python
-    df = DeckFile(source, keywords=[GridArrayKeyword("MYARRAY")])
+    df = DeckFile(source, keywords=[ArrayKeyword("MYARRAY")])
     ```
     """
 

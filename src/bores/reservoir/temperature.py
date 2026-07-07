@@ -284,7 +284,7 @@ class Temperature(StoreSerializable):
 
         object.__setattr__(self, "regions", regions)
 
-    def for_region(self, num: int) -> TemperatureSpec:
+    def region(self, num: int) -> TemperatureSpec:
         """
         Return the temperature specification for the given 1-based region index.
 

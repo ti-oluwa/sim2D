@@ -10,9 +10,9 @@ import numpy as np
 
 from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
 from bores.deck.keywords.base import (
+    ArrayKeyword,
     Field,
     FlagKeyword,
-    GridArrayKeyword,
     Keyword,
     RecordKeyword,
     RepeatedRecordKeyword,
@@ -107,7 +107,11 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         if record is None:
             return None
 
-        tokens = tokenize(record.body)
+        # `record.body` spans up to the next keyword line (some
+        # keywords need multiple internal `/` segments); COORD is a
+        # single `/`-terminated block, so take only the first one.
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         expected = (dims.nx + 1) * (dims.ny + 1) * 6
         if len(tokens) != expected:
             raise DeckParseError(
@@ -147,7 +151,8 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         if record is None:
             return None
 
-        tokens = tokenize(record.body)
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         expected = dims.nx * dims.ny * dims.nz * 8
         if len(tokens) != expected:
             raise DeckParseError(
@@ -241,7 +246,7 @@ PINCH = RecordKeyword[typing.Union[str, float]](
     - pinchout handling parameters.
 """
 
-TOPS = GridArrayKeyword(
+TOPS = ArrayKeyword(
     "TOPS",
     dtype=np.float64,
     default_value=0.0,
@@ -254,17 +259,17 @@ non-uniform decks).
 
 In practice Eclipse accepts either `nx * ny` values (applying the same
 top to every layer) or `nx * ny * nz` values. The array length
-reported by `.GridArrayKeyword.parse` matches `n_cells`;
+reported by `.ArrayKeyword.parse` matches `n_cells`;
 callers should slice `[:nx*ny]` to get the top-layer tops.
 """
 
-DX = GridArrayKeyword("DX", dtype=np.float64, default_value=0.0)
+DX = ArrayKeyword("DX", dtype=np.float64, default_value=0.0)
 """`DX` - cell size in the x direction (one value per cell)."""
 
-DY = GridArrayKeyword("DY", dtype=np.float64, default_value=0.0)
+DY = ArrayKeyword("DY", dtype=np.float64, default_value=0.0)
 """`DY` - cell size in the y direction (one value per cell)."""
 
-DZ = GridArrayKeyword("DZ", dtype=np.float64, default_value=0.0)
+DZ = ArrayKeyword("DZ", dtype=np.float64, default_value=0.0)
 """`DZ` - cell size in the z direction (one value per cell)."""
 
 
@@ -312,7 +317,8 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
         if record is None:
             return None
 
-        tokens = tokenize(record.body)
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         expected = self._axis_extent(dims)
         try:
             values = [np.float64(token) for token in tokens]
@@ -353,7 +359,7 @@ DZV = VectorDimsKeyword("DZV", axis_extent=lambda dims: dims.nz)
 value per layer (`nz` values total). See `DXV`.
 """
 
-ACTNUM = GridArrayKeyword("ACTNUM", dtype=np.int32, default_value=1)
+ACTNUM = ArrayKeyword("ACTNUM", dtype=np.int32, default_value=1)
 """
 `ACTNUM` - active-cell mask.
 
@@ -362,48 +368,48 @@ Default is `1` (all cells active) when the keyword is absent.
 
 Note:
     A missing `ACTNUM` keyword means all cells are active in Eclipse,
-    so `.GridArrayKeyword.parse` returns `None` (keyword
+    so `.ArrayKeyword.parse` returns `None` (keyword
     absent) rather than an all-ones array.  Callers should treat
     `None` as "all active".
 """
 
-MULTX = GridArrayKeyword("MULTX", is_multiplier=True)
+MULTX = ArrayKeyword("MULTX", is_multiplier=True)
 """
 `MULTX` - transmissibility multiplier for the positive-x face
 of each cell.
 """
 
-MULTY = GridArrayKeyword("MULTY", is_multiplier=True)
+MULTY = ArrayKeyword("MULTY", is_multiplier=True)
 """
 `MULTY` - transmissibility multiplier for the positive-y face
 of each cell.
 """
 
-MULTZ = GridArrayKeyword("MULTZ", is_multiplier=True)
+MULTZ = ArrayKeyword("MULTZ", is_multiplier=True)
 """
 `MULTZ` - transmissibility multiplier for the positive-z face
 of each cell.
 """
 
-MULTX_MINUS = GridArrayKeyword("MULTX-", is_multiplier=True)
+MULTX_MINUS = ArrayKeyword("MULTX-", is_multiplier=True)
 """
 `MULTX-` - transmissibility multiplier for the negative-x face
 of each cell.
 """
 
-MULTY_MINUS = GridArrayKeyword("MULTY-", is_multiplier=True)
+MULTY_MINUS = ArrayKeyword("MULTY-", is_multiplier=True)
 """
 `MULTY-` - transmissibility multiplier for the negative-y face
 of each cell.
 """
 
-MULTZ_MINUS = GridArrayKeyword("MULTZ-", is_multiplier=True)
+MULTZ_MINUS = ArrayKeyword("MULTZ-", is_multiplier=True)
 """
 `MULTZ-` - transmissibility multiplier for the negative-z face
 of each cell.
 """
 
-PORO = GridArrayKeyword("PORO", dtype=np.float64, default_value=0.0)
+PORO = ArrayKeyword("PORO", dtype=np.float64, default_value=0.0)
 """
 `PORO` - porosity fraction `[0, 1]`.
 
@@ -411,13 +417,13 @@ A missing `PORO` keyword returns `None`; the simulator should treat
 that as zero porosity (dead rock).
 """
 
-PERMX = GridArrayKeyword("PERMX", dtype=np.float64, default_value=0.0)
+PERMX = ArrayKeyword("PERMX", dtype=np.float64, default_value=0.0)
 """`PERMX` - permeability in the x direction (mD)."""
 
-PERMY = GridArrayKeyword("PERMY", dtype=np.float64, default_value=0.0)
+PERMY = ArrayKeyword("PERMY", dtype=np.float64, default_value=0.0)
 """`PERMY` - permeability in the y direction (mD)."""
 
-PERMZ = GridArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
+PERMZ = ArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
@@ -519,7 +525,7 @@ grid's declared unit system.
 Multiple `NNC` keyword blocks in the same deck are concatenated.
 """
 
-PORV = GridArrayKeyword("PORV", dtype=np.float64, default_value=0.0)
+PORV = ArrayKeyword("PORV", dtype=np.float64, default_value=0.0)
 """
 `PORV` - pore volume per cell (bbl in FIELD, m³ in METRIC).
 
@@ -527,7 +533,7 @@ When present, the simulator should use this directly rather than
 computing pore volume from geometry and porosity.
 """
 
-NTG = GridArrayKeyword("NTG", dtype=np.float64, default_value=1.0)
+NTG = ArrayKeyword("NTG", dtype=np.float64, default_value=1.0)
 """
 `NTG` - net-to-gross ratio `[0, 1]`.
 

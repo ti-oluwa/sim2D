@@ -7,7 +7,14 @@ from pathlib import Path
 
 from bores.errors import ValidationError
 
-__all__ = ["GridDimensions", "Record", "Deck", "DeckParseError", "tokenize"]
+__all__ = [
+    "GridDimensions",
+    "Record",
+    "Deck",
+    "DeckParseError",
+    "parse_repeat_token",
+    "tokenize",
+]
 
 _TextOrPath = typing.Union[str, bytes, Path]
 
@@ -77,7 +84,7 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
     :raises DeckParseError: If an included file cannot be found or read.
     """
 
-    def _replace(match: "re.Match[str]") -> str:
+    def _replace(match: re.Match[str]) -> str:
         relative_path = match.group(1).strip()
         if source_dir is None:
             warnings.warn(
@@ -147,7 +154,21 @@ _REPEAT_RE = re.compile(r"^(\d+)\*(.*)$")
 _QUOTED_RE = re.compile(r"""(['"])((?:(?!\1).)*)\1""")
 
 
-def tokenize(text: str) -> typing.List[str]:
+def parse_repeat_token(token: str) -> typing.Optional[typing.Tuple[int, str]]:
+    """
+    If `token` is `N*value` repeat syntax, return `(N, value)`; else `None`.
+
+    Exposed so callers that need to fill a large array without ever
+    materializing `N` copies of `value` (see `tokenize`'s `expand_repeats`
+    parameter) can detect and handle repeat groups themselves.
+    """
+    match = _REPEAT_RE.match(token)
+    if match is None:
+        return None
+    return int(match.group(1)), match.group(2)
+
+
+def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
     """
     Split text into whitespace-separated tokens, expanding `N*value`
     repeat syntax and preserving quoted strings (with embedded whitespace)
@@ -162,16 +183,23 @@ def tokenize(text: str) -> typing.List[str]:
     ```
 
     Note:
-        A bare `"N*"` (empty value) expands to `N` empty strings.
-        Callers that convert tokens to `float` will receive a
-        `ValueError`; they should surface this as a
-        `DeckParseError` with context about which keyword failed.
+    A bare `"N*"` (empty value) expands to `N` empty strings.
+    Callers that convert tokens to `float` will receive a
+    `ValueError`; they should surface this as a
+    `DeckParseError` with context about which keyword failed.
 
     :param text: Comment-stripped Eclipse text.
-    :returns: Flat list of expanded string tokens (quotes stripped).
+    :param expand_repeats: When `True` (default), `N*value` expands to `N`
+        literal tokens. This is correct for small, fixed-shape records. When
+        `False`, a repeat group is returned as a single unexpanded
+        `"N*value"` token; use `parse_repeat_token` to inspect it. This
+        exists for callers filling per-cell arrays that may be millions of
+        elements long from a handful of `N*value` groups (`GridArrayKeyword`),
+        where expanding to `N` separate tokens, and then parsing the same
+        numeric string `N` redundant times which is just unnecessary overhead.
+    :returns: Flat list of tokens (quotes stripped; repeats expanded or not
+        per `expand_repeats`).
     """
-    # Stash quoted substrings so that repeat-expansion and whitespace
-    # splitting never see their interior.
     placeholders: typing.List[str] = []
 
     def _stash(match: "re.Match[str]") -> str:
@@ -184,8 +212,11 @@ def tokenize(text: str) -> typing.List[str]:
     for raw_token in stashed_text.split():
         match = _REPEAT_RE.match(raw_token)
         if match:
-            count, value = int(match.group(1)), match.group(2)
-            tokens.extend([value] * count)
+            if expand_repeats:
+                count, value = int(match.group(1)), match.group(2)
+                tokens.extend([value] * count)
+            else:
+                tokens.append(raw_token)
         else:
             tokens.append(raw_token)
 

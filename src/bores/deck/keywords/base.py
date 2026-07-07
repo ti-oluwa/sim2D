@@ -13,7 +13,13 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
+from bores.deck.core import (
+    Deck,
+    DeckParseError,
+    GridDimensions,
+    parse_repeat_token,
+    tokenize,
+)
 from bores.deck.operators import Operation, apply_operation, resolve_operations
 from bores.typing import FloatArray, Number, OneDimension
 
@@ -22,11 +28,11 @@ __all__ = [
     "Field",
     "RecordKeyword",
     "RepeatedRecordKeyword",
-    "GridArrayKeyword",
+    "ArrayKeyword",
     "FlagKeyword",
     "DateKeyword",
     "DatesKeyword",
-    "PVTTableKeyword",
+    "TableKeyword",
 ]
 
 T = typing.TypeVar("T")
@@ -256,8 +262,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
         return _parse_tokens(self.name, self.fields, tokens)
 
 
-# TODO: Optimize `GridArrayKeyword` keyword. It slow for large arrays
-class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
+class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
     """
     A flat per-cell array keyword of length `nx * ny * nz`
     (`PORO`, `PERMX`, `ACTNUM`, `MULTX`, `TOPS`, …).
@@ -307,7 +312,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             `nx*ny*nz` per-cell array:
 
             ```python
-            TOPS = GridArrayKeyword("TOPS", column_shape=("nx", "ny"))
+            TOPS = ArrayKeyword("TOPS", column_shape=("nx", "ny"))
             ```
 
             Supported broadcast patterns (axes not listed in `column_shape`
@@ -408,7 +413,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             # We cannot know for certain without a registered Keyword instance,
             # but this heuristic is correct for all standard Eclipse arrays.
             default = 1.0 if keyword_name.startswith("MULT") else 0.0
-            probe = GridArrayKeyword(keyword_name, default_value=default)
+            probe = ArrayKeyword(keyword_name, default_value=default)
             return probe._resolve(
                 deck, dims, operations=operations, stop_before_order=as_of_order
             )
@@ -417,14 +422,18 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
             if kind == "assign":
                 tokens: typing.List[str] = payload  # type: ignore[assignment]
                 if len(tokens) == 0:
-                    # Edge case: bare keyword with empty body (e.g. "3*" -> ["","",""])
-                    # after float conversion would fail; treat as no-op.
                     warnings.warn(
                         f"{self.name}: assign event has zero tokens; skipping.",
                         stacklevel=4,
                     )
                     continue
-                if len(tokens) == 1:
+
+                # Total element count this assign event actually represents,
+                # accounting for unexpanded "N*value" groups, without building the expanded list.
+                total_count = sum(
+                    (parse_repeat_token(token) or (1, None))[0] for token in tokens
+                )
+                if total_count == 1:
                     try:
                         array[:] = float(tokens[0])
                     except ValueError as exc:
@@ -432,23 +441,43 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                             f"{self.name}: expected a numeric scalar, got "
                             f"{tokens[0]!r}: {exc}"
                         ) from exc
-                elif len(tokens) == dims.n_cells:
+
+                elif total_count == dims.n_cells:
                     try:
-                        array[:] = np.array(tokens, dtype=np.float64)
+                        position = 0
+                        for token in tokens:
+                            repeat = parse_repeat_token(token)
+                            if repeat is not None:
+                                count, value = repeat
+                                array[position : position + count] = float(value)
+                                position += count
+                            else:
+                                array[position] = float(token)
+                                position += 1
                     except ValueError as exc:
                         raise DeckParseError(
                             f"{self.name} contains a non-numeric value: {exc}"
                         ) from exc
 
                 else:
-                    # Try `column_shape` broadcast if declared
+                    # Try `column_shape` broadcast if declared. Short-form
+                    # arrays are small by construction (nx*ny at most), so
+                    # expanding here is cheap - reuse the existing path via
+                    # a fully-expanded token list for this branch only.
                     broadcast_ok = False
                     if self.column_shape is not None:
                         short_count = self._short_form_count(dims)
-                        if len(tokens) == short_count:
+                        if total_count == short_count:
+                            expanded: typing.List[str] = []
+                            for token in tokens:
+                                repeat = parse_repeat_token(token)
+                                if repeat is not None:
+                                    expanded.extend([repeat[1]] * repeat[0])
+                                else:
+                                    expanded.append(token)
                             try:
                                 array[:] = self._broadcast_short_form(
-                                    np.array(tokens, dtype=np.float64), dims
+                                    np.array(expanded, dtype=np.float64), dims
                                 )
                                 broadcast_ok = True
                             except ValueError as exc:
@@ -462,7 +491,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
                             expected_desc += f" or {short_count} (short form: {' * '.join(self.column_shape)})"
                         raise DeckParseError(
                             f"{self.name} expected {expected_desc} value(s); "
-                            f"got {len(tokens)}."
+                            f"got {total_count}."
                         )
 
             else:  # kind == "operate"
@@ -551,19 +580,30 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         events: typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]] = []
 
         for record in deck.records_for(self.name):
-            raw_tokens = tokenize(record.body.split("/", 1)[0])
-            # Filter out tokens that are empty strings (produced by bare "N*"
-            # repeat syntax). A record that expands to only empty strings is
-            # dropped with a warning rather than crashing float() later.
-            if any(t == "" for t in raw_tokens):
-                clean_tokens = [t for t in raw_tokens if t != ""]
+            # Compact tokens: an "N*value" repeat group stays as one token
+            # instead of expanding to N copies - large arrays are commonly
+            # one or a handful of such groups, so this avoids materializing
+            # (and then redundantly re-parsing) millions of identical
+            # strings for e.g. a uniform full-field PORO/PERMX.
+            raw_tokens = tokenize(record.body.split("/", 1)[0], expand_repeats=False)
+            # A bare "N*" (empty value) repeat group is dropped with a
+            # warning rather than crashing float() later.
+            clean_tokens = []
+            dropped = 0
+            for token in raw_tokens:
+                repeat = parse_repeat_token(token)
+                if repeat is not None and repeat[1] == "":
+                    dropped += repeat[0]
+                    continue
+                clean_tokens.append(token)
+
+            if dropped:
                 warnings.warn(
                     f"{self.name}: record body contains bare 'N*' repeat(s) "
-                    f"(empty-value tokens); {len(raw_tokens) - len(clean_tokens)} "
-                    "token(s) dropped.",
+                    f"(empty-value tokens); {dropped} token(s) dropped.",
                     stacklevel=6,
                 )
-                raw_tokens = clean_tokens
+            raw_tokens = clean_tokens
             events.append(((record.start, 0), "assign", raw_tokens))
 
         if operations is None:
@@ -741,7 +781,7 @@ PVTTable = typing.List[PVTRow[T]]
 """One saturation/PVT table: a list of row dicts in ascending primary-key order."""
 
 
-class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
+class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
     """
     A keyword whose body contains one or more tabulated data blocks,
     each terminated by `/`. Multiple keyword occurrences (e.g. one per

@@ -17,7 +17,7 @@ import warnings
 import numpy as np
 
 from bores.deck.core import Deck, GridDimensions, tokenize
-from bores.typing import FloatArray, OneDimension
+from bores.typing import FloatArray, IntArray, OneDimension
 
 __all__ = [
     "Operation",
@@ -45,7 +45,7 @@ OPERATOR_CONTROL_KEYWORDS: typing.FrozenSet[str] = (
 """
 Keywords that scope or drive operators rather than holding their own
 per-cell data; never matched as a plain
-`bores.deck.keywords.array.GridArrayKeyword` value.
+`bores.deck.keywords.array.ArrayKeyword` value.
 """
 
 
@@ -236,6 +236,36 @@ def _parse_operator_records(
         )
 
 
+def _box_indices(
+    box: typing.Tuple[int, int, int, int, int, int], dims: GridDimensions
+) -> IntArray[OneDimension]:
+    """
+    Return the flat cell indices covered by *box*, vectorized.
+
+    Replaces a Python-level triple-nested loop calling `flat_index` once
+    per cell - which dominates runtime for large grids, since a full-grid
+    (un-boxed) operator is the common case, not the exception. Order of
+    the returned indices doesn't matter: every caller either broadcasts a
+    scalar across them (`EQUALS`/`ADD`/`MULTIPLY`/`MAXVALUE`/`MINVALUE`) or
+    uses the *same* index array on both sides of a copy
+    (`array[indices] = source_array[indices]`), so any consistent
+    flattening order is correct.
+    """
+    i1, i2, j1, j2, k1, k2 = box
+    if (i1, i2, j1, j2, k1, k2) == (0, dims.nx - 1, 0, dims.ny - 1, 0, dims.nz - 1):
+        return np.arange(dims.n_cells, dtype=np.intp)
+
+    i = np.arange(i1, i2 + 1, dtype=np.intp)
+    j = np.arange(j1, j2 + 1, dtype=np.intp)
+    k = np.arange(k1, k2 + 1, dtype=np.intp)
+    flat = (
+        i[:, None, None]
+        + j[None, :, None] * dims.nx
+        + k[None, None, :] * dims.nx * dims.ny
+    )
+    return flat.ravel()
+
+
 def apply_operation(
     array: FloatArray[OneDimension],
     operation: Operation,
@@ -253,16 +283,7 @@ def apply_operation(
         keyword name, used by `COPY` to fetch the source array. May
         return `None` if the source keyword has no data yet.
     """
-    i1, i2, j1, j2, k1, k2 = operation.box
-    indices = np.array(
-        [
-            dims.flat_index(i, j, k)
-            for k in range(k1, k2 + 1)
-            for j in range(j1, j2 + 1)
-            for i in range(i1, i2 + 1)
-        ],
-        dtype=np.intp,
-    )
+    indices = _box_indices(operation.box, dims)
 
     if operation.op == "EQUALS":
         array[indices] = operation.value
