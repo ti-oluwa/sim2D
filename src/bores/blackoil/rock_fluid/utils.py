@@ -9,7 +9,6 @@ from bores.typing import NDimension, Number, NumberArray, NumberOrArray, Spacing
 from bores.utils import atleast_1d
 
 
-@numba.njit(cache=True)
 def make_saturation_field(
     n_points: int = 200,
     min_saturation: Number = 0.0,
@@ -48,7 +47,6 @@ def make_saturation_field(
     )
 
 
-@numba.njit(cache=True, inline="always")
 def make_min_span_saturation_field(
     number_of_points: int,
     min_saturation: Number,
@@ -118,7 +116,6 @@ def pchip_resample(
     return resampled_saturations, interpolant(resampled_saturations)
 
 
-@numba.njit(cache=True)
 def build_saturation_reference_field(
     number_of_base_points: int,
     saturation_lower_bound: Number,

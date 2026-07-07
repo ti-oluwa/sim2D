@@ -77,9 +77,7 @@ class BlackOilFluid(
         if pvt_unit_system != unit_system:
             pvt = pvt.convert(unit_system, table=unit_conversion_table)
         if rock_fluid_unit_system != unit_system:
-            rock_fluid = rock_fluid.convert(
-                unit_system, table=unit_conversion_table
-            )
+            rock_fluid = rock_fluid.convert(unit_system, table=unit_conversion_table)
 
         self.pvt = pvt
         """PVT region tables - one `PVTRegion` per `PVTNUM` region."""

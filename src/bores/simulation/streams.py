@@ -13,8 +13,8 @@ import numpy as np
 from typing_extensions import Self
 
 from bores.errors import StorageError, StreamError
-from bores.states import ModelState, validate_state
 from bores.serialization.stores import DataStore, EntryMeta
+from bores.states import ModelState, validate_state
 from bores.typing import NDimension
 from bores.utils import _close_iter
 

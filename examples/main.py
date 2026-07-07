@@ -20,14 +20,16 @@ pvt = PVTRegions.from_deck(df, temperature=temperature)
 rock_fluid = RockFluidRegions.from_deck(df)
 black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
 
-# Plot the grid
-print(f"cells   : {grid.n_cells}")
-print(f"faces   : {grid.n_faces}")
-print(f"volumes : {grid.cell_volumes}")
-print(f"bbox    : {grid.bounding_box}")
+print(pvt.for_region(1).tables.gas.viscosity(3200, 200))
 
-pv_grid = as_pyvista_grid(grid)
-pl = pv.Plotter()
-pl.add_mesh(pv_grid, scalars="cell_volume", show_edges=True)
-pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
-pl.show()
+# # Plot the grid
+# print(f"cells   : {grid.n_cells}")
+# print(f"faces   : {grid.n_faces}")
+# print(f"volumes : {grid.cell_volumes}")
+# print(f"bbox    : {grid.bounding_box}")
+
+# pv_grid = as_pyvista_grid(grid)
+# pl = pv.Plotter()
+# pl.add_mesh(pv_grid, scalars="cell_volume", show_edges=True)
+# pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
+# pl.show()

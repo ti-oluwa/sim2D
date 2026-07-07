@@ -19,7 +19,7 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.rock_fluid.capillary_pressure.base import (
+from bores.blackoil.rock_fluid.capillary_pressure.tables import (
     CapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
     capillary_pressure_table,

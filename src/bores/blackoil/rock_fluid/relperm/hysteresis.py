@@ -21,7 +21,7 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.rock_fluid.relperm.base import (
+from bores.blackoil.rock_fluid.relperm.tables import (
     MixingRule,
     RelativePermeabilityTable,
     TwoPhaseRelPermTable,

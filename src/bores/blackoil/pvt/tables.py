@@ -138,6 +138,59 @@ def _build_pchip_2d_derivative_interpolator(
     return _ev
 
 
+def _build_bilinear_2d_derivative_interpolator(
+    pressures: NumberArray[NDimension],
+    temperatures: NumberArray[NDimension],
+    table: NumberArray[NDimension],
+    dtype: npt.DTypeLike,
+) -> typing.Callable[
+    [NumberArray[NDimension], NumberArray[NDimension]], NumberArray[OneDimension]
+]:
+    """
+    Build the exact ∂table/∂P of a *bilinear* (kx=ky=1) surface.
+
+    `RectBivariateSpline.partial_derivative(1, 0)` requires `dx < kx`, which
+    is never true for `kx=1` ("linear" interpolation) - scipy has no way to
+    hand back a derivative object for a degree-1 spline. This computes it
+    directly instead: within a pressure cell, `∂z/∂P` is the linear-in-y
+    blend of the two bracketing columns' slopes, `(z[i+1,j] - z[i,j]) /
+    (P[i+1] - P[i])`.
+    """
+    # Per-column slopes between consecutive pressure knots: shape (n_p-1, n_t)
+    column_slopes = np.diff(table, axis=0) / np.diff(pressures)[:, np.newaxis]
+    # One linear interpolator per pressure cell, blending slopes over temperature
+    cell_interps = [
+        interp1d(
+            temperatures,
+            column_slopes[i, :],
+            kind="linear",
+            bounds_error=False,
+            fill_value=(column_slopes[i, 0], column_slopes[i, -1]),
+        )
+        for i in range(column_slopes.shape[0])
+    ]
+
+    def _ev(
+        p: NumberArray[NDimension], t: NumberArray[NDimension]
+    ) -> NumberArray[OneDimension]:
+        p = p.astype(dtype, copy=False).ravel()  # type: ignore
+        t = t.astype(dtype, copy=False).ravel()  # type: ignore
+        # Clip to the last cell at/above the top knot (flat extrapolation,
+        # matching the value interpolant's own boundary behavior).
+        cell_idx = np.clip(
+            np.searchsorted(pressures, p, side="right") - 1,
+            0,
+            len(cell_interps) - 1,
+        )
+        result = np.empty(len(p), dtype=dtype)
+        for idx in np.unique(cell_idx):
+            mask = cell_idx == idx
+            result[mask] = cell_interps[idx](t[mask])
+        return result
+
+    return _ev
+
+
 class PVTTable(StoreSerializable):
     """
     Phase-aware PVT property lookup with pre-built interpolators.
@@ -669,7 +722,14 @@ class PVTTable(StoreSerializable):
                     x=pressures, y=temperatures, z=table, kx=k, ky=k
                 )
                 self._interpolatants[name] = spline
-                self._derivative_interpolatants[name] = spline.partial_derivative(1, 0)
+                # RectBivariateSpline.partial_derivative(dx, dy) requires
+                # dx < kx; for "linear" (kx=1) that's never satisfiable, so
+                # build the exact bilinear derivative directly instead.
+                self._derivative_interpolatants[name] = (
+                    _build_bilinear_2d_derivative_interpolator(
+                        pressures, temperatures, table, dtype=self.dtype
+                    )
+                )
 
         def _register_3d(name: str, table: typing.Optional[npt.NDArray]) -> None:
             """
@@ -749,7 +809,12 @@ class PVTTable(StoreSerializable):
                         )
                         self._interpolatants["bubble_point_pressure"] = spline
                         self._derivative_interpolatants["bubble_point_pressure_drs"] = (
-                            spline.partial_derivative(1, 0)
+                            _build_bilinear_2d_derivative_interpolator(
+                                solution_gors,
+                                temperatures,
+                                bubble_point_arr,
+                                dtype=self.dtype,
+                            )
                         )
 
         if phase == FluidPhase.GAS:
@@ -913,9 +978,7 @@ class PVTTable(StoreSerializable):
             raw = (
                 interp.ev(pressure, temperature)
                 if hasattr(interp, "ev")
-                else interp(
-                    np.atleast_1d(pressure), np.atleast_1d(temperature)
-                ).ravel()[0]
+                else interp(np.atleast_1d(pressure), np.atleast_1d(temperature))[0]
             )
             result = dtype.type(raw)  # type: ignore[attr-defined]
         else:

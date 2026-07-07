@@ -6,17 +6,17 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.capillary_pressure.base import (
+from bores.blackoil.rock_fluid.capillary_pressure.tables import (
     CapillaryPressureTable,
     ThreePhaseCapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
 )
-from bores.blackoil.rock_fluid.relperm.base import (
+from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
+from bores.blackoil.rock_fluid.relperm.tables import (
     RelativePermeabilityTable,
     ThreePhaseRelPermTable,
     TwoPhaseRelPermTable,
 )
-from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
 from bores.blackoil.rock_fluid.utils import (
     build_saturation_reference_field,
     pchip_resample,
@@ -26,14 +26,10 @@ from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.serialization.stores import StoreSerializable
 from bores.typing import (
-    CapillaryPressures,
     FluidPhase,
-    NDimension,
     Number,
     NumberArray,
-    NumberOrArray,
     OneDimension,
-    RelativePermeabilities,
     Spacing,
     UnitSystem,
 )
@@ -59,28 +55,15 @@ class RockFluidTables(StoreSerializable):
     capillary_pressure: typing.Optional[CapillaryPressureTable] = None
     """Capillary pressure table for the rock-fluid system, or `None` if not present."""
 
-    _unit_system: typing.Optional[UnitSystem] = attrs.field(
+    unit_system: typing.Optional[UnitSystem] = attrs.field(
         default=None, init=False, repr=False
     )
 
     def __attrs_post_init__(self) -> None:
-        # All units must be consistent across the two tables, if both are present.
-        unit_systems = set()
-        unit_systems.add(self.relative_permeability.unit_system)
+        unit_system = None
         if self.capillary_pressure is not None:
-            unit_systems.add(self.capillary_pressure.unit_system)
-
-        if len(unit_systems) > 1:
-            raise ValidationError(
-                "Relative permeability and capillary pressure tables must have the same unit system."
-            )
-
-        object.__setattr__(self, "_unit_system", unit_systems.pop())
-
-    @property
-    def unit_system(self) -> UnitSystem:
-        """Unit system of the rock-fluid tables."""
-        return self._unit_system
+            unit_system = self.capillary_pressure.unit_system
+        object.__setattr__(self, "unit_system", unit_system)
 
     def convert(
         self,

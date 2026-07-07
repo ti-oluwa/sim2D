@@ -7,7 +7,7 @@ import numba
 import numpy as np
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.capillary_pressure.base import (
+from bores.blackoil.rock_fluid.capillary_pressure.tables import (
     CapillaryPressureTable,
     capillary_pressure_table,
 )

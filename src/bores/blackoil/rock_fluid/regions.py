@@ -5,14 +5,14 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.capillary_pressure.base import (
+from bores.blackoil.rock_fluid.capillary_pressure.tables import (
     ThreePhaseCapillaryPressureTable,
 )
-from bores.blackoil.rock_fluid.relperm.base import (
+from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
+from bores.blackoil.rock_fluid.relperm.tables import (
     MinimumRelPerm,
     ThreePhaseRelPermTable,
 )
-from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
 from bores.blackoil.rock_fluid.tables import RockFluidTables
 from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
@@ -55,7 +55,11 @@ class RockFluidRegions(StoreSerializable):
             raise ValidationError("`tables` must contain at least one entry.")
 
         # All tables must have the same unit system
-        unit_systems = {table.unit_system for table in tables.values()}
+        unit_systems = {
+            table.unit_system
+            for table in tables.values()
+            if table.unit_system is not None
+        }
         if len(unit_systems) > 1:
             raise ValidationError(
                 "All RockFluidTables in `tables` must have the same unit system. "
@@ -64,7 +68,7 @@ class RockFluidRegions(StoreSerializable):
         self._tables = tables
 
     @property
-    def unit_system(self) -> UnitSystem:
+    def unit_system(self) -> typing.Optional[UnitSystem]:
         """Unit system shared by all regions."""
         assert self._tables
         return next(iter(self._tables.values())).unit_system

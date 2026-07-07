@@ -351,21 +351,13 @@ class EquilibriumRegion(StoreSerializable):
             )
         return typing.cast(
             Self,
-            _equilibrium_info_from_record(
+            _build_equilibrium_region_from_record(
                 records[eqlnum - 1], eqlnum, deck_file.unit_system
             ),
         )
 
 
-class EquilibriumRegions(
-    StoreSerializable,
-    fields={
-        "regions": typing.Dict[int, EquilibriumRegion],
-        "rsvd_tables": typing.Optional[typing.Dict[int, DepthTable]],
-        "rvvd_tables": typing.Optional[typing.Dict[int, DepthTable]],
-        "unit_system": UnitSystem,
-    },
-):
+class EquilibriumRegions(StoreSerializable):
     """
     Container mapping 1-based `EQLNUM` region index to `EquilibriumRegion`.
 
@@ -378,11 +370,11 @@ class EquilibriumRegions(
 
     ```python
     equilibrium = EquilibriumRegions.from_deck(deck_file)
-    info = equilibrium.for_region(eqlnum_array[cell_idx])
+    region = equilibrium.for_region(eqlnum_array[cell_idx])
     ```
     """
 
-    __slots__ = ("regions", "rsvd_tables", "rvvd_tables", "unit_system")
+    __slots__ = ("_regions", "rsvd_tables", "rvvd_tables", "unit_system")
 
     def __init__(
         self,
@@ -407,26 +399,26 @@ class EquilibriumRegions(
         if not regions:
             raise ValidationError("`regions` must contain at least one entry.")
 
-        for info in regions.values():
-            if info.uses_rsvd and (
-                rsvd_tables is None or info.rsvd_table not in rsvd_tables
+        for region in regions.values():
+            if region.uses_rsvd and (
+                rsvd_tables is None or region.rsvd_table not in rsvd_tables
             ):
                 raise ValidationError(
-                    f"EquilibriumRegion references rsvd_table={info.rsvd_table} "
+                    f"EquilibriumRegion references rsvd_table={region.rsvd_table} "
                     "but no matching table was supplied in `rsvd_tables`."
                 )
-            if info.uses_rvvd and (
-                rvvd_tables is None or info.rvvd_table not in rvvd_tables
+            if region.uses_rvvd and (
+                rvvd_tables is None or region.rvvd_table not in rvvd_tables
             ):
                 raise ValidationError(
-                    f"EquilibriumRegion references rvvd_table={info.rvvd_table} "
+                    f"EquilibriumRegion references rvvd_table={region.rvvd_table} "
                     "but no matching table was supplied in `rvvd_tables`."
                 )
 
         mismatched = {
-            num: info.unit_system
-            for num, info in regions.items()
-            if info.unit_system != unit_system
+            num: region.unit_system
+            for num, region in regions.items()
+            if region.unit_system != unit_system
         }
         if mismatched:
             raise ValidationError(
@@ -441,6 +433,57 @@ class EquilibriumRegions(
         self.rvvd_tables = rvvd_tables
         self.unit_system = unit_system
 
+    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+        """Serialize EquilibriumRegions to a dictionary."""
+        return {
+            "regions": {
+                str(num): region.dump(recurse) for num, region in self._regions.items()
+            },
+            "rsvd_tables": {
+                str(num): table.dump(recurse)
+                for num, table in (self.rsvd_tables or {}).items()
+            }
+            if self.rsvd_tables
+            else None,
+            "rvvd_tables": {
+                str(num): table.dump(recurse)
+                for num, table in (self.rvvd_tables or {}).items()
+            }
+            if self.rvvd_tables
+            else None,
+            "unit_system": self.unit_system.value,
+        }
+
+    @classmethod
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
+        """Deserialize EquilibriumRegions from a dictionary."""
+        unit_system = UnitSystem(data["unit_system"])
+
+        regions = {
+            int(num): EquilibriumRegion.load(region_data)
+            for num, region_data in data["regions"].items()
+        }
+
+        rsvd_tables = None
+        if data.get("rsvd_tables"):
+            rsvd_tables = {
+                int(num): DepthTable.load(table_data)
+                for num, table_data in data["rsvd_tables"].items()
+            }
+
+        rvvd_tables = None
+        if data.get("rvvd_tables"):
+            rvvd_tables = {
+                int(num): DepthTable.load(table_data)
+                for num, table_data in data["rvvd_tables"].items()
+            }
+        return cls(
+            regions=regions,
+            rsvd_tables=rsvd_tables,
+            rvvd_tables=rvvd_tables,
+            unit_system=unit_system,
+        )
+
     @property
     def n_regions(self) -> int:
         """Number of equilibration regions."""
@@ -454,12 +497,12 @@ class EquilibriumRegions(
         :returns: `EquilibriumRegion` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        info = self._regions.get(eqlnum)
-        if info is None:
+        region = self._regions.get(eqlnum)
+        if region is None:
             raise KeyError(
                 f"EQLNUM {eqlnum} not found. Available regions: {sorted(self._regions)}."
             )
-        return info
+        return region
 
     def __iter__(self) -> typing.Iterator[int]:
         return iter(self._regions)
@@ -489,8 +532,8 @@ class EquilibriumRegions(
             return self
         return self.__class__(
             regions={
-                num: info.convert(target, table=table)
-                for num, info in self._regions.items()
+                num: region.convert(target, table=table)
+                for num, region in self._regions.items()
             },
             rsvd_tables={
                 num: depth_table.convert(target, table=table)
@@ -535,7 +578,7 @@ class EquilibriumRegions(
         )
 
 
-def _equilibrium_info_from_record(
+def _build_equilibrium_region_from_record(
     record: typing.Mapping[str, typing.Any],
     eqlnum: int,
     unit_system: UnitSystem,
@@ -598,6 +641,6 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumR
 
     unit_system = deck_file.unit_system
     return {
-        idx + 1: _equilibrium_info_from_record(record, idx + 1, unit_system)
+        idx + 1: _build_equilibrium_region_from_record(record, idx + 1, unit_system)
         for idx, record in enumerate(records)
     }

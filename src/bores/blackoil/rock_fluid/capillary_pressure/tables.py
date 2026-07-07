@@ -997,7 +997,7 @@ class ThreePhaseCapillaryPressureTable(
             return region_index < len(all_regions) and bool(all_regions[region_index])
 
         shared_kwargs: typing.Dict[str, typing.Any] = dict(
-            region_index=region_index,
+            satnum=satnum,
             number_of_base_points=number_of_base_points,
             number_of_endpoint_extra_points=number_of_endpoint_extra_points,
             spacing=spacing,
@@ -1013,7 +1013,7 @@ class ThreePhaseCapillaryPressureTable(
             else:
                 raise ValidationError(
                     "No recognised saturation-function keywords found in the DeckFile "
-                    f"for region index {region_index}. Expected one of: "
+                    f"for SATNUM {satnum}. Expected one of: "
                     "SWOF, SGOF (first family) or SWFN, SGFN (second family)."
                 )
         else:
@@ -1026,8 +1026,8 @@ class ThreePhaseCapillaryPressureTable(
 
         if not has_oil_water_table:
             warnings.warn(
-                f"Oil-water keyword `{oil_water_keyword}` not found for region index "
-                f"{region_index}. Cannot build a three-phase capillary pressure table. "
+                f"Oil-water keyword `{oil_water_keyword}` not found for SATNUM "
+                f"{satnum}. Cannot build a three-phase capillary pressure table. "
                 "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='gas_oil')` "
                 "to build a gas-oil only table.",
                 UserWarning,
@@ -1035,13 +1035,13 @@ class ThreePhaseCapillaryPressureTable(
             )
             raise ValidationError(
                 f"Oil-water keyword `{oil_water_keyword}` required for "
-                f"ThreePhaseCapillaryPressureTable not found at region index {region_index}."
+                f"ThreePhaseCapillaryPressureTable not found at SATNUM {satnum}."
             )
 
         if not has_gas_oil_table:
             warnings.warn(
-                f"Gas-oil keyword `{gas_oil_keyword}` not found for region index "
-                f"{region_index}. Cannot build a three-phase capillary pressure table. "
+                f"Gas-oil keyword `{gas_oil_keyword}` not found for SATNUM "
+                f"{satnum}. Cannot build a three-phase capillary pressure table. "
                 "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='oil_water')` "
                 "to build an oil-water only table.",
                 UserWarning,
@@ -1049,7 +1049,7 @@ class ThreePhaseCapillaryPressureTable(
             )
             raise ValidationError(
                 f"Gas-oil keyword `{gas_oil_keyword}` required for "
-                f"ThreePhaseCapillaryPressureTable not found at region index {region_index}."
+                f"ThreePhaseCapillaryPressureTable not found at SATNUM {satnum}."
             )
 
         oil_water_table = TwoPhaseCapillaryPressureTable.from_deck(

@@ -14,7 +14,7 @@ from typing_extensions import Self
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.static import StaticPVT
 from bores.blackoil.pvt.tables import PVTTables
-from bores.constants import UnitConversionTable
+from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
@@ -34,6 +34,7 @@ from bores.typing import (
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
+    UnitConversionTable,
     UnitSystem,
 )
 
@@ -443,7 +444,8 @@ def _build_oil_data_from_pvto(
             f"PVTO table requires at least 2 Rs values; got {len(solution_gor_to_rows)}."
         )
 
-    solution_gor_values = np.array(sorted(solution_gor_to_rows.keys()), dtype=dtype)
+    solution_gor_keys = sorted(solution_gor_to_rows.keys())
+    solution_gor_values = np.array(solution_gor_keys, dtype=dtype)
     n_rs = len(solution_gor_values)
 
     # Saturated branch: lowest-pressure row in each Rs group = bubble point
@@ -451,8 +453,10 @@ def _build_oil_data_from_pvto(
     saturated_oil_fvf = np.empty(n_rs, dtype=dtype)
     saturated_oil_viscosity = np.empty(n_rs, dtype=dtype)
 
-    for i, solution_gor in enumerate(solution_gor_values):
-        rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
+    for i, solution_gor_key in enumerate(solution_gor_keys):
+        rows = sorted(
+            solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"]
+        )
         saturated_row = rows[0]
         bubble_point_pressure_values[i] = saturated_row["pressure"]
         saturated_oil_fvf[i] = saturated_row["bo"]
@@ -476,15 +480,90 @@ def _build_oil_data_from_pvto(
     ).astype(dtype)
     n_p = len(pressures)
 
+    # Reference undersaturated branch: most Eclipse decks only attach an
+    # undersaturated (>1 row) branch to the highest Rs value - all other Rs
+    # groups have just their single saturated point. A group with a single
+    # pressure point has no slope to interpolate at all (feeding scipy a
+    # length-1 x-array degenerates to a 0/0 divide -> NaN, which then blows
+    # up the PCHIP derivative below with "y must contain only finite
+    # values"). We borrow the ΔBo(ΔP) and viscosity-ratio(ΔP) behavior from
+    # whichever Rs group actually has an undersaturated branch ("most rows"
+    # is used as a robust proxy for "the one with undersaturated data" in
+    # case a deck attaches it somewhere other than the top Rs) and apply it
+    # relative to each single-row group's own saturated point.
+    reference_key = max(solution_gor_keys, key=lambda k: len(solution_gor_to_rows[k]))
+    reference_rows = sorted(
+        solution_gor_to_rows[reference_key], key=lambda row: row["pressure"]
+    )
+    if len(reference_rows) < 2:
+        raise ValidationError(
+            "PVTO table has no Rs group with an undersaturated (>1 row) "
+            "branch; cannot extrapolate undersaturated properties for the "
+            "single-row Rs groups."
+        )
+
+    reference_pressure_arr = np.array(
+        [row["pressure"] for row in reference_rows], dtype=dtype
+    )
+    reference_bo_arr = np.array([row["bo"] for row in reference_rows], dtype=dtype)
+    reference_visc_arr = np.array(
+        [row["viscosity"] for row in reference_rows], dtype=dtype
+    )
+    reference_delta_pressure = reference_pressure_arr - reference_pressure_arr[0]
+    reference_delta_bo = reference_bo_arr - reference_bo_arr[0]
+    reference_visc_ratio = reference_visc_arr / reference_visc_arr[0]
+
+    # ΔBo(ΔP) and viscosity-ratio(ΔP) relative to the reference branch's own
+    # saturated point, so they can be applied to any other Rs group's
+    # saturated point regardless of its own pressure scale.
+    delta_bo_of_dp = interp1d(
+        reference_delta_pressure,
+        reference_delta_bo,
+        kind="linear",
+        bounds_error=False,
+        fill_value=(reference_delta_bo[0], reference_delta_bo[-1]),
+    )
+    visc_ratio_of_dp = interp1d(
+        reference_delta_pressure,
+        reference_visc_ratio,
+        kind="linear",
+        bounds_error=False,
+        fill_value=(reference_visc_ratio[0], reference_visc_ratio[-1]),
+    )
+
     # Per-Rs interpolators for the full (saturated + undersaturated) branch
     oil_fvf_interps: typing.List[interp1d] = []
     oil_viscosity_interps: typing.List[interp1d] = []
 
-    for solution_gor in solution_gor_values:
-        rows = sorted(solution_gor_to_rows[solution_gor], key=lambda r: r["pressure"])
-        pressure_arr = np.array([r["pressure"] for r in rows], dtype=dtype)
-        oil_fvf_arr = np.array([r["bo"] for r in rows], dtype=dtype)
-        oil_viscosity_arr = np.array([r["viscosity"] for r in rows], dtype=dtype)
+    for solution_gor_key in solution_gor_keys:
+        rows = sorted(
+            solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"]
+        )
+        pressure_arr = np.array([row["pressure"] for row in rows], dtype=dtype)
+        oil_fvf_arr = np.array([row["bo"] for row in rows], dtype=dtype)
+        oil_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
+
+        if len(rows) < 2:
+            # No explicit undersaturated branch for this Rs value - borrow
+            # the reference branch's ΔBo(ΔP) / viscosity-ratio(ΔP) and apply
+            # them relative to this group's own saturated point, so this
+            # group also ends up with >= 2 monotonically increasing
+            # pressure points for interp1d/PCHIP.
+            extra_dp = reference_delta_pressure[reference_delta_pressure > 0]
+            if len(extra_dp) == 0:
+                extra_dp = np.array([1.0], dtype=dtype)
+            extra_pressures = pressure_arr[0] + extra_dp
+            extra_bo = oil_fvf_arr[0] + delta_bo_of_dp(extra_dp)
+            extra_visc = oil_viscosity_arr[0] * visc_ratio_of_dp(extra_dp)
+
+            pressure_arr = np.concatenate([pressure_arr, extra_pressures])
+            oil_fvf_arr = np.concatenate([oil_fvf_arr, extra_bo])
+            oil_viscosity_arr = np.concatenate([oil_viscosity_arr, extra_visc])
+            order = np.argsort(pressure_arr)
+            pressure_arr = pressure_arr[order]
+            oil_fvf_arr = oil_fvf_arr[order]
+            oil_viscosity_arr = oil_viscosity_arr[order]
+
         oil_fvf_interps.append(
             interp1d(
                 pressure_arr,
@@ -634,13 +713,13 @@ def _build_oil_data_from_pvdo(
     )
     n_t = len(temperatures)
 
-    rows = sorted(pvdo_records, key=lambda r: r["pressure"])
+    rows = sorted(pvdo_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
         raise ValidationError(f"PVDO table requires at least 2 rows; got {len(rows)}.")
 
-    pressures = np.array([r["pressure"] for r in rows], dtype=dtype)
-    oil_fvf_1d = np.array([r["bo"] for r in rows], dtype=dtype)
-    oil_viscosity_1d = np.array([r["viscosity"] for r in rows], dtype=dtype)
+    pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
+    oil_fvf_1d = np.array([row["bo"] for row in rows], dtype=dtype)
+    oil_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
     n_p = len(pressures)
 
     if not np.all(np.diff(pressures) > 0):
@@ -724,14 +803,16 @@ def _build_gas_data_from_pvdg(
     )
     n_t = len(temperatures)
 
-    rows = sorted(pvdg_records, key=lambda r: r["pressure"])
+    rows = sorted(pvdg_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
         raise ValidationError(f"PVDG table requires at least 2 rows; got {len(rows)}.")
 
-    pressures = np.array([r["pressure"] for r in rows], dtype=dtype)
-    # Convert rb/Mscf → ft³/SCF
-    gas_fvf_1d = np.array([r["bg"] * 5.615 / 1000.0 for r in rows], dtype=dtype)
-    gas_viscosity_1d = np.array([r["viscosity"] for r in rows], dtype=dtype)
+    pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
+    # Convert rb/Mscf -> ft³/SCF
+    gas_fvf_1d = np.array(
+        [row["bg"] * c.BARRELS_TO_CUBIC_FEET / 1000.0 for row in rows], dtype=dtype
+    )
+    gas_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
     if not np.all(np.diff(pressures) > 0):
         raise ValidationError("PVDG pressures must be strictly increasing.")
@@ -809,23 +890,24 @@ def _build_gas_data_from_pvtg(
 
     pressure_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
     for row in pvtg_records:
-        pressure_to_rows.setdefault(float(row["pressure"]), []).append(row)
+        pressure_to_rows.setdefault(row["pressure"], []).append(row)
 
     if len(pressure_to_rows) < 2:
         raise ValidationError(
             f"PVTG table requires at least 2 pressure values; got {len(pressure_to_rows)}."
         )
 
-    pressure_values = np.array(sorted(pressure_to_rows.keys()), dtype=dtype)
+    pressure_keys = sorted(pressure_to_rows.keys())
+    pressure_values = np.array(pressure_keys, dtype=dtype)
     n_p = len(pressure_values)
 
     if not np.all(np.diff(pressure_values) > 0):
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
-    # Union of all Rv values across all pressure groups → common Rv grid
-    all_rv = sorted({
-        float(row["rv"]) for rows in pressure_to_rows.values() for row in rows
-    })
+    # Union of all Rv values across all pressure groups -> common Rv grid
+    all_rv = sorted(
+        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
+    )
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 
@@ -835,20 +917,22 @@ def _build_gas_data_from_pvtg(
     gas_fvf_2d = np.empty((n_p, n_rv), dtype=dtype)
     gas_viscosity_2d = np.empty((n_p, n_rv), dtype=dtype)
 
-    for i, pressure in enumerate(pressure_values):
-        rows = sorted(pressure_to_rows[pressure], key=lambda r: r["rv"])
-        rv_arr = np.array([r["rv"] for r in rows], dtype=dtype)
-        # Convert rb/Mscf → ft³/SCF
-        gas_fvf_arr = np.array([r["bg"] * 5.615 / 1000.0 for r in rows], dtype=dtype)
-        gas_viscosity_arr = np.array([r["viscosity"] for r in rows], dtype=dtype)
+    for i, pressure_key in enumerate(pressure_keys):
+        rows = sorted(pressure_to_rows[pressure_key], key=lambda row: row["rv"])
+        rv_arr = np.array([row["rv"] for row in rows], dtype=dtype)
+        # Convert rb/Mscf -> ft³/SCF
+        gas_fvf_arr = np.array(
+            [row["bg"] * c.BARRELS_TO_CUBIC_FEET / 1000.0 for row in rows], dtype=dtype
+        )
+        gas_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
         if np.any(gas_fvf_arr <= 0):
             raise ValidationError(
-                f"PVTG Bg values must be positive at pressure {pressure} psi."
+                f"PVTG Bg values must be positive at pressure {pressure_key} psi."
             )
         if np.any(gas_viscosity_arr <= 0):
             raise ValidationError(
-                f"PVTG viscosity values must be positive at pressure {pressure} psi."
+                f"PVTG viscosity values must be positive at pressure {pressure_key} psi."
             )
 
         # If this pressure group has only one Rv point, broadcast it
@@ -976,11 +1060,11 @@ def _build_water_data_from_pvtw(
     n_t = len(temperatures)
     salinities = np.array([salinity], dtype=dtype)
 
-    reference_pressure = float(pvtw_record["p_ref"])
-    reference_water_fvf = float(pvtw_record["bw"])
-    water_compressibility = float(pvtw_record["cw"])
-    reference_water_viscosity = float(pvtw_record["viscosity"])
-    water_viscosibility = float(pvtw_record.get("cv", 0.0))
+    reference_pressure = pvtw_record["p_ref"]
+    reference_water_fvf = pvtw_record["bw"]
+    water_compressibility = pvtw_record["cw"]
+    reference_water_viscosity = pvtw_record["viscosity"]
+    water_viscosibility = pvtw_record.get("cv", 0.0)
 
     if reference_water_fvf <= 0:
         raise ValidationError("PVTW Bw must be positive.")
@@ -1160,10 +1244,10 @@ def load_pvt_regions(
             pvco_record = pvco_all[region_idx]
             if pvco_record:
                 record = pvco_record[0]
-                reference_pressure = float(record["p_ref"])
-                reference_oil_fvf = float(record["bo"])
-                oil_compressibility = float(record["co"])
-                reference_viscosity = float(record["viscosity"])
+                reference_pressure = record["p_ref"]
+                reference_oil_fvf = record["bo"]
+                oil_compressibility = record["co"]
+                reference_viscosity = record["viscosity"]
                 # Build a small synthetic pressure grid around the reference
                 min_pressure = max(0.0, reference_pressure / 5.0)
                 max_pressure = reference_pressure * 5.0
@@ -1172,8 +1256,10 @@ def load_pvt_regions(
                 oil_fvf = reference_oil_fvf * np.exp(-oil_compressibility * delta_p)
                 oil_viscosity = np.full_like(pvco_pressures, reference_viscosity)
                 synthetic_rows = [
-                    {"pressure": float(p), "bo": float(b), "viscosity": float(v)}
-                    for p, b, v in zip(pvco_pressures, oil_fvf, oil_viscosity)
+                    {"pressure": pressure, "bo": fvf, "viscosity": viscosity}
+                    for pressure, fvf, viscosity in zip(
+                        pvco_pressures, oil_fvf, oil_viscosity
+                    )
                 ]
                 oil_data = _build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,

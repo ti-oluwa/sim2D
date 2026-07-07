@@ -195,7 +195,12 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        tokens = tokenize(record.body)
+
+        # `record.body` spans up to the next keyword line, since some
+        # keywords need multiple internal `/` segments. We only
+        # want the first (and only) `/`-terminated record here.
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         return self._parse_tokens(tokens)
 
     def _parse_tokens(
@@ -546,7 +551,7 @@ class GridArrayKeyword(Keyword[FloatArray[OneDimension]]):
         events: typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]] = []
 
         for record in deck.records_for(self.name):
-            raw_tokens = tokenize(record.body)
+            raw_tokens = tokenize(record.body.split("/", 1)[0])
             # Filter out tokens that are empty strings (produced by bare "N*"
             # repeat syntax). A record that expands to only empty strings is
             # dropped with a warning rather than crashing float() later.
@@ -682,7 +687,9 @@ class DateKeyword(Keyword[datetime.date]):
         record = deck.first_record_for(self.name)
         if record is None:
             return None
-        tokens = tokenize(record.body)
+
+        body = record.body.split("/", 1)[0]
+        tokens = tokenize(body)
         return _parse_date(tokens, self.name)
 
 
@@ -797,9 +804,10 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         for record in records:
             if self.primary_key is not None:
                 tables = self._parse_miscible(record.body)
+                all_tables.extend(tables)
             else:
-                tables = [self._parse_flat(record.body)]
-            all_tables.extend(tables)
+                table = self._parse_flat(record.body)
+                all_tables.append(table)
 
         return all_tables or None
 
@@ -836,35 +844,53 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
 
     def _parse_flat(self, body: str) -> PVTTable[Number]:
         """
-        Parse a flat (immiscible/simple) table body: every `/`-delimited
-        segment is one row.
+        Parse a flat (immiscible/simple) table body.
+
+        A `/`-delimited segment may hold exactly one row, or several rows
+        packed together under a single closing `/` for the whole table - both
+        conventions appear in real decks (`SWOF`/`SGOF` typically terminate
+        each row individually; `PVDO`/`PVDG` typically terminate the whole
+        table with one closing `/`, rows separated only by whitespace). Token
+        counts are chunked into `n_columns`-sized rows to handle both, which
+        is unambiguous here because every column in these tables is required
+        (no optional trailing field to create row-width ambiguity).
         """
         table: PVTTable = []
+        n_columns = len(self.columns)
         for segment in body.split("/"):
             tokens = tokenize(segment)
             if not tokens:
                 continue
-            table.append(self._row_from_tokens(tokens))
+            if len(tokens) % n_columns != 0:
+                raise DeckParseError(
+                    f"{self.name}: row segment has {len(tokens)} token(s); "
+                    f"expected a multiple of {n_columns} (one row per "
+                    f"{n_columns} tokens)."
+                )
+            for start in range(0, len(tokens), n_columns):
+                table.append(self._row_from_tokens(tokens[start : start + n_columns]))
         return table
 
     def _parse_miscible(self, body: str) -> typing.List[PVTTable[Number]]:
         """
         Parse a miscible (PVTO/PVTG-style) keyword body.
 
-        Two row shapes are recognised, matching how these tables are
-        actually written in practice:
+        Each `/`-terminated segment holds either:
 
-        - `n_columns` tokens - a continuation row for the current
-        primary-key group (e.g. an undersaturated pressure point).
-        - `n_columns + 1` tokens - a new primary-key group: the leading
-        token is the primary-key value (Rs for PVTO, pressure for
-        PVTG), the rest is that group's first row.
+        - Zero or more *continuation* rows for the current primary-key group
+        (`n_columns` tokens each) - e.g. several undersaturated pressure
+        points sharing one closing `/`, or
+        - A *new-group* introduction (`n_columns + 1` tokens: the primary-key
+        value followed by its first row), optionally followed by more
+        continuation rows for that same, just-introduced group, all still
+        sharing that one closing `/`.
 
-        A standalone single-token segment is also accepted as an explicit
-        primary-key introducer with no row data on the same line, for
-        decks written that way.
-
-        An empty segment (a bare `/`) closes the current group.
+        The two shapes are distinguished by token count modulo `n_columns`
+        (`0` -> pure continuation, `1` -> new group + continuations), which is
+        unambiguous since every registered miscible table has `n_columns >= 2`.
+        A segment with exactly one token is the degenerate new-group case with
+        zero rows - a standalone primary-key line with no row data on it,
+        which some decks use instead of the inline form.
         """
         tables: typing.List[PVTTable] = []
         current_table: PVTTable = []
@@ -872,49 +898,47 @@ class PVTTableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         pk_column_name = self.primary_key
         assert pk_column_name is not None  # guarded by caller
         n_columns = len(self.columns)
+        assert n_columns >= 2, f"{self.name}: miscible tables need >= 2 data columns."
 
         for segment in body.split("/"):
             tokens = tokenize(segment)
             n_tokens = len(tokens)
-            if not tokens:
+
+            if n_tokens == 0:
                 if current_table:
                     tables.append(current_table)
                     current_table = []
                     current_pk_value = None
                 continue
 
-            if n_tokens == 1:
-                try:
-                    current_pk_value = float(tokens[0])
-                except ValueError:
-                    pass
-                continue
-
-            if n_tokens == n_columns + 1:
+            idx = 0
+            if n_tokens % n_columns == 1:
+                # New primary-key group: leading token introduces it.
                 try:
                     current_pk_value = float(tokens[0])
                 except ValueError as exc:
                     raise DeckParseError(
-                        f"{self.name}: expected a numeric {pk_column_name!r} value, "
-                        f"got {tokens[0]!r}."
+                        f"{self.name}: expected a numeric {pk_column_name!r} "
+                        f"value, got {tokens[0]!r}."
                     ) from exc
-                row = self._row_from_tokens(tokens[1:])
-            elif n_tokens == n_columns:
-                row = self._row_from_tokens(tokens)
-            else:
+                idx = 1
+            elif n_tokens % n_columns != 0:
                 raise DeckParseError(
-                    f"{self.name}: row has {n_tokens} token(s); expected "
-                    f"{n_columns} (continuation row) or {n_columns + 1} "
-                    f"(new {pk_column_name!r} group)."
+                    f"{self.name}: row segment has {n_tokens} token(s); expected "
+                    f"a multiple of {n_columns} (continuation rows), optionally "
+                    f"prefixed by one {pk_column_name!r} value."
                 )
 
-            if current_pk_value is None:
-                raise DeckParseError(
-                    f"{self.name}: data row encountered before any "
-                    f"{pk_column_name!r} value was introduced."
-                )
-            row[pk_column_name] = current_pk_value
-            current_table.append(row)
+            while idx < n_tokens:
+                if current_pk_value is None:
+                    raise DeckParseError(
+                        f"{self.name}: data row encountered before any "
+                        f"{pk_column_name!r} value was introduced."
+                    )
+                row = self._row_from_tokens(tokens[idx : idx + n_columns])
+                row[pk_column_name] = current_pk_value
+                current_table.append(row)
+                idx += n_columns
 
         if current_table:
             tables.append(current_table)

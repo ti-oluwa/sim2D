@@ -7,8 +7,8 @@ from typing_extensions import Self
 
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.serialization.base import Serializable
-from bores.states import ModelState
 from bores.serialization.stores import StoreSerializable
+from bores.states import ModelState
 from bores.typing import Coordinates, S, T
 from bores.wells.base import InjectionWell, ProductionWell, Well, Wells, WellT
 from bores.wells.controls import WellControl

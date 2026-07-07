@@ -324,11 +324,19 @@ class Deck:
                     end=body_start,
                 )
             else:
+                # Capture the *entire* span up to the next keyword line, not just
+                # up to the first `/`. Single-record keywords (SPECGRID, PORO, ...)
+                # only ever have one `/` in this span, so this changes nothing for
+                # them. Multi-row keywords (PVTO, PVTG, FAULTS, DENSITY with several
+                # regions, multi-entry DATES, ...) legitimately contain several
+                # `/`-terminated rows before the next keyword line, and their own
+                # `Keyword.parse()` already splits on `/` internally to walk them -
+                # truncating here silently dropped every row after the first.
                 record = Record(
                     keyword=keyword,
-                    body=window[:slash_pos],
+                    body=window,
                     start=match.start(),
-                    end=body_start + slash_pos + 1,
+                    end=next_keyword_start,
                 )
 
             records.append(record)
