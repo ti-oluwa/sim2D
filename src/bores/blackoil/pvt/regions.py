@@ -114,24 +114,38 @@ class PVTRegions(StoreSerializable):
     def __init__(
         self,
         regions: typing.Dict[int, PVTRegion],
+        *,
+        unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
         Build a `PVTRegions` from a pre-built regions dict.
 
         :param regions: Mapping from 1-based PVTNUM index to `PVTRegion`.
-        :raises ValidationError: If *regions* is empty.
+        :param unit_system: Expected unit system for all regions. If omitted,
+            it is inferred from the first region and every other region is
+            required to match it.
+        :raises ValidationError: If *regions* is empty, or if any region's
+            unit system does not match *unit_system* (explicit or inferred).
         """
         if not regions:
             raise ValidationError("`regions` must contain at least one entry.")
 
-        # Assert all regions have the same unit system
-        unit_systems = {region.unit_system for region in regions.values()}
-        if len(unit_systems) > 1:
+        expected_unit_system = unit_system or next(iter(regions.values())).unit_system
+        mismatched = {
+            pvtnum: region.unit_system
+            for pvtnum, region in regions.items()
+            if region.unit_system != expected_unit_system
+        }
+        if mismatched:
             raise ValidationError(
-                "All PVT regions must share the same unit system. "
-                f"Found: {sorted(unit_system.value for unit_system in unit_systems)}."
+                f"All PVT regions must share `{expected_unit_system.value!r}` as "
+                f"`{self.__class__.__name__}.unit_system`; mismatches "
+                f"(pvtnum -> unit_system): "
+                f"{ {k: v.value for k, v in mismatched.items()} }."
             )
+
         self._regions = regions
+        self.unit_system = expected_unit_system
 
     def region(self, pvtnum: int) -> PVTRegion:
         """
@@ -148,12 +162,6 @@ class PVTRegions(StoreSerializable):
                 f"PVT region {pvtnum} not found. Available regions: {available}."
             )
         return regions
-
-    @property
-    def unit_system(self) -> UnitSystem:
-        """Unit system of all region tables and static properties."""
-        assert self._regions
-        return next(iter(self._regions.values())).unit_system
 
     @property
     def n_regions(self) -> int:
@@ -424,7 +432,14 @@ def _build_oil_data_from_pvto(
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the oil phase.
     """
-    dtype = np.dtype(dtype if dtype is not None else get_dtype())
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    # Eclipse reports Rs in Mscf/STB under FIELD units (see PVTO's deck docs);
+    # internally we standardize on SCF/STB, matching the `gas_oil_ratio`
+    # convention `get_conversion_factors` assumes. METRIC/LAB decks already
+    # report Rs in the internally-expected units (sm³/sm³ / scc/scc), so no
+    # rescale is needed there.
+    mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
+
     temperatures = _generate_temperature_axis(
         temperature,
         dtype=dtype,
@@ -436,6 +451,7 @@ def _build_oil_data_from_pvto(
     # Group records by Rs value
     solution_gor_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
     for row in pvto_records:
+        row["rs"] *= mscf_to_scf
         solution_gor = row["rs"]
         solution_gor_to_rows.setdefault(solution_gor, []).append(row)
 
@@ -703,7 +719,7 @@ def _build_oil_data_from_pvdo(
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the oil phase.
     """
-    dtype = np.dtype(dtype if dtype is not None else get_dtype())
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     temperatures = _generate_temperature_axis(
         temperature,
         dtype=dtype,
@@ -793,7 +809,7 @@ def _build_gas_data_from_pvdg(
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the gas phase.
     """
-    dtype = np.dtype(dtype if dtype is not None else get_dtype())
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     temperatures = _generate_temperature_axis(
         temperature,
         dtype=dtype,
@@ -807,9 +823,13 @@ def _build_gas_data_from_pvdg(
         raise ValidationError(f"PVDG table requires at least 2 rows; got {len(rows)}.")
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
-    # Convert rb/Mscf -> ft³/SCF
+    # Eclipse reports Bg in rb/Mscf under FIELD units only; METRIC/LAB decks
+    # already report Bg in rm³/sm³ / rcc/scc, matching our internal `gas_fvf`
+    # convention, so the rescale only applies to FIELD.
+    bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET if unit_system == UnitSystem.FIELD else 1.0
+    mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
     gas_fvf_1d = np.array(
-        [row["bg"] * c.BARRELS_TO_CUBIC_FEET / 1000.0 for row in rows], dtype=dtype
+        [row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype
     )
     gas_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
@@ -885,10 +905,18 @@ def _build_gas_data_from_pvtg(
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the gas phase with Rv as the second (temperature) axis.
     """
-    dtype = np.dtype(dtype if dtype is not None else get_dtype())
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    # Eclipse reports Rv in STB/Mscf under FIELD units (see PVTG's deck docs);
+    # internally we standardize on STB/SCF, matching the `vaporized_oil_ratio`
+    # convention `get_conversion_factors` assumes. METRIC/LAB decks already
+    # report Rv in the internally-expected units (sm³/sm³ / scc/scc), so no
+    # rescale is needed there.
+    scf_to_mscf = c.SCF_TO_MSCF if unit_system == UnitSystem.FIELD else 1.0
 
     pressure_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
     for row in pvtg_records:
+        # Apply the factor once here
+        row["rv"] *= scf_to_mscf
         pressure_to_rows.setdefault(row["pressure"], []).append(row)
 
     if len(pressure_to_rows) < 2:
@@ -904,14 +932,17 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("PVTG pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups -> common Rv grid
-    all_rv = sorted(
-        {float(row["rv"]) for rows in pressure_to_rows.values() for row in rows}
-    )
+    all_rv = sorted({row["rv"] for rows in pressure_to_rows.values() for row in rows})
     if len(all_rv) < 1:
         raise ValidationError("PVTG table contains no Rv values.")
 
     rv_values = np.array(all_rv, dtype=dtype)
     n_rv = len(rv_values)
+    # Eclipse reports Bg in rb/Mscf under FIELD units only; METRIC/LAB decks
+    # already report Bg in rm³/sm³ / rcc/scc, matching our internal `gas_fvf`
+    # convention, so the rescale only applies to FIELD.
+    bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET if unit_system == UnitSystem.FIELD else 1.0
+    mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
 
     gas_fvf_2d = np.empty((n_p, n_rv), dtype=dtype)
     gas_viscosity_2d = np.empty((n_p, n_rv), dtype=dtype)
@@ -919,9 +950,8 @@ def _build_gas_data_from_pvtg(
     for i, pressure_key in enumerate(pressure_keys):
         rows = sorted(pressure_to_rows[pressure_key], key=lambda row: row["rv"])
         rv_arr = np.array([row["rv"] for row in rows], dtype=dtype)
-        # Convert rb/Mscf -> ft³/SCF
         gas_fvf_arr = np.array(
-            [row["bg"] * c.BARRELS_TO_CUBIC_FEET / 1000.0 for row in rows], dtype=dtype
+            [row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype
         )
         gas_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
@@ -1090,7 +1120,7 @@ def _build_water_data_from_pvtw(
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the water phase.
     """
-    dtype = np.dtype(dtype if dtype is not None else get_dtype())
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     temperatures = _generate_temperature_axis(
         temperature,
         dtype=dtype,
@@ -1217,6 +1247,8 @@ def load_pvt_regions(
     :returns: Mapping of 1-based PVTNUM region index to corresponding `PVTRegion`.
     :raises ValidationError: If no recognisable PVT keyword is found.
     """
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+
     # Retrieve deck records (each is a list-of-lists: outer = regions)
     pvto_all: typing.Optional[typing.List] = deck_file.get("PVTO")
     pvdo_all: typing.Optional[typing.List] = deck_file.get("PVDO")

@@ -742,35 +742,42 @@ class RockCompressibilityRegions(StoreSerializable):
     def __init__(
         self,
         tables: typing.Dict[int, RockCompressibilityTable],
+        *,
+        unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
         Build a `RockCompressibilityRegions` from a pre-built regions dict.
 
         :param tables: Mapping from 1-based `ROCKNUM` index to table.
-        :raises ValidationError: If *tables* is empty.
+        :param unit_system: Expected unit system for all tables. If omitted,
+            it is inferred from the first table and every other table is
+            required to match it.
+        :raises ValidationError: If *tables* is empty, or if any table's
+            unit system does not match *unit_system* (explicit or inferred).
         """
         if not tables:
             raise ValidationError("`tables` must contain at least one entry.")
 
-        # Ensure all tables have the same unit system
-        unit_systems = {table.unit_system for table in tables.values()}
-        if len(unit_systems) > 1:
+        expected_unit_system = unit_system or next(iter(tables.values())).unit_system
+        mismatched = {
+            rocknum: table.unit_system
+            for rocknum, table in tables.items()
+            if table.unit_system != expected_unit_system
+        }
+        if mismatched:
             raise ValidationError(
-                "All `RockCompressibilityTable` instances must have the same unit system; "
-                f"found {unit_systems}."
+                f"All tables must share `{expected_unit_system.value!r}` as "
+                f"`{self.__class__.__name__}.unit_system`; mismatches "
+                f"(rocknum -> unit_system): "
+                f"{ {k: v.value for k, v in mismatched.items()} }."
             )
         self._tables = tables
+        self.unit_system = expected_unit_system
 
     @property
     def n_regions(self) -> int:
         """Number of rock compressibility regions."""
         return len(self._tables)
-
-    @property
-    def unit_system(self) -> UnitSystem:
-        """Unit system of all tables in this `RockCompressibilityRegions`."""
-        assert self._tables
-        return next(iter(self._tables.values())).unit_system
 
     def region(self, rocknum: int) -> RockCompressibilityTable:
         """

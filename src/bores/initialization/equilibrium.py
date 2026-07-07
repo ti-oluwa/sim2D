@@ -6,7 +6,7 @@ import attrs
 import numpy as np
 from typing_extensions import Self
 
-from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
@@ -128,6 +128,7 @@ def _load_depth_tables(
     deck_file: DeckFile,
     keyword: str,
     value_column: str,
+    value_multiplier: Number = 1.0,
     dtype: typing.Any = None,
 ) -> typing.Optional[typing.Dict[int, DepthTable]]:
     """
@@ -157,6 +158,7 @@ def _load_depth_tables(
         table_number = table_idx + 1  # 1-based
         depths = np.array([row["depth"] for row in rows], dtype=dtype)
         values = np.array([row[value_column] for row in rows], dtype=dtype)
+        values *= value_multiplier
         try:
             tables[table_number] = DepthTable(
                 depths=typing.cast(NumberArray[OneDimension], depths),
@@ -373,6 +375,7 @@ class EquilibriumRegions(StoreSerializable):
     region = equilibrium.region(eqlnum_array[cell_idx])
     ```
     """
+
     __abstract_serializable__ = True
 
     __slots__ = ("_regions", "rsvd_tables", "rvvd_tables", "unit_system")
@@ -383,7 +386,7 @@ class EquilibriumRegions(StoreSerializable):
         *,
         rsvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
         rvvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
-        unit_system: UnitSystem = UnitSystem.FIELD,
+        unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
         Create a new `EquilibriumRegions` container.
@@ -395,7 +398,11 @@ class EquilibriumRegions(StoreSerializable):
             share one `RSVD` table number). `None` if no region uses `RSVD`.
         :param rvvd_tables: Same as `rsvd_tables` but for `RVVD`, keyed by
             `rvvd_table`.
-        :param unit_system: Unit system shared by all regions and depth tables.
+        :param unit_system: Expected unit system for all regions. If omitted,
+            it is inferred from the first region and every other region is
+            required to match it.
+        :raises ValidationError: If *regions* is empty, or if any region's
+            unit system does not match *unit_system* (explicit or inferred).
         """
         if not regions:
             raise ValidationError("`regions` must contain at least one entry.")
@@ -416,15 +423,16 @@ class EquilibriumRegions(StoreSerializable):
                     "but no matching table was supplied in `rvvd_tables`."
                 )
 
+        expected_unit_system = unit_system or next(iter(regions.values())).unit_system
         mismatched = {
-            num: region.unit_system
-            for num, region in regions.items()
-            if region.unit_system != unit_system
+            eqlnum: region.unit_system
+            for eqlnum, region in regions.items()
+            if region.unit_system != expected_unit_system
         }
         if mismatched:
             raise ValidationError(
-                f"All `EquilibriumRegion` entries must share `{self.__class__.__name__}`."
-                f"unit_system` ({unit_system.value!r}); mismatches "
+                f"All region entries must share `{self.__class__.__name__}`."
+                f"unit_system` ({expected_unit_system.value!r}); mismatches "
                 f"(eqlnum -> unit_system): "
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
@@ -432,7 +440,7 @@ class EquilibriumRegions(StoreSerializable):
         self._regions = regions
         self.rsvd_tables = rsvd_tables
         self.rvvd_tables = rvvd_tables
-        self.unit_system = unit_system
+        self.unit_system = expected_unit_system
 
     def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
         """Serialize EquilibriumRegions to a dictionary."""
@@ -569,13 +577,23 @@ class EquilibriumRegions(StoreSerializable):
             isn't present in the deck.
         """
         mapping = load_equilibrium_infos(deck_file)
-        rsvd_tables = _load_depth_tables(deck_file, "RSVD", "rs")
-        rvvd_tables = _load_depth_tables(deck_file, "RVVD", "rv")
+        unit_system = deck_file.unit_system
+        # Eclipse reports Rs in Mscf/STB under FIELD units; internally we standardize on SCF/STB.
+        # Also it reports Rv in STB/Mscf under FIELD units; internally we standardize on STB/SCF.
+        uses_field_units = unit_system == UnitSystem.FIELD
+        scf_to_mscf = c.SCF_TO_MSCF if uses_field_units else 1.0
+        mscf_to_scf = c.MSCF_TO_SCF if uses_field_units else 1.0
+        rsvd_tables = _load_depth_tables(
+            deck_file, "RSVD", "rs", value_multiplier=mscf_to_scf
+        )
+        rvvd_tables = _load_depth_tables(
+            deck_file, "RVVD", "rv", value_multiplier=scf_to_mscf
+        )
         return cls(
             regions=mapping,
             rsvd_tables=rsvd_tables,
             rvvd_tables=rvvd_tables,
-            unit_system=deck_file.unit_system,
+            unit_system=unit_system,
         )
 
 

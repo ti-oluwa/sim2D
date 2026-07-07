@@ -31,14 +31,15 @@ initial_state = initialize_state(
     equilibrium=equilibrium,
     temperature=temperature,
 )
+print(initial_state.vaporized_oil_ratio.mean())
 
-# Plot the grid
-print(f"cells   : {grid.n_cells}")
-print(f"faces   : {grid.n_faces}")
-print(f"bbox    : {grid.bounding_box}")
+# # Plot the grid
+# print(f"cells   : {grid.n_cells}")
+# print(f"faces   : {grid.n_faces}")
+# print(f"bbox    : {grid.bounding_box}")
 
-pv_grid = as_pyvista_grid(grid, cell_data={"pressure": initial_state.pressure})
-pl = pv.Plotter()
-pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
-pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
-pl.show()
+# pv_grid = as_pyvista_grid(grid, cell_data={"pressure": initial_state.pressure})
+# pl = pv.Plotter()
+# pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
+# pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
+# pl.show()

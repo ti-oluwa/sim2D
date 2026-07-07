@@ -559,9 +559,12 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(**{
-        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
-    })
+    return EquilibriumArrays(
+        **{
+            name: _average(getattr(sub_arrays, name))
+            for name in EquilibriumArrays._fields
+        }
+    )
 
 
 def _initialize_tilted_subdivision_equilibrium(
@@ -824,8 +827,8 @@ def initialize_state(
     field needs it. `oil_saturation` is always derived as
     `1 - water_saturation - gas_saturation`, never taken from an explicit array.
 
-    Note: 
-        Ensure the unit system of all inputs (`reservoir`, `pvt`,..., and any explicit arrays) is consistent. 
+    Note:
+        Ensure the unit system of all inputs (`reservoir`, `pvt`,..., and any explicit arrays) is consistent.
         The function will raise a `ValidationError` if there is a detected mismatch.
 
     :param reservoir: Reservoir geometry and rock properties.
@@ -835,7 +838,7 @@ def initialize_state(
         explicit array/keyword.
     :param rock_fluid: Optional `RockFluidRegions` for capillary-pressure-based
         saturations instead of a sharp contact.
-    :param temperature: Optional per-cell temperature (constant or `Temperature`) 
+    :param temperature: Optional per-cell temperature (constant or `Temperature`)
         for equilibration. If `None`, will be read from `deck_file` if available.
     :param pressure: Optional explicit pressure array (overrides `PRESSURE` keyword).
     :param water_saturation: Optional explicit water saturation array (overrides `SWAT` keyword).

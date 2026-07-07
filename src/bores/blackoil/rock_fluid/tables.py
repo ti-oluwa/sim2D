@@ -55,9 +55,8 @@ class RockFluidTables(StoreSerializable):
     capillary_pressure: typing.Optional[CapillaryPressureTable] = None
     """Capillary pressure table for the rock-fluid system, or `None` if not present."""
 
-    unit_system: typing.Optional[UnitSystem] = attrs.field(
-        default=None, init=False, repr=False
-    )
+    # Default to field, then let the capillary pressure table override it if available
+    unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD, init=False)
 
     def __attrs_post_init__(self) -> None:
         unit_system = None

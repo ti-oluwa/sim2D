@@ -439,6 +439,16 @@ DEFAULT_CONSTANTS: typing.Dict[
         unit="(m³/m³)/(BBL/STB)",
     ),
     # Volume Conversions
+    "MSCF_TO_SCF": Constant(
+        value=1000.0,
+        description="Conversion factor from thousand standard cubic feet (Mscf) to standard cubic feet (scf)",
+        unit="scf/Mscf",
+    ),
+    "SCF_TO_MSCF": Constant(
+        value=1.0 / 1000.0,
+        description="Conversion factor from standard cubic feet (scf) to thousand standard cubic feet (Mscf)",
+        unit="Mscf/scf",
+    ),
     "CUBIC_METER_TO_SCF": Constant(
         value=35.3147,
         description="Conversion factor from cubic meters to standard cubic feet",
