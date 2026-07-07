@@ -21,7 +21,7 @@ temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
 rock_fluid = RockFluidRegions.from_deck(df)
 black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
-# print(pvt.region(1).tables.gas.viscosity_dp(3200, 200))
+# print(pvt.region(1).tables.oil.formation_volume_factor([4700, 3000], [200, 139], solution_gor=27))
 
 # The initial state
 equilibrium = EquilibriumRegions.from_deck(df)

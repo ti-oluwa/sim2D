@@ -654,7 +654,6 @@ def _build_oil_data_from_pvto(
         oil_compressibility_2d[:, j] = np.clip(
             oil_compressibility, 0.0, 1e-1, dtype=dtype
         )
-
     return PVTData(
         phase=FluidPhase.OIL,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
