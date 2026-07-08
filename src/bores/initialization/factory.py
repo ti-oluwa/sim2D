@@ -21,6 +21,7 @@ from bores.blackoil.rock_fluid.regions import RockFluidRegions
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
+from bores.grids.base import Grid
 from bores.initialization.equilibrium import (
     DepthTable,
     EquilibriumRegion,
@@ -36,6 +37,7 @@ from bores.reservoir.temperature import (
 )
 from bores.typing import (
     CellArray,
+    IntArray,
     IntCellArray,
     Number,
     NumberArray,
@@ -47,8 +49,10 @@ from bores.utils import get_hydrostatic_gradient_factor
 __all__ = ["initialize_state", "initialize_equilibrium_arrays", "EquilibriumArrays"]
 
 N_SATURATION_SAMPLES = 100
-"""Default sample count for the capillary-pressure inversion grid (see
-`_invert_monotonic_curve`); overridable per-call via `saturation_samples`."""
+"""
+Default sample count for the capillary-pressure inversion grid (see
+`_invert_monotonic_curve`); overridable per-call via `saturation_samples`.
+"""
 
 
 class EquilibriumArrays(typing.NamedTuple):
@@ -122,20 +126,20 @@ def _march_full_range(
     `[min_depth, max_depth]` in one sorted, concatenated profile.
     """
     depths_up, pressures_up = _rk4_march(
-        density_fn,
-        reference_depth,
-        reference_pressure,
-        min_depth,
-        gradient_factor,
+        density_fn=density_fn,
+        reference_depth=reference_depth,
+        reference_pressure=reference_pressure,
+        endpoint_depth=min_depth,
+        gradient_factor=gradient_factor,
         step=step,
         dtype=dtype,
     )
     depths_down, pressures_down = _rk4_march(
-        density_fn,
-        reference_depth,
-        reference_pressure,
-        max_depth,
-        gradient_factor,
+        density_fn=density_fn,
+        reference_depth=reference_depth,
+        reference_pressure=reference_pressure,
+        endpoint_depth=max_depth,
+        gradient_factor=gradient_factor,
         step=step,
         dtype=dtype,
     )
@@ -155,8 +159,8 @@ def _invert_monotonic_curve(
     Invert a (assumed monotonic) Pc(saturation) curve at a target Pc value.
 
     Sorts by `capillary_pressure_grid` before interpolating so this works regardless of
-    whether Pc increases or decreases with saturation. Not meaningful for
-    non-monotonic curves - not checked here, since every capillary pressure
+    whether Pc increases or decreases with saturation. This is not meaningful for
+    non-monotonic curves and is not checked here, since every capillary pressure
     model in this codebase is monotonic in saturation by construction.
     """
     order = np.argsort(capillary_pressure_grid)
@@ -345,19 +349,19 @@ def _initialize_center_point_equilibrium(
 
     # Oil zone: integrate from datum outward to the zone edges.
     oil_depths_up, oil_pressures_up = _rk4_march(
-        oil_density,
-        region.datum_depth,
-        region.datum_pressure,
-        oil_zone_low,
+        density_fn=oil_density,
+        reference_depth=region.datum_depth,
+        reference_pressure=region.datum_pressure,
+        endpoint_depth=oil_zone_low,
         gradient_factor=gradient_factor,
         step=depth_step,
         dtype=dtype,
     )
     oil_depths_down, oil_pressures_down = _rk4_march(
-        oil_density,
-        region.datum_depth,
-        region.datum_pressure,
-        oil_zone_high,
+        density_fn=oil_density,
+        reference_depth=region.datum_depth,
+        reference_pressure=region.datum_pressure,
+        endpoint_depth=oil_zone_high,
         gradient_factor=gradient_factor,
         step=depth_step,
         dtype=dtype,
@@ -379,11 +383,11 @@ def _initialize_center_point_equilibrium(
             + region.pcog_goc
         )
         gas_depths_full, gas_pressures_full = _march_full_range(
-            gas_density,
-            region.goc_depth,
-            gas_pressure_at_goc,
-            min_depth,
-            max_depth,
+            density_fn=gas_density,
+            reference_depth=region.goc_depth,
+            reference_pressure=gas_pressure_at_goc,
+            min_depth=min_depth,
+            max_depth=max_depth,
             gradient_factor=gradient_factor,
             step=depth_step,
             dtype=dtype,
@@ -406,11 +410,11 @@ def _initialize_center_point_equilibrium(
             - region.pcow_woc
         )
         water_depths_full, water_pressures_full = _march_full_range(
-            water_density,
-            region.woc_depth,
-            water_pressure_at_woc,
-            min_depth,
-            max_depth,
+            density_fn=water_density,
+            reference_depth=region.woc_depth,
+            reference_pressure=water_pressure_at_woc,
+            min_depth=min_depth,
+            max_depth=max_depth,
             gradient_factor=gradient_factor,
             step=depth_step,
             dtype=dtype,
@@ -512,6 +516,7 @@ def _initialize_center_point_equilibrium(
         ).astype(dtype, copy=False)  # type: ignore[union-attr]
 
         if gas_table is not None:
+            # For wet-gas the dewpoint PVT table is indexed by Rv instead of temperature
             dew_point_arg = (
                 rvvd_table.at_depth(depths[has_free_gas])  # type: ignore[arg-type]
                 if is_wet_gas
@@ -574,23 +579,179 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(**{
-        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
-    })
+    return EquilibriumArrays(
+        **{
+            name: _average(getattr(sub_arrays, name))
+            for name in EquilibriumArrays._fields
+        }
+    )
+
+
+def _get_dip_aware_top_bottom_faces(
+    grid: Grid, cell_indices: IntArray[OneDimension]
+) -> typing.Tuple[
+    NumberArray[OneDimension],
+    NumberArray[OneDimension],
+    NumberArray[OneDimension],
+    NumberArray[OneDimension],
+]:
+    """
+    For each cell, find its true top/bottom face depths and areas from grid
+    geometry, rather than the cell's axis-aligned bounding box.
+
+    Each cell's own faces are inspected (via `cell_face_offsets`/
+    `cell_face_indices`) and classified as top/bottom candidates by their
+    outward-normal z-component (`Grid.get_face_normal_for_cell`): a face
+    whose normal is within 45 degrees of vertical is a candidate, since
+    `z` is positive downward, an upward-pointing (negative-z) normal marks a
+    top face and a downward-pointing (positive-z) normal marks a bottom
+    face. Candidates are split into a shallow group and a deep group at
+    their midpoint depth, and each group's area-weighted centroid depth and
+    total area become that cell's top/bottom depth/area. This resolves
+    correctly for a single quad top/bottom face (structured/corner-point
+    hexahedra) as well as a top/bottom face triangulated into several
+    polygons (general unstructured cells).
+
+    A dipping cell's true top-to-bottom depth span (and area taper) along
+    its own face-normal direction can differ materially from its AABB span,
+    which is inflated by the lateral spread of all of its vertices; using
+    the actual faces is what makes this dip-aware.
+
+    Falls back to the cell's AABB z-range with equal top/bottom areas
+    (i.e. uniform-weighting downstream) for any cell with fewer than two
+    vertical-ish faces - e.g. a degenerate sliver cell, or a 2-D grid with
+    no k-direction faces at all.
+
+    :returns: `(top_depth, bottom_depth, top_area, bottom_area)`, each shape
+        `(len(cell_indices),)`, `float64`.
+    """
+    n = len(cell_indices)
+    # Use float64 here since the grid arrays are mostly in float64
+    # also the logic here is precision snensitive. W ecan cast to
+    # the preferred dtype in the caller
+    top_depth = np.empty(n, dtype=np.float64)
+    bottom_depth = np.empty(n, dtype=np.float64)
+    top_area = np.empty(n, dtype=np.float64)
+    bottom_area = np.empty(n, dtype=np.float64)
+
+    min_abs_normal_z = np.cos(np.deg2rad(45.0))
+
+    for i in range(n):
+        cell_index = int(cell_indices[i])
+        start = grid.cell_face_offsets[cell_index]
+        end = grid.cell_face_offsets[cell_index + 1]
+        faces = grid.cell_face_indices[start:end]
+
+        candidate_depths = []
+        candidate_areas = []
+        for face_index in faces:
+            face_index = int(face_index)
+            normal = grid.get_face_normal_for_cell(face_index, cell_index)
+            if abs(normal[2]) >= min_abs_normal_z:
+                candidate_depths.append(grid.face_centroids[face_index, 2])
+                candidate_areas.append(grid.face_areas[face_index])
+
+        if len(candidate_depths) >= 2:
+            depths_arr = np.asarray(candidate_depths, dtype=np.float64)
+            areas_arr = np.asarray(candidate_areas, dtype=np.float64)
+            midpoint = 0.5 * (depths_arr.min() + depths_arr.max())
+            is_top = depths_arr <= midpoint
+            if not np.any(is_top) or np.all(is_top):
+                # All candidates landed on one side of the midpoint (e.g.
+                # a single degenerate face), so we split by the extremes instead.
+                is_top = depths_arr == depths_arr.min()
+            is_bottom = ~is_top
+
+            top_depth[i] = np.average(depths_arr[is_top], weights=areas_arr[is_top])
+            bottom_depth[i] = np.average(
+                depths_arr[is_bottom], weights=areas_arr[is_bottom]
+            )
+            top_area[i] = areas_arr[is_top].sum()
+            bottom_area[i] = areas_arr[is_bottom].sum()
+        else:
+            top_depth[i] = grid.cell_min_xyz[cell_index, 2]
+            bottom_depth[i] = grid.cell_max_xyz[cell_index, 2]
+            top_area[i] = bottom_area[i] = 1.0
+
+    return (
+        typing.cast(NumberArray[OneDimension], top_depth),
+        typing.cast(NumberArray[OneDimension], bottom_depth),
+        typing.cast(NumberArray[OneDimension], top_area),
+        typing.cast(NumberArray[OneDimension], bottom_area),
+    )
 
 
 def _initialize_tilted_subdivision_equilibrium(
+    *,
+    region: EquilibriumRegion,
+    grid: Grid,
+    cell_indices: IntArray[OneDimension],
+    n_subdivisions: typing.Optional[int] = None,
     **kwargs: typing.Any,
 ) -> EquilibriumArrays:
     """
     Tilted-cell variant of horizontal subdivision, additionally accounting
-    for cell dip (`region.accuracy_flag < 0`). Not yet implemented - needs
-    dip-aware top/bottom-face geometry, not just the cell AABB.
+    for cell dip (`region.accuracy_flag < 0`).
+
+    Uses each cell's actual top/bottom face geometry (see
+    `_get_dip_aware_top_bottom_faces`) rather than its AABB to get a
+    dip-aware depth range, then weights the `N` sub-samples by a linear
+    taper between the top and bottom face areas instead of averaging them
+    with equal weight. This is a volume-weighted average under a
+    linear-taper (frustum-like) cross-section model, which is exact for a
+    cell whose cross-sectional area truly varies linearly from top to
+    bottom and a first-order improvement otherwise; it is not a full
+    polyhedron/plane-intersection volume average; genuinely irregular
+    (e.g. non-monotonic) cross-sections along the cell's vertical axis are
+    still only approximated.
     """
-    raise NotImplementedError(
-        "Tilted-cell EQUIL initialization (accuracy_flag < 0) is not yet "
-        "implemented. Use accuracy_flag = 0 (center-point) or > 0 "
-        "(horizontal-subdivision) for now."
+    n_sub = n_subdivisions or abs(region.accuracy_flag)
+    n_cells = len(cell_indices)
+
+    top_depth, bottom_depth, top_area, bottom_area = _get_dip_aware_top_bottom_faces(
+        grid=grid, cell_indices=cell_indices
+    )
+    dtype = kwargs["dtype"]
+    top_depth = top_depth.astype(dtype, copy=False)
+    bottom_depth = bottom_depth.astype(dtype, copy=False)
+    top_area = top_area.astype(dtype, copy=False)
+    bottom_area = bottom_area.astype(dtype, copy=False)
+
+    fractions = (np.arange(n_sub, dtype=dtype) + 0.5) / n_sub
+    sub_depth = (
+        top_depth[:, None] + fractions[None, :] * (bottom_depth - top_depth)[:, None]
+    )
+    area_weights = (
+        top_area[:, None] + fractions[None, :] * (bottom_area - top_area)[:, None]
+    )
+    # Guards against a degenerate zero/negative taper (e.g. a pinched-out
+    # face) collapsing the weighted average to NaN.
+    area_weights = np.clip(area_weights, np.finfo(dtype).tiny, None)
+
+    repeated_kwargs = {
+        key: np.repeat(value, n_sub)
+        if isinstance(value, np.ndarray) and value.shape == (n_cells,)
+        else value
+        for key, value in kwargs.items()
+    }
+    sub_arrays = _initialize_center_point_equilibrium(
+        region=region,
+        depths=sub_depth.ravel(),
+        **repeated_kwargs,  # type: ignore[arg-type]
+    )
+
+    def _weighted_average(field: CellArray) -> CellArray:
+        field_2d = field.reshape(n_cells, n_sub)
+        return typing.cast(
+            CellArray,
+            np.sum(field_2d * area_weights, axis=1) / np.sum(area_weights, axis=1),
+        )
+
+    return EquilibriumArrays(
+        **{
+            name: _weighted_average(getattr(sub_arrays, name))
+            for name in EquilibriumArrays._fields
+        }
     )
 
 
@@ -747,8 +908,9 @@ def initialize_equilibrium_arrays(
             )
         else:
             region_arrays = _initialize_tilted_subdivision_equilibrium(
-                depths=depth[mask],
-                **common_kwargs,  # type: ignore[arg-type]
+                grid=reservoir.grid,
+                cell_indices=np.nonzero(mask)[0],  # type: ignore[arg-type]
+                **common_kwargs,
             )
 
         pressure[mask] = region_arrays.pressure
@@ -1095,9 +1257,7 @@ def initialize_state(
     # gas-mass-basis term) needs an explicit ft3<->bbl correction; skipping
     # it overstates the mass by ~5.615x. `METRIC/SI/LAB` use a single volume unit
     # throughout (m3/m3, cc/cc) so no such correction applies for them.
-    volume_family_correction = (
-        c.CUBIC_FEET_TO_STB if unit_system is UnitSystem.FIELD else 1.0
-    )
+    volume_correction = c.CUBIC_FEET_TO_STB if unit_system is UnitSystem.FIELD else 1.0
 
     for pvtnum in np.unique(pvt_regions):
         mask = pvt_regions == pvtnum
@@ -1161,10 +1321,7 @@ def initialize_state(
 
             rv = vaporized_oil_ratio_arr[mask]
             vaporized_oil_mass_in_gas[mask] = (
-                rv
-                * free_gas_mass[mask]
-                * (rho_o_sc / rho_g_sc)
-                * volume_family_correction
+                rv * free_gas_mass[mask] * (rho_o_sc / rho_g_sc) * volume_correction
             )
 
         if np.any(sw > 0.0):
@@ -1186,7 +1343,7 @@ def initialize_state(
 
         if rho_g_sc is not None:
             dissolved_gas_mass_in_oil[mask] = (
-                rs * oil_mass[mask] * (rho_g_sc / rho_o_sc) * volume_family_correction
+                rs * oil_mass[mask] * (rho_g_sc / rho_o_sc) * volume_correction
             )
 
     zeros = np.zeros(n_cells, dtype=dtype)

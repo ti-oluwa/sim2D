@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.static import StaticPVT
-from bores.blackoil.pvt.tables import PVTTables
+from bores.blackoil.pvt.tables import PVTTables, _clip_compressibility
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -395,57 +395,6 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
     return np.tile(values_1d[:, np.newaxis], (1, n_t)).astype(
         values_1d.dtype, copy=False
     )
-
-
-def _clip_compressibility(
-    values: NumberArray[NDimension],
-    *,
-    dtype: npt.DTypeLike,
-    max_value: Number = 1e-1,
-    context: str = "compressibility",
-) -> NumberArray[NDimension]:
-    """
-    Clip a raw `-(1/B)·(dB/dP)` array to the physically valid range `[0, max_value]`.
-
-    Negative values are expected on saturated-branch (Rs/Rv-bracketed) tables -
-    `PVTO`/`PVTG` - where this formula implicitly assumes constant Rs/Rv, which
-    doesn't hold on the saturated envelope. That's a known modeling artifact, not
-    noise, so it's floored to 0 quietly (debug log only).
-
-    Values above *max_value* are a different story: nothing physically
-    reasonable should ever hit `1e-1` psi⁻¹ (typical oil/water compressibility
-    is `~1e-6`-`1e-5`), so an excess almost always means a noisy or sparsely
-    tabulated PVT table producing a PCHIP-derivative blow-up. Those are warned
-    on loudly instead of silently absorbed.
-
-    :param values: Raw compressibility array before clipping.
-    :param dtype: Output dtype.
-    :param max_value: Upper clip bound (1/psi or 1/bar, matching *values*' unit system).
-    :param context: Label used in the warning/log message (e.g. `"PVTO oil compressibility"`).
-    :returns: Clipped array, dtype *dtype*.
-    """
-    n_negative = int(np.count_nonzero(values < 0.0))
-    if n_negative:
-        logger.debug(
-            "%s: %d value(s) were negative (min %.4g), clipped to 0. Expected on "
-            "the saturated branch, where -(1/B)*(dB/dP) is not a true "
-            "constant-composition compressibility.",
-            context,
-            n_negative,
-            float(np.min(values)),
-        )
-
-    n_excess = int(np.count_nonzero(values > max_value))
-    if n_excess:
-        warnings.warn(
-            f"{context}: {n_excess} value(s) exceeded the {max_value:g} ceiling "
-            f"(max {float(np.max(values)):.4g}) and were clipped. This usually "
-            "indicates a noisy or sparsely-tabulated PVT table rather than "
-            "physical compressibility - consider checking the source table.",
-            UserWarning,
-            stacklevel=3,
-        )
-    return np.clip(values, 0.0, max_value, dtype=dtype, out=values)
 
 
 def _build_oil_data_from_pvto(

@@ -178,7 +178,6 @@ def as_pyvista_grid(
 
     pl = pv.Plotter()
     pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
-    pl.set_scale(zscale=-1)   # flip z: depth increases downward
     pl.show()
     ```
     """

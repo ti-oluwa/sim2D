@@ -25,7 +25,7 @@ class BlackOilFluid(
     """
     Black-oil fluid physics model.
 
-    Holds the three multi-region table objects that define the
+    Holds the two multi-region table objects that define the
     fluid physics for a black-oil simulation:
 
     - `pvt` - PVT tables and static fluid properties, one

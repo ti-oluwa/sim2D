@@ -184,7 +184,7 @@ class Rock(StoreSerializable):
     Static petrophysical properties of the reservoir rock.
 
     These arrays are constant between simulation time steps and are populated
-    from GRDECL keywords such as `PORO`, `PERMX/Y/Z`, `NTG`, `SWCON`,
+    from deck keywords such as `PORO`, `PERMX/Y/Z`, `NTG`, `SWCON`,
     `SWCRIT`, and `TEMPVD`.
 
     `temperature` lives here because it is static in standard black-oil

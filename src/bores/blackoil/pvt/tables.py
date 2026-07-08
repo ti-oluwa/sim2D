@@ -61,8 +61,8 @@ def _build_pchip_2d_interpolator(
     The returned callable has the same interface as
     `RectBivariateSpline.ev`: `(pressure_points, temperature_points) -> values`.
 
-    :param pressures: 1-D array of pressure knots (psi), strictly increasing.
-    :param temperatures: 1-D array of temperature knots (°F), strictly increasing.
+    :param pressures: 1-D array of pressure knots, strictly increasing.
+    :param temperatures: 1-D array of temperature knots, strictly increasing.
     :param table: 2-D array of shape `(n_p, n_t)` containing property values.
     :returns: Callable with signature `(p, t) -> values`.
     """
@@ -78,15 +78,15 @@ def _build_pchip_2d_interpolator(
         t = t.astype(dtype, copy=False).ravel()  # type: ignore
         n = len(p)
 
-        p_interp_values = np.empty((len(temperatures), n), dtype=dtype)
+        values = np.empty((len(temperatures), n), dtype=dtype)
         for j, interp in enumerate(_p_interps):
-            p_interp_values[j] = interp(p)
+            values[j] = interp(p)
 
         result = np.empty(n, dtype=dtype)
         for i in range(n):
-            result[i] = PchipInterpolator(
-                temperatures, p_interp_values[:, i], extrapolate=True
-            )(t[i])
+            result[i] = PchipInterpolator(temperatures, values[:, i], extrapolate=True)(
+                t[i]
+            )
         return result
 
     return _ev
@@ -124,13 +124,13 @@ def _build_pchip_2d_derivative_interpolator(
         t = t.astype(dtype, copy=False).ravel()  # type: ignore
         n = len(p)
 
-        vals = np.empty((len(temperatures), n), dtype=dtype)
+        values = np.empty((len(temperatures), n), dtype=dtype)
         for j, d_interp in enumerate(_dp_interps):
-            vals[j] = d_interp(p)
+            values[j] = d_interp(p)
 
         result = np.empty(n, dtype=dtype)
         for i in range(n):
-            result[i] = PchipInterpolator(temperatures, vals[:, i], extrapolate=True)(
+            result[i] = PchipInterpolator(temperatures, values[:, i], extrapolate=True)(
                 t[i]
             )
         return result
@@ -181,6 +181,7 @@ def _build_bilinear_2d_derivative_interpolator(
             np.searchsorted(pressures, p, side="right") - 1,
             0,
             len(cell_interps) - 1,
+            dtype=dtype,
         )
         result = np.empty(len(p), dtype=dtype)
         for idx in np.unique(cell_idx):
@@ -191,11 +192,62 @@ def _build_bilinear_2d_derivative_interpolator(
     return _ev
 
 
+def _clip_compressibility(
+    values: NumberArray[NDimension],
+    *,
+    dtype: npt.DTypeLike,
+    max_value: Number = 1e-1,
+    context: str = "compressibility",
+) -> NumberArray[NDimension]:
+    """
+    Clip a raw `-(1/B)·(dB/dP)` array to the physically valid range `[0, max_value]`.
+
+    Negative values are expected on saturated-branch (Rs/Rv-bracketed) tables -
+    `PVTO`/`PVTG` - where this formula implicitly assumes constant Rs/Rv, which
+    doesn't hold on the saturated envelope. That's a known modeling artifact, not
+    noise, so it's floored to 0 quietly (debug log only).
+
+    Values above *max_value* are a different story: nothing physically
+    reasonable should ever hit `1e-1` psi⁻¹ (typical oil/water compressibility
+    is `~1e-6`-`1e-5`), so an excess almost always means a noisy or sparsely
+    tabulated PVT table producing a PCHIP-derivative blow-up. Those are warned
+    on loudly instead of silently absorbed.
+
+    :param values: Raw compressibility array before clipping.
+    :param dtype: Output dtype.
+    :param max_value: Upper clip bound (1/psi or 1/bar, matching *values*' unit system).
+    :param context: Label used in the warning/log message (e.g. `"PVTO oil compressibility"`).
+    :returns: Clipped array, dtype *dtype*.
+    """
+    n_negative = int(np.count_nonzero(values < 0.0))
+    if n_negative:
+        logger.debug(
+            "%s: %d value(s) were negative (min %.4g), clipped to 0. Expected on "
+            "the saturated branch, where -(1/B)*(dB/dP) is not a true "
+            "constant-composition compressibility.",
+            context,
+            n_negative,
+            float(np.min(values)),
+        )
+
+    n_excess = int(np.count_nonzero(values > max_value))
+    if n_excess:
+        warnings.warn(
+            f"{context}: {n_excess} value(s) exceeded the {max_value:g} ceiling "
+            f"(max {float(np.max(values)):.4g}) and were clipped. This usually "
+            "indicates a noisy or sparsely-tabulated PVT table rather than "
+            "physical compressibility - consider checking the source table.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return np.clip(values, 0.0, max_value, dtype=dtype, out=values)
+
+
 class PVTTable(StoreSerializable):
     """
     Phase-aware PVT property lookup with pre-built interpolators.
 
-    Wraps a `PVTData` instance and builds scipy / PCHIP interpolators for
+    Wraps a `PVTData` instance and builds SciPy / PCHIP interpolators for
     every table column, including derived tables (density, compressibility) if
     they were not supplied in the data.
 
@@ -332,7 +384,7 @@ class PVTTable(StoreSerializable):
 
         # Potentially augment data with derived tables before building interpolators
         if pvt is not None:
-            if pvt.unit_system != self.unit_system:
+            if pvt.unit_system != data.unit_system:
                 pvt = pvt.convert(self.unit_system)
             data = self._build_derived_tables(data, pvt)
 
@@ -406,8 +458,10 @@ class PVTTable(StoreSerializable):
                     dbo_dp[:, j] = d(pressures)
 
                 oil_compressibility_table = -(1.0 / oil_fvf_table) * dbo_dp
-                np.clip(
-                    oil_compressibility_table, 0.0, None, out=oil_compressibility_table
+                _clip_compressibility(
+                    oil_compressibility_table,
+                    dtype=dtype,
+                    context="PVT table derived oil compressibility",
                 )
                 updates["compressibility_table"] = oil_compressibility_table.astype(
                     dtype, copy=False
@@ -449,11 +503,10 @@ class PVTTable(StoreSerializable):
                         1.0 / pressure_table
                         - (1.0 / compressibility_factor_table) * dz_dp
                     )
-                    np.clip(
+                    _clip_compressibility(
                         gas_compressibility_table,
-                        0.0,
-                        None,
-                        out=gas_compressibility_table,
+                        dtype=dtype,
+                        context="PVT table derived gas compressibility",
                     )
                     updates["compressibility_table"] = gas_compressibility_table.astype(
                         dtype, copy=False
@@ -469,11 +522,10 @@ class PVTTable(StoreSerializable):
                         dbg_dp[:, j] = d(pressures)
 
                     gas_compressibility_table = -(1.0 / gas_fvf_table) * dbg_dp
-                    np.clip(
+                    _clip_compressibility(
                         gas_compressibility_table,
-                        0.0,
-                        None,
-                        out=gas_compressibility_table,
+                        dtype=dtype,
+                        context="PVT table derived gas compressibility",
                     )
                     updates["compressibility_table"] = gas_compressibility_table.astype(
                         dtype, copy=False
@@ -529,11 +581,10 @@ class PVTTable(StoreSerializable):
                 water_compressibility_2d_table = (
                     -(1.0 / gas_free_water_fvf_table) * dbw_dp
                 )
-                np.clip(
+                _clip_compressibility(
                     water_compressibility_2d_table,
-                    0.0,
-                    None,
-                    out=water_compressibility_2d_table,
+                    dtype=dtype,
+                    context="PVT table derived water compressibility",
                 )
                 if data.salinities is not None:
                     n_s = len(data.salinities)
@@ -1101,9 +1152,9 @@ class PVTTable(StoreSerializable):
         :param pressure: Pressure.
         :param temperature: Temperature.
         :param salinity: Salinity (ppm NaCl). Water phase only.
-        :param solution_gor: Solution GOR (SCF/STB). Oil, 2-D bubble_point_arr table only.
-        :param bubble_point_pressure: Pre-computed bubble_point_arr. Oil only; skips
-            internal bubble_point_arr lookup when supplied.
+        :param solution_gor: Solution GOR. Oil, for 2-D `bubble_point_arr` table only.
+        :param bubble_point_pressure: Pre-computed `bubble_point_arr`. Oil only; skips
+            internal `bubble_point_arr` lookup when supplied.
         :returns: FVF or `None` if the table is not present.
         """
         if self._phase == FluidPhase.WATER:
@@ -1191,8 +1242,11 @@ class PVTTable(StoreSerializable):
         """
         Return `∂B/∂P`. Units depend on `unit_system`.
 
-        For oil/water: (psi⁻¹ · bbl/STB) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI
-        For gas: (psi⁻¹ · ft³/SCF) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI
+        **For oil/water**: (psi⁻¹ · bbl/STB) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI,
+        (atm⁻¹ · cc/scc) in LAB
+
+        **For gas**: (psi⁻¹ · ft³/SCF) in FIELD, (bar⁻¹ · m³/Sm³) in METRIC, (Pa⁻¹ · m³/Sm³) in SI,
+        (atm⁻¹ · cc/scc) in LAB
 
         Direct derivative of the FVF interpolator - no finite differences.
 
@@ -1232,7 +1286,7 @@ class PVTTable(StoreSerializable):
         :param pressure: Pressure.
         :param temperature: Temperature.
         :param salinity: Salinity (ppm NaCl). Water phase only.
-        :param solution_gor: Solution GOR (SCF/STB). Oil, 2-D bubble_point_arr table only.
+        :param solution_gor: Solution GOR. Oil, 2-D bubble_point_arr table only.
         :param bubble_point_pressure: Pre-computed bubble_point_arr. Oil only.
         :returns: Viscosity in cP, or `None` if table is absent.
         """
@@ -1307,7 +1361,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂μ/∂P` (cP/psi).
+        Return `∂μ/∂P` (viscosity-unit / pressure-unit, unit_system-dependent - cP/psi in FIELD).
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1362,7 +1416,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂ρ/∂P` (lbm/ft³/psi).
+        Return `∂ρ/∂P` (density-unit / pressure-unit, unit_system-dependent - lbm/ft³/psi in FIELD).
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1415,7 +1469,7 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂c/∂P` (psi⁻²).
+        Return `∂c/∂P` (1 / pressure-unit-squared, unit_system-dependent - psi⁻² in FIELD).
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1453,7 +1507,7 @@ class PVTTable(StoreSerializable):
         **Gas phase:** returns `None`.
 
         :param temperature: Temperature.
-        :param solution_gor: Solution GOR (SCF/STB). Required for 2-D bubble_point_arr table.
+        :param solution_gor: Solution GOR. Required for 2-D bubble_point_arr table.
         :param pressure: Pressure. Required for water bubble_point_arr table.
         :param salinity: Salinity (ppm NaCl). Water phase only.
         :returns: Bubble-point pressure, or `None`.
@@ -1520,12 +1574,12 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Pb/∂Rs` (psi · STB/SCF).
+        Return `∂Pb/∂Rs` (pressure-unit / GOR-unit, unit_system-dependent - psi · STB/SCF in FIELD).
 
         Only available when the bubble-point table is 2-D (bubble_point_arr(Rs, T)).
         Returns `None` for 1-D bubble_point_arr(T) tables or gas / water phases.
 
-        :param solution_gor: Solution GOR (SCF/STB).
+        :param solution_gor: Solution GOR.
         :param temperature: Temperature.
         :returns: `∂Pb/∂Rs` or `None`.
         """
@@ -1622,7 +1676,8 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Rs/∂P` (SCF/STB/psi). Oil phase only.
+        Return `∂Rs/∂P` (GOR-unit / pressure-unit, unit_system-dependent - SCF/STB/psi in FIELD).
+        Oil phase only.
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1643,7 +1698,7 @@ class PVTTable(StoreSerializable):
 
         :param pressure: Pressure.
         :param temperature: Temperature.
-        :param solution_gor: Solution GOR (SCF/STB). Required for 2-D bubble_point_arr table.
+        :param solution_gor: Solution GOR. Required for 2-D bubble_point_arr table.
         :returns: Boolean mask (True = saturated), or `None` for gas.
         """
         if self._phase == FluidPhase.GAS:
@@ -1685,7 +1740,8 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂z/∂P` (psi⁻¹). Gas phase only.
+        Return `∂z/∂P` (1 / pressure-unit, unit_system-dependent - psi⁻¹ in FIELD).
+        Gas phase only.
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1704,7 +1760,8 @@ class PVTTable(StoreSerializable):
         dew_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get vaporised oil ratio `Rv` (STB/scf). Gas / condensate phase only.
+        Get vaporised oil ratio `Rv` (unit_system-dependent - STB/scf in FIELD).
+        Gas / condensate phase only.
 
         Rv is capped at Rv_sat (the value at dew-point pressure) above the dew
         point, analogous to Rs being capped at Rsb above bubble point for oil.
@@ -1763,7 +1820,8 @@ class PVTTable(StoreSerializable):
         temperature: TableQuery[NDimension],
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Rv/∂P` (STB/Mscf/psi). Gas / condensate phase only.
+        Return `∂Rv/∂P` (vaporized-oil-ratio-unit / pressure-unit, unit_system-dependent - STB/Mscf/psi in FIELD).
+        Gas / condensate phase only.
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -1830,7 +1888,8 @@ class PVTTable(StoreSerializable):
         salinity: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Return `∂Rsw/∂P` (SCF/STB/psi). Gas phase only.
+        Return `∂Rsw/∂P` (solubility-unit / pressure-unit, unit_system-dependent - SCF/STB/psi in FIELD).
+        Gas phase only.
 
         :param pressure: Pressure.
         :param temperature: Temperature.
@@ -2020,7 +2079,7 @@ class PVTTables(StoreSerializable):
         common single-region case.
 
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
-        :param temperature: Reservoir temperature (°F) - used as the single
+        :param temperature: Reservoir temperature - used as the single
             temperature value for deck-loaded isothermal tables, or a reservoir
             regional `Temperature` instance.
         :param pvtnum: 1-based PVT region index to extract (default 1).

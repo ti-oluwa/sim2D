@@ -33,7 +33,7 @@ class PVTData(StoreSerializable):
     Raw PVT table data for a single fluid phase.
 
     Phase-tagged container for tabulated fluid properties. All table arrays
-    are optional - only `phase`, `pressures`, and `temperatures` are
+    are optional. Only `phase`, `pressures`, and `temperatures` are
     required. `PVTTable` validates which fields are meaningful for the
     phase at initialisation time.
 
@@ -54,7 +54,7 @@ class PVTData(StoreSerializable):
     - Gas: `formation_volume_factor_table` (Bg), `viscosity_table` (μg),
       `compressibility_factor_table` (z), `vaporized_oil_ratio_table` (Rv,
       wet-gas / condensate only).
-    - Water: scalars on `PVT` - no table needed.
+    - Water: scalars on `PVT`. No table needed.
 
     **Derived (pre-built) properties**
 
@@ -62,8 +62,8 @@ class PVTData(StoreSerializable):
     at `PVTTable` construction time. They are stored here as optional arrays
     so they can be serialised and reloaded without rebuilding:
 
-    - `density_table` - ρ(P, T) in lbm/ft³.
-    - `compressibility_table` - c(P, T) in psi⁻¹.
+    - `density_table` - ρ(P, T).
+    - `compressibility_table` - c(P, T).
 
     Oil-specific fields: `bubble_point_pressures`, `solution_gas_to_oil_ratios`,
     `solution_gor_table`.
@@ -108,9 +108,9 @@ class PVTData(StoreSerializable):
 
     solution_gas_to_oil_ratios: typing.Optional[NumberArray[OneDimension]] = None
     """
-    1-D array of Rs values (SCF/STB) for the first axis of a 2-D
+    1-D array of Rs values for the first axis of a 2-D
     `bubble_point_pressures` table. Required when `bubble_point_pressures`
-    is 2-D. Oil phase only.
+    is 2-D. Oil phase only. Units depend on `unit_system`.
     """
 
     # Gas-only: dew point and Rv
@@ -190,13 +190,13 @@ class PVTData(StoreSerializable):
 
     solubility_in_water_table: typing.Optional[NumberArray[ThreeDimensions]] = None
     """
-    Gas solubility in water Rsw(P, T, S) in SCF/STB.
+    Gas solubility in water Rsw(P, T, S). Units depend on `unit_system`.
     Gas phase only. 3-D shape `(n_p, n_t, n_s)`; requires `salinities`.
     """
 
     # Water-only primary
     bubble_point_pressure_table: typing.Optional[NumberArray[ThreeDimensions]] = None
-    """Water bubble-point pressure Pbw(P, T, S) in psi. Water phase only."""
+    """Water bubble-point pressure Pbw(P, T, S). Water phase only. Units depend on `unit_system`."""
 
     gas_free_water_fvf_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
@@ -376,7 +376,7 @@ class PVTDataSet(StoreSerializable):
         ):
             if data is not None and data.phase != phase:
                 raise ValidationError(
-                    f"{type(self).__name__}: {phase.value!r} PVTData has phase={data.phase}"
+                    f"{type(self).__name__}: {phase.value!r} `PVTData` has phase={data.phase}"
                 )
 
         # Check that all present PVTData have the same unit system
@@ -387,7 +387,7 @@ class PVTDataSet(StoreSerializable):
         }
         if len(unit_systems) > 1:
             raise ValidationError(
-                f"{type(self).__name__}: All PVTData must have the same unit system. Found: {unit_systems}"
+                f"{type(self).__name__}: All `PVTData` must have the same unit system. Found: {unit_systems}"
             )
 
         object.__setattr__(self, "_unit_system", unit_systems.pop())
