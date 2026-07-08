@@ -9,6 +9,7 @@ from bores.reservoir import Regions, Reservoir, Rock, Temperature
 from bores.typing import UnitSystem
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
+print(df.keywords)
 
 # The reservoir
 grid = Grid.from_deck(df)
@@ -19,20 +20,22 @@ reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 # The fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="stone_II_rule")
-black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
-# print(pvt.region(1).tables.oil.formation_volume_factor([4700, 3000], [200, 139], solution_gor=27))
+# rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="stone_II_rule")
+# black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
+table = pvt.region(1).tables.oil
+assert table is not None, "`table` should not be None"
+print(table.viscosity([4700, 3000], [200, 139], solution_gor=400))
 
 # The initial state
-equilibrium = EquilibriumRegions.from_deck(df)
-initial_state = initialize_state(
-    reservoir=reservoir,
-    pvt=pvt,
-    equilibrium=equilibrium,
-    rock_fluid=rock_fluid,
-    temperature=temperature,
-)
-print(initial_state.oil_mass.max())
+# equilibrium = EquilibriumRegions.from_deck(df)
+# initial_state = initialize_state(
+#     reservoir=reservoir,
+#     pvt=pvt,
+#     equilibrium=equilibrium,
+#     rock_fluid=rock_fluid,
+#     temperature=temperature,
+# )
+# print(initial_state.oil_mass.max())
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

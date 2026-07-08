@@ -16,7 +16,7 @@ from typing_extensions import Self
 
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.static import StaticPVT
-from bores.constants import UnitConversionTable
+from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
@@ -733,14 +733,17 @@ class PVTTable(StoreSerializable):
         ):
             raise ValidationError("Gas z-factor must be positive everywhere.")
 
+        max_gas_density_field_unit = 50  # 50 lbm/ft³
+        factors = get_conversion_factors(UnitSystem.FIELD, data.unit_system)
+        max_gas_density = max_gas_density_field_unit * factors["density"]
         if (
             phase == FluidPhase.GAS
             and data.density_table is not None
-            and np.any(data.density_table >= 50.0)
+            and np.any(data.density_table >= max_gas_density)
         ):
             warnings.warn(
-                "Gas density table contains values >= 50 lbm/ft³. "
-                "Verify units (expected lbm/ft³).",
+                f"Gas density table contains values >= {max_gas_density} density units (e.g, lbm/ft³ for FIELD). "
+                "Verify that the table's values are in right unit system.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -1098,13 +1101,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:

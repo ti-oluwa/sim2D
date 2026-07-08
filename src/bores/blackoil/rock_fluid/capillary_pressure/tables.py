@@ -15,7 +15,7 @@ from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.base import Serializable, make_serializable_type_registrar
+from bores.serialization.base import make_serializable_type_registrar
 from bores.serialization.stores import StoreSerializable
 from bores.typing import (
     CapillaryPressureDerivatives,
@@ -27,7 +27,6 @@ from bores.typing import (
     NumberOrArray,
     OneDimension,
     Spacing,
-    SupportsUnitSystem,
     UnitSystem,
 )
 
@@ -166,9 +165,10 @@ def get_capillary_pressure_table(name: str) -> typing.Type[CapillaryPressureTabl
         return _CAPILLARY_PRESSURE_TABLES[name]
 
 
+@capillary_pressure_table
 @attrs.frozen
 class TwoPhaseCapillaryPressureTable(
-    Serializable,
+    CapillaryPressureTable,
     load_exclude={"_interp", "_d_interp"},
     dump_exclude={"_interp", "_d_interp"},
 ):
@@ -203,6 +203,25 @@ class TwoPhaseCapillaryPressureTable(
     `unit_system`. `reference_saturation` is always dimensionless and is
     unaffected by unit conversion. Use `convert(target)` to produce a copy of
     this table rescaled to a different `UnitSystem`.
+
+    **Standalone three-phase use**:
+
+    Subclasses `CapillaryPressureTable` and is registered under
+    `__type__ = "two_phase_capillary_pressure_table"`, so it can be used
+    anywhere a full `CapillaryPressureTable` is expected - e.g. directly as
+    `RockFluidRegion.capillary_pressure` - without wrapping it in a
+    `ThreePhaseCapillaryPressureTable` first. `evaluate`/`derivatives` take
+    the standard three-phase `(water_saturation, oil_saturation,
+    gas_saturation)` signature and always return both `"oil_water"` and
+    `"gas_oil"` entries, zeroing whichever phase pair this table doesn't
+    cover (mirrors `TwoPhaseRelPermTable`).
+
+    `__call__` is inherited from `CapillaryPressureTable` and therefore
+    takes that same three-phase signature (forwarding to `evaluate`), not
+    the two-argument `(wetting_saturation, non_wetting_saturation)` form.
+    For direct single-value queries against this table's own reference
+    axis, use `get_capillary_pressure`/`get_capillary_pressure_derivative`
+    instead.
     """
 
     __type__ = "two_phase_capillary_pressure_table"
@@ -463,21 +482,208 @@ class TwoPhaseCapillaryPressureTable(
         )
         return self._query_d_interp(ref)
 
-    def __call__(
+    def evaluate(
         self,
-        wetting_saturation: NumberOrArray[NDimension],
-        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
         **kwargs: typing.Any,
-    ) -> NumberOrArray[NDimension]:
+    ) -> CapillaryPressures:
         """
-        Get capillary pressure at the given saturation(s).
+        Compute capillary pressures for the three-phase system from this
+        two-phase table alone, so it can be used standalone anywhere a full
+        `CapillaryPressureTable` is expected.
 
-        :param wetting_saturation: Wetting-phase saturation (scalar or array).
-        :param non_wetting_saturation: Non-wetting-phase saturation (scalar or array).
-            Required when `reference_phase="non_wetting"`.
-        :return: Capillary pressure value(s) in `self.dtype`.
+        The saturation for the phase pair this table doesn't cover always
+        returns zero (in `self.dtype`):
+
+        - **Oil-water table** (phases are OIL and WATER): `gas_oil` = 0.
+        - **Gas-oil table** (phases are GAS and OIL): `oil_water` = 0.
+
+        Which of `water_saturation`/`oil_saturation`/`gas_saturation` is
+        forwarded as this table's interpolation reference is resolved
+        internally by `get_capillary_pressure` via `reference_phase`; only
+        `wetting_phase` needs to be inspected here to route the right pair
+        of saturations to it.
+
+        :param water_saturation: Water saturation (fraction, 0-1) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction, 0-1) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction, 0-1) - scalar or array.
+        :return: `CapillaryPressures` dict with keys `"oil_water"`, `"gas_oil"`.
+        :raises ValidationError: If this table's phases are neither
+            `{OIL, WATER}` nor `{OIL, GAS}`.
         """
-        return self.get_capillary_pressure(wetting_saturation, non_wetting_saturation)
+        dtype = self.dtype
+        is_scalar = (
+            np.isscalar(water_saturation)
+            and np.isscalar(oil_saturation)
+            and np.isscalar(gas_saturation)
+        )
+        sw = np.atleast_1d(water_saturation)
+        so = np.atleast_1d(oil_saturation)
+        sg = np.atleast_1d(gas_saturation)
+        sw, so, sg = np.broadcast_arrays(sw, so, sg)
+        zeros = np.zeros(sw.shape, dtype=dtype)
+        phases = {self.wetting_phase, self.non_wetting_phase}
+
+        if phases == {FluidPhase.WATER, FluidPhase.OIL}:
+            if self.wetting_phase == FluidPhase.WATER:
+                pcow = self.get_capillary_pressure(
+                    wetting_saturation=sw, non_wetting_saturation=so
+                )
+            else:
+                pcow = self.get_capillary_pressure(
+                    wetting_saturation=so, non_wetting_saturation=sw
+                )
+            if is_scalar:
+                return CapillaryPressures(
+                    oil_water=dtype.type(np.asarray(pcow).item()),  # type: ignore
+                    gas_oil=dtype.type(0),  # type: ignore
+                )
+            return CapillaryPressures(oil_water=pcow, gas_oil=zeros)  # type: ignore[typeddict-item]
+
+        if phases == {FluidPhase.OIL, FluidPhase.GAS}:
+            if self.wetting_phase == FluidPhase.OIL:
+                pcgo = self.get_capillary_pressure(
+                    wetting_saturation=so, non_wetting_saturation=sg
+                )
+            else:
+                pcgo = self.get_capillary_pressure(
+                    wetting_saturation=sg, non_wetting_saturation=so
+                )
+            if is_scalar:
+                return CapillaryPressures(
+                    oil_water=dtype.type(0),  # type: ignore
+                    gas_oil=dtype.type(np.asarray(pcgo).item()),  # type: ignore
+                )
+            return CapillaryPressures(oil_water=zeros, gas_oil=pcgo)  # type: ignore[typeddict-item]
+
+        raise ValidationError(
+            f"Cannot dispatch three-phase saturations to a two-phase capillary "
+            f"pressure table with phases {self.wetting_phase!r} / "
+            f"{self.non_wetting_phase!r}. Expected OIL+WATER or OIL+GAS."
+        )
+
+    def derivatives(
+        self,
+        water_saturation: NumberOrArray[NDimension],
+        oil_saturation: NumberOrArray[NDimension],
+        gas_saturation: NumberOrArray[NDimension],
+        **kwargs: typing.Any,
+    ) -> CapillaryPressureDerivatives:
+        """
+        Compute the four three-phase capillary-pressure derivatives from
+        this two-phase table alone, so it can be used standalone anywhere a
+        full `CapillaryPressureTable` is expected.
+
+        Only the single derivative along this table's own
+        `reference_saturation` axis is non-zero; the other three, including
+        both derivatives for the phase pair this table doesn't cover are
+        zero (in `self.dtype`). Unlike `evaluate`, both `wetting_phase` and
+        `reference_phase` must be inspected here: `get_capillary_pressure_derivative`
+        returns `dPc / d(reference_saturation)`, so which saturation that
+        slope is actually with respect to depends on which physical
+        saturation `reference_phase` currently points at.
+
+        :param water_saturation: Water saturation (fraction, 0-1) - scalar or array.
+        :param oil_saturation: Oil saturation (fraction, 0-1) - scalar or array.
+        :param gas_saturation: Gas saturation (fraction, 0-1) - scalar or array.
+        :return: `CapillaryPressureDerivatives` dict, all four keys, in `self.dtype`.
+        :raises ValidationError: If this table's phases are neither
+            `{OIL, WATER}` nor `{OIL, GAS}`.
+        """
+        dtype = self.dtype
+        is_scalar = (
+            np.isscalar(water_saturation)
+            and np.isscalar(oil_saturation)
+            and np.isscalar(gas_saturation)
+        )
+        sw = np.atleast_1d(water_saturation)
+        so = np.atleast_1d(oil_saturation)
+        sg = np.atleast_1d(gas_saturation)
+        sw, so, sg = np.broadcast_arrays(sw, so, sg)
+        zeros = np.zeros(sw.shape, dtype=dtype)
+        phases = {self.wetting_phase, self.non_wetting_phase}
+
+        if phases == {FluidPhase.WATER, FluidPhase.OIL}:
+            if self.wetting_phase == FluidPhase.WATER:
+                if self.reference_phase == "wetting":
+                    d_pcow_d_sw = self.get_capillary_pressure_derivative(
+                        wetting_saturation=sw, non_wetting_saturation=so
+                    )
+                    d_pcow_d_so = zeros
+                else:
+                    d_pcow_d_sw = zeros
+                    d_pcow_d_so = self.get_capillary_pressure_derivative(
+                        wetting_saturation=sw, non_wetting_saturation=so
+                    )
+            else:
+                # Oil is the wetting phase.
+                if self.reference_phase == "wetting":
+                    d_pcow_d_sw = zeros
+                    d_pcow_d_so = self.get_capillary_pressure_derivative(
+                        wetting_saturation=so, non_wetting_saturation=sw
+                    )
+                else:
+                    d_pcow_d_sw = self.get_capillary_pressure_derivative(
+                        wetting_saturation=so, non_wetting_saturation=sw
+                    )
+                    d_pcow_d_so = zeros
+            results = (d_pcow_d_sw, d_pcow_d_so, zeros, zeros)
+            if is_scalar:
+                results = tuple(
+                    dtype.type(np.asarray(row).item())  # type: ignore
+                    for row in results
+                )
+            return CapillaryPressureDerivatives(
+                dPcow_dSw=results[0],
+                dPcow_dSo=results[1],
+                dPcgo_dSo=results[2],
+                dPcgo_dSg=results[3],
+            )
+
+        if phases == {FluidPhase.OIL, FluidPhase.GAS}:
+            if self.wetting_phase == FluidPhase.OIL:
+                if self.reference_phase == "wetting":
+                    d_pcgo_d_so = self.get_capillary_pressure_derivative(
+                        wetting_saturation=so, non_wetting_saturation=sg
+                    )
+                    d_pcgo_d_sg = zeros
+                else:
+                    d_pcgo_d_so = zeros
+                    d_pcgo_d_sg = self.get_capillary_pressure_derivative(
+                        wetting_saturation=so, non_wetting_saturation=sg
+                    )
+            else:
+                # Gas is the wetting phase (uncommon but supported).
+                if self.reference_phase == "wetting":
+                    d_pcgo_d_so = zeros
+                    d_pcgo_d_sg = self.get_capillary_pressure_derivative(
+                        wetting_saturation=sg, non_wetting_saturation=so
+                    )
+                else:
+                    d_pcgo_d_so = self.get_capillary_pressure_derivative(
+                        wetting_saturation=sg, non_wetting_saturation=so
+                    )
+                    d_pcgo_d_sg = zeros
+            results = (zeros, zeros, d_pcgo_d_so, d_pcgo_d_sg)
+            if is_scalar:
+                results = tuple(
+                    dtype.type(np.asarray(row).item())  # type: ignore
+                    for row in results
+                )
+            return CapillaryPressureDerivatives(
+                dPcow_dSw=results[0],
+                dPcow_dSo=results[1],
+                dPcgo_dSo=results[2],
+                dPcgo_dSg=results[3],
+            )
+
+        raise ValidationError(
+            f"Cannot dispatch three-phase saturations to a two-phase capillary "
+            f"pressure table with phases {self.wetting_phase!r} / "
+            f"{self.non_wetting_phase!r}. Expected OIL+WATER or OIL+GAS."
+        )
 
     def convert(
         self,

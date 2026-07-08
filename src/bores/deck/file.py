@@ -7,6 +7,7 @@ from typing_extensions import TypeVar
 
 from bores.deck.core import (
     Deck,
+    DeckParseError,
     GridDimensions,
     _TextOrPath,
     resolve_source,
@@ -143,131 +144,129 @@ T = TypeVar("T")
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
 
-DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
-    {
-        ### RUNSPEC ###
-        DISGAS,
-        EQLDIMS,
-        FIELD,
-        GAS,
-        LAB,
-        METRIC,
-        NOSIM,
-        OIL,
-        REGDIMS,
-        START,
-        TABDIMS,
-        TITLE,
-        UNIFIN,
-        UNIFOUT,
-        VAPOIL,
-        WATER,
-        WELLDIMS,
-        ### GRID ###
-        ACTNUM,
-        COORD,
-        DIMENS,
-        DX,
-        DXV,
-        DY,
-        DYV,
-        DZ,
-        DZV,
-        FAULTS,
-        GRIDUNIT,
-        MAPAXES,
-        MAPUNIT,
-        MAPUNITS,
-        MULTFLT,
-        MULTX,
-        MULTX_MINUS,
-        MULTY,
-        MULTY_MINUS,
-        MULTZ,
-        MULTZ_MINUS,
-        NNC,
-        NTG,
-        PERMX,
-        PERMY,
-        PERMZ,
-        PINCH,
-        PINCHOUT,
-        PORO,
-        PORV,
-        SPECGRID,
-        TOPS,
-        ZCORN,
-        ### REGIONS ###
-        EQLNUM,
-        FIPNUM,
-        IMBNUM,
-        PVTNUM,
-        ROCKNUM,
-        SATNUM,
-        ### PROPS ###
-        DENSITY,
-        PVCO,
-        PVDG,
-        PVDO,
-        PVTG,
-        PVTO,
-        PVTW,
-        ROCK,
-        ROCKTAB,
-        SGFN,
-        SGOF,
-        SOF2,
-        SOF3,
-        SWFN,
-        SWOF,
-        ### SOLUTION ###
-        EQUIL,
-        PRESSURE,
-        RESTART,
-        RS,
-        RV,
-        SGAS,
-        SOIL,
-        SWAT,
-        RTEMP,
-        RTEMPVD,
-        TEMPVD,
-        RSVD,
-        RVVD,
-        ### SCHEDULE ###
-        COMPDAT,
-        DATES,
-        GCONINJE,
-        GCONPROD,
-        GRUPTREE,
-        TSTEP,
-        WECON,
-        WELOPEN,
-        WELSPECS,
-        WELTARG,
-        WCONINJE,
-        WCONPROD,
-        WPIMULT,
-        WTEST,
-        ### SUMMARY ###
-        FGPR,
-        FGPT,
-        FOPR,
-        FOPT,
-        FWPR,
-        FWPT,
-        RGIP,
-        ROIP,
-        RPTRST,
-        RPTSCHED,
-        RWIP,
-        WBHP,
-        WGPR,
-        WOPR,
-        WTHP,
-        WWPR,
-    }
-)
+DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset({
+    ### RUNSPEC ###
+    DISGAS,
+    EQLDIMS,
+    FIELD,
+    GAS,
+    LAB,
+    METRIC,
+    NOSIM,
+    OIL,
+    REGDIMS,
+    START,
+    TABDIMS,
+    TITLE,
+    UNIFIN,
+    UNIFOUT,
+    VAPOIL,
+    WATER,
+    WELLDIMS,
+    ### GRID ###
+    ACTNUM,
+    COORD,
+    DIMENS,
+    DX,
+    DXV,
+    DY,
+    DYV,
+    DZ,
+    DZV,
+    FAULTS,
+    GRIDUNIT,
+    MAPAXES,
+    MAPUNIT,
+    MAPUNITS,
+    MULTFLT,
+    MULTX,
+    MULTX_MINUS,
+    MULTY,
+    MULTY_MINUS,
+    MULTZ,
+    MULTZ_MINUS,
+    NNC,
+    NTG,
+    PERMX,
+    PERMY,
+    PERMZ,
+    PINCH,
+    PINCHOUT,
+    PORO,
+    PORV,
+    SPECGRID,
+    TOPS,
+    ZCORN,
+    ### REGIONS ###
+    EQLNUM,
+    FIPNUM,
+    IMBNUM,
+    PVTNUM,
+    ROCKNUM,
+    SATNUM,
+    ### PROPS ###
+    DENSITY,
+    PVCO,
+    PVDG,
+    PVDO,
+    PVTG,
+    PVTO,
+    PVTW,
+    ROCK,
+    ROCKTAB,
+    SGFN,
+    SGOF,
+    SOF2,
+    SOF3,
+    SWFN,
+    SWOF,
+    ### SOLUTION ###
+    EQUIL,
+    PRESSURE,
+    RESTART,
+    RS,
+    RV,
+    SGAS,
+    SOIL,
+    SWAT,
+    RTEMP,
+    RTEMPVD,
+    TEMPVD,
+    RSVD,
+    RVVD,
+    ### SCHEDULE ###
+    COMPDAT,
+    DATES,
+    GCONINJE,
+    GCONPROD,
+    GRUPTREE,
+    TSTEP,
+    WECON,
+    WELOPEN,
+    WELSPECS,
+    WELTARG,
+    WCONINJE,
+    WCONPROD,
+    WPIMULT,
+    WTEST,
+    ### SUMMARY ###
+    FGPR,
+    FGPT,
+    FOPR,
+    FOPT,
+    FWPR,
+    FWPT,
+    RGIP,
+    ROIP,
+    RPTRST,
+    RPTSCHED,
+    RWIP,
+    WBHP,
+    WGPR,
+    WOPR,
+    WTHP,
+    WWPR,
+})
 
 
 class DeckFile:
@@ -307,7 +306,7 @@ class DeckFile:
 
     __slots__ = (
         "_deck",
-        "_keywords",
+        "_registry",
         "_cache",
         "_operations",
         "dimensions",
@@ -320,6 +319,7 @@ class DeckFile:
         *,
         keywords: Collection[Keyword[typing.Any]] = DEFAULT_KEYWORDS,
         encoding: str = "ascii",
+        unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
         :param source: A file path, raw deck text `str`, or raw deck
@@ -329,18 +329,29 @@ class DeckFile:
         :param keywords: Supported `bores.deck.keywords.base.Keyword`
             instances. Only supported keywords can be read from the file.
         :param encoding: Text encoding for file/bytes input (default `"ascii"`).
+        :param unit_system: The unit system to use for the deck. If not provided,
+            the deck is scanned for a `FIELD`, `METRIC`, or `LAB` keyword.
+            If none is found, a `DeckParseError` is raised.
+            Do not provide this argument if you want the unit system to be auto-detected.
         :raises DeckParseError: If a file cannot be read.
         """
         text = resolve_source(source, encoding=encoding)
         clean_text = strip_comments(text)
         self._deck = Deck(clean_text)
 
-        self._keywords: typing.Dict[str, Keyword[typing.Any]] = {
+        self._registry: typing.Dict[str, Keyword[typing.Any]] = {
             kw.name: kw for kw in keywords
         }
         self._cache: typing.Dict[str, typing.Any] = {}
         self.dimensions: typing.Optional[GridDimensions] = self._resolve_dimensions()
-        self.unit_system: UnitSystem = self._resolve_unit_system()
+        deck_unit_system = unit_system or self._resolve_unit_system()
+        if deck_unit_system is None:
+            raise DeckParseError(
+                "Could not detect deck unit system. Perhaps you passed a standalone PVT, GRDECL or relperm include file"
+                "Please provide `unit_system` on instantiation."
+            )
+
+        self.unit_system: UnitSystem = deck_unit_system
         self._operations: typing.Optional[typing.List[Operation]] = (
             resolve_operations(self._deck, self.dimensions)
             if self.dimensions is not None
@@ -359,7 +370,7 @@ class DeckFile:
             record = self._deck.first_record_for(name)
             if record is None:
                 continue
-            keyword = self._keywords.get(name)
+            keyword = self._registry.get(name)
             if keyword is None:
                 continue
             parsed = keyword.parse(self._deck, None)
@@ -372,15 +383,15 @@ class DeckFile:
             )
         return None
 
-    def _resolve_unit_system(self) -> UnitSystem:
+    def _resolve_unit_system(self) -> typing.Optional[UnitSystem]:
         """
         Resolve the unit system from the RUNSPEC unit keywords.
 
         Eclipse decks declare exactly one of `FIELD`, `METRIC`, or `LAB`.
         When none is present (e.g. a standalone PVT or relperm include file),
-        `FIELD` is assumed as the Eclipse default.
+        returns `None`.
 
-        :returns: The `UnitSystem` declared in the deck.
+        :returns: The `UnitSystem` declared in the deck. `None` if not present.
         """
         for name, unit_system in (
             ("METRIC", UnitSystem.METRIC),
@@ -389,12 +400,17 @@ class DeckFile:
         ):
             if self._deck.has(name):
                 return unit_system
-        return UnitSystem.FIELD
+        return None
 
     @property
     def deck(self) -> Deck:
         """The underlying scanned `bores.deck.core.Deck`."""
         return self._deck
+
+    @property
+    def keywords(self) -> typing.List[str]:
+        """Return every unique keyword in the deck, in file order."""
+        return self._deck.keywords
 
     def add_keywords(self, *keywords: Keyword[typing.Any]) -> None:
         """
@@ -406,7 +422,7 @@ class DeckFile:
             instances.
         """
         for keyword in keywords:
-            self._keywords[keyword.name] = keyword
+            self._registry[keyword.name] = keyword
             self._cache.pop(keyword.name, None)
 
     def has(self, k: typing.Union[str, Keyword[typing.Any]], /) -> bool:
@@ -443,13 +459,13 @@ class DeckFile:
             )
 
         key = k.upper()
-        if key not in self._keywords:
+        if key not in self._registry:
             return None
 
         if use_cache and key in self._cache:
             return self._cache[key]
 
-        value = self._keywords[key].parse(
+        value = self._registry[key].parse(
             self._deck,
             self.dimensions,
             operations=self._operations,

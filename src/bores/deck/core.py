@@ -61,7 +61,15 @@ class GridDimensions(typing.NamedTuple):
 
 _COMMENT_RE = re.compile(r"--[^\n]*")
 _INCLUDE_RE = re.compile(
-    r"\bINCLUDE\b\s*['\"]([^'\"]+)['\"]\s*/", re.IGNORECASE | re.DOTALL
+    r"""\bINCLUDE\b\s*
+        (?:
+            ['"]([^'"]+)['"]   # quoted filename
+            |
+            ([^\s/]+)          # unquoted filename
+        )
+        \s*/
+    """,
+    re.IGNORECASE | re.DOTALL | re.VERBOSE,
 )
 
 
@@ -85,7 +93,7 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
     """
 
     def _replace(match: re.Match[str]) -> str:
-        relative_path = match.group(1).strip()
+        relative_path = (match.group(1) or match.group(2)).strip()
         if source_dir is None:
             warnings.warn(
                 f"INCLUDE directive for {relative_path!r} encountered in raw-text "
@@ -94,6 +102,7 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
                 stacklevel=6,
             )
             return ""
+
         include_path = source_dir / relative_path
         if not include_path.is_file():
             raise DeckParseError(
@@ -400,6 +409,11 @@ class Deck:
         """Return the first record for `keyword`, or `None` if absent."""
         records = self._keyword_records.get(keyword.upper())
         return records[0] if records else None
+
+    @property
+    def keywords(self) -> typing.List[str]:
+        """Return every unique keyword in the deck, in file order."""
+        return list(self._keyword_records.keys())
 
     def has(self, keyword: str) -> bool:
         """Return whether `keyword` occurs anywhere in the deck."""

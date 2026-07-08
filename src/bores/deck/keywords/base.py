@@ -860,8 +860,9 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         designator is treated as absent (falls back to `default`).
         """
         row: PVTRow = {}
+        n_tokens = len(tokens)
         for idx, column in enumerate(self.columns):
-            if idx < len(tokens):
+            if idx < n_tokens:
                 raw = tokens[idx]
                 if raw == "1*":
                     # Eclipse default designator - use the column default.
@@ -876,7 +877,7 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
             elif column.required:
                 raise DeckParseError(
                     f"{self.name}: missing required column {column.name!r} "
-                    f"(got {len(tokens)} token(s), need at least {idx + 1})."
+                    f"(got {n_tokens} token(s), need at least {idx + 1})."
                 )
             else:
                 row[column.name] = column.default
@@ -901,13 +902,15 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
             tokens = tokenize(segment)
             if not tokens:
                 continue
-            if len(tokens) % n_columns != 0:
+
+            n_tokens = len(tokens)
+            if n_tokens % n_columns != 0:
                 raise DeckParseError(
-                    f"{self.name}: row segment has {len(tokens)} token(s); "
+                    f"{self.name}: row segment has {n_tokens} token(s); "
                     f"expected a multiple of {n_columns} (one row per "
                     f"{n_columns} tokens)."
                 )
-            for start in range(0, len(tokens), n_columns):
+            for start in range(0, n_tokens, n_columns):
                 table.append(self._row_from_tokens(tokens[start : start + n_columns]))
         return table
 

@@ -993,8 +993,8 @@ def _build_gas_data_from_pvtg(
     # out the dew-point curve, the gas-side analogue of Pb(Rs) for oil.
     rv_max_per_pressure = np.array(
         [
-            max(row["rv"] for row in pressure_to_rows[pressure])
-            for pressure in pressure_values
+            max(row["rv"] for row in pressure_to_rows[pressure_key])
+            for pressure_key in pressure_keys
         ],
         dtype=dtype,
     )
