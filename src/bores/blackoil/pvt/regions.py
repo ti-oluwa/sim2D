@@ -30,7 +30,9 @@ from bores.typing import (
     FloatArray,
     FluidPhase,
     InterpolationMethod,
+    NDimension,
     Number,
+    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
@@ -395,6 +397,57 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
     )
 
 
+def _clip_compressibility(
+    values: NumberArray[NDimension],
+    *,
+    dtype: npt.DTypeLike,
+    max_value: Number = 1e-1,
+    context: str = "compressibility",
+) -> NumberArray[NDimension]:
+    """
+    Clip a raw `-(1/B)·(dB/dP)` array to the physically valid range `[0, max_value]`.
+
+    Negative values are expected on saturated-branch (Rs/Rv-bracketed) tables -
+    `PVTO`/`PVTG` - where this formula implicitly assumes constant Rs/Rv, which
+    doesn't hold on the saturated envelope. That's a known modeling artifact, not
+    noise, so it's floored to 0 quietly (debug log only).
+
+    Values above *max_value* are a different story: nothing physically
+    reasonable should ever hit `1e-1` psi⁻¹ (typical oil/water compressibility
+    is `~1e-6`-`1e-5`), so an excess almost always means a noisy or sparsely
+    tabulated PVT table producing a PCHIP-derivative blow-up. Those are warned
+    on loudly instead of silently absorbed.
+
+    :param values: Raw compressibility array before clipping.
+    :param dtype: Output dtype.
+    :param max_value: Upper clip bound (1/psi or 1/bar, matching *values*' unit system).
+    :param context: Label used in the warning/log message (e.g. `"PVTO oil compressibility"`).
+    :returns: Clipped array, dtype *dtype*.
+    """
+    n_negative = int(np.count_nonzero(values < 0.0))
+    if n_negative:
+        logger.debug(
+            "%s: %d value(s) were negative (min %.4g), clipped to 0. Expected on "
+            "the saturated branch, where -(1/B)*(dB/dP) is not a true "
+            "constant-composition compressibility.",
+            context,
+            n_negative,
+            float(np.min(values)),
+        )
+
+    n_excess = int(np.count_nonzero(values > max_value))
+    if n_excess:
+        warnings.warn(
+            f"{context}: {n_excess} value(s) exceeded the {max_value:g} ceiling "
+            f"(max {float(np.max(values)):.4g}) and were clipped. This usually "
+            "indicates a noisy or sparsely-tabulated PVT table rather than "
+            "physical compressibility - consider checking the source table.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return np.clip(values, 0.0, max_value, dtype=dtype, out=values)
+
+
 def _build_oil_data_from_pvto(
     pvto_records: typing.List[typing.Dict[str, typing.Any]],
     density_record: typing.Optional[typing.Dict[str, Number]],
@@ -665,11 +718,11 @@ def _build_oil_data_from_pvto(
     oil_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
     for j in range(n_t):
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
-        oil_compressibility = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
-        # Compressibility must be non-negative; clamp to physical range
-        oil_compressibility_2d[:, j] = np.clip(
-            oil_compressibility, 0.0, 1e-1, dtype=dtype
-        )
+        oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
+    # Compressibility must be non-negative; clamp to physical range
+    _clip_compressibility(
+        oil_compressibility_2d, dtype=dtype, context="PVTO oil compressibility"
+    )
     return PVTData(
         phase=FluidPhase.OIL,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
@@ -762,9 +815,10 @@ def _build_oil_data_from_pvdo(
     oil_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
     for j in range(n_t):
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
-        oil_compressibility_2d[:, j] = np.clip(
-            -(1.0 / oil_fvf_2d[:, j]) * dbo_dp, 0.0, 1e-1, dtype=dtype
-        )
+        oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
+    _clip_compressibility(
+        oil_compressibility_2d, dtype=dtype, context="PVDO oil compressibility"
+    )
 
     return PVTData(
         phase=FluidPhase.OIL,
@@ -857,9 +911,10 @@ def _build_gas_data_from_pvdg(
     gas_compressibility_2d = np.empty((n_p, n_t), dtype=dtype)
     for j in range(n_t):
         dbg_dp = PchipInterpolator(pressures, gas_fvf_2d[:, j]).derivative(1)(pressures)
-        gas_compressibility_2d[:, j] = np.clip(
-            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1, dtype=dtype
-        )
+        gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
+    _clip_compressibility(
+        gas_compressibility_2d, dtype=dtype, context="PVDG gas compressibility"
+    )
 
     return PVTData(
         phase=FluidPhase.GAS,
@@ -1050,9 +1105,10 @@ def _build_gas_data_from_pvtg(
         dbg_dp = PchipInterpolator(pressure_values, gas_fvf_2d[:, j]).derivative(1)(
             pressure_values
         )
-        gas_compressibility_2d[:, j] = np.clip(
-            -(1.0 / gas_fvf_2d[:, j]) * dbg_dp, 0.0, 1e-1, dtype=dtype
-        )
+        gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
+    _clip_compressibility(
+        gas_compressibility_2d, dtype=dtype, context="PVTG gas compressibility"
+    )
 
     # Rv table: shape (n_p, n_rv) - same Rv values at every pressure
     vaporized_oil_ratio_table = np.tile(rv_values[np.newaxis, :], (n_p, 1)).astype(

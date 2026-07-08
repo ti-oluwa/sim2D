@@ -32,7 +32,7 @@ initial_state = initialize_state(
     rock_fluid=rock_fluid,
     temperature=temperature,
 )
-print(initial_state.water_saturation.mean())
+print(initial_state.oil_mass.max())
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

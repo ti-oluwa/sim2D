@@ -1704,7 +1704,7 @@ class PVTTable(StoreSerializable):
         dew_point_pressure: typing.Optional[TableQuery[NDimension]] = None,
     ) -> typing.Optional[TableResult[NDimension]]:
         """
-        Get vaporised oil ratio `Rv` (STB/Mscf). Gas / condensate phase only.
+        Get vaporised oil ratio `Rv` (STB/scf). Gas / condensate phase only.
 
         Rv is capped at Rv_sat (the value at dew-point pressure) above the dew
         point, analogous to Rs being capped at Rsb above bubble point for oil.
@@ -1713,7 +1713,7 @@ class PVTTable(StoreSerializable):
         :param temperature: Temperature.
         :param dew_point_pressure: Pre-computed dew-point pressure. When
             provided, skips the internal dew-point lookup.
-        :returns: Rv in STB/Mscf, or `None` if table is absent.
+        :returns: Rv in STB/scf, or `None` if table is absent.
         """
         if self._phase != FluidPhase.GAS:
             return None

@@ -123,7 +123,7 @@ class PVTData(StoreSerializable):
     vaporized_oil_ratio_table: typing.Optional[NumberArray[TwoDimensions]] = None
     """
     Vaporised oil ratio Rv(P, T). Gas / condensate phase only. Shape `(n_p, n_t)`.
-    Units: STB/Mscf (FIELD), Sm³/Sm³ (METRIC/SI), scc/scc (LAB). Dimensionless ratios are unit-system independent.
+    Units: STB/scf (FIELD), Sm³/Sm³ (METRIC/SI), scc/scc (LAB). Dimensionless ratios are unit-system independent.
     Rv is capped at Rv_sat above dew point (analogous to Rs being capped at Rsb above bubble point for oil).
     """
 
