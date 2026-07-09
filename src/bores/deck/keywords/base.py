@@ -38,7 +38,7 @@ __all__ = [
 T = typing.TypeVar("T")
 
 
-@attrs.mutable(slots=True, frozen=True)
+@attrs.frozen(slots=True, frozen=True)
 class Field(typing.Generic[T]):
     """
     One positional field in a `RecordKeyword` or
@@ -58,6 +58,7 @@ class Field(typing.Generic[T]):
     required: bool = True
     default: typing.Optional[T] = None
     options: typing.Optional[Collection[T]] = None
+    on_error: typing.Literal["raise", "default"] = "raise"
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
@@ -71,21 +72,24 @@ class Field(typing.Generic[T]):
             )
         object.__setattr__(self, "options", options)
 
-    def parse(self, raw: str, keyword_name: str) -> typing.Optional[T]:
+    def parse(self, raw: str, name: str) -> typing.Optional[T]:
         default = False
         try:
             value = self.type(raw)
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
+            if self.on_error == "raise":
+                raise
+
             if self.required:
                 raise DeckParseError(
-                    f"{keyword_name} record: {self.name!r} got invalid value {raw!r}: {exc}"
+                    f"{name} record: {self.name!r} got invalid value {raw!r}: {exc}"
                 ) from exc
             value = self.default
             default = True
 
         if self.options and not default and value not in self.options:
             raise DeckParseError(
-                f"{keyword_name} record: {self.name!r} got unrecognised value {raw!r}. "
+                f"{name} record: {self.name!r} got unrecognised value {raw!r}. "
                 f"Value should be one of {', '.join([str(option) for option in self.options])}"
             )
         return value
@@ -143,15 +147,13 @@ class Keyword(typing.Generic[T], abc.ABC):
 
 
 def _parse_tokens(
-    keyword_name: str,
-    fields: typing.Sequence[Field[T]],
-    tokens: typing.Sequence[str],
+    name: str, fields: typing.Sequence[Field[T]], tokens: typing.Sequence[str]
 ) -> typing.Dict[str, typing.Optional[T]]:
     """
     Convert a flat token sequence to a `{field_name: value}` dict
     according to `fields`.
 
-    :param keyword_name: Keyword name, used only in error messages.
+    :param name: Keyword name, used only in error messages.
     :param fields: Field descriptors in positional order.
     :param tokens: Already-expanded token list for this record.
     :returns: Parsed field dict.
@@ -163,10 +165,10 @@ def _parse_tokens(
     for idx, field in enumerate(fields):
         if idx < n_tokens:
             raw = tokens[idx]
-            result[field.name] = field.parse(raw, keyword_name)
+            result[field.name] = field.parse(raw, name)
         elif field.required:
             raise DeckParseError(
-                f"{keyword_name} record: missing required field {field.name!r} "
+                f"{name} record: missing required field {field.name!r} "
                 f"(got {n_tokens} token(s), expected at least {idx + 1})."
             )
         else:
@@ -403,7 +405,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         array = np.full(dims.n_cells, self.default_value, dtype=np.float64)
 
         def _resolve_source_at(
-            keyword_name: str,
+            name: str,
             as_of_order: typing.Tuple[int, int],
             *,
             operations: typing.Optional[typing.List[Operation]] = None,
@@ -412,8 +414,8 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
             # multiplier-style arrays default to 1.0, property arrays to 0.0.
             # We cannot know for certain without a registered Keyword instance,
             # but this heuristic is correct for all standard Eclipse arrays.
-            default = 1.0 if keyword_name.startswith("MULT") else 0.0
-            probe = ArrayKeyword(keyword_name, default_value=default)
+            default = 1.0 if name.startswith("MULT") else 0.0
+            probe = ArrayKeyword(name, default_value=default)
             return probe._resolve(
                 deck, dims, operations=operations, stop_before_order=as_of_order
             )
@@ -462,7 +464,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
                 else:
                     # Try `column_shape` broadcast if declared. Short-form
                     # arrays are small by construction (nx*ny at most), so
-                    # expanding here is cheap - reuse the existing path via
+                    # expanding here is cheap so we reuse the existing path via
                     # a fully-expanded token list for this branch only.
                     broadcast_ok = False
                     if self.column_shape is not None:
@@ -617,7 +619,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         return events
 
 
-_MONTH_MAP: typing.Dict[str, int] = {
+MONTH_MAP: typing.Dict[str, int] = {
     "JAN": 1,
     "FEB": 2,
     "MAR": 3,
@@ -633,7 +635,7 @@ _MONTH_MAP: typing.Dict[str, int] = {
 }
 
 
-def _parse_date(tokens: typing.Sequence[str], keyword_name: str) -> datetime.date:
+def _parse_date(tokens: typing.Sequence[str], name: str) -> datetime.date:
     """
     Parse a three-token Eclipse date `[day, month, year]` into a `datetime.date`.
 
@@ -641,42 +643,42 @@ def _parse_date(tokens: typing.Sequence[str], keyword_name: str) -> datetime.dat
     quoting is already stripped by `bores.deck.core.tokenize`.
 
     :param tokens: At least three string tokens: day, month abbreviation, year.
-    :param keyword_name: Keyword name for error messages.
+    :param name: Keyword name for error messages.
     :returns: Parsed date.
     :raises DeckParseError: If the tokens cannot be parsed as a valid date.
     """
     if len(tokens) < 3:
         raise DeckParseError(
-            f"{keyword_name}: expected 3 tokens for a date (DAY MON YEAR); "
+            f"{name}: expected 3 tokens for a date (DAY MON YEAR); "
             f"got {len(tokens)}: {list(tokens)!r}."
         )
     try:
         day = int(tokens[0])
     except ValueError as exc:
         raise DeckParseError(
-            f"{keyword_name}: day token {tokens[0]!r} is not an integer."
+            f"{name}: day token {tokens[0]!r} is not an integer."
         ) from exc
 
     month_str = tokens[1].upper()
-    month = _MONTH_MAP.get(month_str)
+    month = MONTH_MAP.get(month_str)
     if month is None:
         raise DeckParseError(
-            f"{keyword_name}: unrecognised month abbreviation {tokens[1]!r}. "
-            f"Expected one of {sorted(_MONTH_MAP)}."
+            f"{name}: unrecognised month abbreviation {tokens[1]!r}. "
+            f"Expected one of {sorted(MONTH_MAP)}."
         )
 
     try:
         year = int(tokens[2])
     except ValueError as exc:
         raise DeckParseError(
-            f"{keyword_name}: year token {tokens[2]!r} is not an integer."
+            f"{name}: year token {tokens[2]!r} is not an integer."
         ) from exc
 
     try:
         return datetime.date(year, month, day)
     except ValueError as exc:
         raise DeckParseError(
-            f"{keyword_name}: invalid date {day}/{month}/{year}: {exc}"
+            f"{name}: invalid date {day}/{month}/{year}: {exc}"
         ) from exc
 
 

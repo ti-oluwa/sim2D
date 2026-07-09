@@ -591,8 +591,14 @@ class KilloughLandRelPermTable(
         """
         Parse and broadcast saturation-history arrays.
 
-        When all history arguments are `None` the method returns arrays that
-        replicate the primary-drainage state (no-hysteresis fallback).
+        The oil-water and gas-oil sub-systems are resolved **independently**:
+        each falls back to its own primary-drainage state (no scanning curve,
+        no Land trapping) if its own history is incomplete, rather than
+        requiring both sub-systems' history to be present before either can
+        engage hysteresis. Supplying `max_water_saturation`/
+        `water_imbibition_flag` alone is enough to activate oil-water
+        hysteresis even if the gas-oil history is entirely absent, and vice
+        versa.
 
         :param water_saturation: Broadcast-ready water saturation array.
         :param gas_saturation: Broadcast-ready gas saturation array.
@@ -609,23 +615,35 @@ class KilloughLandRelPermTable(
         :return: Six broadcast-compatible arrays: `(sw_max, sg_max, sw_imb, sg_imb,
             sw_rev, sg_rev)`.
         """
-        use_hysteresis = (
-            max_water_saturation is not None
-            and max_gas_saturation is not None
-            and water_imbibition_flag is not None
-            and gas_imbibition_flag is not None
+        use_water_hysteresis = (
+            max_water_saturation is not None and water_imbibition_flag is not None
         )
-        if use_hysteresis:
+        use_gas_hysteresis = (
+            max_gas_saturation is not None and gas_imbibition_flag is not None
+        )
+
+        if use_water_hysteresis:
             maximum_water_saturation = np.atleast_1d(max_water_saturation)  # type: ignore
-            maximum_gas_saturation = np.atleast_1d(max_gas_saturation)  # type: ignore
             water_imbibition_flag = np.atleast_1d(water_imbibition_flag)  # type: ignore
-            gas_imbibition_flag = np.atleast_1d(gas_imbibition_flag)  # type: ignore
             water_reversal_saturation = typing.cast(
                 NumberArray[NDimension],
                 np.atleast_1d(water_reversal_saturation)
                 if water_reversal_saturation is not None
                 else maximum_water_saturation.copy(),
             )
+        else:
+            maximum_water_saturation = water_saturation.copy()
+            water_imbibition_flag = typing.cast(
+                BooleanArray[NDimension],
+                np.zeros_like(water_saturation, dtype=np.bool_),
+            )
+            water_reversal_saturation = typing.cast(
+                NumberArray[NDimension], water_saturation.copy()
+            )
+
+        if use_gas_hysteresis:
+            maximum_gas_saturation = np.atleast_1d(max_gas_saturation)  # type: ignore
+            gas_imbibition_flag = np.atleast_1d(gas_imbibition_flag)  # type: ignore
             gas_reversal_saturation = typing.cast(
                 NumberArray[NDimension],
                 np.atleast_1d(gas_reversal_saturation)
@@ -633,17 +651,9 @@ class KilloughLandRelPermTable(
                 else maximum_gas_saturation.copy(),
             )
         else:
-            maximum_water_saturation = water_saturation.copy()
             maximum_gas_saturation = gas_saturation.copy()
-            water_imbibition_flag = typing.cast(
-                BooleanArray[NDimension],
-                np.zeros_like(water_saturation, dtype=np.bool_),
-            )
             gas_imbibition_flag = typing.cast(
                 BooleanArray[NDimension], np.zeros_like(gas_saturation, dtype=np.bool_)
-            )
-            water_reversal_saturation = typing.cast(
-                NumberArray[NDimension], water_saturation.copy()
             )
             gas_reversal_saturation = typing.cast(
                 NumberArray[NDimension], gas_saturation.copy()
@@ -750,6 +760,18 @@ class KilloughLandRelPermTable(
                 gas_saturation,
             )
 
+        # Captured before the tuple-unpack below shadows `water_imbibition_flag`/
+        # `gas_imbibition_flag` with their resolved (always non-None) arrays;
+        # matches _parse_hysteresis_kwargs's own per-sub-system gate exactly,
+        # so Land trapping only engages when the same sub-system's scanning
+        # curve does.
+        use_water_hysteresis = (
+            max_water_saturation is not None and water_imbibition_flag is not None
+        )
+        use_gas_hysteresis = (
+            max_gas_saturation is not None and gas_imbibition_flag is not None
+        )
+
         (
             maximum_water_saturation,
             maximum_gas_saturation,
@@ -776,9 +798,6 @@ class KilloughLandRelPermTable(
         gas_oil_imbibition_table = (
             self.gas_oil_imbibition_table or gas_oil_drainage_table
         )
-        use_hysteresis = (
-            max_water_saturation is not None and max_gas_saturation is not None
-        )
 
         # Oil-water system - Land trapping on oil
         oil_saturation_at_oil_water_reversal = np.maximum(
@@ -786,7 +805,10 @@ class KilloughLandRelPermTable(
             1.0 - water_reversal_saturation - gas_saturation,  # type: ignore
         )
         imbibition_oil_water_kwargs = dict(kwargs)
-        if use_hysteresis and self.maximum_residual_oil_saturation_water is not None:
+        if (
+            use_water_hysteresis
+            and self.maximum_residual_oil_saturation_water is not None
+        ):
             dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
@@ -842,7 +864,7 @@ class KilloughLandRelPermTable(
             1.0 - gas_reversal_saturation - water_saturation,  # type: ignore
         )
         imbibition_gas_oil_kwargs = dict(kwargs)
-        if use_hysteresis and self.maximum_residual_gas_saturation is not None:
+        if use_gas_hysteresis and self.maximum_residual_gas_saturation is not None:
             dynamic_residual_gas_saturation = compute_land_residual_saturation(
                 initial_non_wetting_saturation=gas_reversal_saturation,  # type: ignore
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
@@ -851,7 +873,7 @@ class KilloughLandRelPermTable(
             imbibition_gas_oil_kwargs["residual_gas_saturation"] = (
                 dynamic_residual_gas_saturation
             )
-        if use_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
+        if use_gas_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
             dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_gas,
@@ -982,6 +1004,18 @@ class KilloughLandRelPermTable(
         )
         zeros = np.zeros_like(water_saturation)
 
+        # Captured before the tuple-unpack below shadows `water_imbibition_flag`/
+        # `gas_imbibition_flag` with their resolved (always non-None) arrays;
+        # matches _parse_hysteresis_kwargs's own per-sub-system gate exactly,
+        # so Land trapping only engages when the same sub-system's scanning
+        # curve does.
+        use_water_hysteresis = (
+            max_water_saturation is not None and water_imbibition_flag is not None
+        )
+        use_gas_hysteresis = (
+            max_gas_saturation is not None and gas_imbibition_flag is not None
+        )
+
         (
             maximum_water_saturation,
             maximum_gas_saturation,
@@ -1008,9 +1042,6 @@ class KilloughLandRelPermTable(
         gas_oil_imbibition_table = (
             self.gas_oil_imbibition_table or gas_oil_drainage_table
         )
-        use_hysteresis = (
-            max_water_saturation is not None and max_gas_saturation is not None
-        )
 
         # Build imbibition kwargs with Land trapping
         oil_saturation_at_oil_water_reversal = np.maximum(
@@ -1018,7 +1049,10 @@ class KilloughLandRelPermTable(
             1.0 - water_reversal_saturation - gas_saturation,  # type: ignore
         )
         imbibition_oil_water_kwargs = dict(kwargs)
-        if use_hysteresis and self.maximum_residual_oil_saturation_water is not None:
+        if (
+            use_water_hysteresis
+            and self.maximum_residual_oil_saturation_water is not None
+        ):
             dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
@@ -1033,7 +1067,7 @@ class KilloughLandRelPermTable(
             1.0 - gas_reversal_saturation - water_saturation,  # type: ignore
         )
         imbibition_gas_oil_kwargs = dict(kwargs)
-        if use_hysteresis and self.maximum_residual_gas_saturation is not None:
+        if use_gas_hysteresis and self.maximum_residual_gas_saturation is not None:
             dynamic_residual_gas_saturation = compute_land_residual_saturation(
                 initial_non_wetting_saturation=gas_reversal_saturation,  # type: ignore
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
@@ -1042,7 +1076,7 @@ class KilloughLandRelPermTable(
             imbibition_gas_oil_kwargs["residual_gas_saturation"] = (
                 dynamic_residual_gas_saturation
             )
-        if use_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
+        if use_gas_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
             dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_gas,

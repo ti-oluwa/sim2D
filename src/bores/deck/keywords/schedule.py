@@ -137,13 +137,37 @@ WELSPECS = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("i", int),
         Field("j", int),
         Field("ref_depth", np.float64, required=False, default=None),
-        Field("phase", str, required=False, default="OIL"),
+        Field(
+            "phase",
+            lambda v: str(v).upper(),
+            required=False,
+            default="OIL",
+            options={"OIL", "WATER", "GAS"},
+        ),
         Field("drainage_radius", np.float64, required=False, default=0.0),
-        Field("inflow_eq", str, required=False, default="STD"),
-        Field("auto_shut", str, required=False, default="SHUT"),
-        Field("crossflow", str, required=False, default="YES"),
+        Field(
+            "inflow_eq",
+            lambda v: str(v).upper(),
+            required=False,
+            default="STD",
+            options={"STD", "NO"},
+        ),
+        Field(
+            "auto_shut",
+            lambda v: str(v).upper(),
+            required=False,
+            default="SHUT",
+            options={"SHUT", "STOP"},
+        ),
+        Field("crossflow", lambda v: str(v).upper(), required=False, default="YES"),
         Field("pvt_table", int, required=False, default=0),
-        Field("density_calc", str, required=False, default="SEG"),
+        Field(
+            "density_calc",
+            lambda v: str(v).upper(),
+            required=False,
+            default="SEG",
+            options={"SEG", "AVG"},
+        ),
     ],
 )
 """
@@ -191,7 +215,13 @@ COMPDAT = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("kh", np.float64, required=False, default=None),
         Field("skin", np.float64, required=False, default=0.0),
         Field("d_factor", np.float64, required=False, default=0.0),
-        Field("direction", str, required=False, default="Z"),
+        Field(
+            "direction",
+            lambda v: str(v).upper(),
+            required=False,
+            default="Z",
+            options={"X", "Y", "Z"},
+        ),
         Field("perm_thickness_mult", np.float64, required=False, default=1.0),
     ],
 )
@@ -235,7 +265,22 @@ WCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
             default="OPEN",
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
-        Field("control_mode", str, required=False, default=None),
+        Field(
+            "control_mode",
+            lambda v: str(v).upper(),
+            required=False,
+            default=None,
+            options={
+                "ORAT",
+                "BHP",
+                "RESV",
+                "WRAT",
+                "LRAT",
+                "GRAT",
+                "THP",
+                "GRUP",
+            },
+        ),
         Field("orat", np.float64, required=False, default=0.0),
         Field("wrat", np.float64, required=False, default=0.0),
         Field("grat", np.float64, required=False, default=0.0),
@@ -278,7 +323,19 @@ WCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
             default="OPEN",
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
-        Field("control_mode", str, required=False, default=None),
+        Field(
+            "control_mode",
+            lambda v: str(v).upper(),
+            required=False,
+            default=None,
+            options={
+                "BHP",
+                "RESV",
+                "RATE",
+                "THP",
+                "GRUP",
+            },
+        ),
         Field("rate", np.float64, required=False, default=0.0),
         Field("resv", np.float64, required=False, default=0.0),
         Field("bhp", np.float64, required=False, default=None),
@@ -342,7 +399,20 @@ WELTARG = RepeatedRecordKeyword[typing.Union[str, float]](
     "WELTARG",
     fields=[
         Field("well", str),
-        Field("control_mode", str),
+        Field(
+            "control_mode",
+            lambda v: str(v).upper(),
+            options={
+                "ORAT",
+                "BHP",
+                "RESV",
+                "WRAT",
+                "LRAT",
+                "GRAT",
+                "THP",
+                "GRUP",
+            },
+        ),
         Field("value", np.float64),
     ],
 )
@@ -411,7 +481,13 @@ GCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("wrat", np.float64, required=False, default=0.0),
         Field("grat", np.float64, required=False, default=0.0),
         Field("lrat", np.float64, required=False, default=0.0),
-        Field("exceed_action", str, required=False, default="NONE"),
+        Field(
+            "exceed_action",
+            lambda v: str(v).upper(),
+            required=False,
+            default="NONE",
+            options={"RATE", "NONE", "CON"},
+        ),
     ],
 )
 """
@@ -463,8 +539,20 @@ WECON = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("max_wcut", np.float64, required=False, default=None),
         Field("max_gor", np.float64, required=False, default=None),
         Field("max_wgr", np.float64, required=False, default=None),
-        Field("workover_action", str, required=False, default="WELL"),
-        Field("end_run_flag", str, required=False, default="NO"),
+        Field(
+            "workover_action",
+            lambda v: str(v).upper(),
+            required=False,
+            default="WELL",
+            options={"CON", "+CON", "WELL", "PLUG"},
+        ),
+        Field(
+            "end_run_flag",
+            lambda v: str(v).upper(),
+            required=False,
+            default="NO",
+            options={"YES", "NO"},
+        ),
     ],
 )
 """
@@ -493,7 +581,7 @@ WTEST = RepeatedRecordKeyword[typing.Union[str, float]](
     fields=[
         Field("well", str),
         Field("interval", np.float64),
-        Field("reason", str, required=False, default="PEW"),
+        Field("reason", lambda v: str(v).upper(), required=False, default="PEW"),
     ],
 )
 """

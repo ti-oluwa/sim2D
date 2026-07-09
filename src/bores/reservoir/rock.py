@@ -15,7 +15,7 @@ from bores.reservoir.compressibility import (
     RockCompressibilityRegions,
 )
 from bores.reservoir.regions import _load_region_array
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     CellArray,
     IntCellArray,

@@ -13,7 +13,7 @@ import numpy as np
 from typing_extensions import Self
 
 from bores.errors import StorageError, StreamError
-from bores.serialization.stores import DataStore, EntryMeta
+from bores.serde.stores import DataStore, EntryMeta
 from bores.states import ModelState, validate_state
 from bores.typing import NDimension
 from bores.utils import _close_iter
@@ -72,7 +72,7 @@ class StateStream(typing.Generic[NDimension]):
       item to the store and then discards the list.
 
     The store's `append(...)` method is used (not `dump`) so existing entries are
-    never overwritten.  The store must have `supports_append=True`.
+    never overwritten.  The store must have `can_append=True`.
 
     **Replay**
     After the generator is exhausted, `replay(...)` loads all saved states back
@@ -127,7 +127,7 @@ class StateStream(typing.Generic[NDimension]):
 
         :param states: Generator or iterator of `ModelState` instances
         :param store: Optional `DataStore` for persistence. If None, states only yielded (no persistence).
-            The data store must support appending new states. that is, `store.supports_append` must be True.
+            The data store must support appending new states. that is, `store.can_append` must be True.
         :param batch_size: Number of states to accumulate before flushing to disk (default: 50)
         :param validate: Validate states before persisting (default: False)
         :param auto_save: Automatically flush remaining states on context exit (default: True)
@@ -140,7 +140,7 @@ class StateStream(typing.Generic[NDimension]):
         :param checkpoint_interval: Optional interval for checkpointing. If provided,
             creates a checkpoint every N states for crash recovery. Example: 100
         :param checkpoint_store: Optional `DataStore` for checkpointing. This must be provide if `checkpoint_interval` is set.
-            The data store must support appending new states. that is, `store.supports_append` must be True.
+            The data store must support appending new states. that is, `store.can_append` must be True.
         :param max_batch_memory_usage: Maximum batch memory in MB before forcing flush.
             Estimated by sampling first state's memory footprint. Batch flushes when either
             `batch_size` or `max_batch_memory_usage` threshold is reached. Example: 50.0 MB
@@ -196,9 +196,9 @@ class StateStream(typing.Generic[NDimension]):
                 )
                 self.background_io = False
 
-        if store is not None and not store.supports_append:
+        if store is not None and not store.can_append:
             raise StreamError(
-                f"Store {store!r} does not support appending. {self.__class__.__name__} requires `supports_append=True`."
+                f"Store {store!r} does not support appending. {self.__class__.__name__} requires `can_append=True`."
             )
 
         if checkpoint_interval is not None and checkpoint_store is None:
@@ -206,7 +206,7 @@ class StateStream(typing.Generic[NDimension]):
                 "`checkpoint_store` must be provided when `checkpoint_interval` is set."
             )
 
-        if checkpoint_store is not None and not checkpoint_store.supports_append:
+        if checkpoint_store is not None and not checkpoint_store.can_append:
             raise StreamError(
                 f"`checkpoint_store` {checkpoint_store!r} does not support appending."
             )
@@ -670,6 +670,7 @@ class StateStream(typing.Generic[NDimension]):
                     if predicate is not None:
                         return steps(step) and predicate(entry)  # type: ignore
                     return steps(step)  # type: ignore
+
             else:
                 steps_set = set(steps)
 
@@ -847,7 +848,7 @@ class StateStream(typing.Generic[NDimension]):
         """
         Estimate memory footprint of a single state in MB.
 
-        :param state: State to measure
+        :param state: ReservoirState to measure
         :return: Estimated size in MB
         """
         if self._state_size_mb is not None:
@@ -885,7 +886,7 @@ class StateStream(typing.Generic[NDimension]):
         """
         Determine if state should be saved based on `save`.
 
-        :param state: State to evaluate
+        :param state: ReservoirState to evaluate
         :return: True if state should be saved, False otherwise
         """
         if not self._uses_save_func:
@@ -936,7 +937,7 @@ class StateStream(typing.Generic[NDimension]):
         Creates a separate checkpoint file that can be used to resume simulation
         from this point.
 
-        :param state: State to checkpoint
+        :param state: ReservoirState to checkpoint
         """
         if self.checkpoint_store is None:
             return

@@ -16,9 +16,10 @@ from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
-from bores.reservoir.state import State
-from bores.serialization.base import Serializable, make_serializable_type_registrar
-from bores.serialization.stores import StoreSerializable
+from bores.reservoir.state import ReservoirState
+from bores.serde.base import Serializable
+from bores.serde.registry import make_serializable_type_registrar
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     BooleanArray,
     IntArray,
@@ -398,7 +399,7 @@ class BoundaryCondition(StoreSerializable):
     def evaluate(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -416,7 +417,7 @@ class BoundaryCondition(StoreSerializable):
 
         :param face_positions: Shape `(n_faces,)` int32 - positions into
             `Grid.boundary_face_indices` for this region.
-        :param state: Current `State`.
+        :param state: Current `ReservoirState`.
         :param time: Current simulation time in days.
         :param dtype: Output array dtype. When `None`, `get_dtype()` is used.
         :returns: Shape `(n_faces,)` array of pressures or fluxes.
@@ -426,7 +427,7 @@ class BoundaryCondition(StoreSerializable):
     def __call__(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -435,7 +436,7 @@ class BoundaryCondition(StoreSerializable):
         Shorthand for `evaluate`. Makes the condition directly callable.
 
         :param face_positions: Shape `(n_faces,)` int32.
-        :param state: Current `State`.
+        :param state: Current `ReservoirState`.
         :param time: Current simulation time in days.
         :param dtype: Output dtype.
         :returns: Shape `(n_faces,)` array from `evaluate`.
@@ -520,7 +521,7 @@ class ConstantFluxBoundary(BoundaryCondition):
     def evaluate(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -624,7 +625,7 @@ class ConstantPressureBoundary(BoundaryCondition):
     def evaluate(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -675,7 +676,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         q_face[i] = PI_face[i] * (pressure_boundary - p_interior[i])
 
     where `p_interior[i]` is the pressure of the cell owning boundary face
-    `face_positions[i]` from the current `State`.
+    `face_positions[i]` from the current `ReservoirState`.
 
     This is physically equivalent to a **well-index / productivity-index**
     formulation applied at the grid boundary which is useful for:
@@ -698,7 +699,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     ```python
     alpha_function(
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
@@ -747,7 +748,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         typing.Callable[
             [
                 IntArray[OneDimension],
-                State,
+                ReservoirState,
                 Reservoir,
                 Number,
             ],
@@ -762,7 +763,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     ```python
     alpha_function(
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
@@ -785,7 +786,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     def evaluate(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -803,7 +804,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
 
         :param face_positions: Shape `(n_faces,)` - positions into
             `Grid.boundary_face_indices`.
-        :param state: Current `State`; provides `pressure`.
+        :param state: Current `ReservoirState`; provides `pressure`.
         :param time: Current simulation time (days).
         :param dtype: Output dtype.
         :returns: Shape `(n_faces,)` flux array (volume/time in
@@ -899,7 +900,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     ```python
     schedule_function(
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
@@ -929,7 +930,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function: typing.Callable[
         [
             IntArray[OneDimension],
-            State,
+            ReservoirState,
             Reservoir,
             Number,
         ],
@@ -942,7 +943,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     ```python
     schedule_function(
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         rreservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,), volume/time in `unit_system`
@@ -962,7 +963,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     def evaluate(
         self,
         face_positions: IntArray[OneDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -972,7 +973,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
 
         :param face_positions: Shape `(n_faces,)` - positions into
             `Grid.boundary_face_indices`.
-        :param state: Current `State`.
+        :param state: Current `ReservoirState`.
         :param time: Current simulation time (days).
         :param dtype: Output dtype.
         :returns: Shape `(n_faces,)` flux array (volume/time).
@@ -1498,7 +1499,7 @@ class CarterTracyAquifer(BoundaryCondition):
     def evaluate(
         self,
         face_positions: IntArray[NDimension],
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -1523,7 +1524,7 @@ class CarterTracyAquifer(BoundaryCondition):
 
         :param face_positions: Shape `(n_faces,)` int32 - positions into
             `Grid.boundary_face_indices`.
-        :param state: Current `State`; provides `pressure`.
+        :param state: Current `ReservoirState`; provides `pressure`.
         :param rock: Unused.
         :param pvt: Unused.
         :param grid: The simulation `Grid`; resolves owner cell pressures.
@@ -1972,7 +1973,7 @@ class BoundaryConditions(StoreSerializable):
     def evaluate(
         self,
         n_boundary_faces: int,
-        state: State,
+        state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
@@ -1993,7 +1994,7 @@ class BoundaryConditions(StoreSerializable):
         :param n_boundary_faces: Total number of boundary faces in the grid
             (`len(Grid.boundary_face_indices)`). Determines the length of
             the output arrays.
-        :param state: Current `State`.
+        :param state: Current `ReservoirState`.
         :param time: Current simulation time (days).
         :param dtype: Output array dtype. When `None`, `get_dtype()` is used.
         :returns: 3-tuple `(pressure_values, flux_values, is_dirichlet)`

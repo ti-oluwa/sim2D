@@ -46,7 +46,7 @@ from bores.reservoir import (
     RockProperties,
 )
 from bores.rock_fluid.relperm import RelPermEndpoints
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.solvers import explicit, implicit
 from bores.solvers.base import normalize_saturations
 from bores.solvers.rates import WellRates, compute_well_rates

@@ -1,4 +1,3 @@
-import base64
 import sys
 import threading
 import typing
@@ -14,6 +13,8 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.errors import DeserializationError, SerializationError, ValidationError
+from bores.serde.utils import deserialize_ndarray, serialize_ndarray
+from bores.typing import T
 
 __all__ = ["Serializable", "converter", "dump", "load"]
 
@@ -179,23 +180,6 @@ def _is_primitive_type(typ: type) -> bool:
     return typ in (str, int, float, bool, bytes, type(None))
 
 
-def _sort_types_by_specificity(
-    types: typing.Iterable[typing.Type[typing.Any]],
-) -> typing.List[typing.Type[typing.Any]]:
-    """
-    Sort types by specificity: more specific types (subclasses) come before general ones.
-
-    This helps in prioritizing serializers/deserializers for more specific types first.
-    """
-
-    def specificity_key(typ: typing.Type[typing.Any]) -> int:
-        if not isinstance(typ, type):
-            return 0
-        return len(typ.__mro__)  # More base classes = more general
-
-    return sorted(types, key=specificity_key, reverse=True)
-
-
 def _sort_types_by_primitivity(
     types: typing.Iterable[typing.Type[typing.Any]],
 ) -> typing.List[typing.Type[typing.Any]]:
@@ -324,7 +308,6 @@ def _discover_type_deserializers(
 
                 # Break outer loop if we found a deserializer
                 break
-
     return discovered  # type: ignore[return-value]
 
 
@@ -519,7 +502,10 @@ def _deserialize(
             origin and isinstance(origin, type) and issubclass(origin, Mapping)
         ):
             return {
-                k: _deserialize(v, args[1], deserializers) for k, v in value.items()
+                _deserialize(k, args[0], deserializers): _deserialize(
+                    v, args[1], deserializers
+                )
+                for k, v in value.items()
             }
 
         if origin is not None:
@@ -529,27 +515,23 @@ def _deserialize(
 
     if _is_typed_dict_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(
-            {
-                k: _deserialize(v, annotations[k], deserializers)
-                for k, v in value.items()
-                # Ignore keys not found in existing annotations incase typed-dict
-                # structure changed for backwards compatibility
-                if k in annotations
-            }
-        )
+        return typ({
+            k: _deserialize(v, annotations[k], deserializers)
+            for k, v in value.items()
+            # Ignore keys not found in existing annotations incase typed-dict
+            # structure changed for backwards compatibility
+            if k in annotations
+        })
 
     if _is_namedtuple_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(
-            **{
-                k: _deserialize(v, annotations[k], deserializers)
-                for k, v in value.items()
-                # Ignore keys not found in existing annotations incase namedtuple
-                # structure changed for backwards compatibility
-                if k in annotations
-            }
-        )
+        return typ(**{
+            k: _deserialize(v, annotations[k], deserializers)
+            for k, v in value.items()
+            # Ignore keys not found in existing annotations incase namedtuple
+            # structure changed for backwards compatibility
+            if k in annotations
+        })
 
     # Handle ndarray dicts for non-ndarray declared types (e.g. tuple, list)
     # from data serialized before the serialization fix.
@@ -957,7 +939,6 @@ converter.register_unstructure_hook_func(
 
 
 SerializableT = typing.TypeVar("SerializableT", bound=Serializable)
-_SerializableT = typing.TypeVar("_SerializableT", bound=Serializable)
 
 
 def dump(o: Serializable, /, recurse: bool = True) -> typing.Dict[str, typing.Any]:
@@ -972,138 +953,37 @@ def load(
     return cls.__load__(data)
 
 
-def make_serializable_type_registrar(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
-    key_attr: str = "__type__",
-    lock: typing.Optional[threading.Lock] = None,
-    key_factory: typing.Optional[
-        typing.Callable[[typing.Type[SerializableT]], str]
-    ] = None,
-    override: bool = False,
-    auto_register_serializer: bool = True,
-    auto_register_deserializer: bool = True,
-) -> typing.Callable[[typing.Type[_SerializableT]], typing.Type[_SerializableT]]:
+def ndarray_serializer(
+    arr: npt.NDArray, recurse: bool = True
+) -> typing.Dict[str, typing.Any]:
     """
-    Decorator factory to create a registrar for `Serializable` subclasses.
+    Adapter matching the bores `serializers=` dict signature.
 
-    Creates a decorator to register `Serializable` subclasses in a registry.
+    Use this when you want to opt-in on specific fields rather than
+    registering globally:
 
-    :param base_cls: The base class for the `Serializable` subclasses.
-    :param registry: The registry to store the subclasses.
-    :param key_attr: The attribute to use as the registry key.
-    :param lock: An optional lock for thread safety.
-    :param key_factory: An optional factory function to generate the registry key.
-    :param override: Whether to allow overriding existing registrations.
-    :return: A decorator to register `Serializable` subclasses.
+    ```python
+
+    @attrs.frozen
+    class MyGrid(
+        Serializable,
+        serializers={"kx": ndarray_serializer, "ky": ndarray_serializer},
+        deserializers={"kx": ndarray_deserializer, "ky": ndarray_deserializer}
+    ):
+        kx: np.ndarray
+        ky: np.ndarray
+    ```
     """
-    if not key_attr:
-        raise ValidationError("`key_attr` must be a non-empty string.")
-
-    lock = lock or threading.Lock()
-
-    def registrar(cls: typing.Type[_SerializableT]) -> typing.Type[_SerializableT]:
-        """Decorator to register a `Serializable` subclass."""
-        if not issubclass(cls, base_cls):
-            raise ValidationError(
-                f"Class {cls.__name__} is not a subclass of {base_cls.__name__}"
-            )
-
-        key = getattr(cls, key_attr, None)
-        if not key:
-            key = key_factory(cls) if key_factory else cls.__name__.lower()
-            setattr(cls, key_attr, key)
-
-        if not override and key in registry and not issubclass(cls, registry[key]):
-            raise ValidationError(
-                f"Class {cls.__name__} is already registered under key '{key}'. Rename the class or set a unique '{key_attr}'."
-            )
-        with lock:
-            registry[key] = cls
-
-        return cls  # type: ignore[return-value]
-
-    if auto_register_serializer:
-        serializer = make_registry_serializer(
-            base_cls=base_cls,
-            registry=registry,
-            key_attr=key_attr,
-        )
-        register_type_serializer(
-            typ=base_cls,
-            serializer=serializer,
-        )
-
-    if auto_register_deserializer:
-        deserializer = make_registry_deserializer(
-            base_cls=base_cls,
-            registry=registry,
-        )
-        register_type_deserializer(
-            typ=base_cls,
-            deserializer=deserializer,
-        )
-
-    registrar.__name__ = f"register_{base_cls.__name__.lower()}_type"
-    return registrar
+    return serialize_ndarray(arr)
 
 
-def make_registry_serializer(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
-    key_attr: str = "__type__",
-) -> typing.Callable[[SerializableT, bool], typing.Dict[str, typing.Any]]:
+def ndarray_deserializer(data: typing.Any) -> np.ndarray:
     """
-    Create a serializer function for a registry of `Serializable` subclasses.
+    Adapter matching the bores `deserializers=` dict signature.
 
-    :param registry: The registry of `Serializable` subclasses.
-    :param key_attr: The attribute used as the registry key.
-    :return: A serializer function.
+    Pair with `ndarray_serializer` for explicit per-field registration.
     """
-
-    def serializer(
-        obj: SerializableT, recurse: bool = True
-    ) -> typing.Dict[str, typing.Any]:
-        key = getattr(obj, key_attr, None)
-        if not key or key not in registry:
-            raise ValidationError(
-                f"Unsupported {base_cls.__name__} type: {type(obj)!r}"
-            )
-
-        return {key: obj.dump(recurse)}
-
-    serializer.__name__ = f"serialize_{base_cls.__name__.lower()}"
-    return serializer
-
-
-def make_registry_deserializer(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
-) -> typing.Callable[[typing.Mapping[str, typing.Any]], SerializableT]:
-    """
-    Create a deserializer function for a registry of `Serializable` subclasses.
-
-    :param registry: The registry of `Serializable` subclasses.
-    :param key_attr: The attribute used as the registry key.
-    :return: A deserializer function.
-    """
-
-    def deserializer(data: typing.Mapping[str, typing.Any]) -> SerializableT:
-        if not isinstance(data, Mapping) or len(data) != 1:
-            raise DeserializationError("Invalid data format for deserialization.")
-
-        key, value = next(iter(data.items()))
-        if key not in registry:
-            raise DeserializationError(f"Unsupported {base_cls.__name__} type: {key!r}")
-
-        cls = registry[key]
-        return cls.load(value)
-
-    deserializer.__name__ = f"deserialize_{base_cls.__name__.lower()}"
-    return deserializer
-
-
-T = typing.TypeVar("T")
+    return deserialize_ndarray(data)
 
 
 def register_type_serializer(
@@ -1122,204 +1002,6 @@ def register_type_deserializer(
     """Register a global type deserializer for a specific type."""
     with _type_deserializers_lock:
         _TYPE_DESERIALIZERS[typ] = deserializer
-
-
-_SPARSE_DENSITY_THRESHOLD = 0.05  # < 5% non-fill cells means array is sparse
-_MIN_SPARSE_CELLS = 10  # Do not bother with sparse on tiny arrays
-
-
-def _b64_encode(arr: npt.NDArray) -> str:
-    return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
-
-
-def _b64_decode(
-    s: str, dtype: npt.DTypeLike, shape: typing.Tuple[int, ...]
-) -> npt.NDArray:
-    raw = base64.b64decode(s)
-    return np.frombuffer(raw, dtype=dtype).reshape(shape).copy()
-
-
-def _sniff_scalar(arr: npt.NDArray) -> bool:
-    """All values bit-identical to arr.flat[0]."""
-    return bool(np.all(arr == arr.flat[0]))
-
-
-def _sniff_layered(arr):
-    for axis in (2, 1, 0):
-        if axis >= arr.ndim:
-            continue
-        # Move target axis to front, then check if each slice is uniform
-        moved = np.moveaxis(arr, axis, 0)
-        layer_vals = []
-        uniform = True
-        for idx in range(moved.shape[0]):
-            sl = moved[idx]  # view, no copy
-            v0 = sl.flat[0]
-            if not np.all(sl == v0):
-                uniform = False
-                break
-            layer_vals.append(v0)
-        if uniform:
-            return axis, np.array(layer_vals, dtype=arr.dtype)
-    return None
-
-
-def _sniff_sparse(
-    arr: npt.NDArray,
-) -> typing.Optional[typing.Tuple[typing.Any, npt.NDArray, npt.NDArray]]:
-    """
-    Return (fill_value, flat_indices_int32, values) if the array is sparse,
-    else None. Fill value is the most common scalar value (exact, lossless).
-
-    Uses O(N) candidate-probe approach instead of O(N log N) sort:
-    sample ~20 evenly-spaced positions as fill-value candidates, then verify
-    each with a single O(N) count pass. If the fill covers >95% of elements,
-    at least one probe will hit it (probability > 1 - 0.05^20 ≈ 1 - 10^-26).
-    """
-    if arr.size < _MIN_SPARSE_CELLS:
-        return None
-
-    flat = arr.ravel()
-    n = flat.size
-    max_non_fill = int(n * _SPARSE_DENSITY_THRESHOLD)
-
-    # Sample evenly-spaced positions as fill-value candidates.
-    n_probes = min(20, n)
-    step = max(1, n // n_probes)
-    candidates = np.unique(flat[::step])
-
-    for cand in candidates:
-        non_fill_count = np.count_nonzero(flat != cand)
-        if non_fill_count <= max_non_fill:
-            non_fill_mask = flat != cand
-            indices = np.where(non_fill_mask)[0].astype(np.int32)
-            values = flat[non_fill_mask]
-            return cand, indices, values
-
-    return None
-
-
-def serialize_ndarray(
-    arr: npt.ArrayLike,
-    recurse: bool = True,
-) -> typing.Dict[str, typing.Any]:
-    """
-    Smart serializer for numpy arrays.
-
-    Tries encodings in order: `scalar` -> `layered` -> `sparse` -> `dense`.
-    Falls back to `dense` (base64 raw bytes) when no compression applies.
-    Ensure that all encodings are exact and there are no approximation.
-
-    Wire format is a dict with `__ndarray__: True` and an `encoding` key
-    so `deserialize_ndarray` can dispatch correctly.
-    """
-    a = np.asarray(arr)
-    dtype = a.dtype
-    shape = list(a.shape)
-    base = {"__ndarray__": True, "dtype": dtype.str, "shape": shape}
-
-    # Handle empty arrays before any access to elements
-    if a.size == 0:
-        return {**base, "encoding": "empty"}
-
-    if _sniff_scalar(a):
-        # Store the fill value as a Python scalar so JSON/orjson can encode it.
-        # Use item() to convert numpy scalar -> Python native.
-        return {**base, "encoding": "scalar", "value": a.flat[0].item()}
-
-    layered = _sniff_layered(a)
-    if layered is not None:
-        axis, layer_vals = layered
-        return {
-            **base,
-            "encoding": "layered",
-            "axis": axis,
-            "data": _b64_encode(layer_vals),
-        }
-
-    sparse = _sniff_sparse(a)
-    if sparse is not None:
-        fill_value, indices, values = sparse
-        return {
-            **base,
-            "encoding": "sparse",
-            "fill": fill_value.item(),
-            "indices": _b64_encode(indices),  # int32 flat indices
-            "values": _b64_encode(values),
-        }
-
-    # Dense fallback
-    return {**base, "encoding": "dense", "data": _b64_encode(a)}
-
-
-def deserialize_ndarray(
-    data: typing.Union[
-        typing.Mapping[str, typing.Any], typing.Sequence[typing.Any], npt.NDArray
-    ],
-    *,
-    dtype: npt.DTypeLike = None,
-) -> npt.NDArray:
-    """
-    Reconstruct a numpy array from a wire dict produced by `serialize_ndarray`.
-    """
-    if isinstance(data, np.ndarray):
-        return data.astype(dtype, copy=False) if dtype is not None else data  # type: ignore[return-value]
-
-    if isinstance(data, (list, tuple)):
-        return np.asarray(data, dtype=dtype)
-
-    if not isinstance(data, typing.Mapping):
-        raise TypeError(f"Expected dict, list, or ndarray; got {type(data).__name__!r}")
-
-    if not data.get("__ndarray__", None):  # type: ignore
-        raise ValueError("Missing '__ndarray__' sentinel.")
-
-    stored_dtype = np.dtype(data["dtype"])  # type: ignore
-    shape = tuple(int(s) for s in data["shape"])  # type: ignore
-    encoding = data.get("encoding", "dense")  # type: ignore # legacy dicts have no encoding key
-
-    if encoding == "empty":
-        arr = np.empty(shape, dtype=stored_dtype)
-
-    elif encoding == "scalar":
-        arr = np.full(shape, fill_value=data["value"], dtype=stored_dtype)  # type: ignore
-
-    elif encoding == "layered":
-        axis = int(data["axis"])  # type: ignore
-        n_layers = shape[axis]
-        layer_vals = _b64_decode(data["data"], stored_dtype, (n_layers,))  # type: ignore
-        arr = np.empty(shape, dtype=stored_dtype)
-        for idx, val in enumerate(layer_vals):
-            # Build index tuple: slice(None) for all axes except `axis`
-            idx_tuple = tuple(
-                idx if dim == axis else slice(None) for dim in range(arr.ndim)
-            )
-            arr[idx_tuple] = val
-
-    elif encoding == "sparse":
-        fill_value = stored_dtype.type(data["fill"])  # type: ignore
-        arr = np.full(shape, fill_value=fill_value, dtype=stored_dtype)
-        n_non_fill = int(
-            len(base64.b64decode(data["indices"])) // np.dtype(np.int32).itemsize  # type: ignore
-        )
-        indices = _b64_decode(data["indices"], np.int32, (n_non_fill,))  # type: ignore
-        values = _b64_decode(data["values"], stored_dtype, (n_non_fill,))  # type: ignore
-        arr.ravel()[indices] = values
-
-    elif encoding == "dense":
-        n_elements = int(np.prod(shape)) if shape else 1
-        raw = base64.b64decode(data["data"])  # type: ignore
-        expected = stored_dtype.itemsize * n_elements
-        if len(raw) != expected:
-            raise ValueError(
-                f"Byte-length mismatch. Expected {expected}, got {len(raw)}"
-            )
-        arr = np.frombuffer(raw, dtype=stored_dtype).reshape(shape).copy()
-
-    else:
-        raise ValueError(f"Unknown encoding {encoding!r}")
-
-    return arr.astype(dtype, copy=False) if dtype is not None else arr
 
 
 def _structure_ndarray(data: typing.Any, cls: typing.Type[npt.NDArray]) -> npt.NDArray:
@@ -1361,43 +1043,10 @@ def register_ndarray_serializers() -> None:
         deserializer=deserialize_ndarray,
     )
 
-    # Register `np.ndarray` with cattrs converter
+    # Register `np.ndarray` with `cattrs` converter
     converter.register_structure_hook_func(
         lambda typ: _is_ndarray_type(typ), _structure_ndarray
     )
     converter.register_unstructure_hook_func(
         lambda typ: _is_ndarray_type(typ), _unstructure_ndarray
     )
-
-
-def ndarray_serializer(
-    arr: npt.NDArray, recurse: bool = True
-) -> typing.Dict[str, typing.Any]:
-    """
-    Adapter matching the bores `serializers=` dict signature.
-
-    Use this when you want to opt-in on specific fields rather than
-    registering globally:
-
-    ```python
-
-    @attrs.frozen
-    class MyGrid(
-        Serializable,
-        serializers={"kx": ndarray_serializer, "ky": ndarray_serializer},
-        deserializers={"kx": ndarray_deserializer, "ky": ndarray_deserializer}
-    ):
-        kx: np.ndarray
-        ky: np.ndarray
-    ```
-    """
-    return serialize_ndarray(arr)
-
-
-def ndarray_deserializer(data: typing.Any) -> np.ndarray:
-    """
-    Adapter matching the bores `deserializers=` dict signature.
-
-    Pair with `ndarray_serializer` for explicit per-field registration.
-    """
-    return deserialize_ndarray(data)

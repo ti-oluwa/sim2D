@@ -989,7 +989,7 @@ def build_rich_panel(
     cols_table.add_column(ratio=1)
     cols_table.add_column(ratio=1)
     cols_table.add_row(
-        Group(Text("  Reservoir State", style=hdr), physics_table),
+        Group(Text("  Reservoir ReservoirState", style=hdr), physics_table),
         Group(Text("  Step / Solver", style=hdr), solver_table),
     )
 

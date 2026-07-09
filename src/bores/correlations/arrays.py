@@ -867,7 +867,7 @@ def compute_gas_compressibility_factor_hall_yarborough(
     :return: Compressibility factor Z array (dimensionless)
 
     References:
-        Hall, K.R. and Yarborough, L. (1973). "A New Equation of State for Z-factor Calculations."
+        Hall, K.R. and Yarborough, L. (1973). "A New Equation of ReservoirState for Z-factor Calculations."
         Oil & Gas Journal, June 18, 1973, pp. 82-92.
     """
     if min_(pressure) <= 0 or min_(temperature) <= 0 or min_(gas_gravity) <= 0:
@@ -1000,7 +1000,7 @@ def compute_gas_compressibility_factor_dranchuk_abou_kassem(
 
     References:
         Dranchuk, P.M. and Abou-Kassem, J.H. (1975). "Calculation of Z Factors for
-        Natural Gases Using Equations of State." Journal of Canadian Petroleum Technology,
+        Natural Gases Using Equations of ReservoirState." Journal of Canadian Petroleum Technology,
         July-September 1975, pp. 34-36.
     """
     if min_(pressure) <= 0 or min_(temperature) <= 0 or min_(gas_gravity) <= 0:
@@ -1126,7 +1126,7 @@ def compute_gas_compressibility_factor(
 
     References:
     - Papay, J. (1985). "A Termelestechnologiai Parametereinek Valtozasa..."
-    - Hall, K.R. and Yarborough, L. (1973). "A New Equation of State..."
+    - Hall, K.R. and Yarborough, L. (1973). "A New Equation of ReservoirState..."
     - Dranchuk, P.M. and Abou-Kassem, J.H. (1975). "Calculation of Z Factors..."
     """
     if method == "papay":

@@ -144,129 +144,131 @@ T = TypeVar("T")
 
 _DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
 
-DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset({
-    ### RUNSPEC ###
-    DISGAS,
-    EQLDIMS,
-    FIELD,
-    GAS,
-    LAB,
-    METRIC,
-    NOSIM,
-    OIL,
-    REGDIMS,
-    START,
-    TABDIMS,
-    TITLE,
-    UNIFIN,
-    UNIFOUT,
-    VAPOIL,
-    WATER,
-    WELLDIMS,
-    ### GRID ###
-    ACTNUM,
-    COORD,
-    DIMENS,
-    DX,
-    DXV,
-    DY,
-    DYV,
-    DZ,
-    DZV,
-    FAULTS,
-    GRIDUNIT,
-    MAPAXES,
-    MAPUNIT,
-    MAPUNITS,
-    MULTFLT,
-    MULTX,
-    MULTX_MINUS,
-    MULTY,
-    MULTY_MINUS,
-    MULTZ,
-    MULTZ_MINUS,
-    NNC,
-    NTG,
-    PERMX,
-    PERMY,
-    PERMZ,
-    PINCH,
-    PINCHOUT,
-    PORO,
-    PORV,
-    SPECGRID,
-    TOPS,
-    ZCORN,
-    ### REGIONS ###
-    EQLNUM,
-    FIPNUM,
-    IMBNUM,
-    PVTNUM,
-    ROCKNUM,
-    SATNUM,
-    ### PROPS ###
-    DENSITY,
-    PVCO,
-    PVDG,
-    PVDO,
-    PVTG,
-    PVTO,
-    PVTW,
-    ROCK,
-    ROCKTAB,
-    SGFN,
-    SGOF,
-    SOF2,
-    SOF3,
-    SWFN,
-    SWOF,
-    ### SOLUTION ###
-    EQUIL,
-    PRESSURE,
-    RESTART,
-    RS,
-    RV,
-    SGAS,
-    SOIL,
-    SWAT,
-    RTEMP,
-    RTEMPVD,
-    TEMPVD,
-    RSVD,
-    RVVD,
-    ### SCHEDULE ###
-    COMPDAT,
-    DATES,
-    GCONINJE,
-    GCONPROD,
-    GRUPTREE,
-    TSTEP,
-    WECON,
-    WELOPEN,
-    WELSPECS,
-    WELTARG,
-    WCONINJE,
-    WCONPROD,
-    WPIMULT,
-    WTEST,
-    ### SUMMARY ###
-    FGPR,
-    FGPT,
-    FOPR,
-    FOPT,
-    FWPR,
-    FWPT,
-    RGIP,
-    ROIP,
-    RPTRST,
-    RPTSCHED,
-    RWIP,
-    WBHP,
-    WGPR,
-    WOPR,
-    WTHP,
-    WWPR,
-})
+DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
+    {
+        ### RUNSPEC ###
+        DISGAS,
+        EQLDIMS,
+        FIELD,
+        GAS,
+        LAB,
+        METRIC,
+        NOSIM,
+        OIL,
+        REGDIMS,
+        START,
+        TABDIMS,
+        TITLE,
+        UNIFIN,
+        UNIFOUT,
+        VAPOIL,
+        WATER,
+        WELLDIMS,
+        ### GRID ###
+        ACTNUM,
+        COORD,
+        DIMENS,
+        DX,
+        DXV,
+        DY,
+        DYV,
+        DZ,
+        DZV,
+        FAULTS,
+        GRIDUNIT,
+        MAPAXES,
+        MAPUNIT,
+        MAPUNITS,
+        MULTFLT,
+        MULTX,
+        MULTX_MINUS,
+        MULTY,
+        MULTY_MINUS,
+        MULTZ,
+        MULTZ_MINUS,
+        NNC,
+        NTG,
+        PERMX,
+        PERMY,
+        PERMZ,
+        PINCH,
+        PINCHOUT,
+        PORO,
+        PORV,
+        SPECGRID,
+        TOPS,
+        ZCORN,
+        ### REGIONS ###
+        EQLNUM,
+        FIPNUM,
+        IMBNUM,
+        PVTNUM,
+        ROCKNUM,
+        SATNUM,
+        ### PROPS ###
+        DENSITY,
+        PVCO,
+        PVDG,
+        PVDO,
+        PVTG,
+        PVTO,
+        PVTW,
+        ROCK,
+        ROCKTAB,
+        SGFN,
+        SGOF,
+        SOF2,
+        SOF3,
+        SWFN,
+        SWOF,
+        ### SOLUTION ###
+        EQUIL,
+        PRESSURE,
+        RESTART,
+        RS,
+        RV,
+        SGAS,
+        SOIL,
+        SWAT,
+        RTEMP,
+        RTEMPVD,
+        TEMPVD,
+        RSVD,
+        RVVD,
+        ### SCHEDULE ###
+        COMPDAT,
+        DATES,
+        GCONINJE,
+        GCONPROD,
+        GRUPTREE,
+        TSTEP,
+        WECON,
+        WELOPEN,
+        WELSPECS,
+        WELTARG,
+        WCONINJE,
+        WCONPROD,
+        WPIMULT,
+        WTEST,
+        ### SUMMARY ###
+        FGPR,
+        FGPT,
+        FOPR,
+        FOPT,
+        FWPR,
+        FWPT,
+        RGIP,
+        ROIP,
+        RPTRST,
+        RPTSCHED,
+        RWIP,
+        WBHP,
+        WGPR,
+        WOPR,
+        WTHP,
+        WWPR,
+    }
+)
 
 
 class DeckFile:
@@ -452,11 +454,16 @@ class DeckFile:
             from the deck or not registered.
         """
         if isinstance(k, Keyword):
-            return k.parse(
-                self._deck,
-                self.dimensions,
-                operations=self._operations,
-            )
+            try:
+                return k.parse(
+                    self._deck,
+                    self.dimensions,
+                    operations=self._operations,
+                )
+            except (ValueError, TypeError) as exc:
+                raise DeckParseError(
+                    f"Could not parse keyword `{k.name}`'s value: {exc}"
+                ) from exc
 
         key = k.upper()
         if key not in self._registry:
@@ -465,11 +472,17 @@ class DeckFile:
         if use_cache and key in self._cache:
             return self._cache[key]
 
-        value = self._registry[key].parse(
-            self._deck,
-            self.dimensions,
-            operations=self._operations,
-        )
+        try:
+            value = self._registry[key].parse(
+                self._deck,
+                self.dimensions,
+                operations=self._operations,
+            )
+        except (ValueError, TypeError) as exc:
+            raise DeckParseError(
+                f"Could not parse keyword `{key}`'s value: {exc}"
+            ) from exc
+
         if use_cache:
             self._cache[key] = value
         return value

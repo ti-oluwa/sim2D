@@ -18,7 +18,7 @@ from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import Spacing, UnitSystem
 
 logger = logging.getLogger(__name__)

@@ -20,7 +20,7 @@ from bores.errors import (
     InvalidVolumeError,
     ValidationError,
 )
-from bores.serialization.base import Serializable
+from bores.serde.base import Serializable
 from bores.typing import (
     IntArray,
     Number,

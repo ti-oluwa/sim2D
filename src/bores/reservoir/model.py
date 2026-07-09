@@ -19,7 +19,7 @@ from bores.reservoir.transmissibility import (
     compute_connection_transmissibilities,
     get_face_transmissibility_map,
 )
-from bores.serialization.base import Serializable
+from bores.serde.base import Serializable
 from bores.typing import CellArray, Number, UnitSystem
 
 __all__ = ["Reservoir"]

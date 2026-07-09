@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.serialization.base import (
+from bores.serde.base import (
     Serializable,
     deserialize_ndarray,
     serialize_ndarray,

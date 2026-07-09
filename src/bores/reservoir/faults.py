@@ -11,7 +11,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.base import VALID_FAULT_FACE_DIRECTIONS
-from bores.serialization.base import Serializable
+from bores.serde.base import Serializable
 from bores.typing import Number
 
 __all__ = ["Fault", "apply_faults", "remove_faults"]

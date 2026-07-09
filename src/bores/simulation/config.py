@@ -8,7 +8,7 @@ from bores.blackoil.rock_fluid import RockFluidTables
 from bores.blackoil.tables.pvt import PVTTables
 from bores.boundary_conditions import BoundaryConditions
 from bores.constants import Constants
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.timing import Timer
 from bores.typing import (
     EvolutionScheme,

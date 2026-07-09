@@ -9,7 +9,7 @@ from bores.correlations import scalars
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import CellArray, Number, UnitSystem
 from bores.utils import scale
 
@@ -303,13 +303,13 @@ class PVTCache:
     """
     Transient per-cell PVT quantities derived from pressure, temperature, and the PVT tables.
 
-    Every field in this class is a function of the current `State`
+    Every field in this class is a function of the current `ReservoirState`
     pressure (and optionally Rs, Rv, Rsw) evaluated against the parsed PVT
     tables. They are recomputed at the start of each Newton iteration and
     discarded at the end of each time step.
 
     All arrays are shape `(n_cells,)` and indexed in the same order as
-    `Grid.cell_centroids`.  Units follow `State.unit_system`.
+    `Grid.cell_centroids`.  Units follow `ReservoirState.unit_system`.
     """
 
     oil_fvf: CellArray
@@ -437,7 +437,7 @@ class PVTCache:
 
     Units: cP (FIELD / METRIC / LAB), Pa·s (SI).
     Computed via the Todd-Longstaff mixing rule when
-    `State.solvent_concentration` is non-zero; equals
+    `ReservoirState.solvent_concentration` is non-zero; equals
     `oil_viscosity` for immiscible flow.
     Empty array for standard black-oil runs.
     """

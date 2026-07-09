@@ -1,0 +1,133 @@
+import threading
+import typing
+from collections.abc import Mapping
+
+from bores.errors import DeserializationError, ValidationError
+from bores.serde.base import (
+    Serializable,
+    SerializableT,
+    register_type_deserializer,
+    register_type_serializer,
+)
+
+_SerializableT = typing.TypeVar("_SerializableT", bound=Serializable)
+
+
+def make_serializable_type_registrar(
+    base_cls: typing.Type[SerializableT],
+    registry: typing.Dict[str, typing.Type[SerializableT]],
+    key_attr: str = "__type__",
+    lock: typing.Optional[threading.Lock] = None,
+    key_factory: typing.Optional[
+        typing.Callable[[typing.Type[SerializableT]], str]
+    ] = None,
+    override: bool = False,
+    auto_register_serializer: bool = True,
+    auto_register_deserializer: bool = True,
+) -> typing.Callable[[typing.Type[_SerializableT]], typing.Type[_SerializableT]]:
+    """
+    Decorator factory to create a registrar for `Serializable` subclasses.
+
+    Creates a decorator to register `Serializable` subclasses in a registry.
+
+    :param base_cls: The base class for the `Serializable` subclasses.
+    :param registry: The registry to store the subclasses.
+    :param key_attr: The attribute to use as the registry key.
+    :param lock: An optional lock for thread safety.
+    :param key_factory: An optional factory function to generate the registry key.
+    :param override: Whether to allow overriding existing registrations.
+    :return: A decorator to register `Serializable` subclasses.
+    """
+    if not key_attr:
+        raise ValidationError("`key_attr` must be a non-empty string.")
+
+    lock = lock or threading.Lock()
+
+    def registrar(cls: typing.Type[_SerializableT]) -> typing.Type[_SerializableT]:
+        """Decorator to register a `Serializable` subclass."""
+        if not issubclass(cls, base_cls):
+            raise ValidationError(
+                f"Class {cls.__name__} is not a subclass of {base_cls.__name__}"
+            )
+
+        key = getattr(cls, key_attr, None)
+        if not key:
+            key = key_factory(cls) if key_factory else cls.__name__.lower()
+            setattr(cls, key_attr, key)
+
+        if not override and key in registry and not issubclass(cls, registry[key]):
+            raise ValidationError(
+                f"Class {cls.__name__} is already registered under key '{key}'. Rename the class or set a unique '{key_attr}'."
+            )
+        with lock:
+            registry[key] = cls
+
+        return cls  # type: ignore[return-value]
+
+    if auto_register_serializer:
+        serializer = make_registry_serializer(
+            base_cls=base_cls, registry=registry, key_attr=key_attr
+        )
+        register_type_serializer(typ=base_cls, serializer=serializer)
+
+    if auto_register_deserializer:
+        deserializer = make_registry_deserializer(base_cls=base_cls, registry=registry)
+        register_type_deserializer(typ=base_cls, deserializer=deserializer)
+
+    registrar.__name__ = f"register_{base_cls.__name__.lower()}_type"
+    return registrar
+
+
+def make_registry_serializer(
+    base_cls: typing.Type[SerializableT],
+    registry: typing.Dict[str, typing.Type[SerializableT]],
+    key_attr: str = "__type__",
+) -> typing.Callable[[SerializableT, bool], typing.Dict[str, typing.Any]]:
+    """
+    Create a serializer function for a registry of `Serializable` subclasses.
+
+    :param registry: The registry of `Serializable` subclasses.
+    :param key_attr: The attribute used as the registry key.
+    :return: A serializer function.
+    """
+
+    def serializer(
+        obj: SerializableT, recurse: bool = True
+    ) -> typing.Dict[str, typing.Any]:
+        key = getattr(obj, key_attr, None)
+        if not key or key not in registry:
+            raise ValidationError(
+                f"Unsupported {base_cls.__name__} type: {type(obj)!r}"
+            )
+
+        return {key: obj.dump(recurse)}
+
+    serializer.__name__ = f"serialize_{base_cls.__name__.lower()}"
+    return serializer
+
+
+def make_registry_deserializer(
+    base_cls: typing.Type[SerializableT],
+    registry: typing.Dict[str, typing.Type[SerializableT]],
+) -> typing.Callable[[typing.Mapping[str, typing.Any]], SerializableT]:
+    """
+    Create a deserializer function for a registry of `Serializable` subclasses.
+
+    :param registry: The registry of `Serializable` subclasses.
+    :param key_attr: The attribute used as the registry key.
+    :return: A deserializer function.
+    """
+
+    def deserializer(data: typing.Mapping[str, typing.Any]) -> SerializableT:
+        if not isinstance(data, Mapping) or len(data) != 1:
+            raise DeserializationError("Invalid data format for deserialization.")
+
+        key, value = next(iter(data.items()))
+        if key not in registry:
+            raise DeserializationError(f"Unsupported {base_cls.__name__} type: {key!r}")
+
+        cls = registry[key]
+        return cls.load(value)
+
+    deserializer.__name__ = f"deserialize_{base_cls.__name__.lower()}"
+    return deserializer

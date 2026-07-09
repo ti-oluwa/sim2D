@@ -4,7 +4,7 @@ from bores.blackoil import BlackOilFluid, PVTRegions, RockFluidRegions
 from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
-from bores.initialization import EquilibriumRegions, initialize_state
+from bores.initialization import EquilibriumRegions, initialize_reservoir_state
 from bores.reservoir import Regions, Reservoir, Rock, Temperature
 from bores.typing import UnitSystem
 
@@ -20,22 +20,22 @@ reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 # The fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-# rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="stone_II_rule")
-# black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
-table = pvt.region(1).tables.oil
+rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="eclipse_rule")
+black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
+table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"
-print(table.viscosity([4700, 3000], [200, 139], solution_gor=400))
+print(table.density([4700, 200, 3456, 10000, 4000], 200))
 
 # The initial state
-# equilibrium = EquilibriumRegions.from_deck(df)
-# initial_state = initialize_state(
-#     reservoir=reservoir,
-#     pvt=pvt,
-#     equilibrium=equilibrium,
-#     rock_fluid=rock_fluid,
-#     temperature=temperature,
-# )
-# print(initial_state.oil_mass.max())
+equilibrium = EquilibriumRegions.from_deck(df)
+initial_state = initialize_reservoir_state(
+    reservoir=reservoir,
+    pvt=pvt,
+    equilibrium=equilibrium,
+    rock_fluid=rock_fluid,
+    temperature=temperature,
+)
+print(initial_state.oil_mass.sum())
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

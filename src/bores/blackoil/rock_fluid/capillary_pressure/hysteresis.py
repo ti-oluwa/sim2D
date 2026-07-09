@@ -144,7 +144,7 @@ def _get_oil_water_capillary_pressure_derivative(
     Return dPcow/d(reference_sat) for the oil-water capillary pressure table.
 
     For `TwoPhaseCapillaryPressureTable` this is the derivative w.r.t. the
-    table's own reference saturation (Sw in water-wet, So in oil-wet).  For
+    table's own reference saturation (Sw in water-wet, So in oil-wet). For
     three-phase tables `dPcow/dSw` is returned to match the scanning variable
     used by the hysteresis layer.
 
@@ -193,7 +193,7 @@ def _get_gas_oil_capillary_pressure_derivative(
     Return dPcgo/d(reference_sat) for the gas-oil capillary pressure table.
 
     For `TwoPhaseCapillaryPressureTable` this is the derivative w.r.t. the
-    table's own reference saturation.  For three-phase tables
+    table's own reference saturation. For three-phase tables
     `dPcgo/dSg` is returned to match the scanning variable used by the
     hysteresis layer.
 
@@ -238,12 +238,12 @@ class KilloughCapillaryPressureTable(
     """
     Implements the Killough capillary pressure hysteresis model/table.
 
-    Capillary pressure hysteresis involves no trapping.  When the displacement
+    Capillary pressure hysteresis involves no trapping. When the displacement
     direction reverses, capillary pressure traces a *scanning curve* that
     interpolates between the primary drainage and imbibition bounds.
 
     Both two-phase (`TwoPhaseCapillaryPressureTable`) and full three-phase
-    (`CapillaryPressureTable`) backing tables are supported.  Wetting and
+    (`CapillaryPressureTable`) backing tables are supported. Wetting and
     non-wetting phase roles are resolved through the canonical API
     (`get_oil_water_wetting_phase` / `get_gas_oil_wetting_phase`) so the
     model is wettability-agnostic.
@@ -371,8 +371,13 @@ class KilloughCapillaryPressureTable(
         """
         Parse and broadcast saturation-history arrays.
 
-        When all history arguments are `None` the method returns arrays that
-        replicate the primary-drainage state (no-hysteresis fallback).
+        The oil-water and gas-oil sub-systems are resolved **independently**:
+        each falls back to its own primary-drainage state (no scanning curve)
+        if its own history is incomplete, rather than requiring both
+        sub-systems' history to be present before either can engage
+        hysteresis. Supplying `max_water_saturation`/`water_imbibition_flag`
+        alone is enough to activate oil-water hysteresis even if the gas-oil
+        history is entirely absent, and vice versa.
 
         :param water_saturation: Broadcast-ready water saturation array.
         :param gas_saturation: Broadcast-ready gas saturation array.
@@ -387,23 +392,35 @@ class KilloughCapillaryPressureTable(
         :return: Six broadcast-compatible arrays: `(sw_max, sg_max, sw_imb, sg_imb,
             sw_rev, sg_rev)`.
         """
-        use_hysteresis = (
-            max_water_saturation is not None
-            and max_gas_saturation is not None
-            and water_imbibition_flag is not None
-            and gas_imbibition_flag is not None
+        use_water_hysteresis = (
+            max_water_saturation is not None and water_imbibition_flag is not None
         )
-        if use_hysteresis:
+        use_gas_hysteresis = (
+            max_gas_saturation is not None and gas_imbibition_flag is not None
+        )
+
+        if use_water_hysteresis:
             maximum_water_saturation = np.atleast_1d(max_water_saturation)  # type: ignore
-            maximum_gas_saturation = np.atleast_1d(max_gas_saturation)  # type: ignore
             water_imbibition_flag = np.atleast_1d(water_imbibition_flag)  # type: ignore
-            gas_imbibition_flag = np.atleast_1d(gas_imbibition_flag)  # type: ignore
             water_reversal_saturation = typing.cast(
                 NumberArray[NDimension],
                 np.atleast_1d(water_reversal_saturation)
                 if water_reversal_saturation is not None
                 else maximum_water_saturation.copy(),
             )
+        else:
+            maximum_water_saturation = water_saturation.copy()
+            water_imbibition_flag = typing.cast(
+                BooleanArray[NDimension],
+                np.zeros_like(water_saturation, dtype=np.bool_),
+            )
+            water_reversal_saturation = typing.cast(
+                NumberArray[NDimension], water_saturation.copy()
+            )
+
+        if use_gas_hysteresis:
+            maximum_gas_saturation = np.atleast_1d(max_gas_saturation)  # type: ignore
+            gas_imbibition_flag = np.atleast_1d(gas_imbibition_flag)  # type: ignore
             gas_reversal_saturation = typing.cast(
                 NumberArray[NDimension],
                 np.atleast_1d(gas_reversal_saturation)
@@ -411,17 +428,9 @@ class KilloughCapillaryPressureTable(
                 else maximum_gas_saturation.copy(),
             )
         else:
-            maximum_water_saturation = water_saturation.copy()
             maximum_gas_saturation = gas_saturation.copy()
-            water_imbibition_flag = typing.cast(
-                BooleanArray[NDimension],
-                np.zeros_like(water_saturation, dtype=np.bool_),
-            )
             gas_imbibition_flag = typing.cast(
                 BooleanArray[NDimension], np.zeros_like(gas_saturation, dtype=np.bool_)
-            )
-            water_reversal_saturation = typing.cast(
-                NumberArray[NDimension], water_saturation.copy()
             )
             gas_reversal_saturation = typing.cast(
                 NumberArray[NDimension], gas_saturation.copy()

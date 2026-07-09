@@ -10,8 +10,8 @@ from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
-from bores.serialization.base import Serializable
-from bores.serialization.stores import StoreSerializable
+from bores.serde.base import Serializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import UnitConversionFactors, UnitConversionTable, UnitSystem
 
 __all__ = [

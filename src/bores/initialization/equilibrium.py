@@ -10,7 +10,7 @@ from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     Number,
     NumberArray,
@@ -58,7 +58,7 @@ class DepthTable(StoreSerializable):
     unit_system: UnitSystem = UnitSystem.FIELD
     """Unit system for `depths`. `values` unit conversion is not handled
     here - GOR-type quantities are converted by the caller (same factor
-    used for `State.solution_gor` / `vaporized_oil_ratio`)."""
+    used for `ReservoirState.solution_gor` / `vaporized_oil_ratio`)."""
 
     def __attrs_post_init__(self) -> None:
         if self.depths.ndim != 1:

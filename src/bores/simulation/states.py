@@ -24,7 +24,7 @@ from bores.reservoir import (
     RockPermeability,
     RockProperties,
 )
-from bores.serialization.base import Serializable
+from bores.serde.base import Serializable
 from bores.timing import TimerState
 from bores.typing import NDimension
 from bores.wells.base import Wells

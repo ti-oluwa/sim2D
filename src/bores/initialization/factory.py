@@ -29,7 +29,7 @@ from bores.initialization.equilibrium import (
 )
 from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
-from bores.reservoir.state import Hysteresis, State
+from bores.reservoir.state import Hysteresis, ReservoirState
 from bores.reservoir.temperature import (
     Temperature,
     TemperatureGradient,
@@ -46,7 +46,11 @@ from bores.typing import (
 )
 from bores.utils import get_hydrostatic_gradient_factor
 
-__all__ = ["initialize_state", "initialize_equilibrium_arrays", "EquilibriumArrays"]
+__all__ = [
+    "initialize_reservoir_state",
+    "initialize_equilibrium_arrays",
+    "EquilibriumArrays",
+]
 
 N_SATURATION_SAMPLES = 100
 """
@@ -579,12 +583,9 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(
-        **{
-            name: _average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def _get_dip_aware_top_bottom_faces(
@@ -747,12 +748,10 @@ def _initialize_tilted_subdivision_equilibrium(
             np.sum(field_2d * area_weights, axis=1) / np.sum(area_weights, axis=1),
         )
 
-    return EquilibriumArrays(
-        **{
-            name: _weighted_average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _weighted_average(getattr(sub_arrays, name))
+        for name in EquilibriumArrays._fields
+    })
 
 
 def initialize_equilibrium_arrays(
@@ -998,7 +997,7 @@ def _resolve_temperature(
     )
 
 
-def initialize_state(
+def initialize_reservoir_state(
     reservoir: Reservoir,
     pvt: PVTRegions,
     *,
@@ -1015,9 +1014,9 @@ def initialize_state(
     with_hysteresis: bool = False,
     dtype: npt.DTypeLike = None,
     saturation_samples: int = N_SATURATION_SAMPLES,
-) -> State:
+) -> ReservoirState:
     """
-    Build a complete `State` from equilibration data (e.g EQUIL) and/or explicit arrays.
+    Build a complete `ReservoirState` from equilibration data (e.g EQUIL) and/or explicit arrays.
 
     "Explicit array/keyword" means either the corresponding kwarg here, or
     (if the kwarg is `None`) the matching `PRESSURE`/`SWAT`/`SGAS`/`RS`/`RV`
@@ -1064,7 +1063,7 @@ def initialize_state(
         later scanning-curve tracking. Works regardless of whether
         saturations came from a sharp contact or capillary-pressure
         inversion; `rock_fluid` is not itself required.
-    :param dtype: Preferred dtype for the returned `State`. Defaults to `get_dtype()`
+    :param dtype: Preferred dtype for the returned `ReservoirState`. Defaults to `get_dtype()`
     :param saturation_samples: Sample count for the capillary-pressure
         inversion grid, forwarded to `initialize_equilibrium_arrays` when
         `rock_fluid` is supplied. Defaults to `N_SATURATION_SAMPLES`.
@@ -1266,7 +1265,7 @@ def initialize_state(
         if static.stock_tank_oil_density is None:
             raise ValidationError(
                 f"PVTNUM {pvtnum}: `stock_tank_oil_density` (DENSITY "
-                "keyword) is required to assemble State masses."
+                "keyword) is required to assemble ReservoirState masses."
             )
 
         rho_o_sc = static.stock_tank_oil_density
@@ -1352,7 +1351,7 @@ def initialize_state(
         if with_hysteresis
         else None
     )
-    return State(
+    return ReservoirState(
         pressure=pressure_arr,
         temperature=temperature_arr,
         oil_saturation=oil_saturation_arr,  # type: ignore[arg-type]

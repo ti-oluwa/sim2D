@@ -24,7 +24,7 @@ from bores.blackoil.rock_fluid.utils import (
 from bores.constants import UnitConversionTable
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     FluidPhase,
     Number,

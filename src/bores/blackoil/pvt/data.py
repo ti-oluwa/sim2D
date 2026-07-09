@@ -11,7 +11,7 @@ from typing_extensions import Self
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     FluidPhase,
     NumberArray,

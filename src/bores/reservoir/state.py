@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.precision import get_dtype
-from bores.serialization.stores import StoreSerializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     BooleanCellArray,
     CellArray,
@@ -15,7 +15,7 @@ from bores.typing import (
 )
 from bores.utils import scale, scale_and_offset
 
-__all__ = ["Hysteresis", "State"]
+__all__ = ["Hysteresis", "ReservoirState"]
 
 
 @attrs.frozen(slots=True)
@@ -125,7 +125,7 @@ class Hysteresis(StoreSerializable):
 
 
 @attrs.frozen(slots=True)
-class State(StoreSerializable):
+class ReservoirState(StoreSerializable):
     """
     Reservoir (dynamic) per-cell state, updated at every time step.
 
@@ -406,7 +406,7 @@ class State(StoreSerializable):
 
     def evolve(self, **kwargs: typing.Any) -> Self:
         """
-        Return a new `State` with selected fields replaced.
+        Return a new `ReservoirState` with selected fields replaced.
 
         All fields not present in *kwargs* are carried forward unchanged.
         Preferred solver pattern:
@@ -423,7 +423,7 @@ class State(StoreSerializable):
         ```
 
         :param kwargs: Field names and their replacement values.
-        :returns: New immutable `State`.
+        :returns: New immutable `ReservoirState`.
         :raises TypeError: If an unknown field name is passed.
         """
         return attrs.evolve(self, **kwargs)
@@ -436,7 +436,7 @@ class State(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `State` with all dimensional quantities rescaled
+        Return a new `ReservoirState` with all dimensional quantities rescaled
         to *target*.
 
         Dimensionless fields (saturations, `solvent_concentration`) are
@@ -446,7 +446,7 @@ class State(StoreSerializable):
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
-        :returns: New `State` in *target* units.
+        :returns: New `ReservoirState` in *target* units.
         """
         if target == self.unit_system:
             return self

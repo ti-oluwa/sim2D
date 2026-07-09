@@ -410,7 +410,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         if self._max_step != (self._state_count - 1 + self._min_step):
             logger.debug(
                 f"Model states have non-sequential time steps. Min step: {self._min_step}, Max step: {self._max_step}, "
-                "State count: {self._state_count}. Some production metrics may be inaccurate."
+                "ReservoirState count: {self._state_count}. Some production metrics may be inaccurate."
             )
 
         # We use per-instance memoization caches prevent memory leaks.
@@ -763,7 +763,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 initial_state = self.get_state(self._min_step)
                 if initial_state is None:
                     logger.debug(
-                        f"State at initial time step {self._min_step} not available. Returning 0.0 for oil in place."
+                        f"ReservoirState at initial time step {self._min_step} not available. Returning 0.0 for oil in place."
                     )
                     return 0.0
 
@@ -813,7 +813,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 initial_state = self.get_state(self._min_step)
                 if initial_state is None:
                     logger.debug(
-                        f"State at initial time step {self._min_step} not available. Returning 0.0 for free gas in place."
+                        f"ReservoirState at initial time step {self._min_step} not available. Returning 0.0 for free gas in place."
                     )
                     return 0.0
 
@@ -866,7 +866,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 initial_state = self.get_state(self._min_step)
                 if initial_state is None:
                     logger.debug(
-                        f"State at initial time step {self._min_step} not available. Returning 0.0 for total gas in place."
+                        f"ReservoirState at initial time step {self._min_step} not available. Returning 0.0 for total gas in place."
                     )
                     return 0.0
 
@@ -995,7 +995,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 initial_state = self.get_state(self._min_step)
                 if initial_state is None:
                     logger.debug(
-                        f"State at initial time step {self._min_step} not available. Returning 0.0 for water in place."
+                        f"ReservoirState at initial time step {self._min_step} not available. Returning 0.0 for water in place."
                     )
                     return 0.0
 
@@ -2249,7 +2249,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} is not available. Returning zero production rates."
+                f"ReservoirState at time step {step} is not available. Returning zero production rates."
             )
             return InstantaneousRates(
                 oil_rate=0.0,
@@ -2367,7 +2367,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} is not available. Returning zero injection rates."
+                f"ReservoirState at time step {step} is not available. Returning zero injection rates."
             )
             return InstantaneousRates(
                 oil_rate=0.0,
@@ -2492,7 +2492,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
         if state is None or initial_state is None:
             logger.debug(
-                f"State at time step {step} or initial state (step {self._min_step}) "
+                f"ReservoirState at time step {step} or initial state (step {self._min_step}) "
                 "is not available. Returning zero material balance."
             )
             return MaterialBalance(
@@ -2807,7 +2807,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         initial_state = self.get_state(self._min_step)
         if state is None or initial_state is None:
             logger.debug(
-                f"State at time step {step} or initial state (step {self._min_step}) is not available. Returning zeros.",
+                f"ReservoirState at time step {step} or initial state (step {self._min_step}) is not available. Returning zeros.",
             )
             return SweepEfficiencyAnalysis(
                 volumetric_sweep_efficiency=0.0,
@@ -3146,7 +3146,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} is not available. Defaulting to 'vogel' IPR method."
+                f"ReservoirState at time step {step} is not available. Defaulting to 'vogel' IPR method."
             )
             return "vogel"
 
@@ -3209,7 +3209,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} is not available. Returning zero productivity analysis."
+                f"ReservoirState at time step {step} is not available. Returning zero productivity analysis."
             )
             return ProductivityAnalysis(
                 total_flow_rate=0.0,
@@ -3464,7 +3464,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} is not available. Returning zero VRR."
+                f"ReservoirState at time step {step} is not available. Returning zero VRR."
             )
             return 0.0
 
@@ -3759,7 +3759,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(from_step)
         if state is None:
             raise ValidationError(
-                f"State at time step {from_step} is not available for decline model recommendation."
+                f"ReservoirState at time step {from_step} is not available for decline model recommendation."
             )
         step_size_seconds = state.step_size
         timesteps_per_year = c.SECONDS_PER_YEAR / step_size_seconds
@@ -3977,9 +3977,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(from_step)
         if state is None:
             logger.error(
-                f"State at time step {from_step} not available for decline curve analysis."
+                f"ReservoirState at time step {from_step} not available for decline curve analysis."
             )
-            raise ValidationError(f"State at time step {from_step} is not available.")
+            raise ValidationError(
+                f"ReservoirState at time step {from_step} is not available."
+            )
 
         step_size_seconds = state.step_size
         timesteps_per_year = c.SECONDS_PER_YEAR / step_size_seconds
@@ -4317,7 +4319,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         state = self.get_state(step)
         if state is None:
             logger.debug(
-                f"State at time step {step} not available for mobility ratio calculation. "
+                f"ReservoirState at time step {step} not available for mobility ratio calculation. "
                 "Returning inf."
             )
             return float("inf")
