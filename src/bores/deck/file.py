@@ -454,6 +454,8 @@ class DeckFile:
             from the deck or not registered.
         """
         if isinstance(k, Keyword):
+            if not self._deck.has(k.name):
+                return None
             try:
                 return k.parse(
                     self._deck,
@@ -466,7 +468,7 @@ class DeckFile:
                 ) from exc
 
         key = k.upper()
-        if key not in self._registry:
+        if key not in self._registry or not self._deck.has(key):
             return None
 
         if use_cache and key in self._cache:

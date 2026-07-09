@@ -337,10 +337,9 @@ def _initialize_center_point_equilibrium(
 
     def gas_density(pressure: Number, depth: Number) -> Number:
         assert gas_table is not None
-        second_axis = (
-            rvvd_table.at_depth(depth) if is_wet_gas else temperature_at(depth)  # type: ignore[union-attr]
+        return gas_table.density(pressure, temperature_at(depth)).astype(  # type: ignore[union-attr, return-value]
+            dtype, copy=False
         )
-        return gas_table.density(pressure, second_axis).astype(dtype, copy=False)  # type: ignore[union-attr, return-value]
 
     def water_density(pressure: Number, depth: Number) -> Number:
         assert water_table is not None
@@ -520,13 +519,9 @@ def _initialize_center_point_equilibrium(
         ).astype(dtype, copy=False)  # type: ignore[union-attr]
 
         if gas_table is not None:
-            # For wet-gas the dewpoint PVT table is indexed by Rv instead of temperature
-            dew_point_arg = (
-                rvvd_table.at_depth(depths[has_free_gas])  # type: ignore[arg-type]
-                if is_wet_gas
-                else temperature[has_free_gas]
+            dew_point = gas_table.dew_point_pressure(
+                temperature=temperature[has_free_gas]
             )
-            dew_point = gas_table.dew_point_pressure(temperature=dew_point_arg)
             if dew_point is not None:
                 gas_dew_point_pressure[has_free_gas] = dew_point.astype(  # type: ignore[union-attr]
                     dtype, copy=False
@@ -788,9 +783,11 @@ def initialize_equilibrium_arrays(
         `_get_saturations_from_capillary_pressure` whenever `rock_fluid` is
         supplied; ignored for sharp-contact initialization. Defaults to
         `N_SATURATION_SAMPLES`.
-    :raises ValidationError: If a cell's `EQLNUM` has no matching
-        `EquilibriumRegion`, an `EQLNUM` region spans more than one
-        `PVTNUM`/`SATNUM` region, or a required PVT table is missing.
+    :raises ValidationError: If `reservoir`, `pvt`, `equilibrium`, or
+        `rock_fluid` (when supplied) don't all share the same unit system;
+        if a cell's `EQLNUM` has no matching `EquilibriumRegion`, an
+        `EQLNUM` region spans more than one `PVTNUM`/`SATNUM` region, or a
+        required PVT table is missing.
     :warns UserWarning: If `rock_fluid` is supplied but
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable;
         every cell is assigned to saturation region 1 in that case. Supply
@@ -800,6 +797,25 @@ def initialize_equilibrium_arrays(
     """
     n_cells = reservoir.n_cells
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+    if pvt.unit_system != reservoir.unit_system:
+        raise ValidationError(
+            f"`reservoir.unit_system` ({reservoir.unit_system.value!r}) does not "
+            f"match `pvt.unit_system` ({pvt.unit_system.value!r})."
+        )
+    if equilibrium.unit_system != reservoir.unit_system:
+        raise ValidationError(
+            f"`reservoir.unit_system` ({reservoir.unit_system.value!r}) does not "
+            f"match `equilibrium.unit_system` ({equilibrium.unit_system.value!r})."
+        )
+    if (
+        rock_fluid is not None
+        and rock_fluid.unit_system is not None
+        and rock_fluid.unit_system != reservoir.unit_system
+    ):
+        raise ValidationError(
+            f"`reservoir.unit_system` ({reservoir.unit_system.value!r}) does not "
+            f"match `rock_fluid.unit_system` ({rock_fluid.unit_system.value!r})."
+        )
     equilibrium_regions: IntCellArray = (
         reservoir.regions.equilibrium_regions
         if reservoir.regions is not None
@@ -824,6 +840,7 @@ def initialize_equilibrium_arrays(
             UserWarning,
         )
         saturation_regions = typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
+
     depth = reservoir.depth
     connate_water_saturation = reservoir.rock.connate_water_saturation
     residual_oil_saturation_water = reservoir.rock.residual_oil_saturation_water_flood
@@ -1041,7 +1058,7 @@ def initialize_reservoir_state(
     (`gas_dew_point_pressure = 0`).
 
     Note:
-        Ensure the unit system of all inputs (`reservoir`, `pvt`,..., and any explicit arrays) is consistent.
+        Ensure the unit system of all inputs (`reservoir`, `pvt`, ..., and any explicit arrays) is consistent.
         The function will raise a `ValidationError` if there is a detected mismatch.
 
     :param reservoir: Reservoir geometry and rock properties.
@@ -1076,8 +1093,9 @@ def initialize_reservoir_state(
         (not yet supported).
     :raises ValidationError: If some field is covered by neither an
         explicit array/keyword nor `equilibrium`/`deck_file`, if `reservoir`
-        and `pvt` unit systems disagree, or if saturations are physically
-        inconsistent.
+        and `pvt` unit systems disagree, or if `equilibrium`/`rock_fluid`
+        (when supplied) don't share that same unit system, or if
+        saturations are physically inconsistent.
     :warns UserWarning: If `rock_fluid` is supplied but
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable; see
         `initialize_equilibrium_arrays`. Also if exactly one of
@@ -1101,6 +1119,20 @@ def initialize_reservoir_state(
         raise ValidationError(
             f"`reservoir.unit_system` ({unit_system.value!r}) does not "
             f"match `pvt.unit_system` ({pvt.unit_system.value!r})."
+        )
+    if equilibrium is not None and equilibrium.unit_system != unit_system:
+        raise ValidationError(
+            f"`reservoir.unit_system` ({unit_system.value!r}) does not "
+            f"match `equilibrium.unit_system` ({equilibrium.unit_system.value!r})."
+        )
+    if (
+        rock_fluid is not None
+        and rock_fluid.unit_system is not None
+        and rock_fluid.unit_system != unit_system
+    ):
+        raise ValidationError(
+            f"`reservoir.unit_system` ({unit_system.value!r}) does not "
+            f"match `rock_fluid.unit_system` ({rock_fluid.unit_system.value!r})."
         )
 
     temperature_arr = _resolve_temperature(

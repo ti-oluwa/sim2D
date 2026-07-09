@@ -34,12 +34,6 @@ class DepthTable(StoreSerializable):
     corresponding to one table from `RSVD` (solution GOR vs. depth) or
     `RVVD` (vaporised oil-gas ratio vs. depth).
 
-    Deliberately generic (`values`, not `rs`/`rv`) rather than two near-
-    identical `RsvdTable` / `RvvdTable` classes - RSVD and RVVD are the same
-    shape (a monotone depth axis + one dependent column) and only differ in
-    which physical quantity they carry, which the caller already knows from
-    context (`EquilibriumRegions.rsvd_tables` vs. `.rvvd_tables`).
-
     Values are linearly interpolated at a query depth; values outside the
     table range are clamped to the endpoint (no extrapolation), matching
     Eclipse behaviour and `bores.reservoir.temperature.TemperatureTable`.
@@ -324,7 +318,7 @@ class EquilibriumRegion(StoreSerializable):
         )
 
     @classmethod
-    def from_deck(cls, deck_file: DeckFile, eqlnum: int = 1) -> Self:
+    def from_deck(cls, deck_file: DeckFile, *, eqlnum: int = 1) -> Self:
         """
         Build a single `EquilibriumRegion` from a parsed `DeckFile`.
 
@@ -436,6 +430,26 @@ class EquilibriumRegions(StoreSerializable):
                 f"(eqlnum -> unit_system): "
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
+
+        for table_name, tables in (
+            ("rsvd_tables", rsvd_tables),
+            ("rvvd_tables", rvvd_tables),
+        ):
+            if not tables:
+                continue
+            table_mismatched = {
+                table_number: table.unit_system
+                for table_number, table in tables.items()
+                if table.unit_system != expected_unit_system
+            }
+            if table_mismatched:
+                raise ValidationError(
+                    f"All `{table_name}` entries must share "
+                    f"`{self.__class__.__name__}.unit_system` "
+                    f"({expected_unit_system.value!r}); mismatches "
+                    f"(table number -> unit_system): "
+                    f"{ {k: v.value for k, v in table_mismatched.items()} }."
+                )
 
         self._regions = regions
         self.rsvd_tables = rsvd_tables
@@ -638,10 +652,6 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumR
     """
     Parse every `EQUIL` record in *deck_file* into `EquilibriumRegion`
     objects, keyed by 1-based EQLNUM index.
-
-    Unlike `EquilibriumRegion.from_deck`, this genuinely needs every
-    region, so building all of them here is not wasteful - it's the
-    single bulk-parsing implementation used by `EquilibriumRegions.from_deck`.
 
     :param deck_file: Parsed `DeckFile`.
     :returns: `{eqlnum: EquilibriumRegion}` mapping, one entry per `EQUIL`
