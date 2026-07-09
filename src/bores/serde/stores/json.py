@@ -136,12 +136,14 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
         for index, item in enumerate(data):
             if validator is not None:
                 item = validator(item)
-            items.append({
-                "_index": index,
-                "_group_name": _get_group_name(index),
-                "_meta": meta(item) if meta is not None else {},
-                "data": item.dump(recurse=True),
-            })
+            items.append(
+                {
+                    "_index": index,
+                    "_group_name": _get_group_name(index),
+                    "_meta": meta(item) if meta is not None else {},
+                    "data": item.dump(recurse=True),
+                }
+            )
 
         if self._handle is not None:
             # Replace in-memory list; file written on close()

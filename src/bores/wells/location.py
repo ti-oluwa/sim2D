@@ -77,7 +77,7 @@ def _vertical_column_candidates(
     raw_candidates = grid.find_cells_in_radius(x, y, mid_z, query_radius)
     if raw_candidates.size == 0:
         return raw_candidates
-    
+
     assert grid.cell_centroids is not None
     centroids_xy = grid.cell_centroids[raw_candidates, :2]
     horizontal_distances = np.sqrt(

@@ -2,7 +2,7 @@ import sys
 import threading
 import typing
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence, Set
 from enum import Enum
 from typing import TypeGuard
 
@@ -375,9 +375,9 @@ def _serialize(
             )
 
         if (
-            origin in (list, tuple, Sequence)
-            or (origin and isinstance(origin, type) and issubclass(origin, Sequence))
-        ) and (not isinstance(value, (str, bytes)) and isinstance(value, Sequence)):
+            origin in (list, tuple, Sequence, Set, Collection)
+            or (origin and isinstance(origin, type) and issubclass(origin, Collection))
+        ) and (not isinstance(value, (str, bytes)) and isinstance(value, Collection)):
             element_type = args[0] if args else type(None)
             return [_serialize(v, recurse, serializers, element_type) for v in value]
 
@@ -421,17 +421,21 @@ def _serialize(
             for field in value._fields  # type: ignore[attr-defined]
         }
 
-    # Fallback check for Mapping/Sequence at runtime
+    # Fallback check for Mapping/Collection at runtime
     # (for cases where type annotation isn't available or is too generic)
     if isinstance(value, Mapping):
         return {k: _serialize(v, recurse, serializers) for k, v in value.items()}
 
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+    if isinstance(value, Collection) and not isinstance(value, (str, bytes)):
         return [_serialize(v, recurse, serializers) for v in value]
 
     # numpy arrays with a non-ndarray declared type (e.g. tuple, list):
     # convert to Python list so the ndarray hook doesn't capture them.
-    if isinstance(value, np.ndarray) and typ in (tuple, list, set, frozenset):
+    if isinstance(value, np.ndarray) and (
+        typ in (tuple, list, set, frozenset)
+        or isinstance(typ, typ)
+        and issubclass(typ, Collection)
+    ):
         return [_serialize(v, recurse, serializers) for v in value]
 
     return converter.unstructure(value)
@@ -493,8 +497,8 @@ def _deserialize(
                 f"Value {value!r} does not match any type in {typ}"
             )
 
-        if origin in (list, tuple, Sequence) or (
-            origin and isinstance(origin, type) and issubclass(origin, Sequence)
+        if origin in (list, tuple, Sequence, Set, Collection) or (
+            origin and isinstance(origin, type) and issubclass(origin, Collection)
         ):
             return [_deserialize(v, args[0], deserializers) for v in value]
 
@@ -515,33 +519,42 @@ def _deserialize(
 
     if _is_typed_dict_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ({
-            k: _deserialize(v, annotations[k], deserializers)
-            for k, v in value.items()
-            # Ignore keys not found in existing annotations incase typed-dict
-            # structure changed for backwards compatibility
-            if k in annotations
-        })
+        return typ(
+            {
+                k: _deserialize(v, annotations[k], deserializers)
+                for k, v in value.items()
+                # Ignore keys not found in existing annotations incase typed-dict
+                # structure changed for backwards compatibility
+                if k in annotations
+            }
+        )
 
     if _is_namedtuple_type(typ):
         annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(**{
-            k: _deserialize(v, annotations[k], deserializers)
-            for k, v in value.items()
-            # Ignore keys not found in existing annotations incase namedtuple
-            # structure changed for backwards compatibility
-            if k in annotations
-        })
+        return typ(
+            **{
+                k: _deserialize(v, annotations[k], deserializers)
+                for k, v in value.items()
+                # Ignore keys not found in existing annotations incase namedtuple
+                # structure changed for backwards compatibility
+                if k in annotations
+            }
+        )
 
     # Handle ndarray dicts for non-ndarray declared types (e.g. tuple, list)
     # from data serialized before the serialization fix.
     if (
-        typ in (tuple, list, set, frozenset)
+        (
+            typ in (tuple, list, set, frozenset)
+            or isinstance(typ, typ)
+            and issubclass(typ, Collection)
+        )
         and isinstance(value, Mapping)
         and value.get("__ndarray__")
     ):
         arr = deserialize_ndarray(value)
-        return typ(arr)
+        # Might raise an error, but for most common types it wont
+        return typ(arr)  # type: ignore[call-arg]
 
     return converter.structure(value, typ)
 
@@ -831,7 +844,7 @@ class SerializableMeta(type):
         }
 
         # NOTE: We don't discover type serializers/deserializers here.
-        # Discovery happens lazily on first dump/load call.
+        # Discovery happens lazily on first dump/load call for any class instance.
         # We only store explicitly provided serializers/deserializers.
 
         # Build final serializers/deserializers with proper precedence
@@ -884,7 +897,7 @@ class SerializableMeta(type):
 
 
 class Serializable(metaclass=SerializableMeta):
-    """Base class for serializable objects."""
+    """Base class for serializable / deserializable objects."""
 
     __abstract_serializable__ = True
 
