@@ -474,7 +474,7 @@ class RockCompressibilityTable(StoreSerializable):
             unit_system=target_unit_system,
         )
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "pressures": self.pressures.tolist(),
             "pore_volume_multipliers": self.pore_volume_multipliers.tolist(),
@@ -946,11 +946,10 @@ class RockCompressibilityRegions(StoreSerializable):
     def __contains__(self, key: object) -> bool:
         return key in self._tables
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
-                str(rocknum): table.dump(recurse)
-                for rocknum, table in self._tables.items()
+                str(rocknum): table.dump() for rocknum, table in self._tables.items()
             }
         }
 

@@ -897,7 +897,7 @@ class SparseTensor(Serializable, typing.Generic[DType, ShapeT]):
                     f"Index {key} is out of bounds for shape {self._shape}"
                 )
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """
         Serialize the sparse tensor to a dictionary.
 

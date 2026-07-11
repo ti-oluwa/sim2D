@@ -142,7 +142,7 @@ class ConstantFactory(Serializable):
             parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize by evaluating the factory - produces a plain value snapshot."""
         evaluated = Constant(
             value=self.value,
@@ -150,7 +150,7 @@ class ConstantFactory(Serializable):
             unit=self.unit,
             aliases=self.aliases,
         )
-        return evaluated.dump(recurse)
+        return evaluated.dump()
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Constant:

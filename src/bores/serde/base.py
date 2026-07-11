@@ -1,10 +1,11 @@
+"""`Serializable` base API"""
+
 import sys
 import threading
 import typing
 import warnings
 from collections.abc import Collection, Mapping, Sequence, Set
 from enum import Enum
-from typing import TypeGuard
 
 import attrs
 import cattrs
@@ -16,75 +17,37 @@ from bores.errors import DeserializationError, SerializationError, ValidationErr
 from bores.serde.utils import deserialize_ndarray, serialize_ndarray
 from bores.typing import T
 
-__all__ = ["Serializable", "converter", "dump", "load"]
+__all__ = [
+    "Serializable",
+    "converter",
+    "dump",
+    "load",
+    "register_type_serializer",
+    "register_type_deserializer",
+    "register_ndarray_serializers",
+    "ndarray_serializer",
+    "ndarray_deserializer",
+]
 
-
-_TYPE_SERIALIZERS: typing.Dict[
-    typing.Type[typing.Any],
-    typing.Callable[[typing.Any, bool], typing.Dict[str, typing.Any]],
-] = {}
-"""Registry of type serializers."""
-_TYPE_DESERIALIZERS: typing.Dict[
-    typing.Type[typing.Any],
-    typing.Callable[[typing.Mapping[str, typing.Any]], typing.Any],
-] = {}
-"""Registry of type deserializers."""
-_type_serializers_lock = threading.Lock()
-_type_deserializers_lock = threading.Lock()
-
-
-converter = cattrs.Converter()
-
-
-def fallback_unstructure(value):
-    return value
-
-
-def fallback_structure(value, typ):
-    return value
+SerializableT = typing.TypeVar("SerializableT", bound="Serializable")
 
 
 def _is_generic_alias(typ: typing.Any) -> bool:
-    """Check if a type is a generic alias (e.g., List[int], Dict[str, float])"""
     return hasattr(typ, "__origin__") and typ.__origin__ is not None
 
 
-converter.register_unstructure_hook_func(
-    check_func=lambda t: _is_generic_alias(t) or not attrs.has(t),
-    func=fallback_unstructure,
-)
-converter.register_structure_hook_func(
-    check_func=lambda t: _is_generic_alias(t) or not attrs.has(t),
-    func=fallback_structure,
-)
-
-
 def _get_origin_class(typ: typing.Any) -> typing.Optional[type]:
-    """
-    Extract the origin class from a generic type.
-
-    Examples:
-    - RockPermeability[NDimension] -> RockPermeability
-    - List[int] -> list
-    - int -> int
-    """
     if _is_generic_alias(typ):
-        origin = typing.get_origin(typ)
-        # For custom generic classes, get_origin returns the base class
-        return origin
-    elif isinstance(typ, type):
+        return typing.get_origin(typ)
+    if isinstance(typ, type):
         return typ
     return None
 
 
 def _is_serializable_type(typ: typing.Any) -> bool:
-    """
-    Check if a type (including generics) is a Serializable subclass.
-    """
     origin = _get_origin_class(typ)
     if origin is None:
         return False
-
     try:
         return isinstance(origin, type) and issubclass(origin, Serializable)
     except TypeError:
@@ -92,19 +55,14 @@ def _is_serializable_type(typ: typing.Any) -> bool:
 
 
 def _is_optional_type(typ: typing.Any) -> bool:
-    """Check if a type is Optional[T] (i.e., Union[T, None])."""
     if not _is_generic_alias(typ):
         return False
-
-    origin = typing.get_origin(typ)
-    if origin is not typing.Union:
+    if typing.get_origin(typ) is not typing.Union:
         return False
-
-    args = typing.get_args(typ)
-    return type(None) in args
+    return type(None) in typing.get_args(typ)
 
 
-def _is_typed_dict_type(typ: typing.Any) -> TypeGuard[typing.Type[typing.Dict]]:
+def _is_typed_dict_type(typ: typing.Any) -> bool:
     return (
         isinstance(typ, type)
         and issubclass(typ, dict)
@@ -122,654 +80,598 @@ def _is_namedtuple_type(typ: typing.Any) -> bool:
     )
 
 
-def _is_enum_type(typ: typing.Any) -> TypeGuard[typing.Type[Enum]]:
+def _is_enum_type(typ: typing.Any) -> bool:
     return isinstance(typ, type) and issubclass(typ, Enum)
 
 
-def _is_ndarray_type(typ: typing.Any) -> TypeGuard[typing.Type[npt.NDArray]]:
-    return isinstance(typ, type) and issubclass(typ, np.ndarray)
+def _is_ndarray_type(typ: typing.Any) -> bool:
+    origin = _get_origin_class(typ)
+    return isinstance(origin, type) and issubclass(origin, np.ndarray)
 
 
-def _unwrap_type(typ: typing.Any) -> typing.List[typing.Type[typing.Any]]:
-    """
-    Recursively unwrap a type to get all constituent non-None types.
+def _unwrap_optional(typ: typing.Any) -> typing.Tuple[typing.List[typing.Any], bool]:
+    if not _is_optional_type(typ):
+        return [typ], False
+    args = [arg for arg in typing.get_args(typ) if arg is not type(None)]
+    return args, True
 
-    Examples:
-    - Optional[Foo] -> [Foo]
-    - Union[Foo, Bar, None] -> [Foo, Bar]
-    - List[Optional[Foo]] -> [List[Foo], Foo]
-    - Dict[str, Optional[Foo]] -> [Dict[str, Foo], Foo]
-    - Optional[List[Foo]] -> [List[Foo], Foo]
-    - Union[List[Foo], Dict[str, Bar]] -> [List[Foo], Dict[str, Bar], Foo, Bar]
-    """
-    result = []
 
+_TYPE_SERIALIZERS: typing.Dict[
+    typing.Type[typing.Any],
+    typing.Callable[[typing.Any], typing.Any],
+] = {}
+_TYPE_DESERIALIZERS: typing.Dict[
+    typing.Type[typing.Any],
+    typing.Callable[[typing.Any], typing.Any],
+] = {}
+_type_serializers_lock = threading.Lock()
+_type_deserializers_lock = threading.Lock()
+
+
+def register_type_serializer(
+    typ: typing.Type[typing.Any],
+    serializer: typing.Callable[[typing.Any], typing.Any],
+) -> None:
+    """Register arg global type serializer for arg specific type. `f(value) -> data`."""
+    with _type_serializers_lock:
+        _TYPE_SERIALIZERS[typ] = serializer
+
+
+def register_type_deserializer(
+    typ: typing.Type[typing.Any],
+    deserializer: typing.Callable[[typing.Any], typing.Any],
+) -> None:
+    """Register arg global type deserializer for arg specific type. `f(data) -> value`."""
+    with _type_deserializers_lock:
+        _TYPE_DESERIALIZERS[typ] = deserializer
+
+
+def _get_primary_types(typ: typing.Any) -> typing.List[typing.Any]:
+    result: typing.List[typing.Any] = []
     if typ is type(None):
-        return []
+        return result
 
     origin = typing.get_origin(typ)
     args = typing.get_args(typ)
 
-    # Handle Union types (including Optional)
     if origin is typing.Union:
+        seen = set()
         for arg in args:
-            if arg is not type(None):
-                result.extend(_unwrap_type(arg))
+            if arg is type(None):
+                continue
+            for t in _get_primary_types(arg):
+                if id(t) not in seen:
+                    seen.add(id(t))
+                    result.append(t)
         return result
 
-    # For generic types, add the container first
     if origin is not None and args:
         result.append(typ)
-
-        # Only unwrap nested custom types, not primitives
         for arg in args:
             arg_origin = _get_origin_class(arg)
-            # Skip primitives like str, int, float
-            if arg_origin and not _is_primitive_type(arg_origin):
-                result.extend(_unwrap_type(arg))
-
+            if arg_origin is not None and arg_origin not in (
+                str,
+                int,
+                float,
+                bool,
+                bytes,
+                type(None),
+            ):
+                result.extend(_get_primary_types(arg))
         return result
 
-    # Base case: non-generic type
     result.append(typ)
     return result
 
 
-def _is_primitive_type(typ: type) -> bool:
-    """Check if a type is a primitive built-in type."""
-    return typ in (str, int, float, bool, bytes, type(None))
-
-
-def _sort_types_by_primitivity(
-    types: typing.Iterable[typing.Type[typing.Any]],
-) -> typing.List[typing.Type[typing.Any]]:
+def _direct_registry_handler(
+    typ: typing.Any,
+    registry: typing.Mapping[typing.Type[typing.Any], typing.Any],
+) -> typing.Optional[typing.Any]:
     """
-    Sort types by primitivity: non-primitive types come before primitive ones.
-
-    This helps in prioritizing serializers/deserializers for complex types first.
+    Look up `typ` (or its origin class's MRO) directly in `registry` with
+    no Optional/Union/container unwrapping.
     """
+    origin = _get_origin_class(typ)
+    if origin is None:
+        return None
+    if not isinstance(origin, type):
+        return registry.get(origin)
 
-    def primitivity_key(typ: typing.Type[typing.Any]) -> int:
-        return 0 if not _is_primitive_type(typ) else 1
+    for base in origin.__mro__:
+        handler = registry.get(base)
+        if handler is not None:
+            return handler
+    return None
 
-    return sorted(types, key=primitivity_key)
 
-
-def _get_primary_types(typ: typing.Any) -> typing.List[typing.Type[typing.Any]]:
-    """
-    Get the primary types to check for serializers/deserializers.
-
-    This extracts the outermost meaningful types after unwrapping Unions/Optional,
-    plus any deeply nested types that might have custom serializers.
-
-    Examples:
-    - Optional[Foo] -> [Foo]
-    - List[Foo] -> [List[Foo], Foo]
-    - Dict[str, Foo] -> [Dict[str, Foo], Foo]
-    - Optional[List[Foo]] -> [List[Foo], Foo]
-    - Union[Foo, Bar] -> [Foo, Bar]
-    """
-    all_types = _unwrap_type(typ)
-
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_types = []
-    for t in all_types:
-        # Create a hashable representation
-        type_id = id(t)
-        if type_id not in seen:
-            seen.add(type_id)
-            unique_types.append(t)
-
-    return unique_types
+def _find_type_handler(
+    typ: typing.Any,
+    registry: typing.Mapping[typing.Type[typing.Any], typing.Any],
+) -> typing.Optional[typing.Any]:
+    for candidate in _get_primary_types(typ):
+        handler = _direct_registry_handler(candidate, registry)
+        if handler is not None:
+            return handler
+    return None
 
 
 def _discover_type_serializers(
-    fields: typing.Mapping[str, typing.Type[typing.Any]],
-) -> typing.Dict[str, typing.Callable[[typing.Any, bool], typing.Any]]:
+    fields: typing.Mapping[str, typing.Any],
+) -> typing.Dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
     """
-    Auto-discover serializers for fields based on their types.
+    Auto-discover per-type serializers from `_TYPE_SERIALIZERS`.
 
-    Unwraps Optional, Union, and other generic containers to find
-    all types that might need custom serializers.
+    Keys the result by whichever *specific* type actually had arg direct
+    registry hit (e.g. `Animal`, for arg `Tuple[Animal, ...]` field) rather
+    than the field's own outer type (`Tuple[Animal, ...]`). The latter is
+    never itself arg registry key, and recording it that way would make the
+    per-field dump/load loop apply the handler to the whole container
+    value instead of mapping it over each element.
     """
-    discovered = {}
-
+    discovered: typing.Dict[typing.Any, typing.Any] = {}
     with _type_serializers_lock:
-        for field_name, field_type in fields.items():
-            # Get all types to check (unwrapping Optional/Union and extracting generics)
-            types_to_check = _get_primary_types(field_type)
+        snapshot = dict(_TYPE_SERIALIZERS)
 
-            # Check each type in order of specificity (most specific first)
-            for typ in types_to_check:
-                origin = _get_origin_class(typ)
-                if origin is None:
-                    continue
-
-                # Handle typing special forms (list, dict, etc.)
-                if not isinstance(origin, type):
-                    if origin in _TYPE_SERIALIZERS:
-                        discovered[typ] = _TYPE_SERIALIZERS[origin]
-                        break
-                    continue
-
-                # Walk MRO for class-based types
-                for base in origin.__mro__:
-                    if base in _TYPE_SERIALIZERS:
-                        discovered[typ] = _TYPE_SERIALIZERS[base]
-                        break
-                else:
-                    # Continue to next type if no serializer found
-                    continue
-
-                # Break outer loop if we found a serializer
-                break
-
-    return discovered  # type: ignore[return-value]
+    for field_type in fields.values():
+        for candidate in _get_primary_types(field_type):
+            if candidate in discovered:
+                continue
+            handler = _direct_registry_handler(candidate, snapshot)
+            if handler is not None:
+                discovered[candidate] = handler
+    return discovered
 
 
 def _discover_type_deserializers(
-    fields: typing.Mapping[str, typing.Type[typing.Any]],
-) -> typing.Dict[str, typing.Callable[[typing.Any], typing.Any]]:
-    """
-    Auto-discover deserializers for fields based on their types.
-
-    Unwraps Optional, Union, and other generic containers to find
-    all types that might need custom deserializers.
-    """
-    discovered = {}
-
+    fields: typing.Mapping[str, typing.Any],
+) -> typing.Dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
+    """Deserializer analogue of `_discover_type_serializers`."""
+    discovered: typing.Dict[typing.Any, typing.Any] = {}
     with _type_deserializers_lock:
-        for field_type in fields.values():
-            # Get all types to check (unwrapping Optional/Union and extracting generics)
-            types_to_check = _get_primary_types(field_type)
+        snapshot = dict(_TYPE_DESERIALIZERS)
 
-            # Check each type in order of specificity (most specific first)
-            for typ in types_to_check:
-                origin = _get_origin_class(typ)
-                if origin is None:
-                    continue
-
-                # Handle typing special forms (list, dict, etc.)
-                if not isinstance(origin, type):
-                    if origin in _TYPE_DESERIALIZERS:
-                        discovered[typ] = _TYPE_DESERIALIZERS[origin]
-                        break
-                    continue
-
-                # Walk MRO to find deserializer
-                for base in origin.__mro__:
-                    if base in _TYPE_DESERIALIZERS:
-                        discovered[typ] = _TYPE_DESERIALIZERS[base]
-                        break
-                else:
-                    # Continue to next type if no deserializer found
-                    continue
-
-                # Break outer loop if we found a deserializer
-                break
-    return discovered  # type: ignore[return-value]
+    for field_type in fields.values():
+        for candidate in _get_primary_types(field_type):
+            if candidate in discovered:
+                continue
+            handler = _direct_registry_handler(candidate, snapshot)
+            if handler is not None:
+                discovered[candidate] = handler
+    return discovered
 
 
-def _serialize(
-    value: typing.Any,
-    recurse: bool,
-    serializers: typing.Optional[
-        typing.Mapping[
-            typing.Union[str, typing.Type],
-            typing.Callable[[typing.Any, bool], typing.Any],
-        ]
-    ] = None,
-    typ: typing.Optional[typing.Type[typing.Any]] = None,
-    *,
-    check_serializers: bool = True,
-):
-    """Dump a value using cattrs, handling nested `Serializable` objects."""
-    # If no type provided, infer from value
-    typ = typ if typ is not None else type(value)
+converter = cattrs.Converter()
 
-    # Check for custom serializer first
-    if check_serializers and serializers and typ in serializers:
-        return serializers[typ](value, recurse)
 
-    if _is_optional_type(typ):
-        if value is None:
+def _fallback_unstructure(value: typing.Any) -> typing.Any:
+    return value
+
+
+def _fallback_structure(value: typing.Any, typ: typing.Any) -> typing.Any:
+    return value
+
+
+# Anything that isn't arg generic alias, isn't an `attrs` class, and isn't an
+# `Enum` passes through unchanged (e.g. arg raw `np.ndarray` before
+# `register_ndarray_serializers()` has been called). `Enum` is explicitly
+# excluded here so it falls through to `cattrs`'s
+# own native `Enum` support instead of this catch-all identity hook, which
+# would otherwise shadow it entirely (breaking every `Enum`-typed field,
+# not just ones nested inside arg container).
+converter.register_unstructure_hook_func(
+    check_func=lambda t: (
+        not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t)
+    ),
+    func=_fallback_unstructure,
+)
+converter.register_structure_hook_func(
+    check_func=lambda t: (
+        not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t)
+    ),
+    func=_fallback_structure,
+)
+
+
+def _structure_serializable(
+    data: typing.Any, cls: typing.Type["Serializable"]
+) -> "Serializable":
+    origin = _get_origin_class(cls) or cls
+    if isinstance(data, origin):
+        return data  # already arg live object (e.g. mixed manual construction)
+    return origin.load(data)  # type: ignore[return-value]
+
+
+def _unstructure_serializable(obj: "Serializable") -> typing.Mapping[str, typing.Any]:
+    return obj.dump()
+
+
+converter.register_structure_hook_func(_is_serializable_type, _structure_serializable)
+converter.register_unstructure_hook_func(
+    _is_serializable_type, _unstructure_serializable
+)
+
+
+def _unstructure_namedtuple(value: typing.Any) -> typing.Dict[str, typing.Any]:
+    typ = type(value)
+    hints = typing.get_type_hints(typ, include_extras=False)
+    return {
+        field: converter.unstructure(
+            getattr(value, field),
+            unstructure_as=hints.get(field, type(getattr(value, field))),
+        )
+        for field in value._fields
+    }
+
+
+def _structure_namedtuple(data: typing.Any, typ: typing.Type[typing.Any]) -> typing.Any:
+    if not isinstance(data, Mapping):
+        return typ(*data)
+    hints = typing.get_type_hints(typ, include_extras=False)
+    return typ(
+        **{
+            field: converter.structure(data[field], hints[field])
+            for field in getattr(typ, "_fields", ())
+            if field in data and field in hints
+        }
+    )
+
+
+converter.register_unstructure_hook_func(_is_namedtuple_type, _unstructure_namedtuple)
+converter.register_structure_hook_func(_is_namedtuple_type, _structure_namedtuple)
+
+
+def _fallback_union_disambiguator(data: typing.Any, typ: typing.Any) -> typing.Any:
+    """
+    Structure arg `Union` `cattrs` couldn't auto-disambiguate (non-`attrs`
+    members, or overlapping required field names).
+
+    Three passes, most-reliable first:
+
+    1. **Exact runtime-type match**: arg member `member` where `type(data) is
+       _get_origin_class(member)`. Tried first and preferred whenever it
+       succeeds. Critical for numeric unions like `bores.typing.Number =
+       Union[int, float, np.floating, np.integer]`, where cross-type
+       structuring rarely raises (`int`-structuring `3.5` silently
+       truncates to `3` instead of erroring), so without this pass the
+       naive "try each, keep whichever doesn't raise" strategy silently
+       picks the wrong member and loses precision. Confirmed by testing.
+
+    2. **`isinstance` match**: broader than #1 (catches e.g. arg `numpy`
+       scalar subclass matching an abstract member like `np.floating`).
+
+    3. **Best-effort fallback** (original behavior): try every remaining
+       member, most-specific (non-primitive/`attrs`) first, keep whichever
+       structures without raising. Only reached when `data`'s runtime type
+       doesn't correspond to any member directly (e.g. structuring arg
+       `dict` into an `attrs` class. There's no "exact type" to match on
+       for that case). Still inherently best-effort for genuinely
+       ambiguous data. Prefer giving `Union` members distinguishable
+       required fields (or arg `Serializable` registry with arg `__type__`
+       tag) wherever possible.
+    """
+    members, _ = (
+        _unwrap_optional(typ)
+        if _is_optional_type(typ)
+        else (list(typing.get_args(typ)), False)
+    )
+    if data is None and type(None) in typing.get_args(typ):
+        return None
+    non_none = [member for member in members if member is not type(None)]
+
+    errors: typing.List[typing.Tuple[typing.Any, Exception]] = []
+
+    exact_matches = [
+        member for member in non_none if _get_origin_class(member) is type(data)
+    ]
+    for member in exact_matches:
+        try:
+            return converter.structure(data, member)
+        except Exception as exc:
+            errors.append((member, exc))
+
+    instance_matches = [
+        member
+        for member in non_none
+        if member not in exact_matches
+        and isinstance(_get_origin_class(member), type)
+        and isinstance(data, _get_origin_class(member))  # type: ignore[arg-type]
+    ]
+    for member in instance_matches:
+        try:
+            return converter.structure(data, member)
+        except Exception as exc:
+            errors.append((member, exc))
+
+    remaining = [
+        member
+        for member in non_none
+        if member not in exact_matches and member not in instance_matches
+    ]
+    ordered = sorted(
+        remaining,
+        key=lambda member: attrs.has(_get_origin_class(member) or member) is False,
+    )
+    for member in ordered:
+        try:
+            return converter.structure(data, member)
+        except Exception as exc:
+            errors.append((member, exc))
+
+    raise DeserializationError(
+        f"Could not structure {data!r} as any member of {typ}: "
+        f"{[(member, str(e)) for member, e in errors]}"
+    )
+
+
+def _needs_fallback_union_disambiguation(typ: typing.Any) -> bool:
+    """
+    `True` for any `Union` with more than one non-`None` member - both bare
+    (`Union[A, B]`) and `Optional`-wrapped (`Optional[Union[A, B]]`, i.e.
+    `bores.typing.Number = Union[int, float, np.floating, np.integer]`
+    wrapped in `Optional`). A simple `Optional[SomeClass]` (exactly one
+    non-`None` member) is excluded so `cattrs`'s own fast native path
+    handles it - only excluding by "is this Optional" (rather than "how
+    many non-`None` members does it have") let `Optional[Number]` fall
+    through ungguarded, since it's Optional *and* multi-member. Confirmed
+    by testing.
+    """
+    if typing.get_origin(typ) is not typing.Union:
+        return False
+    non_none = [arg for arg in typing.get_args(typ) if arg is not type(None)]
+    return len(non_none) > 1
+
+
+converter.register_structure_hook_factory(
+    _needs_fallback_union_disambiguation,
+    lambda t: lambda data, _t=t: _fallback_union_disambiguator(data, _t),
+)
+
+
+def ndarray_serializer(arr: npt.NDArray) -> typing.Dict[str, typing.Any]:
+    return serialize_ndarray(arr)
+
+
+def ndarray_deserializer(data: typing.Any) -> npt.NDArray:
+    return deserialize_ndarray(data)
+
+
+def _unstructure_ndarray(obj: npt.NDArray) -> typing.Dict[str, typing.Any]:
+    return serialize_ndarray(obj)
+
+
+def _structure_ndarray(data: typing.Any, typ: typing.Any) -> npt.NDArray:
+    return deserialize_ndarray(data)
+
+
+_ndarray_serializers_registered = False
+_ndarray_registration_lock = threading.Lock()
+
+
+def register_ndarray_serializers() -> None:
+    global _ndarray_serializers_registered
+    with _ndarray_registration_lock:
+        if _ndarray_serializers_registered:
+            return
+
+        register_type_serializer(typ=np.ndarray, serializer=serialize_ndarray)
+        register_type_deserializer(typ=np.ndarray, deserializer=ndarray_deserializer)
+        converter.register_unstructure_hook_func(_is_ndarray_type, _unstructure_ndarray)
+        converter.register_structure_hook_func(_is_ndarray_type, _structure_ndarray)
+        _ndarray_serializers_registered = True
+
+
+def _find_container_element_handler(
+    typ: typing.Any, active: typing.Mapping[typing.Any, typing.Any]
+) -> typing.Optional[typing.Tuple[str, typing.Any, typing.Any]]:
+    origin = typing.get_origin(typ)
+    args = typing.get_args(typ)
+    if origin is None or not args:
+        return None
+
+    if origin in (dict, Mapping) or (
+        isinstance(origin, type) and issubclass(origin, Mapping)
+    ):
+        value_type = args[1] if len(args) > 1 else None
+        if value_type is None:
             return None
 
-        args = typing.get_args(typ)
-        non_none_args = [arg for arg in args if arg is not type(None)]
-        if len(non_none_args) == 1:
-            return _serialize(value, recurse, serializers, non_none_args[0])
-        else:
-            # Try each non-None type in the Union
-            for arg in _sort_types_by_primitivity(non_none_args):
-                try:
-                    return _serialize(value, recurse, serializers, arg)
-                except Exception:  # noqa
-                    continue
-            raise SerializationError(
-                f"Value {value!r} does not match any type in {typ}"
-            )
+        handler = active.get(value_type)
+        if handler is None:
+            handler_typ = _find_type_handler(value_type, active)
+            handler = active.get(handler_typ) if handler_typ is not None else None
 
-    if _is_serializable_type(typ):
-        origin_cls = _get_origin_class(typ)
-        return origin_cls.dump(value, recurse)  # type: ignore
+        if handler is not None:
+            return ("mapping", origin, handler)
+        return None
 
-    if _is_enum_type(typ):
-        return typ(value).value
-
-    # Handle generic types (List, Dict, etc.)
-    if _is_generic_alias(typ):
-        origin = typing.get_origin(typ)
-        args = typing.get_args(typ)
-
-        # Handle typing.Union and other special forms
-        if origin is typing.Union:
-            for arg in _sort_types_by_primitivity(args):
-                try:
-                    return _serialize(value, recurse, serializers, arg)
-                except Exception:  # noqa
-                    continue
-            raise SerializationError(
-                f"Value {value!r} does not match any type in {typ}"
-            )
-
-        if (
-            origin in (list, tuple, Sequence, Set, Collection)
-            or (origin and isinstance(origin, type) and issubclass(origin, Collection))
-        ) and (not isinstance(value, (str, bytes)) and isinstance(value, Collection)):
-            element_type = args[0] if args else type(None)
-            return [_serialize(v, recurse, serializers, element_type) for v in value]
-
-        if (
-            origin in (dict, Mapping)
-            or (origin and isinstance(origin, type) and issubclass(origin, Mapping))
-        ) and isinstance(value, Mapping):
-            key_type = args[0] if len(args) > 0 else type(None)
-            value_type = args[1] if len(args) > 1 else type(None)
-            return {
-                _serialize(k, recurse, serializers, key_type): _serialize(
-                    v, recurse, serializers, value_type
-                )
-                for k, v in value.items()
-            }
-
-        return _serialize(
-            value, recurse, serializers, origin, check_serializers=check_serializers
-        )
-
-    if _is_typed_dict_type(typ) and isinstance(value, Mapping):
-        annotations = typing.get_type_hints(typ, include_extras=False)
-        return {
-            k: _serialize(v, recurse, serializers, annotations.get(k, type(v)))
-            for k, v in value.items()
-        }
-
-    if (
-        _is_namedtuple_type(typ)
-        and isinstance(value, tuple)
-        and hasattr(value, "_fields")
+    if origin in (list, tuple, set, frozenset, Sequence, Set, Collection) or (
+        isinstance(origin, type) and issubclass(origin, Collection)
     ):
-        annotations = typing.get_type_hints(typ, include_extras=False)
-        return {
-            field: _serialize(
-                getattr(value, field),
-                recurse,
-                serializers,
-                annotations.get(field, type(getattr(value, field))),
-            )
-            for field in value._fields  # type: ignore[attr-defined]
-        }
+        element_type = args[0]
+        handler = active.get(element_type)
+        if handler is None:
+            handler_typ = _find_type_handler(element_type, active)
+            handler = active.get(handler_typ) if handler_typ is not None else None
 
-    # Fallback check for Mapping/Collection at runtime
-    # (for cases where type annotation isn't available or is too generic)
-    if isinstance(value, Mapping):
-        return {k: _serialize(v, recurse, serializers) for k, v in value.items()}
+        if handler is not None:
+            return ("sequence", origin, handler)
+        return None
 
-    if isinstance(value, Collection) and not isinstance(value, (str, bytes)):
-        return [_serialize(v, recurse, serializers) for v in value]
-
-    # numpy arrays with a non-ndarray declared type (e.g. tuple, list):
-    # convert to Python list so the ndarray hook doesn't capture them.
-    if isinstance(value, np.ndarray) and (
-        typ in (tuple, list, set, frozenset)
-        or isinstance(typ, typ)
-        and issubclass(typ, Collection)
-    ):
-        return [_serialize(v, recurse, serializers) for v in value]
-
-    return converter.unstructure(value)
+    return None
 
 
-def _deserialize(
-    value: typing.Any,
-    typ: typing.Type[typing.Any],
-    deserializers: typing.Optional[
-        typing.Mapping[
-            typing.Union[str, typing.Type],
-            typing.Callable[[typing.Any], typing.Any],
-        ]
-    ] = None,
-    *,
-    check_deserializers: bool = True,
-) -> typing.Any:
-    """Load a value using cattrs, handling nested `Serializable` objects."""
-    # Check for custom deserializer first
-    if check_deserializers and deserializers and typ in deserializers:
-        return deserializers[typ](value)
+def _find_optional_element_handler(
+    typ: typing.Any, active: typing.Mapping[typing.Any, typing.Any]
+) -> typing.Optional[typing.Any]:
+    """
+    If `typ` is `Optional[X]` (exactly one non-`None` member) and `X` has arg
+    registered handler in `active`, return that handler. `None` otherwise.
 
-    if _is_optional_type(typ):
-        if value is None:
-            return None
+    Arg field typed `Optional[Limit]` (e.g. `WellState.active_limit`) must apply the
+    `Limit` registry handler to the value when it's not `None`, not fall
+    through to `cattrs`'s native Union dispatch, which unstructures by the
+    value's *runtime* type and bypasses the registry wrapper entirely,
+    silently dropping the `__type__` tag needed to load the right subclass
+    back.
+    """
+    if not _is_optional_type(typ):
+        return None
 
-        args = typing.get_args(typ)
-        non_none_args = [arg for arg in args if arg is not type(None)]
-        if len(non_none_args) == 1:
-            return _deserialize(value, non_none_args[0], deserializers)
-        else:
-            for arg in _sort_types_by_primitivity(non_none_args):
-                try:
-                    return _deserialize(value, arg, deserializers)
-                except Exception:  # noqa
-                    continue
-            raise DeserializationError(
-                f"Value {value!r} does not match any type in {typ}"
-            )
+    args = [arg for arg in typing.get_args(typ) if arg is not type(None)]
+    if len(args) != 1:
+        return None
 
-    if _is_serializable_type(typ):
-        origin_cls = _get_origin_class(typ)
-        return origin_cls.load(value)  # type: ignore[union-attr]
-
-    if _is_enum_type(typ):
-        return typ(value)
-
-    if _is_generic_alias(typ):
-        origin = typing.get_origin(typ)
-        args = typing.get_args(typ)
-
-        if origin is typing.Union:
-            for arg in _sort_types_by_primitivity(args):
-                try:
-                    return _deserialize(value, arg, deserializers)
-                except Exception:  # noqa
-                    continue
-            raise DeserializationError(
-                f"Value {value!r} does not match any type in {typ}"
-            )
-
-        if origin in (list, tuple, Sequence, Set, Collection) or (
-            origin and isinstance(origin, type) and issubclass(origin, Collection)
-        ):
-            return [_deserialize(v, args[0], deserializers) for v in value]
-
-        if origin in (dict, Mapping) or (
-            origin and isinstance(origin, type) and issubclass(origin, Mapping)
-        ):
-            return {
-                _deserialize(k, args[0], deserializers): _deserialize(
-                    v, args[1], deserializers
-                )
-                for k, v in value.items()
-            }
-
-        if origin is not None:
-            return _deserialize(
-                value, origin, deserializers, check_deserializers=check_deserializers
-            )
-
-    if _is_typed_dict_type(typ):
-        annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(
-            {
-                k: _deserialize(v, annotations[k], deserializers)
-                for k, v in value.items()
-                # Ignore keys not found in existing annotations incase typed-dict
-                # structure changed for backwards compatibility
-                if k in annotations
-            }
-        )
-
-    if _is_namedtuple_type(typ):
-        annotations = typing.get_type_hints(typ, include_extras=False)
-        return typ(
-            **{
-                k: _deserialize(v, annotations[k], deserializers)
-                for k, v in value.items()
-                # Ignore keys not found in existing annotations incase namedtuple
-                # structure changed for backwards compatibility
-                if k in annotations
-            }
-        )
-
-    # Handle ndarray dicts for non-ndarray declared types (e.g. tuple, list)
-    # from data serialized before the serialization fix.
-    if (
-        (
-            typ in (tuple, list, set, frozenset)
-            or isinstance(typ, typ)
-            and issubclass(typ, Collection)
-        )
-        and isinstance(value, Mapping)
-        and value.get("__ndarray__")
-    ):
-        arr = deserialize_ndarray(value)
-        # Might raise an error, but for most common types it wont
-        return typ(arr)  # type: ignore[call-arg]
-
-    return converter.structure(value, typ)
+    inner = args[0]
+    handler = active.get(inner)
+    if handler is None:
+        handler_typ = _find_type_handler(inner, active)
+        handler = active.get(handler_typ) if handler_typ is not None else None
+    return handler
 
 
 def _build_serializer(
-    fields: typing.Mapping[str, typing.Type],
+    fields: typing.Mapping[str, typing.Any],
     exclude: typing.Optional[typing.Iterable[str]] = None,
     serializers: typing.Optional[
         typing.Mapping[
-            typing.Union[str, typing.Type],
-            typing.Callable[[typing.Any, bool], typing.Any],
+            typing.Union[str, typing.Type], typing.Callable[[typing.Any], typing.Any]
         ]
     ] = None,
-) -> typing.Callable:
-    """
-    Build a serializer function for the class.
+) -> typing.Callable[["Serializable"], typing.Dict[str, typing.Any]]:
+    exclude_set = set(exclude) if exclude else set()
+    explicit = dict(serializers or {})
+    _discovered: typing.Optional[typing.Dict[typing.Any, typing.Any]] = None
 
-    :param fields: Mapping of field names to types.
-    :param exclude: Optional iterable of field names to exclude from serializing.
-    :param serializers: Optional mapping of field names or types to custom serializer callables.
-    :return: A serializer function.
-    """
-    # Cache for lazily discovered serializers
-    _lazy_serializers_cache: typing.Dict[
-        typing.Union[str, typing.Type[typing.Any]], typing.Any
-    ] = {}
-    _serializers_discovered = False
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        nonlocal _discovered
+        if _discovered is None:
+            _discovered = _discover_type_serializers(fields)
+        active = {**_discovered, **explicit}
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        nonlocal _lazy_serializers_cache, _serializers_discovered
-
-        # Lazy discovery: discover type serializers on first call
-        if not _serializers_discovered:
-            discovered = _discover_type_serializers(fields)
-            # Merge: explicit serializers take precedence over discovered
-            _lazy_serializers_cache = {**discovered, **(serializers or {})}  # type: ignore[dict-item]
-            _serializers_discovered = True
-
-        # Use the cached/discovered serializers
-        active_serializers = _lazy_serializers_cache
-        result = {}
+        result: typing.Dict[str, typing.Any] = {}
         for field, typ in fields.items():
-            if exclude and field in exclude:
+            if field in exclude_set:
                 continue
-
             value = getattr(self, field)
 
-            # Custom serializer by field name (highest priority)
-            if active_serializers and (field in active_serializers):
-                serializer = active_serializers[field]
-                try:
-                    result[field] = serializer(value, recurse)
-                except Exception as exc:
-                    raise SerializationError(
-                        f"Failed to serialize field '{field}' using custom serializer"
-                    ) from exc
+            by_name = active.get(field)
+            if by_name is not None:
+                result[field] = by_name(value)
                 continue
 
-            # Custom serializer by type (handle generics)
-            if active_serializers:
-                # Try exact type match first
-                if typ in active_serializers:
-                    serializer = active_serializers[typ]
-                    try:
-                        result[field] = serializer(value, recurse)
-                    except Exception as exc:
-                        raise SerializationError(
-                            f"Failed to serialize field '{field}' of type {typ} using custom serializer"
-                        ) from exc
-                    continue
+            by_type = active.get(typ)
+            if by_type is not None:
+                result[field] = by_type(value)
+                continue
 
-                # Then try origin class for generics
-                origin = _get_origin_class(typ)
-                if origin and origin != typ and origin in active_serializers:
-                    serializer = active_serializers[origin]
-                    try:
-                        result[field] = serializer(value, recurse)
-                    except Exception as exc:
-                        raise SerializationError(
-                            f"Failed to serialize field '{field}' of type {origin} using custom serializer"
-                        ) from exc
-                    continue
+            container_match = _find_container_element_handler(typ, active)
+            if container_match is not None:
+                kind, origin, handler = container_match
+                if kind == "sequence":
+                    mapped = [handler(value) for value in value]
+                    result[field] = tuple(mapped) if origin is tuple else mapped
+                else:
+                    result[field] = {
+                        key: handler(value) for key, value in value.items()
+                    }
+                continue
 
-            if _is_serializable_type(typ):
-                origin_cls = _get_origin_class(typ)
-                try:
-                    result[field] = origin_cls.dump(value, recurse)  # type: ignore
-                except Exception as exc:
-                    raise SerializationError(
-                        f"Failed to serialize nested `Serializable` field '{field}'"
-                    ) from exc
-            else:
-                try:
-                    # No need to check serializers again here, as we've already done so above
-                    result[field] = _serialize(
-                        value=value,
-                        recurse=recurse,
-                        serializers=active_serializers,
-                        typ=typ,
-                        check_serializers=False,
-                    )
-                except Exception as exc:
-                    raise SerializationError(
-                        f"Failed to unstructure field '{field}' of type {typ}"
-                    ) from exc
+            optional_handler = _find_optional_element_handler(typ, active)
+            if optional_handler is not None:
+                result[field] = optional_handler(value) if value is not None else None
+                continue
 
+            if _is_serializable_type(typ) and value is not None:
+                result[field] = value.dump()
+                continue
+
+            try:
+                result[field] = converter.unstructure(value, unstructure_as=typ)
+            except Exception as exc:
+                raise SerializationError(
+                    f"Failed to dump field {field!r} of type {typ!r}"
+                ) from exc
         return result
 
     return __dump__
 
 
 def _build_deserializer(
-    fields: typing.Mapping[str, typing.Type],
+    fields: typing.Mapping[str, typing.Any],
     exclude: typing.Optional[typing.Iterable[str]] = None,
     deserializers: typing.Optional[
-        typing.Mapping[typing.Union[str, typing.Type], typing.Callable]
+        typing.Mapping[
+            typing.Union[str, typing.Type], typing.Callable[[typing.Any], typing.Any]
+        ]
     ] = None,
-) -> typing.Callable:
-    """
-    Build a deserializer function for the class.
+) -> typing.Callable[..., "Serializable"]:
+    exclude_set = set(exclude) if exclude else set()
+    explicit = dict(deserializers or {})
+    _discovered: typing.Optional[typing.Dict[typing.Any, typing.Any]] = None
 
-    :param fields: Mapping of field names to types.
-    :param exclude: Optional iterable of field names to exclude from deserializing.
-    :param deserializers: Optional mapping of field names or types to custom deserializer callables.
-    :return: A deserializer function.
-    """
-    # Cache for lazily discovered deserializers
-    _lazy_deserializers_cache: typing.Dict[
-        typing.Union[str, typing.Type[typing.Any]], typing.Any
-    ] = {}
-    _deserializers_discovered = False
+    @classmethod
+    def __load__(
+        cls: typing.Type[SerializableT],
+        data: typing.Mapping[str, typing.Any],
+    ) -> SerializableT:
+        nonlocal _discovered
+        if _discovered is None:
+            _discovered = _discover_type_deserializers(fields)
+        active = {**_discovered, **explicit}
 
-    @classmethod  # type: ignore[misc]
-    def __load__(cls, data: typing.Mapping[str, typing.Any]):
-        nonlocal _lazy_deserializers_cache, _deserializers_discovered
-
-        # Lazy discovery: discover type deserializers on first call
-        if not _deserializers_discovered:
-            discovered = _discover_type_deserializers(fields)
-            # Merge: explicit deserializers take precedence over discovered
-            _lazy_deserializers_cache = {**discovered, **(deserializers or {})}  # type: ignore[dict-item]
-            _deserializers_discovered = True
-
-        # Use the cached/discovered deserializers
-        active_deserializers = _lazy_deserializers_cache
-
-        init_kwargs = {}
+        init_kwargs: typing.Dict[str, typing.Any] = {}
         for field, typ in fields.items():
-            if exclude and field in exclude:
+            if field in exclude_set or field not in data:
                 continue
-
-            # Field must exist in data (let __init__ handle defaults)
-            if field not in data:
-                continue
-
             value = data[field]
 
-            # Custom deserializer by field name (highest priority)
-            if active_deserializers and (field in active_deserializers):
-                deserializer = active_deserializers[field]
-                try:
-                    init_kwargs[field] = deserializer(value)
-                except Exception as exc:
-                    raise DeserializationError(
-                        f"Failed to deserialize field '{field}' using custom deserializer"
-                    ) from exc
+            by_name = active.get(field)
+            if by_name is not None:
+                init_kwargs[field] = by_name(value)
                 continue
 
-            # Custom deserializer by type (handle generics)
-            if active_deserializers:
-                # Check exact type match first
-                if typ in active_deserializers:
-                    deserializer = active_deserializers[typ]
-                    try:
-                        init_kwargs[field] = deserializer(value)
-                    except Exception as exc:
-                        raise DeserializationError(
-                            f"Failed to deserialize field '{field}' of type {typ} using custom deserializer"
-                        ) from exc
-                    continue
+            by_type = active.get(typ)
+            if by_type is not None:
+                init_kwargs[field] = by_type(value)
+                continue
 
-                # Then check origin class for generics
-                origin = _get_origin_class(typ)
-                if origin and origin != typ and origin in active_deserializers:
-                    deserializer = active_deserializers[origin]
-                    try:
-                        init_kwargs[field] = deserializer(value)
-                    except Exception as exc:
-                        raise DeserializationError(
-                            f"Failed to deserialize field '{field}' of type {origin} using custom deserializer"
-                        ) from exc
-                    continue
+            container_match = _find_container_element_handler(typ, active)
+            if container_match is not None:
+                kind, origin, handler = container_match
+                if kind == "sequence":
+                    mapped = [handler(value) for value in value]
+                    init_kwargs[field] = tuple(mapped) if origin is tuple else mapped
+                else:
+                    init_kwargs[field] = {
+                        key: handler(value) for key, value in value.items()
+                    }
+                continue
 
-            # Check if it's a `Serializable` (including generics)
+            optional_handler = _find_optional_element_handler(typ, active)
+            if optional_handler is not None:
+                init_kwargs[field] = (
+                    optional_handler(value) if value is not None else None
+                )
+                continue
+
             if _is_serializable_type(typ):
                 origin_cls = _get_origin_class(typ)
                 try:
                     init_kwargs[field] = origin_cls.load(value)  # type: ignore[union-attr]
                 except Exception as exc:
                     raise DeserializationError(
-                        f"Failed to deserialize nested `Serializable` field '{field}' of type {typ}"
+                        f"Failed to load nested `Serializable` field {field!r} "
+                        f"of type {typ!r}"
                     ) from exc
-            else:
-                try:
-                    # No need to check deserializers again here, as we've already done so above
-                    init_kwargs[field] = _deserialize(
-                        value=value,
-                        typ=typ,
-                        deserializers=active_deserializers,
-                        check_deserializers=False,
-                    )
-                except Exception as exc:
-                    raise DeserializationError(
-                        f"Failed to structure field '{field}' of type {typ}"
-                    ) from exc
+                continue
+
+            try:
+                init_kwargs[field] = converter.structure(value, typ)
+            except Exception as exc:
+                raise DeserializationError(
+                    f"Failed to load field {field!r} of type {typ!r}"
+                ) from exc
 
         return cls(**init_kwargs)
 
@@ -777,20 +679,20 @@ def _build_deserializer(
 
 
 class SerializableMeta(type):
-    """Metaclass for `Serializable` classes"""
+    """Metaclass for `Serializable` classes."""
 
     def __init__(
         cls,
         name: str,
         bases: typing.Tuple,
         namespace: typing.Dict[str, typing.Any],
-        fields: typing.Optional[typing.Mapping[str, typing.Type]] = None,
+        fields: typing.Optional[typing.Mapping[str, typing.Any]] = None,
         dump_exclude: typing.Optional[typing.Iterable[str]] = None,
         load_exclude: typing.Optional[typing.Iterable[str]] = None,
         serializers: typing.Optional[
             typing.Mapping[
                 typing.Union[str, typing.Type],
-                typing.Callable[[typing.Any, bool], typing.Any],
+                typing.Callable[[typing.Any], typing.Any],
             ]
         ] = None,
         deserializers: typing.Optional[
@@ -801,18 +703,16 @@ class SerializableMeta(type):
         ] = None,
     ):
         super().__init__(name, bases, namespace)
-        parent_serializers = {}
-        parent_deserializers = {}
-        parent_fields = {}
-        for cl in reversed(cls.__mro__[1:-1]):  # Exclude `object`
+        parent_serializers: typing.Dict[typing.Any, typing.Any] = {}
+        parent_deserializers: typing.Dict[typing.Any, typing.Any] = {}
+        parent_fields: typing.Dict[str, typing.Any] = {}
+        for cl in reversed(cls.__mro__[1:-1]):
             if serializable_fields := getattr(cl, "__serializable_fields__", None):
                 parent_fields.update(serializable_fields)
-
             if serializable_serializers := getattr(
                 cl, "__serializable_serializers__", None
             ):
                 parent_serializers.update(serializable_serializers)
-
             if serializable_deserializers := getattr(
                 cl, "__serializable_deserializers__", None
             ):
@@ -822,52 +722,37 @@ class SerializableMeta(type):
             module = sys.modules.get(cls.__module__)
             annotations = typing.get_type_hints(
                 cls,
-                globalns=vars(module),
+                globalns=vars(module) if module is not None else {},
                 localns=dict(vars(cls)),
                 include_extras=False,
             )
-        except NameError as exc:
+        except (NameError, TypeError) as exc:
             annotations = namespace.get("__annotations__", {})
             warnings.warn(
                 f"Could not resolve type hints for {cls.__name__}: {exc}. "
-                f"Using raw annotations which may not work well with forward references.",
+                f"Using raw annotations, which may not work well with "
+                f"forward references or complex generics.",
                 RuntimeWarning,
+                stacklevel=2,
             )
 
         cls_fields = fields or annotations
         all_fields = {**parent_fields, **cls_fields}
-        # Clean fields: remove any with value `None` or starting with dunder
         all_fields = {
-            k: v
-            for k, v in all_fields.items()
-            if v is not None and not k.startswith("__")
+            key: value
+            for key, value in all_fields.items()
+            if value is not None and not key.startswith("__")
         }
 
-        # NOTE: We don't discover type serializers/deserializers here.
-        # Discovery happens lazily on first dump/load call for any class instance.
-        # We only store explicitly provided serializers/deserializers.
+        all_serializers = {**parent_serializers, **(serializers or {})}
+        all_deserializers = {**parent_deserializers, **(deserializers or {})}
 
-        # Build final serializers/deserializers with proper precedence
-        # - Parent class (medium priority)
-        # - Explicit on this class (highest priority)
-        # - Auto-discovered (lowest priority, added lazily at runtime)
-        all_serializers = {
-            **parent_serializers,
-            **(serializers or {}),
-        }
-        all_deserializers = {
-            **parent_deserializers,
-            **(deserializers or {}),
-        }
-
-        is_abstract_cls = (
-            "__abstract_serializable__" in namespace
-            and namespace["__abstract_serializable__"]
-        )
-        if is_abstract_cls is False and not all_fields:
+        is_abstract_cls = bool(namespace.get("__abstract_serializable__", False))
+        if not is_abstract_cls and not all_fields:
             raise ValidationError(
-                "Serializable classes must have fields defined. If the class is an abstract base class, "
-                "set `__abstract_serializable__` to True"
+                "Serializable classes must have fields defined. If the class "
+                "is an abstract base class, set `__abstract_serializable__` "
+                "to True."
             )
 
         if all_fields:
@@ -875,11 +760,8 @@ class SerializableMeta(type):
                 namespace["__dump__"], "_is_placeholder", False
             ):
                 cls.__dump__ = _build_serializer(
-                    fields=all_fields,
-                    exclude=dump_exclude,
-                    serializers=all_serializers,
+                    fields=all_fields, exclude=dump_exclude, serializers=all_serializers
                 )
-
             if "__load__" not in namespace or getattr(
                 namespace["__load__"], "_is_placeholder", False
             ):
@@ -904,162 +786,45 @@ class Serializable(metaclass=SerializableMeta):
     def __init_subclass__(cls, *args: typing.Any, **kwargs: typing.Any) -> None:
         super().__init_subclass__()
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        """Dump the object to a dictionary."""
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        """Dump the object to arg dictionary. Overridable per-class hook."""
         raise NotImplementedError
 
     @classmethod
     def __load__(cls: typing.Type[Self], data: typing.Mapping[str, typing.Any]) -> Self:
-        """Load an object from a mapping."""
+        """Load an object from arg mapping. Overridable per-class hook."""
         raise NotImplementedError
 
     __dump__._is_placeholder = True  # type: ignore
     __load__._is_placeholder = True  # type: ignore
 
-    def dump(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def dump(self) -> typing.Dict[str, typing.Any]:
         try:
-            return self.__dump__(recurse)
+            return self.__dump__()  # type: ignore[arg-type]
         except Exception as exc:
-            raise SerializationError("Failed to dump serializable object") from exc
+            raise SerializationError(
+                f"Failed to dump {type(self).__name__!r} object"
+            ) from exc
 
     @classmethod
     def load(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         try:
-            return cls.__load__(data)
+            return cls.__load__(data)  # type: ignore[arg-type]
+        except DeserializationError:
+            raise
         except Exception as exc:
             raise DeserializationError(
-                f"Failed to load serializable object of type {cls.__name__!r}"
+                f"Failed to load {cls.__name__!r} object"
             ) from exc
 
 
-# Register `Serializable` with cattrs converter
-def _structure_serializable(
-    data: typing.Mapping[str, typing.Any], cls: typing.Type[Serializable]
-) -> Serializable:
-    return cls.load(data)
-
-
-def _unstructure_serializable(obj: Serializable) -> typing.Mapping[str, typing.Any]:
-    return obj.dump(recurse=True)
-
-
-converter.register_structure_hook_func(
-    lambda typ: _is_serializable_type(typ), _structure_serializable
-)
-converter.register_unstructure_hook_func(
-    lambda typ: _is_serializable_type(typ), _unstructure_serializable
-)
-
-
-SerializableT = typing.TypeVar("SerializableT", bound=Serializable)
-
-
-def dump(o: Serializable, /, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-    """Dump a `Serializable` object to a dictionary."""
-    return o.__dump__(recurse)
+def dump(o: Serializable, /) -> typing.Dict[str, typing.Any]:
+    """Dump arg `Serializable` object to arg dictionary."""
+    return o.dump()
 
 
 def load(
     cls: typing.Type[SerializableT], data: typing.Mapping[str, typing.Any]
 ) -> SerializableT:
-    """Load a `Serializable` object from a dictionary."""
-    return cls.__load__(data)
-
-
-def ndarray_serializer(
-    arr: npt.NDArray, recurse: bool = True
-) -> typing.Dict[str, typing.Any]:
-    """
-    Adapter matching the bores `serializers=` dict signature.
-
-    Use this when you want to opt-in on specific fields rather than
-    registering globally:
-
-    ```python
-
-    @attrs.frozen
-    class MyGrid(
-        Serializable,
-        serializers={"kx": ndarray_serializer, "ky": ndarray_serializer},
-        deserializers={"kx": ndarray_deserializer, "ky": ndarray_deserializer}
-    ):
-        kx: np.ndarray
-        ky: np.ndarray
-    ```
-    """
-    return serialize_ndarray(arr)
-
-
-def ndarray_deserializer(data: typing.Any) -> np.ndarray:
-    """
-    Adapter matching the bores `deserializers=` dict signature.
-
-    Pair with `ndarray_serializer` for explicit per-field registration.
-    """
-    return deserialize_ndarray(data)
-
-
-def register_type_serializer(
-    typ: typing.Type[T],
-    serializer: typing.Callable[[T, bool], typing.Dict[str, typing.Any]],
-) -> None:
-    """Register a global type serializer for a specific type."""
-    with _type_serializers_lock:
-        _TYPE_SERIALIZERS[typ] = serializer
-
-
-def register_type_deserializer(
-    typ: typing.Type[T],
-    deserializer: typing.Callable[[typing.Mapping[str, typing.Any]], T],
-) -> None:
-    """Register a global type deserializer for a specific type."""
-    with _type_deserializers_lock:
-        _TYPE_DESERIALIZERS[typ] = deserializer
-
-
-def _structure_ndarray(data: typing.Any, cls: typing.Type[npt.NDArray]) -> npt.NDArray:
-    return deserialize_ndarray(data)
-
-
-def _unstructure_ndarray(obj: npt.NDArray) -> typing.Mapping[str, typing.Any]:
-    return serialize_ndarray(obj)
-
-
-def register_ndarray_serializers() -> None:
-    """
-    Register global ndarray serializer and deserializer with the bores
-    serialization system.
-
-    Call this **once** at application startup, before any `Serializable`
-    objects are dumped or loaded. After registration, `np.ndarray` fields on
-    *any* `Serializable` subclass are handled automatically without
-    per-field `serializers=` arguments.
-
-    Safe to call multiple times (subsequent calls silently overwrite with the
-    same functions).
-
-    Example:
-
-    ```python
-    import bores
-    from ndarray_serialization import register_ndarray_serializers
-
-    register_ndarray_serializers()
-    ```
-    """
-    register_type_serializer(
-        typ=np.ndarray,
-        serializer=lambda arr, recurse: serialize_ndarray(arr),
-    )
-    register_type_deserializer(
-        typ=np.ndarray,
-        deserializer=deserialize_ndarray,
-    )
-
-    # Register `np.ndarray` with `cattrs` converter
-    converter.register_structure_hook_func(
-        lambda typ: _is_ndarray_type(typ), _structure_ndarray
-    )
-    converter.register_unstructure_hook_func(
-        lambda typ: _is_ndarray_type(typ), _unstructure_ndarray
-    )
+    """Load arg `Serializable` object from arg dictionary."""
+    return cls.load(data)

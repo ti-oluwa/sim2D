@@ -8,10 +8,10 @@ from pathlib import Path
 
 from typing_extensions import ParamSpec, Self
 
-from bores.errors import StorageError, ValidationError
+from bores.errors import StorageError
 from bores.serde.base import Serializable, SerializableT
 
-__all__ = ["DataStore", "data_store", "new_store", "StoreSerializable"]
+__all__ = ["DataStore", "StoreSerializable"]
 
 
 logger = logging.getLogger(__name__)
@@ -287,50 +287,6 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
         return max(e.idx for e in metas) if metas else None
 
 
-StoreT = typing.TypeVar("StoreT", bound=DataStore)
-
-_STORAGE_BACKENDS: typing.Dict[str, typing.Type[DataStore]] = {}
-
-
-@typing.overload
-def data_store(
-    *names: str,
-    store_cls: typing.Type[StoreT],
-) -> typing.Type[StoreT]: ...
-
-
-@typing.overload
-def data_store(
-    *names: str,
-) -> typing.Callable[[typing.Type[StoreT]], typing.Type[StoreT]]: ...
-
-
-def data_store(
-    *names: str,
-    store_cls: typing.Optional[typing.Type[StoreT]] = None,
-) -> typing.Union[
-    typing.Type[StoreT], typing.Callable[[typing.Type[StoreT]], typing.Type[StoreT]]
-]:
-    """
-    Data store registration decorator.
-
-    Register a data store class with a given name.
-
-    :param name: Name of the data store backend
-    :param store_cls: Data store class to register
-    :return: Decorator function if `store_cls` is None, else None
-    """
-
-    def _decorator(store_cls: typing.Type[StoreT]) -> typing.Type[StoreT]:
-        for name in names:
-            _STORAGE_BACKENDS[name] = store_cls
-        return store_cls
-
-    if store_cls is not None:
-        return _decorator(store_cls)
-    return _decorator
-
-
 def validate_path(
     filepath: typing.Union[PathLike, str],
     expected_extension: typing.Optional[str] = None,
@@ -445,86 +401,29 @@ def reraise_storage_error(func: typing.Callable[P, R]) -> typing.Callable[P, R]:
     return _wrapper
 
 
-def new_store(
-    backend: typing.Union[str, typing.Literal["zarr", "hdf5", "json", "yaml"]] = "zarr",
-    *args: typing.Any,
-    **kwargs: typing.Any,
-) -> DataStore:
-    """
-    Create a new state storage.
-
-    :param backend: Storage backend to use ('zarr', 'hdf5', 'npz', 'pickle', etc.)
-    :param args: Additional positional arguments for the store constructor
-    :param kwargs: Additional keyword arguments for the store constructor
-    :return: An instance of the selected `DataStore` backend
-
-    Example:
-    ```python
-    store = new_store('zarr', 'simulation.zarr')
-    store.dump(states)
-    loaded = list(store.load())
-    ```
-    """
-    if backend not in _STORAGE_BACKENDS:
-        raise ValidationError(
-            f"Unknown backend: {backend}. Available backends are: {list(_STORAGE_BACKENDS.keys())}"
-        )
-
-    store_class = _STORAGE_BACKENDS[backend]
-    return store_class(*args, **kwargs)
-
-
 class StoreSerializable(Serializable):
     """Serializable mixin with built-in store/file support."""
 
     __abstract_serializable__ = True
 
     @classmethod
-    def from_store(
+    def read(
         cls, store: DataStore[Self, typing.Any], **load_kwargs: typing.Any
     ) -> typing.Optional[Self]:
         """
-        Load a `Serializable` instance from a `DataStore`.
+        Read and load a `Serializable` instance from a `DataStore`.
 
         :param store: `DataStore` to load the `Serializable` from.
         :return: Loaded `Serializable` instance.
         """
         return next(iter(store.load(cls, **load_kwargs)), None)
 
-    def to_store(
+    def save(
         self, store: DataStore[Self, typing.Any], **dump_kwargs: typing.Any
     ) -> None:
         """
-        Dump the `Serializable` instance to a `DataStore`.
+        Dump and save the `Serializable` instance to a `DataStore`.
 
         :param store: `DataStore` to dump the `Serializable` to.
         """
         store.dump([self], **dump_kwargs)
-
-    @classmethod
-    def read(
-        cls, filepath: typing.Union[str, PathLike[str]], **load_kwargs: typing.Any
-    ) -> typing.Optional[Self]:
-        """
-        Read and load a `Serializable` instance from a file.
-
-        :param filepath: Path to the file to load the `Serializable` from.
-        :return: Loaded `Serializable` instance.
-        """
-        path = Path(filepath)
-        ext = path.suffix.lower().lstrip(".")
-        store = new_store(ext, path)
-        return cls.from_store(store, **load_kwargs)
-
-    def save(
-        self, filepath: typing.Union[str, PathLike[str]], **dump_kwargs: typing.Any
-    ) -> None:
-        """
-        Dump and save the `Serializable` instance to a file.
-
-        :param filepath: Path to the file to dump the `Serializable` to.
-        """
-        path = Path(filepath)
-        ext = path.suffix.lower().lstrip(".")
-        store = new_store(ext, path)
-        self.to_store(store, **dump_kwargs)

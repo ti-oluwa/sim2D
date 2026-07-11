@@ -191,6 +191,30 @@ class RelPermEndpoints:
     """
 
 
+@attrs.frozen
+class SaturationEndpoints:
+    """
+    Saturation endpoint values (connate/residual/critical) for all three
+    phases - the saturations *at which* mobility starts/stops, as opposed
+    to `RelPermEndpoints`, which is the relative permeability *value* at
+    those points.
+
+    All values are dimensionless fractions in [0, 1].
+    """
+
+    connate_water: Number
+    """Connate/critical water saturation (Swco) below which water is immobile."""
+
+    residual_oil_water: Number
+    """Residual oil saturation after water flood (Sorw); oil is immobile below this."""
+
+    residual_oil_gas: Number
+    """Residual oil saturation after gas flood (Sorg); oil is immobile below this."""
+
+    residual_gas: Number
+    """Residual/critical gas saturation (Sgr) below which gas is immobile."""
+
+
 class RelativePermeabilityTable(StoreSerializable):
     """
     Protocol for a relative permeability model/table that
@@ -241,6 +265,56 @@ class RelativePermeabilityTable(StoreSerializable):
             oil=self.get_oil_relperm_endpoint(),
             water=self.get_water_relperm_endpoint(),
             gas=self.get_gas_relperm_endpoint(),
+        )
+
+    def get_connate_water_saturation(self) -> Number:
+        """
+        Connate/critical water saturation (Swco) below which water is
+        immobile.
+
+        Defaults to `0.0` for models/tables that don't carry this
+        information (e.g. a unit-normalized table with no known floor).
+        """
+        return 0.0
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        """
+        Residual oil saturation after water flood (Sorw); oil is immobile
+        below this in the oil-water system.
+
+        Defaults to `0.0`.
+        """
+        return 0.0
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        """
+        Residual oil saturation after gas flood (Sorg); oil is immobile
+        below this in the gas-oil system.
+
+        Defaults to `0.0`.
+        """
+        return 0.0
+
+    def get_residual_gas_saturation(self) -> Number:
+        """
+        Residual/critical gas saturation (Sgr) below which gas is immobile.
+
+        Defaults to `0.0`.
+        """
+        return 0.0
+
+    def get_saturation_endpoints(self) -> SaturationEndpoints:
+        """
+        Compute all four saturation endpoints in a single call.
+
+        :return: `SaturationEndpoints` with connate water and the three
+            residual/critical saturations.
+        """
+        return SaturationEndpoints(
+            connate_water=self.get_connate_water_saturation(),
+            residual_oil_water=self.get_residual_oil_saturation_water(),
+            residual_oil_gas=self.get_residual_oil_saturation_gas(),
+            residual_gas=self.get_residual_gas_saturation(),
         )
 
     def evaluate(
@@ -876,6 +950,70 @@ class TwoPhaseRelPermTable(
             return np.max(self.wetting_phase_relative_permeability)
         return np.max(self.non_wetting_phase_relative_permeability)
 
+    def _axis_phase(self) -> FluidPhase:
+        """Which physical phase `reference_saturation` represents."""
+        return (
+            self.wetting_phase
+            if self.reference_phase == "wetting"
+            else self.non_wetting_phase
+        )
+
+    def get_connate_water_saturation(self) -> Number:
+        """
+        Connate/critical water saturation (Swco), read directly off this
+        table's own saturation axis (its minimum, by construction) when
+        that axis represents water. `0.0` if this table doesn't have water
+        as one of its two phases at all, or water isn't the axis phase (no
+        water-saturation information to read off the axis in that case).
+        """
+        if self._axis_phase() != FluidPhase.WATER:
+            return 0.0
+        return float(self.reference_saturation[0])
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        """
+        Residual oil saturation after water flood (Sorw), derived from this
+        table's own saturation axis - only meaningful for an oil-water
+        table (`0.0` otherwise). If the axis is Sw, Sorw is `1 -
+        Sw_max`; if the axis is So directly, Sorw is the axis minimum.
+        """
+        phases = {self.wetting_phase, self.non_wetting_phase}
+        if phases != {FluidPhase.OIL, FluidPhase.WATER}:
+            return 0.0
+        if self._axis_phase() == FluidPhase.WATER:
+            return max(0.0, 1.0 - float(self.reference_saturation[-1]))
+        return float(self.reference_saturation[0])
+
+    def get_residual_gas_saturation(self) -> Number:
+        """
+        Residual/critical gas saturation (Sgr), read directly off this
+        table's own saturation axis (its minimum, by construction) when
+        that axis represents gas. `0.0` if this table doesn't have gas as
+        one of its two phases, or gas isn't the axis phase.
+        """
+        if self._axis_phase() != FluidPhase.GAS:
+            return 0.0
+        return float(self.reference_saturation[0])
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        """
+        Residual oil saturation after gas flood (Sorg), derived from this
+        table's own saturation axis - only meaningful for a gas-oil table
+        (`0.0` otherwise).
+
+        Standalone two-phase interpretation: this table alone has no
+        connate-water information, so this implicitly assumes `Swco = 0`
+        (`Sorg = 1 - Sg_max`). `ThreePhaseRelPermTable.get_residual_oil_saturation_gas`
+        overrides this with the more accurate `1 - Swco - Sg_max`, combining
+        this table with its sibling oil-water table's own connate water.
+        """
+        phases = {self.wetting_phase, self.non_wetting_phase}
+        if phases != {FluidPhase.OIL, FluidPhase.GAS}:
+            return 0.0
+        if self._axis_phase() == FluidPhase.GAS:
+            return max(0.0, 1.0 - float(self.reference_saturation[-1]))
+        return float(self.reference_saturation[0])
+
     def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
@@ -1455,6 +1593,41 @@ class ThreePhaseRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         return self.gas_oil_table.get_gas_relperm_endpoint()
 
+    def get_connate_water_saturation(self) -> Number:
+        return self.oil_water_table.get_connate_water_saturation()
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        return self.oil_water_table.get_residual_oil_saturation_water()
+
+    def get_residual_gas_saturation(self) -> Number:
+        return self.gas_oil_table.get_residual_gas_saturation()
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        """
+        Residual oil saturation after gas flood (Sorg), combining the
+        gas-oil table's own gas-saturation axis with the oil-water table's
+        connate water saturation: `Sorg = 1 - Swco - Sg_max`. This is more
+        accurate than `gas_oil_table.get_residual_oil_saturation_gas()`
+        alone, which (used standalone) has no connate-water information and
+        implicitly assumes `Swco = 0`.
+        """
+        gas_oil = self.gas_oil_table
+        phases = {gas_oil.wetting_phase, gas_oil.non_wetting_phase}  # type: ignore[union-attr]
+        if FluidPhase.GAS not in phases or not isinstance(
+            gas_oil, TwoPhaseRelPermTable
+        ):
+            return gas_oil.get_residual_oil_saturation_gas()
+        axis_phase = (
+            gas_oil.wetting_phase
+            if gas_oil.reference_phase == "wetting"
+            else gas_oil.non_wetting_phase
+        )
+        if axis_phase != FluidPhase.GAS:
+            return gas_oil.get_residual_oil_saturation_gas()
+        swco = self.oil_water_table.get_connate_water_saturation()
+        sg_max = float(gas_oil.reference_saturation[-1])
+        return max(0.0, 1.0 - swco - sg_max)
+
     def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
@@ -1911,9 +2084,11 @@ class ThreePhaseRelPermTable(
         region_index = max(satnum - 1, 0)
 
         def _has(keyword: str) -> bool:
-            all_regions = deck_file.get(keyword)
-            if all_regions is None:
+            if not deck_file.has(keyword):
                 return False
+
+            all_regions = deck_file.get(keyword)
+            assert all_regions is not None
             return region_index < len(all_regions) and bool(all_regions[region_index])
 
         shared_kwargs: typing.Dict[str, typing.Any] = dict(
@@ -1961,7 +2136,7 @@ class ThreePhaseRelPermTable(
                 stacklevel=2,
             )
             raise ValidationError(
-                f"Oil-water keyword(s) `{oil_water_keyword}` required for ThreePhaseRelPermTable "
+                f"Oil-water keyword(s) `{oil_water_keyword}` required for {cls.__name__} "
                 f"not found at SATNUM {satnum}."
             )
 
@@ -1976,7 +2151,7 @@ class ThreePhaseRelPermTable(
                 stacklevel=2,
             )
             raise ValidationError(
-                f"Gas-oil keyword(s) `{gas_oil_keyword}` required for ThreePhaseRelPermTable "
+                f"Gas-oil keyword(s) `{gas_oil_keyword}` required for {cls.__name__} "
                 f"not found at SATNUM {satnum}."
             )
 

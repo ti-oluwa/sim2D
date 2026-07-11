@@ -1,6 +1,4 @@
-from .boundary_conditions import *
-from .compressibility import *
-from .faults import *
+from .boundary import *
 from .model import *
 from .regions import *
 from .rock import *

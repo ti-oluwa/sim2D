@@ -322,7 +322,7 @@ class PVTTable(StoreSerializable):
                 f"Must be one of: {list(INTERPOLATION_DEGREES.keys())}"
             )
         if not isinstance(data, PVTData):
-            pvt_data = PVTData.from_file(data)  # type: ignore[assignment]
+            pvt_data = PVTData.read(data)  # type: ignore[assignment]
             if pvt_data is None:
                 raise ValidationError(f"Invalid PVT data file {data!s}")
             data = pvt_data
@@ -890,9 +890,9 @@ class PVTTable(StoreSerializable):
             _register_3d("bubble_point_pressure", data.bubble_point_pressure_table)
             _register_2d("gas_free_fvf", data.gas_free_water_fvf_table)
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
-            "data": self._data.dump(recurse),
+            "data": self._data.dump(),
             "interpolation_method": self.interpolation_method,
             "validate": self.validate,
             "warn_on_extrapolation": self.warn_on_extrapolation,
@@ -1927,7 +1927,7 @@ class PVTTables(StoreSerializable):
 
     ```python
     tables = PVTTables.from_dataset(dataset, interpolation_method="cubic")
-    tables = PVTTables.from_files(oil="oil.h5", gas="gas.h5")
+    tables = PVTTables.read_files(oil="oil.h5", gas="gas.h5")
     tables = PVTTables.from_deck(deck_file, temperature=200.0)
     ```
     """
@@ -2021,47 +2021,6 @@ class PVTTables(StoreSerializable):
             else None
         )
         return cls(oil=oil_table, gas=gas_table, water=water_table)
-
-    @classmethod
-    def from_files(
-        cls,
-        oil: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        gas: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        water: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        interpolation_method: InterpolationMethod = "linear",
-        validate: bool = True,
-        warn_on_extrapolation: bool = False,
-        pvt: typing.Optional[StaticPVT] = None,
-        dtype: npt.DTypeLike = None,
-        **load_kwargs: typing.Any,
-    ) -> Self:
-        """
-        Build a `PVTTables` bundle directly from per-phase data files.
-
-        :param oil: Path to serialised oil `PVTData` file.
-        :param gas: Path to serialised gas `PVTData` file.
-        :param water: Path to serialised water `PVTData` file.
-        :param interpolation_method: `"linear"` or `"cubic"`.
-        :param validate: Run physical-consistency checks.
-        :param warn_on_extrapolation: Log warnings on extrapolation.
-        :param pvt: Reference densities for derived table construction.
-        :returns: `PVTTables` ready for simulation.
-        """
-        dataset = PVTDataSet.from_files(
-            oil=oil,
-            gas=gas,
-            water=water,
-            dtype=dtype,
-            **load_kwargs,
-        )
-        return cls.from_dataset(
-            dataset,
-            interpolation_method=interpolation_method,
-            validate=validate,
-            warn_on_extrapolation=warn_on_extrapolation,
-            pvt=pvt,
-            dtype=dtype,
-        )
 
     @classmethod
     def from_deck(

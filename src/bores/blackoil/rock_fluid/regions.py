@@ -253,11 +253,10 @@ class RockFluidRegions(StoreSerializable):
     def __contains__(self, key: object) -> bool:
         return key in self._tables
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
-                str(satnum): tables.dump(recurse)
-                for satnum, tables in self._tables.items()
+                str(satnum): tables.dump() for satnum, tables in self._tables.items()
             }
         }
 

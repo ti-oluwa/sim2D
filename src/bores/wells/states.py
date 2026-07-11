@@ -1,10 +1,4 @@
-"""Per-timestep dynamic well state.
-
-Holds no `ReservoirState` reference and no `WellSpec` reference - only a
-plain `well_name` string key - so a `WellState` stays cheap to keep around
-across a whole simulation timeline. `ConnectionSample` is the only thing
-this module needs the reservoir side to produce.
-"""
+"""Per-timestep dynamic well state."""
 
 import typing
 
@@ -16,19 +10,20 @@ from bores.typing import FluidPhase, Number
 from bores.wells.controls import ControlSpec, Limit
 from bores.wells.data import Perforation
 
-__all__ = ["ConnectionSample", "PerforationState", "WellState"]
+__all__ = ["ConnectionSample", "PerforationState", "WellState", "as_phase_mapping"]
 
 
-def _as_phase_mapping(
+def as_phase_mapping(
     mapping: typing.Mapping[typing.Any, Number],
 ) -> typing.Dict[FluidPhase, Number]:
-    """
-    Normalizes a phase-keyed mapping to `FluidPhase` keys.
+    """Normalize a phase-keyed mapping to `FluidPhase` keys.
 
     `Serializable`'s generic deserializer serializes `Mapping` keys through
     their declared type but doesn't convert them back on load, so a
     dump()/load() round trip otherwise leaves these keys as plain strings.
-    Accepts either a `FluidPhase` or its string value as input.
+    Accepts either a `FluidPhase` or its string value as input. Exported
+    (not module-private) since `wells.hydraulics` and `wells.control_engine`
+    need the same fix for their own phase-keyed fields.
     """
     return {
         (key if isinstance(key, FluidPhase) else FluidPhase(key)): value
@@ -46,10 +41,16 @@ class ConnectionSample(Serializable):
     pressure: Number
     temperature: Number
     phase_saturations: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=_as_phase_mapping
+        converter=as_phase_mapping
     )
     phase_mobilities: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=_as_phase_mapping
+        converter=as_phase_mapping
+    )
+    phase_densities: typing.Mapping[FluidPhase, Number] = attrs.field(
+        converter=as_phase_mapping
+    )
+    phase_viscosities: typing.Mapping[FluidPhase, Number] = attrs.field(
+        converter=as_phase_mapping
     )
 
     def __attrs_post_init__(self) -> None:
@@ -65,7 +66,7 @@ class PerforationState(Serializable):
     cell_index: int
     flowing_pressure: Number
     phase_rates: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=_as_phase_mapping
+        converter=as_phase_mapping
     )
 
     def __attrs_post_init__(self) -> None:
@@ -85,7 +86,7 @@ class WellState(Serializable):
         converter=tuple
     )
     phase_rates: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=_as_phase_mapping
+        converter=as_phase_mapping
     )
     active_limit: typing.Optional[Limit] = None
     thp: typing.Optional[Number] = None

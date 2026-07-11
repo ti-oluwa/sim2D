@@ -6,8 +6,8 @@ from bores.grids.io.grdecl import load_grdecl
 from bores.grids.utils import as_pyvista_grid
 from bores.typing import UnitSystem
 
-df = DeckFile("data/Norne.grdecl")
-grid = load_grdecl(source=df, encoding="utf-8", unit_system=UnitSystem.METRIC)
+df = DeckFile("data/Norne.grdecl", unit_system=UnitSystem.METRIC)
+grid = load_grdecl(source=df, encoding="utf-8")
 print(f"cells   : {grid.n_cells}")
 print(f"faces   : {grid.n_faces}")
 print(f"volumes : {grid.cell_volumes}")

@@ -349,8 +349,8 @@ class DeckFile:
         deck_unit_system = unit_system or self._resolve_unit_system()
         if deck_unit_system is None:
             raise DeckParseError(
-                "Could not detect deck unit system. Perhaps you passed a standalone PVT, GRDECL or relperm include file"
-                "Please provide `unit_system` on instantiation."
+                "Could not detect deck unit system. Perhaps you passed a standalone PVT, GRDECL or relperm include file. "
+                "Provide `unit_system` on instantiation."
             )
 
         self.unit_system: UnitSystem = deck_unit_system

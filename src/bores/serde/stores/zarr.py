@@ -9,22 +9,26 @@ from importlib.metadata import version
 from os import PathLike
 from pathlib import Path
 
-import h5py  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
 import orjson
 import zarr  # type: ignore[import-untyped]
+from numcodecs.vlen import VLenUTF8
 from packaging.version import Version
 from zarr.storage import StoreLike  # type: ignore[import-untyped]
 
 from bores.errors import StorageError
 from bores.serde.base import SerializableT
+from bores.serde.stores._utils import (
+    denormalize_from_storage,
+    normalize_loaded_value,
+    sequence_to_ndarray,
+)
 from bores.serde.stores.base import (
     DataStore,
     EntryMeta,
     _get_group_name,
     _get_index_from_group_name,
-    data_store,
     reraise_storage_error,
     validate_path,
 )
@@ -42,90 +46,22 @@ logger = logging.getLogger(__name__)
 _NONE_SENTINEL = "__NONE_SENTINEL__"
 
 
-def _is_none_sentinel(value: typing.Any) -> bool:
-    """Check if value is the None sentinel."""
-    return isinstance(value, str) and value == _NONE_SENTINEL
+def _zarr_string_array(value: typing.Sequence[str]) -> npt.NDArray:
+    """
+    Zarr's native variable-length string representation: plain
+    `dtype=object`. No `h5py` dependency - `_create_dataset` recognizes
+    `dtype=object` and routes it to `zarr`'s own string handling per
+    version: `dtype=str` (zarr's own `StringDType` resolution) on Zarr 3,
+    `object_codec=numcodecs.VLenUTF8()` (already a direct dependency via
+    `Blosc`) on Zarr 2. Confirmed working on both, verified by testing -
+    `h5py` was never actually required for this, it was carried over from
+    sharing code with `hdf5.py`.
+    """
+    return np.asarray(value, dtype=object)
 
 
 def _sequence_to_ndarray(value: Sequence, path: str) -> npt.NDArray:
-    """
-    Convert a (possibly nested) sequence into a NumPy array
-    that is safe for HDF5/Zarr storage.
-
-    Raises if the sequence would produce dtype=object.
-    """
-    if not value:
-        return np.empty((0,), dtype=np.int8)
-
-    if any(isinstance(v, Mapping) for v in value):
-        raise TypeError(
-            f"Sequence of mappings must be stored as groups, not datasets: {path}"
-        )
-
-    if isinstance(value[0], Sequence) and not isinstance(value[0], (str, bytes)):
-        arrays = [_sequence_to_ndarray(v, path) for v in value]
-        try:
-            arr = np.stack(arrays)
-        except ValueError as exc:
-            raise TypeError(f"Inconsistent nested sequence shapes at {path}") from exc
-        return arr
-
-    if all(isinstance(v, (bool, np.bool_)) for v in value):
-        return np.asarray(value, dtype=bool)
-
-    if all(
-        isinstance(v, (int, np.integer)) and not isinstance(v, (bool, np.bool_))
-        for v in value
-    ):
-        return np.asarray(value)
-
-    if all(isinstance(v, (int, float, np.integer, np.floating)) for v in value):
-        return np.asarray(value)
-
-    if all(isinstance(v, str) for v in value):
-        if hasattr(h5py, "string_dtype"):
-            dtype = h5py.string_dtype(encoding="utf-8")
-            return np.asarray(value, dtype=dtype)
-        return np.asarray(value, dtype="U")
-
-    raise TypeError(
-        f"Unsupported or mixed sequence contents at {path}: "
-        f"{set(type(v).__name__ for v in value)}"
-    )
-
-
-def _normalize_for_storage(value: typing.Any) -> typing.Any:
-    """Normalize Python values for storage (replace None with sentinel)."""
-    if value is None:
-        return _NONE_SENTINEL
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, np.ndarray)
-    ):
-        return [_normalize_for_storage(v) for v in value]
-    elif isinstance(value, Mapping):
-        return {k: _normalize_for_storage(v) for k, v in value.items()}
-    return value
-
-
-def _denormalize_from_storage(value: typing.Any) -> typing.Any:
-    """Denormalize values from storage (replace sentinel with None)."""
-    if _is_none_sentinel(value):
-        return None
-    elif isinstance(value, list):
-        return [_denormalize_from_storage(v) for v in value]
-    elif isinstance(value, dict):
-        return {k: _denormalize_from_storage(v) for k, v in value.items()}
-    return value
-
-
-def _normalize_loaded_value(value: typing.Any) -> typing.Any:
-    """Normalize values loaded from HDF5/Zarr datasets."""
-    if isinstance(value, np.ndarray):
-        if value.dtype.kind in ("U", "S", "O"):
-            result = value.astype(str).tolist()
-            return _denormalize_from_storage(result)
-        return value
-    return _denormalize_from_storage(value)
+    return sequence_to_ndarray(value, path, string_array_factory=_zarr_string_array)
 
 
 """
@@ -315,7 +251,7 @@ def _unflatten(
 
     for flat_key, arr in arrays.items():
         parts = _split_path(flat_key)
-        value = _normalize_loaded_value(arr)
+        value = normalize_loaded_value(arr)
         _set_nested(result, parts, value)
 
     for flat_key, raw in scalars.items():
@@ -329,13 +265,12 @@ def _unflatten(
         elif vtype == _VTYPE_BOOL:
             value = bool(raw)
         else:
-            value = _denormalize_from_storage(raw)
+            value = denormalize_from_storage(raw)
 
         _set_nested(result, parts, value)
     return result
 
 
-@data_store("zarr")
 class ZarrStore(DataStore[SerializableT, zarr.Group]):
     """
     Zarr-based storage.
@@ -362,7 +297,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
             count: N
     ```
 
-    All nesting from the original `Serializable.dump(recurse=True)` dict is
+    All nesting from the original `Serializable.dump()` dict is
     encoded into flat dataset/attr names using `->`-separated percent-encoded
     path segments. No sub-groups are created inside entry groups, so every
     `append` performs exactly `(number of arrays)` `create_dataset` calls
@@ -494,11 +429,16 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         self, group: zarr.Group, name: str, data: np.ndarray
     ) -> zarr.Array:
         chunks = self._get_chunks(data.shape)
+        is_string_array = data.dtype == object
+        # `_sequence_to_ndarray`/`_zarr_string_array` only ever produce
+        # `dtype=object` for the "sequence of str" case (every other path
+        # raises rather than falling back to `object`), so this is an
+        # unambiguous signal, not a heuristic.
         if ZARR_VERSION_GTE_3:
             return group.create_array(  # type: ignore
                 name=name,
                 data=data,
-                shape=data.shape,
+                dtype=str if is_string_array else data.dtype,
                 chunks=chunks or "auto",
                 compressor=self.compressor,
                 overwrite=True,
@@ -507,6 +447,8 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
             name=name,
             data=data,
             shape=data.shape,
+            dtype=object if is_string_array else data.dtype,
+            object_codec=VLenUTF8() if is_string_array else None,
             chunks=chunks,
             compressor=self.compressor,
             overwrite=True,
@@ -542,7 +484,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         group_name = _get_group_name(index)
         item_group = root.require_group(group_name)
 
-        raw = item.dump(recurse=True)
+        raw = item.dump()
         arrays, scalars, vtypes = _flatten(raw)
 
         # Collision guard. Two paths must never produce the same key

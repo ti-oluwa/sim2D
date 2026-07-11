@@ -1900,7 +1900,7 @@ class Run(StoreSerializable):
         )
 
     @classmethod
-    def from_files(
+    def read_files(
         cls,
         model_path: typing.Union[str, PathLike],
         config_path: typing.Union[str, PathLike],

@@ -571,6 +571,27 @@ class KilloughLandRelPermTable(
         """Gas relative permeability endpoint from the primary drainage table."""
         return self.gas_oil_drainage_table.get_gas_relperm_endpoint()
 
+    def get_connate_water_saturation(self) -> Number:
+        """Connate water saturation from the primary drainage table (static; hysteresis doesn't move it)."""
+        return self.oil_water_drainage_table.get_connate_water_saturation()
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        """
+        Static (drainage-table) residual oil to water, from the primary
+        drainage table. Note this is the *static* Sorw the table declares,
+        not the dynamically Land-trapped value used during an active
+        imbibition scan (see `_parse_hysteresis_kwargs`/`compute_land_residual_saturation`).
+        """
+        return self.oil_water_drainage_table.get_residual_oil_saturation_water()
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        """Static (drainage-table) residual oil to gas; see `get_residual_oil_saturation_water`."""
+        return self.gas_oil_drainage_table.get_residual_oil_saturation_gas()
+
+    def get_residual_gas_saturation(self) -> Number:
+        """Static (drainage-table) residual/critical gas saturation; see `get_residual_oil_saturation_water`."""
+        return self.gas_oil_drainage_table.get_residual_gas_saturation()
+
     def _parse_hysteresis_kwargs(
         self,
         water_saturation: npt.NDArray,

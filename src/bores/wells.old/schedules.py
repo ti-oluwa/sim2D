@@ -67,7 +67,7 @@ class EventPredicates(Serializable, typing.Generic[WellT, Coordinates]):
         results = (predicate(well, state) for predicate in self.predicates)
         return any(results) if self.on_any else all(results)
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize the composite predicate."""
         return {
             "predicates": [
@@ -117,7 +117,7 @@ class EventActions(Serializable, typing.Generic[WellT, Coordinates]):
         for action in self.actions:
             action(well, state)
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize the composite action."""
         return {
             "actions": [
@@ -219,7 +219,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         """Invert with NOT logic: ~self"""
         return self.__class__(_op="not", _operands=(self,))  # type: ignore
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize the predicate expression."""
         if self._func is not None:
             # Leaf node, serialize the underlying function
@@ -231,7 +231,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         return {
             "type": "event_predicate_composite",
             "op": self._op,
-            "operands": [op.dump(recurse) for op in self._operands],  # type: ignore
+            "operands": [op.dump() for op in self._operands],  # type: ignore
         }
 
     @classmethod
@@ -303,7 +303,7 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
         right_actions = other._actions if other._func is None else (other,)
         return self.__class__(_actions=left_actions + right_actions)  # type: ignore
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize the action."""
         if self._func is not None:
             # Leaf node, serialize the underlying function
@@ -314,7 +314,7 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
         # Composite node, serialize the action chain
         return {
             "type": "event_action_composite",
-            "actions": [action.dump(recurse) for action in self._actions],  # type: ignore
+            "actions": [action.dump() for action in self._actions],  # type: ignore
         }
 
     @classmethod
@@ -533,7 +533,7 @@ def serialize_event_predicate(
     :return: A dictionary representing the serialized predicate.
     """
     if isinstance(predicate, EventPredicate):
-        return predicate.dump(recurse)
+        return predicate.dump()
 
     # Check for registered predicates
     with _predicate_lock:
@@ -545,13 +545,13 @@ def serialize_event_predicate(
     if isinstance(predicate, TimePredicate):
         return {
             "type": "time_predicate",
-            "data": predicate.dump(recurse),
+            "data": predicate.dump(),
         }
 
     if isinstance(predicate, EventPredicates):
         return {
             "type": "composite_predicates",
-            "data": predicate.dump(recurse),
+            "data": predicate.dump(),
         }
 
     raise SerializationError(
@@ -611,7 +611,7 @@ def serialize_event_action(
     :return: A dictionary representing the serialized action.
     """
     if isinstance(action, EventAction):
-        return action.dump(recurse)
+        return action.dump()
 
     # Check for registered actions
     with _action_lock:
@@ -622,13 +622,13 @@ def serialize_event_action(
     if isinstance(action, UpdateAction):
         return {
             "type": "update_action",
-            "data": action.dump(recurse),
+            "data": action.dump(),
         }
 
     if isinstance(action, EventActions):
         return {
             "type": "composite_actions",
-            "data": action.dump(recurse),
+            "data": action.dump(),
         }
 
     raise SerializationError(
@@ -703,7 +703,7 @@ class WellEvent(Serializable, typing.Generic[Coordinates]):
         """
         self.action(well, state)
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize the well event."""
         return {
             "predicate": serialize_event_predicate(self.predicate, recurse),
@@ -863,10 +863,8 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
             combined_schedule.add(id_, event)
         return combined_schedule
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        return {
-            "events": {id_: event.dump(recurse) for id_, event in self.events.items()}
-        }
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        return {"events": {id_: event.dump() for id_, event in self.events.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
@@ -993,10 +991,10 @@ class WellSchedules(StoreSerializable, typing.Generic[Coordinates]):
                 schedule.apply(well, state)  # type: ignore
         return None
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "schedules": {
-                well_name: schedule.dump(recurse)
+                well_name: schedule.dump()
                 for well_name, schedule in self.schedules.items()
             }
         }

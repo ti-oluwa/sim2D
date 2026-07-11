@@ -486,6 +486,24 @@ class BrooksCoreyRelPermTable(
     def get_gas_relperm_endpoint(self) -> Number:
         return self.maximum_gas_relperm
 
+    def get_connate_water_saturation(self) -> Number:
+        """
+        This model doesn't distinguish connate from irreducible water
+        saturation (a single `irreducible_water_saturation` parameter
+        covers both), matching how the rest of this codebase already
+        treats the two as coincident by default.
+        """
+        return self.irreducible_water_saturation or 0.0
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        return self.residual_oil_saturation_water or 0.0
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        return self.residual_oil_saturation_gas or 0.0
+
+    def get_residual_gas_saturation(self) -> Number:
+        return self.residual_gas_saturation or 0.0
+
     def evaluate(
         self,
         water_saturation: NumberOrArray[NDimension],
@@ -1852,6 +1870,23 @@ class LETThreePhaseRelPermTable(
 
     def get_gas_relperm_endpoint(self) -> Number:
         return self.maximum_gas_relperm
+
+    def get_connate_water_saturation(self) -> Number:
+        """
+        This model doesn't distinguish connate from irreducible water
+        saturation (a single `irreducible_water_saturation` parameter
+        covers both).
+        """
+        return self.irreducible_water_saturation or 0.0
+
+    def get_residual_oil_saturation_water(self) -> Number:
+        return self.residual_oil_saturation_water or 0.0
+
+    def get_residual_oil_saturation_gas(self) -> Number:
+        return self.residual_oil_saturation_gas or 0.0
+
+    def get_residual_gas_saturation(self) -> Number:
+        return self.residual_gas_saturation or 0.0
 
     def evaluate(
         self,

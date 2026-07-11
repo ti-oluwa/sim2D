@@ -82,7 +82,7 @@ def make_registry_serializer(
     base_cls: typing.Type[SerializableT],
     registry: typing.Dict[str, typing.Type[SerializableT]],
     key_attr: str = "__type__",
-) -> typing.Callable[[SerializableT, bool], typing.Dict[str, typing.Any]]:
+) -> typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]:
     """
     Create a serializer function for a registry of `Serializable` subclasses.
 
@@ -91,16 +91,14 @@ def make_registry_serializer(
     :return: A serializer function.
     """
 
-    def serializer(
-        obj: SerializableT, recurse: bool = True
-    ) -> typing.Dict[str, typing.Any]:
+    def serializer(obj: SerializableT) -> typing.Dict[str, typing.Any]:
         key = getattr(obj, key_attr, None)
         if not key or key not in registry:
             raise ValidationError(
                 f"Unsupported {base_cls.__name__} type: {type(obj)!r}"
             )
 
-        return {key: obj.dump(recurse)}
+        return {key: obj.dump()}
 
     serializer.__name__ = f"serialize_{base_cls.__name__.lower()}"
     return serializer

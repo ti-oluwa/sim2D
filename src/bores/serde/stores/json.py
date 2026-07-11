@@ -13,7 +13,6 @@ from bores.serde.stores.base import (
     DataValidator,
     EntryMeta,
     _get_group_name,
-    data_store,
     reraise_storage_error,
     validate_path,
 )
@@ -24,7 +23,6 @@ __all__ = ["JSONStore"]
 logger = logging.getLogger(__name__)
 
 
-@data_store("json")
 class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
     """
     JSON-based storage.  Human-readable, no compression.  Good for configs.
@@ -104,7 +102,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
 
     def close(self) -> None:
         """
-        Serialise ``self._handle`` back to disk and release it.
+        Serialise `self._handle` back to disk and release it.
 
         Idempotent. Safe to call when no handle is open.
         """
@@ -141,7 +139,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
                     "_index": index,
                     "_group_name": _get_group_name(index),
                     "_meta": meta(item) if meta is not None else {},
-                    "data": item.dump(recurse=True),
+                    "data": item.dump(),
                 }
             )
 

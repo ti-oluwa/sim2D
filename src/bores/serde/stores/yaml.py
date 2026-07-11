@@ -16,7 +16,6 @@ from bores.serde.stores.base import (
     DataValidator,
     EntryMeta,
     _get_group_name,
-    data_store,
     reraise_storage_error,
     validate_path,
 )
@@ -72,7 +71,8 @@ def _ndarray_constructor(
 ):
     try:
         if not isinstance(node, yaml.MappingNode):
-            raise TypeError(f"Expected MappingNode, got {type(node)}")
+            raise TypeError(f"Expected `yaml.MappingNode`, got `{type(node)}`")
+
         mapping = loader.construct_mapping(node, deep=True)
         data = mapping["data"]
         dtype = np.dtype(mapping["dtype"])
@@ -129,7 +129,6 @@ for _t in [
     yaml.add_representer(np.generic, _np_scalar_representer)
 
 
-@data_store("yaml", "yml")
 class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
     """
     YAML-based storage.
@@ -232,7 +231,7 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
                     "_index": index,
                     "_group_name": _get_group_name(index),
                     "_meta": meta(item) if meta is not None else {},
-                    "data": item.dump(recurse=True),
+                    "data": item.dump(),
                 }
             )
 

@@ -13,6 +13,15 @@ from bores.typing import Number
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "compute_fluid_density",
+    "compute_fluid_viscosity",
+    "compute_fluid_compressibility_factor",
+    "compute_fluid_compressibility",
+    "compute_total_fluid_compressibility",
+    "compute_hydrocarbon_in_place",
+]
+
 
 def compute_fluid_density(pressure: Number, temperature: Number, fluid: str) -> Number:
     """

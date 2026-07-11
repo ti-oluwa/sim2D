@@ -1222,7 +1222,7 @@ class Timer(StoreSerializable):
         )
         return timer
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return typing.cast(typing.Dict[str, typing.Any], self.dump_state())
 
     @classmethod

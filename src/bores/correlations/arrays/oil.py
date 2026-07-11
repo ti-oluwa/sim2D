@@ -19,7 +19,28 @@ from bores.utils import apply_mask, clip, get_mask, max_, min_
 
 logger = logging.getLogger(__name__)
 
-__all__ = []
+__all__ = [
+    "compute_oil_specific_gravity",
+    "compute_oil_formation_volume_factor_standing",
+    "compute_oil_formation_volume_factor_vazquez_and_beggs",
+    "correct_oil_fvf_for_pressure",
+    "compute_oil_formation_volume_factor",
+    "compute_oil_api_gravity",
+    "compute_oil_bubble_point_pressure",
+    "compute_gas_to_oil_ratio",
+    "compute_dead_oil_viscosity_modified_beggs",
+    "compute_oil_viscosity",
+    "compute_base_compressibility",
+    "compute_oil_compressibility",
+    "compute_live_oil_density",
+    "compute_gas_to_oil_ratio_standing",
+    "estimate_solution_gor",
+    "estimate_bubble_point_pressure_standing",
+    "compute_miscibility_transition_factor",
+    "compute_effective_todd_longstaff_omega",
+    "compute_todd_longstaff_effective_viscosity",
+    "compute_todd_longstaff_effective_density",
+]
 
 
 def compute_oil_specific_gravity(

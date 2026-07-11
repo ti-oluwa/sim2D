@@ -72,10 +72,8 @@ class Wells(StoreSerializable):
     def __contains__(self, name: object) -> bool:
         return name in self._wells
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        return {
-            "wells": {name: spec.dump(recurse) for name, spec in self._wells.items()}
-        }
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        return {"wells": {name: spec.dump() for name, spec in self._wells.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> "Wells":

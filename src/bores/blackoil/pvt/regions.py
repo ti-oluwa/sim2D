@@ -251,11 +251,10 @@ class PVTRegions(StoreSerializable):
     def __contains__(self, key: object) -> bool:
         return key in self._regions
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "regions": {
-                str(pvtnum): region.dump(recurse)
-                for pvtnum, region in self._regions.items()
+                str(pvtnum): region.dump() for pvtnum, region in self._regions.items()
             }
         }
 

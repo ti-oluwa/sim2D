@@ -1,20 +1,22 @@
 import typing
+import warnings
 
 import attrs
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
+from bores.blackoil.rock_fluid.regions import RockFluidRegions
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
-from bores.reservoir.compressibility import (
+from bores.reservoir.regions import _load_region_array
+from bores.reservoir.rock.compressibility import (
     RockCompressibility,
     RockCompressibilityRegions,
 )
-from bores.reservoir.regions import _load_region_array
 from bores.serde.stores import StoreSerializable
 from bores.typing import (
     CellArray,
@@ -187,11 +189,6 @@ class Rock(StoreSerializable):
     from deck keywords such as `PORO`, `PERMX/Y/Z`, `NTG`, `SWCON`,
     `SWCRIT`, and `TEMPVD`.
 
-    `temperature` lives here because it is static in standard black-oil
-    (isothermal) simulations. For thermal extensions it becomes spatially
-    varying but still does not change between Newton iterations; it is not
-    part of the primary variable set that the solver updates.
-
     All saturation arrays are dimensionless fractions in [0, 1].
     Use `convert(target)` to rescale dimensional quantities to another
     unit system.
@@ -358,6 +355,57 @@ class Rock(StoreSerializable):
             unit_system=target,
         )
 
+    @staticmethod
+    def _saturation_endpoints_from_tables(
+        rock_fluid: RockFluidRegions,
+        saturation_regions: IntCellArray,
+        n_cells: int,
+        dtype: npt.DTypeLike,
+    ) -> typing.Dict[str, CellArray]:
+        """
+        Derive per-cell saturation-endpoint fallbacks from each cell's
+        SATNUM relative-permeability model, for whichever of the five
+        endpoint keywords (`SWCON`, `SWCRIT`, `SOWCR`, `SOGCR`, `SGCR`)
+        aren't present in the deck.
+
+        Uses `RelativePermeabilityTable.get_saturation_endpoints()`.
+
+        This is what a simulator would do automatically when
+        explicit endpoint arrays are absent (rather than silently treating
+        every cell as having zero connate water / zero residual
+        saturations, as a large error whenever the reservoir engineer defined
+        endpoints only through the relative-permeability model/tables, as
+        many hand-built decks do).
+
+        `irreducible_water_saturation` (`SWCRIT`) has no separate source
+        and defaults to `connate_water_saturation`, matching what the rest
+        of this codebase already assumes when the two coincide.
+
+        :returns: Dict keyed by `Rock` field name, each shape `(n_cells,)`.
+        """
+        connate_water_saturation = np.zeros(n_cells, dtype=dtype)
+        residual_oil_saturation_water_flood = np.zeros(n_cells, dtype=dtype)
+        residual_oil_saturation_gas_flood = np.zeros(n_cells, dtype=dtype)
+        residual_gas_saturation = np.zeros(n_cells, dtype=dtype)
+
+        for satnum in np.unique(saturation_regions):
+            mask = saturation_regions == satnum
+            endpoints = rock_fluid.region(
+                int(satnum)
+            ).relative_permeability.get_saturation_endpoints()
+            connate_water_saturation[mask] = endpoints.connate_water
+            residual_oil_saturation_water_flood[mask] = endpoints.residual_oil_water
+            residual_oil_saturation_gas_flood[mask] = endpoints.residual_oil_gas
+            residual_gas_saturation[mask] = endpoints.residual_gas
+
+        return {
+            "connate_water_saturation": connate_water_saturation,
+            "irreducible_water_saturation": connate_water_saturation.copy(),
+            "residual_oil_saturation_water_flood": residual_oil_saturation_water_flood,
+            "residual_oil_saturation_gas_flood": residual_oil_saturation_gas_flood,
+            "residual_gas_saturation": residual_gas_saturation,
+        }
+
     @classmethod
     def from_deck(
         cls,
@@ -365,6 +413,8 @@ class Rock(StoreSerializable):
         *,
         grid: Grid,
         rock_regions: typing.Optional[IntCellArray] = None,
+        rock_fluid: typing.Optional[RockFluidRegions] = None,
+        saturation_regions: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
     ) -> Self:
@@ -374,9 +424,30 @@ class Rock(StoreSerializable):
         Reads `PORO`, `PERMX/Y/Z`, `NTG`, `SWCON`, `SWCRIT`, `SOWCR`,
         `SOGCR`, `SGCR`, `ROCK`/`ROCKTAB`, and `TEMPVD`/`RTEMP`.
 
+        `SWCON`/`SWCRIT`/`SOWCR`/`SOGCR`/`SGCR` are per-cell saturation
+        *endpoint* arrays. This is relatively uncommon in hand-built decks, which
+        usually define these endpoints implicitly through the saturation
+        function tables (`SWOF`/`SGOF`) instead.
+
+        Whichever of the five is absent from the deck is derived from
+        `rock_fluid`'s per-SATNUM tables when `rock_fluid` is supplied (see
+        `_saturation_endpoints_from_tables`); only truly defaults to `0.0`
+        if `rock_fluid` isn't given either. Explicit deck arrays always take
+        precedence, per keyword independently.
+
         :param deck_file: Parsed `DeckFile` containing PROPS/GRID keywords.
         :param grid: Already-loaded `Grid` (provides `n_cells` and cell
             centroid depths for temperature interpolation).
+        :param rock_fluid: Optional `RockFluidRegions`, used to derive any
+            of the five saturation-endpoint arrays not explicitly present
+            in `deck_file`, from each cell's SATNUM saturation-function
+            table. Strongly recommended. Without it, any endpoint the deck
+            doesn't supply explicitly silently defaults to `0.0` for every
+            cell, which is rarely physically correct.
+        :param saturation_regions: Optional per-cell SATNUM array, used
+            (only) for the `rock_fluid`-based derivation above. If omitted,
+            loaded from the deck's own `SATNUM` keyword (defaulting to
+            region 1 everywhere if that's absent too).
         :returns: `Rock` in the deck's unit system.
         :raises ValidationError: If required keywords (`PORO`, `PERMX`) are
             missing.
@@ -399,6 +470,18 @@ class Rock(StoreSerializable):
                 return np.full(n_cells, default, dtype=dtype)
             return data
 
+        def _saturation_endpoint(
+            keyword: str,
+            field: str,
+            table_derived: typing.Optional[typing.Mapping[str, CellArray]],
+        ) -> CellArray:
+            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
+            if data is not None:
+                return data
+            if table_derived is not None:
+                return table_derived[field]
+            return np.zeros(n_cells, dtype=dtype)
+
         permeability = RockPermeability.from_deck(
             deck_file, n_cells=n_cells, dtype=dtype
         )
@@ -411,15 +494,43 @@ class Rock(StoreSerializable):
         if rock_regions is None:
             rock_regions = _load_region_array(deck_file, "ROCKNUM", n_cells)
 
+        table_derived_endpoints: typing.Optional[typing.Dict[str, CellArray]] = None
+        if rock_fluid is not None:
+            if saturation_regions is None:
+                saturation_regions = _load_region_array(deck_file, "SATNUM", n_cells)
+            if saturation_regions is not None:
+                table_derived_endpoints = cls._saturation_endpoints_from_tables(
+                    rock_fluid=rock_fluid,
+                    saturation_regions=saturation_regions,
+                    n_cells=n_cells,
+                    dtype=dtype,
+                )
+            else:
+                warnings.warn(
+                    "`rock_fluid` was provided but rock saturation regions (`SATNUM`) could not be determined from deck"
+                    "Pass `saturation_regions` or exclude `rock_fluid` to silence this warning",
+                    category=UserWarning,
+                    stacklevel=3,
+                )
         return cls(
             porosity=_required("PORO"),
             absolute_permeability=permeability,
             net_to_gross=_optional("NTG", 1.0),
             compressibility_regions=compressibility_regions,
-            connate_water_saturation=_optional("SWCON", 0.0),
-            irreducible_water_saturation=_optional("SWCRIT", 0.0),
-            residual_oil_saturation_water_flood=_optional("SOWCR", 0.0),
-            residual_oil_saturation_gas_flood=_optional("SOGCR", 0.0),
-            residual_gas_saturation=_optional("SGCR", 0.0),
+            connate_water_saturation=_saturation_endpoint(
+                "SWCON", "connate_water_saturation", table_derived_endpoints
+            ),
+            irreducible_water_saturation=_saturation_endpoint(
+                "SWCRIT", "irreducible_water_saturation", table_derived_endpoints
+            ),
+            residual_oil_saturation_water_flood=_saturation_endpoint(
+                "SOWCR", "residual_oil_saturation_water_flood", table_derived_endpoints
+            ),
+            residual_oil_saturation_gas_flood=_saturation_endpoint(
+                "SOGCR", "residual_oil_saturation_gas_flood", table_derived_endpoints
+            ),
+            residual_gas_saturation=_saturation_endpoint(
+                "SGCR", "residual_gas_saturation", table_derived_endpoints
+            ),
             unit_system=unit_system,
         )

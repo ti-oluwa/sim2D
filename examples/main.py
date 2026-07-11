@@ -1,11 +1,15 @@
 import pyvista as pv
 
-from bores.blackoil import BlackOilFluid, PVTRegions, RockFluidRegions
+from bores.blackoil.fluid import BlackOilFluid
+from bores.blackoil.pvt import PVTRegions
+from bores.blackoil.rock_fluid import RockFluidRegions
 from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
-from bores.initialization import EquilibriumRegions, initialize_reservoir_state
-from bores.reservoir import Regions, Reservoir, Rock, Temperature
+from bores.initialization import initialize_reservoir_state
+from bores.reservoir import Regions, Reservoir, Temperature
+from bores.reservoir.rock import Rock
+from bores.reservoir.state import EquilibriumRegions
 from bores.typing import UnitSystem
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
@@ -14,13 +18,19 @@ print(df.keywords)
 # The reservoir
 grid = Grid.from_deck(df)
 regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
-rock = Rock.from_deck(df, grid=grid, rock_regions=regions.rock_regions)
+rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="eclipse_rule")
+rock = Rock.from_deck(
+    df,
+    grid=grid,
+    rock_regions=regions.rock_regions,
+    rock_fluid=rock_fluid,
+    saturation_regions=regions.saturation_regions,
+)
 reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 
 # The fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-rock_fluid = RockFluidRegions.from_deck(df, mixing_rule="eclipse_rule")
 black_oil = BlackOilFluid(pvt=pvt, rock_fluid=rock_fluid)
 table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"
@@ -35,7 +45,7 @@ initial_state = initialize_reservoir_state(
     rock_fluid=rock_fluid,
     temperature=temperature,
 )
-print(initial_state.oil_mass.sum())
+print(initial_state.dump())
 
 # # Plot the grid
 # print(f"cells   : {grid.n_cells}")

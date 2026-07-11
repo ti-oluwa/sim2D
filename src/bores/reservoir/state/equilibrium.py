@@ -322,9 +322,7 @@ class EquilibriumRegion(StoreSerializable):
         """
         Build a single `EquilibriumRegion` from a parsed `DeckFile`.
 
-        Reads only the requested `EQLNUM` record - does not construct
-        `EquilibriumRegion` objects for any other region, unlike routing
-        through `load_equilibrium_infos`.
+        Reads only the requested `EQLNUM` record.
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
@@ -456,20 +454,20 @@ class EquilibriumRegions(StoreSerializable):
         self.rvvd_tables = rvvd_tables
         self.unit_system = expected_unit_system
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
         """Serialize EquilibriumRegions to a dictionary."""
         return {
             "regions": {
-                str(num): region.dump(recurse) for num, region in self._regions.items()
+                str(num): region.dump() for num, region in self._regions.items()
             },
             "rsvd_tables": {
-                str(num): table.dump(recurse)
+                str(num): table.dump()
                 for num, table in (self.rsvd_tables or {}).items()
             }
             if self.rsvd_tables
             else None,
             "rvvd_tables": {
-                str(num): table.dump(recurse)
+                str(num): table.dump()
                 for num, table in (self.rvvd_tables or {}).items()
             }
             if self.rvvd_tables

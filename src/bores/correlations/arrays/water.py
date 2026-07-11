@@ -27,6 +27,20 @@ from bores.utils import apply_mask, get_mask, max_, min_
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "compute_water_formation_volume_factor",
+    "compute_water_formation_volume_factor_mccain",
+    "compute_water_bubble_point_pressure_mccain",
+    "compute_water_bubble_point_pressure",
+    "compute_water_viscosity",
+    "compute_gas_solubility_in_water",
+    "compute_gas_free_water_formation_volume_factor",
+    "compute_water_compressibility",
+    "compute_water_density_mccain",
+    "compute_water_density_batzle",
+    "compute_water_density",
+]
+
 
 def compute_water_formation_volume_factor(
     water_density: NumberArray[NDimension], salinity: NumberOrArray

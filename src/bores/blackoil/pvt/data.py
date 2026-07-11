@@ -359,7 +359,8 @@ class PVTDataSet(StoreSerializable):
     water: typing.Optional[PVTData] = None
     """Raw PVT data for the water phase."""
 
-    _unit_system: UnitSystem = attrs.field(init=False, repr=False)
+    unit_system: UnitSystem = attrs.field(init=False, repr=False)
+    """Unit system in which all PVTData are expressed."""
 
     def __attrs_post_init__(self) -> None:
         # Check that not all phases are None
@@ -390,41 +391,7 @@ class PVTDataSet(StoreSerializable):
                 f"{type(self).__name__}: All `PVTData` must have the same unit system. Found: {unit_systems}"
             )
 
-        object.__setattr__(self, "_unit_system", unit_systems.pop())
-
-    @property
-    def unit_system(self) -> UnitSystem:
-        """Unit system in which all PVTData are expressed."""
-        return self._unit_system
-
-    @classmethod
-    def from_files(
-        cls,
-        oil: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        gas: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        water: typing.Optional[typing.Union[PathLike[str], str]] = None,
-        dtype: npt.DTypeLike = None,
-        **load_kwargs: typing.Any,
-    ) -> Self:
-        """
-        Load a `PVTDataSet` from individual per-phase files.
-
-        :param oil: Path to a serialised oil `PVTData` file.
-        :param gas: Path to a serialised gas `PVTData` file.
-        :param water: Path to a serialised water `PVTData` file.
-        :returns: `PVTDataSet` with the requested phases populated.
-        """
-        return cls(
-            oil=PVTData.from_file(oil, dtype=dtype, **load_kwargs)
-            if oil is not None
-            else None,
-            gas=PVTData.from_file(gas, dtype=dtype, **load_kwargs)
-            if gas is not None
-            else None,
-            water=PVTData.from_file(water, dtype=dtype, **load_kwargs)
-            if water is not None
-            else None,
-        )
+        object.__setattr__(self, "unit_system", unit_systems.pop())
 
     def convert(
         self,

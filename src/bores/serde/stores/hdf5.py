@@ -13,13 +13,18 @@ import orjson
 
 from bores.errors import StorageError
 from bores.serde.base import SerializableT
+from bores.serde.stores._utils import (
+    denormalize_from_storage,
+    normalize_for_storage,
+    normalize_loaded_value,
+    sequence_to_ndarray,
+)
 from bores.serde.stores.base import (
     DataStore,
     DataValidator,
     EntryMeta,
     _get_group_name,
     _get_index_from_group_name,
-    data_store,
     reraise_storage_error,
     validate_path,
 )
@@ -29,94 +34,19 @@ __all__ = ["HDF5Store"]
 logger = logging.getLogger(__name__)
 
 
-# Sentinel for None values to avoid object dtype issues
-_NONE_SENTINEL = "__NONE_SENTINEL__"
-
-
-def _is_none_sentinel(value: typing.Any) -> bool:
-    """Check if value is the None sentinel."""
-    return isinstance(value, str) and value == _NONE_SENTINEL
+def _hdf5_string_array(value: typing.Sequence[str]) -> npt.NDArray:
+    """
+    HDF5's native variable-length string representation
+    (`h5py.string_dtype`), falling back to fixed-width unicode (`'U'`) on
+    older `h5py` that lacks it.
+    """
+    if hasattr(h5py, "string_dtype"):
+        return np.asarray(value, dtype=h5py.string_dtype(encoding="utf-8"))
+    return np.asarray(value, dtype="U")
 
 
 def _sequence_to_ndarray(value: Sequence, path: str) -> npt.NDArray:
-    """
-    Convert a (possibly nested) sequence into a NumPy array
-    that is safe for HDF5/Zarr storage.
-
-    Raises if the sequence would produce dtype=object.
-    """
-    if not value:
-        return np.empty((0,), dtype=np.int8)
-
-    if any(isinstance(v, Mapping) for v in value):
-        raise TypeError(
-            f"Sequence of mappings must be stored as groups, not datasets: {path}"
-        )
-
-    if isinstance(value[0], Sequence) and not isinstance(value[0], (str, bytes)):
-        arrays = [_sequence_to_ndarray(v, path) for v in value]
-        try:
-            arr = np.stack(arrays)
-        except ValueError as exc:
-            raise TypeError(f"Inconsistent nested sequence shapes at {path}") from exc
-        return arr
-
-    if all(isinstance(v, (bool, np.bool_)) for v in value):
-        return np.asarray(value, dtype=bool)
-
-    if all(
-        isinstance(v, (int, np.integer)) and not isinstance(v, (bool, np.bool_))
-        for v in value
-    ):
-        return np.asarray(value)
-
-    if all(isinstance(v, (int, float, np.integer, np.floating)) for v in value):
-        return np.asarray(value)
-
-    if all(isinstance(v, str) for v in value):
-        if hasattr(h5py, "string_dtype"):
-            dtype = h5py.string_dtype(encoding="utf-8")
-            return np.asarray(value, dtype=dtype)
-        return np.asarray(value, dtype="U")
-
-    raise TypeError(
-        f"Unsupported or mixed sequence contents at {path}: "
-        f"{set(type(v).__name__ for v in value)}"
-    )
-
-
-def _normalize_for_storage(value: typing.Any) -> typing.Any:
-    """Normalize Python values for storage (replace None with sentinel)."""
-    if value is None:
-        return _NONE_SENTINEL
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, np.ndarray)
-    ):
-        return [_normalize_for_storage(v) for v in value]
-    elif isinstance(value, Mapping):
-        return {k: _normalize_for_storage(v) for k, v in value.items()}
-    return value
-
-
-def _denormalize_from_storage(value: typing.Any) -> typing.Any:
-    """Denormalize values from storage (replace sentinel with None)."""
-    if _is_none_sentinel(value):
-        return None
-    elif isinstance(value, list):
-        return [_denormalize_from_storage(v) for v in value]
-    elif isinstance(value, dict):
-        return {k: _denormalize_from_storage(v) for k, v in value.items()}
-    return value
-
-
-def _normalize_loaded_value(value: typing.Any) -> typing.Any:
-    """Normalize values loaded from HDF5/Zarr datasets."""
-    if isinstance(value, np.ndarray):
-        if value.dtype.kind in ("U", "S", "O"):
-            result = value.astype(str).tolist()
-            return _denormalize_from_storage(result)
-        return value
-    return _denormalize_from_storage(value)
+    return sequence_to_ndarray(value, path, string_array_factory=_hdf5_string_array)
 
 
 def _normalize_loaded_mapping_sequence(value: typing.Any) -> typing.Any:
@@ -142,7 +72,6 @@ def _normalize_loaded_mapping_sequence(value: typing.Any) -> typing.Any:
     return value
 
 
-@data_store("hdf5", "h5")
 class HDF5Store(DataStore[SerializableT, h5py.File]):
     """
     HDF5-based storage.
@@ -303,7 +232,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
 
     def _write_data(self, group: h5py.Group, data: Mapping[str, typing.Any]) -> None:
         for key, value in data.items():
-            value = _normalize_for_storage(value)
+            value = normalize_for_storage(value)
 
             if isinstance(value, Mapping):
                 sub_group = group.require_group(name=key)
@@ -350,7 +279,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
     ) -> EntryMeta:
         group_name = _get_group_name(index)
         item_group = f.require_group(group_name)
-        self._write_data(item_group, item.dump(recurse=True))
+        self._write_data(item_group, item.dump())
         item_group.attrs.update(
             {
                 "_meta": orjson.dumps(meta(item) if meta is not None else {}),
@@ -365,13 +294,13 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
         for key in group:
             item = group[key]
             if isinstance(item, h5py.Dataset):
-                data[key] = _normalize_loaded_value(item[:])  # type: ignore
+                data[key] = normalize_loaded_value(item[:])  # type: ignore
             elif isinstance(item, h5py.Group):
                 loaded = self._read_entry(group=item)
                 data[key] = _normalize_loaded_mapping_sequence(loaded)  # type: ignore
 
         for attr_name in group.attrs:
-            data[attr_name] = _denormalize_from_storage(group.attrs[attr_name])
+            data[attr_name] = denormalize_from_storage(group.attrs[attr_name])
         return data
 
     @reraise_storage_error

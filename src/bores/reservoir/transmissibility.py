@@ -280,7 +280,7 @@ def compute_connection_transmissibilities(
     return ConnectionTransmissibilities(
         interior=interior_transmissibilities.astype(dtype, copy=False),
         boundary=boundary_transmissibilities.astype(dtype, copy=False),
-        nnc=nnc_transmissibilities.astype(dtype, copy=False),
+        nnc=nnc_transmissibilities.astype(dtype, copy=False),  # type: ignore[union-attr]
         unit_system=target_unit_system,
     )
 
