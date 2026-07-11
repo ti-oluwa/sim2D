@@ -16,8 +16,10 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.pvt.tables import PVTTable
-from bores.blackoil.rock_fluid.capillary_pressure.tables import CapillaryPressureTable
-from bores.blackoil.rock_fluid.regions import RockFluidRegions
+from bores.blackoil.saturation_functions.capillary_pressure.tables import (
+    CapillaryPressureTable,
+)
+from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -760,7 +762,7 @@ def initialize_equilibrium_arrays(
     equilibrium: EquilibriumRegions,
     temperature: CellArray,
     *,
-    rock_fluid: typing.Optional[RockFluidRegions] = None,
+    satfunc: typing.Optional[SaturationFunctionRegions] = None,
     depth_step: Number = 1.0,
     dtype: npt.DTypeLike = None,
     saturation_samples: int = N_SATURATION_SAMPLES,
@@ -771,7 +773,7 @@ def initialize_equilibrium_arrays(
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
 
-    :param rock_fluid: Optional `RockFluidRegions`; when given, saturations
+    :param satfunc: Optional `SaturationFunctionRegions`; when given, saturations
         are computed via capillary-pressure inversion instead of a sharp
         contact (see `_get_saturations_from_capillary_pressure`). Doing so
         requires a `SATNUM` region per cell to select the right
@@ -780,15 +782,15 @@ def initialize_equilibrium_arrays(
         `UserWarning` is raised (see `Warns`).
     :param saturation_samples: Sample count for the capillary-pressure
         inversion grid, forwarded to
-        `_get_saturations_from_capillary_pressure` whenever `rock_fluid` is
+        `_get_saturations_from_capillary_pressure` whenever `satfunc` is
         supplied; ignored for sharp-contact initialization. Defaults to
         `N_SATURATION_SAMPLES`.
     :raises ValidationError: If `reservoir`, `pvt`, `equilibrium`, or
-        `rock_fluid` (when supplied) don't all share the same unit system;
+        `satfunc` (when supplied) don't all share the same unit system;
         if a cell's `EQLNUM` has no matching `EquilibriumRegion`, an
         `EQLNUM` region spans more than one `PVTNUM`/`SATNUM` region, or a
         required PVT table is missing.
-    :warns UserWarning: If `rock_fluid` is supplied but
+    :warns UserWarning: If `satfunc` is supplied but
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable;
         every cell is assigned to saturation region 1 in that case. Supply
         `reservoir.regions.saturation_regions` explicitly (e.g.
@@ -808,13 +810,13 @@ def initialize_equilibrium_arrays(
             f"match `equilibrium.unit_system` ({equilibrium.unit_system.value!r})."
         )
     if (
-        rock_fluid is not None
-        and rock_fluid.unit_system is not None
-        and rock_fluid.unit_system != reservoir.unit_system
+        satfunc is not None
+        and satfunc.unit_system is not None
+        and satfunc.unit_system != reservoir.unit_system
     ):
         raise ValidationError(
             f"`reservoir.unit_system` ({reservoir.unit_system.value!r}) does not "
-            f"match `rock_fluid.unit_system` ({rock_fluid.unit_system.value!r})."
+            f"match `satfunc.unit_system` ({satfunc.unit_system.value!r})."
         )
     equilibrium_regions: IntCellArray = (
         reservoir.regions.equilibrium_regions
@@ -830,9 +832,9 @@ def initialize_equilibrium_arrays(
     saturation_regions: typing.Optional[IntCellArray] = (
         reservoir.regions.saturation_regions if reservoir.regions is not None else None
     )
-    if rock_fluid is not None and saturation_regions is None:
+    if satfunc is not None and saturation_regions is None:
         warnings.warn(
-            "`rock_fluid` was supplied but `reservoir.regions.saturation_regions` "
+            "`satfunc` was supplied but `reservoir.regions.saturation_regions` "
             "(SATNUM) is unavailable; defaulting every cell to saturation region 1. "
             "Set `reservoir.regions.saturation_regions` explicitly (e.g. "
             "`np.ones(reservoir.n_cells, dtype=np.int32)` for a single-region "
@@ -870,9 +872,9 @@ def initialize_equilibrium_arrays(
         pvt_region = pvt.region(int(region_pvtnum[0]))
 
         capillary_pressure: typing.Optional[CapillaryPressureTable] = None
-        if rock_fluid is not None:
+        if satfunc is not None:
             # Guaranteed non-`None` here: defaulted to region 1 (with a
-            # warning) above whenever `rock_fluid` is supplied.
+            # warning) above whenever `satfunc` is supplied.
             assert saturation_regions is not None
             region_satnum = np.unique(saturation_regions[mask])
             if len(region_satnum) != 1:
@@ -882,7 +884,7 @@ def initialize_equilibrium_arrays(
                     "region must map to exactly one saturation-function "
                     "region for capillary-pressure-based initialization."
                 )
-            capillary_pressure = rock_fluid.region(
+            capillary_pressure = satfunc.region(
                 int(region_satnum[0])
             ).capillary_pressure
 
@@ -1025,7 +1027,7 @@ def initialize_reservoir_state(
     *,
     deck_file: typing.Optional[DeckFile] = None,
     equilibrium: typing.Optional[EquilibriumRegions] = None,
-    rock_fluid: typing.Optional[RockFluidRegions] = None,
+    satfunc: typing.Optional[SaturationFunctionRegions] = None,
     temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
     water_saturation: typing.Optional[CellArray] = None,
@@ -1066,7 +1068,7 @@ def initialize_reservoir_state(
     :param deck_file: Optional `DeckFile` to read explicit arrays from.
     :param equilibrium: Optional `EquilibriumRegions` for any fields not covered by an
         explicit array/keyword.
-    :param rock_fluid: Optional `RockFluidRegions` for capillary-pressure-based
+    :param satfunc: Optional `SaturationFunctionRegions` for capillary-pressure-based
         saturations instead of a sharp contact. If supplied and
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable, every
         cell defaults to saturation region 1 and a `UserWarning` is raised
@@ -1084,19 +1086,19 @@ def initialize_reservoir_state(
         resolved saturations (`Hysteresis.from_initial_saturation`) for
         later scanning-curve tracking. Works regardless of whether
         saturations came from a sharp contact or capillary-pressure
-        inversion; `rock_fluid` is not itself required.
+        inversion; `satfunc` is not itself required.
     :param dtype: Preferred dtype for the returned `ReservoirState`. Defaults to `get_dtype()`
     :param saturation_samples: Sample count for the capillary-pressure
         inversion grid, forwarded to `initialize_equilibrium_arrays` when
-        `rock_fluid` is supplied. Defaults to `N_SATURATION_SAMPLES`.
+        `satfunc` is supplied. Defaults to `N_SATURATION_SAMPLES`.
     :raises NotImplementedError: If `deck_file` has a `RESTART` keyword
         (not yet supported).
     :raises ValidationError: If some field is covered by neither an
         explicit array/keyword nor `equilibrium`/`deck_file`, if `reservoir`
-        and `pvt` unit systems disagree, or if `equilibrium`/`rock_fluid`
+        and `pvt` unit systems disagree, or if `equilibrium`/`satfunc`
         (when supplied) don't share that same unit system, or if
         saturations are physically inconsistent.
-    :warns UserWarning: If `rock_fluid` is supplied but
+    :warns UserWarning: If `satfunc` is supplied but
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable; see
         `initialize_equilibrium_arrays`. Also if exactly one of
         `pressure`/`solution_gor` (or `pressure`/`vaporized_oil_ratio`) is
@@ -1126,13 +1128,13 @@ def initialize_reservoir_state(
             f"match `equilibrium.unit_system` ({equilibrium.unit_system.value!r})."
         )
     if (
-        rock_fluid is not None
-        and rock_fluid.unit_system is not None
-        and rock_fluid.unit_system != unit_system
+        satfunc is not None
+        and satfunc.unit_system is not None
+        and satfunc.unit_system != unit_system
     ):
         raise ValidationError(
             f"`reservoir.unit_system` ({unit_system.value!r}) does not "
-            f"match `rock_fluid.unit_system` ({rock_fluid.unit_system.value!r})."
+            f"match `satfunc.unit_system` ({satfunc.unit_system.value!r})."
         )
 
     temperature_arr = _resolve_temperature(
@@ -1180,7 +1182,7 @@ def initialize_reservoir_state(
             pvt=pvt,
             equilibrium=equilibrium,
             temperature=temperature_arr,
-            rock_fluid=rock_fluid,
+            satfunc=satfunc,
             depth_step=depth_step,
             dtype=dtype,
             saturation_samples=saturation_samples,

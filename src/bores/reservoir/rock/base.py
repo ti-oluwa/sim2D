@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.regions import RockFluidRegions
+from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -357,7 +357,7 @@ class Rock(StoreSerializable):
 
     @staticmethod
     def _saturation_endpoints_from_tables(
-        rock_fluid: RockFluidRegions,
+        satfunc: SaturationFunctionRegions,
         saturation_regions: IntCellArray,
         n_cells: int,
         dtype: npt.DTypeLike,
@@ -390,7 +390,7 @@ class Rock(StoreSerializable):
 
         for satnum in np.unique(saturation_regions):
             mask = saturation_regions == satnum
-            endpoints = rock_fluid.region(
+            endpoints = satfunc.region(
                 int(satnum)
             ).relative_permeability.get_saturation_endpoints()
             connate_water_saturation[mask] = endpoints.connate_water
@@ -413,7 +413,7 @@ class Rock(StoreSerializable):
         *,
         grid: Grid,
         rock_regions: typing.Optional[IntCellArray] = None,
-        rock_fluid: typing.Optional[RockFluidRegions] = None,
+        satfunc: typing.Optional[SaturationFunctionRegions] = None,
         saturation_regions: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
@@ -430,22 +430,22 @@ class Rock(StoreSerializable):
         function tables (`SWOF`/`SGOF`) instead.
 
         Whichever of the five is absent from the deck is derived from
-        `rock_fluid`'s per-SATNUM tables when `rock_fluid` is supplied (see
+        `satfunc`'s per-SATNUM tables when `satfunc` is supplied (see
         `_saturation_endpoints_from_tables`); only truly defaults to `0.0`
-        if `rock_fluid` isn't given either. Explicit deck arrays always take
+        if `satfunc` isn't given either. Explicit deck arrays always take
         precedence, per keyword independently.
 
         :param deck_file: Parsed `DeckFile` containing PROPS/GRID keywords.
         :param grid: Already-loaded `Grid` (provides `n_cells` and cell
             centroid depths for temperature interpolation).
-        :param rock_fluid: Optional `RockFluidRegions`, used to derive any
+        :param satfunc: Optional `SaturationFunctionRegions`, used to derive any
             of the five saturation-endpoint arrays not explicitly present
             in `deck_file`, from each cell's SATNUM saturation-function
             table. Strongly recommended. Without it, any endpoint the deck
             doesn't supply explicitly silently defaults to `0.0` for every
             cell, which is rarely physically correct.
         :param saturation_regions: Optional per-cell SATNUM array, used
-            (only) for the `rock_fluid`-based derivation above. If omitted,
+            (only) for the `satfunc`-based derivation above. If omitted,
             loaded from the deck's own `SATNUM` keyword (defaulting to
             region 1 everywhere if that's absent too).
         :returns: `Rock` in the deck's unit system.
@@ -495,20 +495,20 @@ class Rock(StoreSerializable):
             rock_regions = _load_region_array(deck_file, "ROCKNUM", n_cells)
 
         table_derived_endpoints: typing.Optional[typing.Dict[str, CellArray]] = None
-        if rock_fluid is not None:
+        if satfunc is not None:
             if saturation_regions is None:
                 saturation_regions = _load_region_array(deck_file, "SATNUM", n_cells)
             if saturation_regions is not None:
                 table_derived_endpoints = cls._saturation_endpoints_from_tables(
-                    rock_fluid=rock_fluid,
+                    satfunc=satfunc,
                     saturation_regions=saturation_regions,
                     n_cells=n_cells,
                     dtype=dtype,
                 )
             else:
                 warnings.warn(
-                    "`rock_fluid` was provided but rock saturation regions (`SATNUM`) could not be determined from deck"
-                    "Pass `saturation_regions` or exclude `rock_fluid` to silence this warning",
+                    "`satfunc` was provided but rock saturation regions (`SATNUM`) could not be determined from deck"
+                    "Pass `saturation_regions` or exclude `satfunc` to silence this warning",
                     category=UserWarning,
                     stacklevel=3,
                 )

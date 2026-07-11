@@ -31,7 +31,7 @@ import numba
 import numpy as np
 from numba.extending import overload
 
-from bores.blackoil.rock_fluid.utils import build_pchip_interpolant
+from bores.blackoil.saturation_functions.utils import build_pchip_interpolant
 from bores.errors import ValidationError
 from bores.typing import (
     MixingRuleDFunc,

@@ -5,15 +5,15 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.capillary_pressure.tables import (
+from bores.blackoil.saturation_functions.capillary_pressure.tables import (
     ThreePhaseCapillaryPressureTable,
 )
-from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
-from bores.blackoil.rock_fluid.relperm.tables import (
+from bores.blackoil.saturation_functions.relperm.mixing_rules import MixingRule
+from bores.blackoil.saturation_functions.relperm.tables import (
     MinimumRelPerm,
     ThreePhaseRelPermTable,
 )
-from bores.blackoil.rock_fluid.tables import RockFluidTables
+from bores.blackoil.saturation_functions.tables import SaturationFunctionTables
 from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -23,17 +23,17 @@ from bores.typing import Spacing, UnitSystem
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["RockFluidRegions"]
+__all__ = ["SaturationFunctionRegions"]
 
 
-class RockFluidRegions(StoreSerializable):
+class SaturationFunctionRegions(StoreSerializable):
     """
-    Multi-region rock-fluid tables keyed by 1-based `SATNUM` region index.
+    Multi-region saturation-function tables keyed by 1-based `SATNUM` region index.
 
     Eclipse supports multiple saturation function regions via the `SATNUM`
     keyword - each cell is assigned a region index and its relative
     permeability and capillary pressure are evaluated from the corresponding
-    `RockFluidTables` instance.
+    `SaturationFunctionTables` instance.
 
     Use `region(satnum)` to retrieve the tables for a given region, and
     `from_deck` to construct from a deck.
@@ -43,14 +43,14 @@ class RockFluidRegions(StoreSerializable):
 
     def __init__(
         self,
-        tables: typing.Dict[int, RockFluidTables],
+        tables: typing.Dict[int, SaturationFunctionTables],
         *,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Build a `RockFluidRegions` from a pre-built regions dict.
+        Build a `SaturationFunctionRegions` from a pre-built regions dict.
 
-        :param tables: Mapping from 1-based SATNUM index to `RockFluidTables`.
+        :param tables: Mapping from 1-based SATNUM index to `SaturationFunctionTables`.
         :param unit_system: Expected unit system for all tables. If omitted,
             it is inferred from the first table and every other table is
             required to match it.
@@ -82,12 +82,12 @@ class RockFluidRegions(StoreSerializable):
         """Number of saturation function regions."""
         return len(self._tables)
 
-    def region(self, satnum: int) -> RockFluidTables:
+    def region(self, satnum: int) -> SaturationFunctionTables:
         """
-        Return the `RockFluidTables` for a given 1-based region index.
+        Return the `SaturationFunctionTables` for a given 1-based region index.
 
         :param satnum: 1-based SATNUM region index.
-        :returns: `RockFluidTables` for that region.
+        :returns: `SaturationFunctionTables` for that region.
         :raises KeyError: If the region index does not exist.
         """
         tables = self._tables.get(satnum)
@@ -100,14 +100,14 @@ class RockFluidRegions(StoreSerializable):
         return tables
 
     @classmethod
-    def single_region(cls, tables: RockFluidTables) -> Self:
+    def single_region(cls, tables: SaturationFunctionTables) -> Self:
         """
-        Wrap a single `RockFluidTables` as region 1.
+        Wrap a single `SaturationFunctionTables` as region 1.
 
         Convenience factory for the common single-region case.
 
-        :param tables: `RockFluidTables` instance.
-        :returns: `RockFluidRegions` with one entry at key 1.
+        :param tables: `SaturationFunctionTables` instance.
+        :returns: `SaturationFunctionRegions` with one entry at key 1.
         """
         return cls(tables={1: tables})
 
@@ -119,13 +119,13 @@ class RockFluidRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `RockFluidRegions` with capillary pressure in every
+        Return a new `SaturationFunctionRegions` with capillary pressure in every
         region rescaled to *target*.
 
         Relative permeability is dimensionless and is unaffected.
 
         :param target: Target `UnitSystem`.
-        :returns: New `RockFluidRegions` in *target* units.
+        :returns: New `SaturationFunctionRegions` in *target* units.
         """
         return self.__class__(
             tables={
@@ -154,7 +154,7 @@ class RockFluidRegions(StoreSerializable):
 
         Detects which Eclipse saturation-function keyword family is present
         (`SWOF`/`SGOF` or `SWFN`/`SGFN` + `SOF2`/`SOF3`) and builds one
-        `RockFluidTables` per `SATNUM` region, each combining a
+        `SaturationFunctionTables` per `SATNUM` region, each combining a
         `ThreePhaseRelPermTable` and (when available) a
         `ThreePhaseCapillaryPressureTable`.
 
@@ -178,7 +178,7 @@ class RockFluidRegions(StoreSerializable):
             the capillary pressure table for each region. When `False`, skip
             capillary pressure entirely (useful for runs that ignore Pc).
         :param dtype: Array dtype shared by every region's tables.
-        :returns: `RockFluidRegions` keyed by 1-based SATNUM index.
+        :returns: `SaturationFunctionRegions` keyed by 1-based SATNUM index.
         :raises ValidationError: If no recognised saturation-function keywords
             are found.
         """
@@ -201,7 +201,7 @@ class RockFluidRegions(StoreSerializable):
                 "(second family)."
             )
 
-        tables: typing.Dict[int, RockFluidTables] = {}
+        tables: typing.Dict[int, SaturationFunctionTables] = {}
         for region_index in range(n_regions):
             satnum = region_index + 1  # 1-based
 
@@ -230,7 +230,7 @@ class RockFluidRegions(StoreSerializable):
                     dtype=dtype,
                 )
 
-            tables[satnum] = RockFluidTables(
+            tables[satnum] = SaturationFunctionTables(
                 relative_permeability=relative_permeability,
                 capillary_pressure=capillary_pressure,
             )
@@ -241,7 +241,7 @@ class RockFluidRegions(StoreSerializable):
             )
         return cls(tables=tables)
 
-    def __getitem__(self, key: int) -> RockFluidTables:
+    def __getitem__(self, key: int) -> SaturationFunctionTables:
         return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
@@ -263,7 +263,7 @@ class RockFluidRegions(StoreSerializable):
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         tables = {
-            int(satnum): RockFluidTables.load(table_data)
+            int(satnum): SaturationFunctionTables.load(table_data)
             for satnum, table_data in data["tables"].items()
         }
         return cls(tables=tables)

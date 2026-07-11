@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.sparse import coo_matrix
 
-from bores.blackoil.rock_fluid import RockFluidTables
+from bores.blackoil.saturation_functions import SaturationFunctionTables
 from bores.config import Config
 from bores.constants import c
 from bores.datastructures import BottomHolePressures
@@ -1565,7 +1565,7 @@ def compute_rock_fluid_derivatives(
     gas_saturation_grid: ThreeDimensionalGrid,
     rock_properties: RockProperties[ThreeDimensions],
     hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
-    rock_fluid_tables: RockFluidTables,
+    rock_fluid_tables: SaturationFunctionTables,
     disable_capillary_effects: bool = False,
     capillary_strength_factor: float = 1.0,
 ) -> typing.Tuple[

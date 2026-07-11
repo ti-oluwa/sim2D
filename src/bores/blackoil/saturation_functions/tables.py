@@ -6,18 +6,18 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.capillary_pressure.tables import (
+from bores.blackoil.saturation_functions.capillary_pressure.tables import (
     CapillaryPressureTable,
     ThreePhaseCapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
 )
-from bores.blackoil.rock_fluid.relperm.mixing_rules import MixingRule
-from bores.blackoil.rock_fluid.relperm.tables import (
+from bores.blackoil.saturation_functions.relperm.mixing_rules import MixingRule
+from bores.blackoil.saturation_functions.relperm.tables import (
     RelativePermeabilityTable,
     ThreePhaseRelPermTable,
     TwoPhaseRelPermTable,
 )
-from bores.blackoil.rock_fluid.utils import (
+from bores.blackoil.saturation_functions.utils import (
     build_saturation_reference_field,
     pchip_resample,
 )
@@ -35,14 +35,14 @@ from bores.typing import (
 )
 
 __all__ = [
-    "RockFluidTables",
+    "SaturationFunctionTables",
     "as_three_phase_capillary_pressure_table",
     "as_three_phase_relperm_table",
 ]
 
 
 @attrs.frozen
-class RockFluidTables(StoreSerializable):
+class SaturationFunctionTables(StoreSerializable):
     """
     Saturation function table(s) defining rock-fluid interactions in the reservoir.
 
@@ -72,13 +72,13 @@ class RockFluidTables(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `RockFluidTables` with capillary pressure in every
+        Return a new `SaturationFunctionTables` with capillary pressure in every
         region rescaled to *target*.
 
         Relative permeability is dimensionless and is unaffected.
 
         :param target: Target `UnitSystem`.
-        :returns: New `RockFluidTables` in *target* units.
+        :returns: New `SaturationFunctionTables` in *target* units.
         """
         if self.capillary_pressure is None:
             return self

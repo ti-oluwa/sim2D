@@ -21,7 +21,7 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.rock_fluid.relperm.tables import (
+from bores.blackoil.saturation_functions.relperm.tables import (
     MixingRule,
     RelativePermeabilityTable,
     TwoPhaseRelPermTable,
@@ -30,7 +30,7 @@ from bores.blackoil.rock_fluid.relperm.tables import (
     relperm_table,
     serialize_mixing_rule,
 )
-from bores.blackoil.rock_fluid.utils import (
+from bores.blackoil.saturation_functions.utils import (
     compute_killough_scanning_curve,
     compute_killough_scanning_curve_derivative,
 )

@@ -11,14 +11,14 @@ import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.relperm.mixing_rules import (
+from bores.blackoil.saturation_functions.relperm.mixing_rules import (
     MixingRule,
     deserialize_mixing_rule,
     get_mixing_rule,
     get_mixing_rule_partial_derivatives,
     serialize_mixing_rule,
 )
-from bores.blackoil.rock_fluid.utils import build_pchip_interpolant
+from bores.blackoil.saturation_functions.utils import build_pchip_interpolant
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError

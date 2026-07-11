@@ -6,7 +6,7 @@ import attrs
 import numba
 import numpy as np
 
-from bores.blackoil.rock_fluid.relperm.mixing_rules import (
+from bores.blackoil.saturation_functions.relperm.mixing_rules import (
     MixingRule,
     deserialize_mixing_rule,
     eclipse_rule,
@@ -14,7 +14,7 @@ from bores.blackoil.rock_fluid.relperm.mixing_rules import (
     get_mixing_rule_partial_derivatives,
     serialize_mixing_rule,
 )
-from bores.blackoil.rock_fluid.relperm.tables import (
+from bores.blackoil.saturation_functions.relperm.tables import (
     MinimumRelPerm,
     RelativePermeabilityTable,
     _clamp_relperm,

@@ -5,7 +5,7 @@ import typing
 from typing_extensions import Self
 
 from bores.blackoil.pvt.regions import PVTRegions
-from bores.blackoil.rock_fluid.regions import RockFluidRegions
+from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
@@ -18,20 +18,15 @@ class BlackOilFluid(
     StoreSerializable,
     fields={
         "pvt": PVTRegions,
-        "rock_fluid": RockFluidRegions,
+        "satfunc": SaturationFunctionRegions,
         "unit_system": UnitSystem,
     },
 ):
     """
     Black-oil fluid physics model.
 
-    Holds the two multi-region table objects that define the
-    fluid physics for a black-oil simulation:
-
-    - `pvt` - PVT tables and static fluid properties, one
-      `PVTRegion` per Eclipse `PVTNUM` region.
-    - `rock_fluid` - relative permeability and capillary pressure
-      tables, one per Eclipse `SATNUM` region.
+    Holds the multi-region table objects that define the
+    fluid physics for a black-oil simulation.
 
     All region tables are normalised to `unit_system` at construction.
     Use `convert(target)` to produce a fully rescaled copy.
@@ -40,13 +35,13 @@ class BlackOilFluid(
     def __init__(
         self,
         pvt: PVTRegions,
-        rock_fluid: RockFluidRegions,
+        satfunc: SaturationFunctionRegions,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
         :param pvt: PVT region tables keyed by 1-based `PVTNUM` index.
-        :param rock_fluid: Relperm and capillary pressure tables keyed
-            by 1-based `SATNUM` index.
+        :param satfunc: Saturation function region tables keyed by
+            1-based `SATNUM` index.
         :param unit_system: Target unit system for all region tables. When
             `None`, all supplied tables must share the same unit system -
             if they do not, a `ValidationError` is raised. When provided,
@@ -58,11 +53,11 @@ class BlackOilFluid(
 
         # Resolve unit systems of each supplied group
         pvt_unit_system = pvt.unit_system
-        rock_fluid_unit_system = rock_fluid.unit_system
+        satfunc_unit_system = satfunc.unit_system
 
         if unit_system is None:
             # All present groups must agree
-            systems = {pvt_unit_system, rock_fluid_unit_system}
+            systems = {pvt_unit_system, satfunc_unit_system}
             if len(systems) > 1:
                 raise ValidationError(
                     "All region tables must share the same unit system when "
@@ -76,14 +71,14 @@ class BlackOilFluid(
         # Convert each group to the target unit system
         if pvt_unit_system != unit_system:
             pvt = pvt.convert(unit_system, table=unit_conversion_table)
-        if rock_fluid_unit_system != unit_system:
-            rock_fluid = rock_fluid.convert(unit_system, table=unit_conversion_table)
+        if satfunc_unit_system != unit_system:
+            satfunc = satfunc.convert(unit_system, table=unit_conversion_table)
 
         self.pvt = pvt
         """PVT region tables - one `PVTRegion` per `PVTNUM` region."""
 
-        self.rock_fluid = rock_fluid
-        """Relperm and capillary pressure tables - one per `SATNUM` region."""
+        self.satfunc = satfunc
+        """Saturation function region tables - one per `SATNUM` region."""
 
         self.unit_system = unit_system
         """Unit system in which all region tables are expressed."""
@@ -107,7 +102,7 @@ class BlackOilFluid(
 
         return self.__class__(
             pvt=self.pvt.convert(target, table=table),
-            rock_fluid=self.rock_fluid.convert(target, table=table),
+            satfunc=self.satfunc.convert(target, table=table),
             unit_system=target,
         )
 
@@ -115,7 +110,7 @@ class BlackOilFluid(
         return (
             f"{self.__class__.__name__}("
             f"n_pvt_regions={self.pvt.n_regions}, "
-            f"n_rock_fluid_regions={self.rock_fluid.n_regions}, "
+            f"n_saturation_regions={self.satfunc.n_regions}, "
             f"unit_system={self.unit_system.value!r}"  # type: ignore[union-attr]
             f")"
         )

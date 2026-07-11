@@ -5,7 +5,10 @@ import typing
 import numba
 import numpy as np
 
-from bores.blackoil.rock_fluid import CapillaryPressureTable, RelativePermeabilityTable
+from bores.blackoil.saturation_functions import (
+    CapillaryPressureTable,
+    RelativePermeabilityTable,
+)
 from bores.errors import ValidationError
 from bores.grids.base import (
     CapillaryPressureGrids,

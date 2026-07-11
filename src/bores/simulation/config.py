@@ -4,7 +4,7 @@ import typing
 import attrs
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid import RockFluidTables
+from bores.blackoil.saturation_functions import SaturationFunctionTables
 from bores.blackoil.tables.pvt import PVTTables
 from bores.boundary_conditions import BoundaryConditions
 from bores.constants import Constants
@@ -34,7 +34,7 @@ class Config(
     timer: Timer
     """Simulation time manager to control time steps and simulation time."""
 
-    rock_fluid_tables: RockFluidTables
+    rock_fluid_tables: SaturationFunctionTables
     """Rock and fluid property tables for the simulation."""
 
     wells: typing.Optional[Wells[ThreeDimensions]] = None

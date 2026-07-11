@@ -19,12 +19,12 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.rock_fluid.capillary_pressure.tables import (
+from bores.blackoil.saturation_functions.capillary_pressure.tables import (
     CapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
     capillary_pressure_table,
 )
-from bores.blackoil.rock_fluid.utils import (
+from bores.blackoil.saturation_functions.utils import (
     compute_killough_scanning_curve,
     compute_killough_scanning_curve_derivative,
 )

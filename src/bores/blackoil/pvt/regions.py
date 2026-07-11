@@ -186,8 +186,8 @@ class PVTRegions(StoreSerializable):
     def from_deck(
         cls,
         deck_file: DeckFile,
-        temperature: typing.Union[Temperature, Number],
         *,
+        temperature: typing.Union[Temperature, Number],
         interpolation_method: InterpolationMethod = "linear",
         validate: bool = True,
         warn_on_extrapolation: bool = False,

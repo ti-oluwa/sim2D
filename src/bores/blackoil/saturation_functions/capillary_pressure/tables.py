@@ -10,7 +10,7 @@ import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
 from typing_extensions import Self
 
-from bores.blackoil.rock_fluid.utils import build_pchip_interpolant
+from bores.blackoil.saturation_functions.utils import build_pchip_interpolant
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
