@@ -795,6 +795,80 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Minimum fluid compressibility below which the fluid should be considered incompressible",
         unit="1/psi",
     ),
+    # Wellbore Hydraulics - Friction Correlation
+    "WELLBORE_LAMINAR_REYNOLDS_LIMIT": Constant(
+        value=2300.0,
+        description=(
+            "Reynolds number below which tubing flow is treated as laminar "
+            "(f = 64/Re) by the simplified Darcy friction-factor correlation."
+        ),
+        unit="dimensionless",
+    ),
+    "WELLBORE_TURBULENT_REYNOLDS_LIMIT": Constant(
+        value=1.0e5,
+        description=(
+            "Reynolds number above which the simplified Darcy friction-factor "
+            "correlation switches from the Blasius fit to the explicit "
+            "Swamee-Jain-style approximation. Between "
+            "WELLBORE_LAMINAR_REYNOLDS_LIMIT and this value, Blasius (f = "
+            "0.316 * Re^-0.25) is used."
+        ),
+        unit="dimensionless",
+    ),
+    "COLEBROOK_MAX_ITERATIONS": Constant(
+        value=50,
+        description=(
+            "Maximum fixed-point iterations for the Colebrook-White friction "
+            "factor solve (friction_method='colebrook')."
+        ),
+        unit="iterations",
+    ),
+    "COLEBROOK_TOLERANCE": Constant(
+        value=1.0e-10,
+        description=(
+            "Absolute convergence tolerance on the friction factor for the "
+            "Colebrook-White fixed-point iteration."
+        ),
+        unit="dimensionless",
+    ),
+    # Well Control Resolution
+    "CONTROL_MAX_FIXED_POINT_ITERATIONS": Constant(
+        value=20,
+        description=(
+            "Maximum fixed-point iterations reconciling perforation flowing "
+            "pressures against IPR-derived phase rates at a fixed reference "
+            "pressure (BHP)."
+        ),
+        unit="iterations",
+    ),
+    "CONTROL_RATE_CONVERGENCE_TOLERANCE": Constant(
+        value=1.0e-6,
+        description=(
+            "Relative convergence tolerance on total phase rate for both the "
+            "pressure/rate fixed-point iteration and the BHP bisection search."
+        ),
+        unit="fraction",
+    ),
+    "CONTROL_MAX_BISECTION_ITERATIONS": Constant(
+        value=40,
+        description=(
+            "Maximum bisection iterations solving for the reference pressure "
+            "(BHP) that delivers a rate-mode control's target rate."
+        ),
+        unit="iterations",
+    ),
+    "CONTROL_INJECTOR_BHP_BRACKET_MULTIPLIER": Constant(
+        value=10.0,
+        description=(
+            "Upper bisection bracket for injector rate-mode BHP search, "
+            "expressed as a multiple of the highest connected-cell pressure. "
+            "Widen this if an injector's target rate isn't reachable within "
+            "the default bracket; the bisection is best-effort and returns "
+            "the closest bound reached rather than raising if the bracket "
+            "doesn't contain the solution."
+        ),
+        unit="dimensionless",
+    ),
 }
 
 

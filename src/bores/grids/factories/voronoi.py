@@ -729,7 +729,7 @@ def _resolve_3d_bounding_box(
 
 
 def _resolve_layer_thicknesses(
-    layer_thicknesses: typing.Union[float, npt.ArrayLike],
+    layer_thicknesses: typing.Union[Number, npt.ArrayLike],
 ) -> LayerThicknessArray:
     """
     Convert a scalar or array layer thickness specification to a 1-D array.

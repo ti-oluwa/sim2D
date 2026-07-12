@@ -1,43 +1,4 @@
-"""Well control targets and secondary limits.
-
-Pure data - see `00_ARCHITECTURE_OVERVIEW.md` (`D8`) and `02_BEHAVIOR_LAYER.md`
-(`wells/control_engine.py`) for how a `ControlSpec` actually gets resolved
-into a rate/BHP for a timestep. Nothing here computes anything; every method
-below is `__attrs_post_init__` validation only.
-
-**Deviation from the original `01_DATA_LAYER.md` sketch, verified against
-the real framework, not asserted from reading the spec:** the plan defines
-`Limit` and `ControlSpec` as plain `typing.Union[...]` aliases. Probed
-directly against `bores.serialization.base` before writing this file, that
-does not round-trip safely - `Serializable`'s generic Union deserializer
-tries member types in declaration order and returns the first one whose
-*shape* matches, with no tag to disambiguate. `BHPLimit`/`THPLimit` are
-structurally identical (`min_value`/`max_value`, both optional), so a
-dumped `THPLimit` silently reloads as a `BHPLimit` - confirmed by running
-it, not by inspection. `ProducerControlSpec`/`InjectorControlSpec` have the
-same exposure: `InjectorControlMode` and `ProducerControlMode` share the
-string values `"resv"`/`"bhp"`/`"thp"`, and `InjectorControlSpec`'s only
-structurally-distinguishing field (`injected_phase`) is silently dropped
-- not rejected - by `ProducerControlSpec.load()` when absent, since unknown
-extra keys in a dump are simply ignored by the generic deserializer. So an
-injector on BHP or THP control would silently deserialize as a producer.
-
-Both are fixed the same way, and it's not a new pattern: `Limit` and
-`ControlSpec` are `Serializable` abstract base classes (`__abstract_serializable__
-= True`, no fields of their own) with `RateLimit`/`BHPLimit`/`THPLimit` and
-`ProducerControlSpec`/`InjectorControlSpec` registered against them via
-`make_serializable_type_registrar` - the exact mechanism `bores.wells.base`
-already uses for `Well`/`InjectionWell`/`ProductionWell`. This does not
-conflict with `D8`'s stated intent ("pattern-match on type without an extra
-discriminant field"): that's about `control_engine.py` not needing a manual
-`type: Literal[...]` *field* to branch on, and `isinstance`/`type()` checks
-on the concrete subclasses still work exactly as before - arguably better,
-since `isinstance(x, Limit)` is meaningful now, where `isinstance(x,
-typing.Union[...])` never was. The `__type__` tag this adds is a
-wire-format concern only, invisible to any Python-level dispatch logic.
-Round-trip correctness for every combination verified empirically before
-this file was finalized (see conversation) - not assumed.
-"""
+"""Well control targets and secondary limits."""
 
 import enum
 import threading
@@ -58,9 +19,9 @@ __all__ = [
     "RateLimit",
     "BHPLimit",
     "THPLimit",
-    "ControlSpec",
-    "ProducerControlSpec",
-    "InjectorControlSpec",
+    "WellControl",
+    "ProducerControl",
+    "InjectorControl",
 ]
 
 
@@ -79,8 +40,8 @@ class RateQuantity(enum.Enum):
 
 class ProducerControlMode(enum.Enum):
     """
-    Deck `WCONPROD` item 2 - which target field on `ProducerControlSpec`
-    is the active one for this well.
+    Deck `WCONPROD` item 2. Which target field on `ProducerControl`
+    is the active one for this well
     """
 
     ORAT = "orat"
@@ -97,7 +58,7 @@ class ProducerControlMode(enum.Enum):
 
 class InjectorControlMode(enum.Enum):
     """
-    Deck `WCONINJE` item 3 - which target field on `InjectorControlSpec`
+    Deck `WCONINJE` item 3 - which target field on `InjectorControl`
     is the active one for this well.
     """
 
@@ -228,22 +189,25 @@ class THPLimit(Limit):
             )
 
 
-class ControlSpec(Serializable):
+class WellControl(Serializable):
     """
     Abstract base for producer/injector control targets.
 
     Carries no fields of its own - see the module docstring for why this
-    is a real base class rather than the `typing.Union[ProducerControlSpec,
-    InjectorControlSpec]` alias the original sketch used.
+    is a real base class rather than the `typing.Union[ProducerControl,
+    InjectorControl]` alias the original sketch used.
     """
 
     __abstract_serializable__ = True
 
+    limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
+    efficiency_factor: Number = 1.0
 
-_CONTROL_SPEC_TYPES: typing.Dict[str, typing.Type[ControlSpec]] = {}
-_control_spec_type = make_serializable_type_registrar(
-    base_cls=ControlSpec,
-    registry=_CONTROL_SPEC_TYPES,
+
+_CONTROL_TYPES: typing.Dict[str, typing.Type[WellControl]] = {}
+_control_type = make_serializable_type_registrar(
+    base_cls=WellControl,
+    registry=_CONTROL_TYPES,
     lock=threading.Lock(),
     key_attr="__type__",
 )
@@ -259,19 +223,20 @@ PRODUCER_RATE_MODES = (
 INJECTOR_RATE_MODES = (InjectorControlMode.RATE, InjectorControlMode.RESV)
 
 
-@_control_spec_type
+@_control_type
 @attrs.frozen(kw_only=True, slots=True)
-class ProducerControlSpec(ControlSpec):
+class ProducerControl(WellControl):
     """
     A producer's control target plus its secondary limits.
 
-    Exactly one `target_*` field is "active" - selected by `mode` - but all
-    three may be populated at once (e.g. an `ORAT` target alongside a
-    `BHP` floor as a `RateLimit`... no - a BHP *floor* is a `BHPLimit`, an
-    `ORAT` *cap* is a `RateLimit`; `target_bhp` here is the value used only
+    Exactly one `target_*` field is "active" determined selected by `mode`.
+    Although all three may be populated at once (e.g. an `ORAT` target alongside a
+    `BHP` floor as a `BHPLimit`, an `ORAT` *cap* is a `RateLimit`.
+
+    `target_bhp` here is the value used only
     when `mode is ProducerControlMode.BHP`). Deck `WCONPROD` naturally
     supplies several target items at once regardless of which one item 2
-    selects, so all three are kept rather than only the active one -
+    selects, so all three are kept rather than only the active one, so
     switching `mode` at runtime (e.g. rate-to-BHP on limit violation) does
     not require re-supplying the other targets.
     """
@@ -304,17 +269,16 @@ class ProducerControlSpec(ControlSpec):
             )
 
 
-@_control_spec_type
+@_control_type
 @attrs.frozen(kw_only=True, slots=True)
-class InjectorControlSpec(ControlSpec):
-    """An injector's control target plus its secondary limits.
+class InjectorControl(WellControl):
+    """
+    An injector's control target plus its secondary limits.
 
     Same "all targets may be populated, `mode` selects the active one"
-    shape as `ProducerControlSpec`, plus `injected_phase` since an
+    shape as `ProducerControl`, plus `injected_phase` since an
     injector's fluid identity is a control decision (deck `WCONINJE` item
-    2), not a static well property - see `01_DATA_LAYER.md` `D9` /
-    `WellSpec.preferred_phase` for the distinction from a producer's
-    (informational only) preferred phase.
+    2), not a static well property.
     """
 
     __type__ = "injector"

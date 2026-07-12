@@ -7,51 +7,24 @@ import attrs
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.typing import FluidPhase, Number
-from bores.wells.controls import ControlSpec, Limit
-from bores.wells.data import Perforation
+from bores.wells.base import Perforation
+from bores.wells.controls import Limit, WellControl
 
-__all__ = ["ConnectionSample", "PerforationState", "WellState", "as_phase_mapping"]
-
-
-def as_phase_mapping(
-    mapping: typing.Mapping[typing.Any, Number],
-) -> typing.Dict[FluidPhase, Number]:
-    """Normalize a phase-keyed mapping to `FluidPhase` keys.
-
-    `Serializable`'s generic deserializer serializes `Mapping` keys through
-    their declared type but doesn't convert them back on load, so a
-    dump()/load() round trip otherwise leaves these keys as plain strings.
-    Accepts either a `FluidPhase` or its string value as input. Exported
-    (not module-private) since `wells.hydraulics` and `wells.control_engine`
-    need the same fix for their own phase-keyed fields.
-    """
-    return {
-        (key if isinstance(key, FluidPhase) else FluidPhase(key)): value
-        for key, value in mapping.items()
-    }
+__all__ = ["ConnectionSample", "PerforationState", "WellState"]
 
 
 @attrs.frozen(kw_only=True, slots=True)
 class ConnectionSample(Serializable):
-    """Reservoir conditions at one connected cell, for use by
-    `wells.index`, `wells.hydraulics`, and `wells.control_engine`.
-    """
+    """Reservoir conditions at one connected cell"""
 
     cell_index: int
     pressure: Number
     temperature: Number
-    phase_saturations: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
-    phase_mobilities: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
-    phase_densities: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
-    phase_viscosities: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
+    phase_saturations: typing.Mapping[FluidPhase, Number]
+    phase_mobilities: typing.Mapping[FluidPhase, Number]
+    phase_densities: typing.Mapping[FluidPhase, Number]
+    phase_viscosities: typing.Mapping[FluidPhase, Number]
+    gas_liquid_surface_tension: Number
 
     def __attrs_post_init__(self) -> None:
         if self.cell_index < 0:
@@ -65,9 +38,7 @@ class PerforationState(Serializable):
     perforation: Perforation
     cell_index: int
     flowing_pressure: Number
-    phase_rates: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
+    phase_rates: typing.Mapping[FluidPhase, Number]
 
     def __attrs_post_init__(self) -> None:
         if self.cell_index < 0:
@@ -80,14 +51,10 @@ class WellState(Serializable):
 
     well_name: str
     is_open: bool
-    active_control: ControlSpec
+    active_control: WellControl
     bhp: Number
-    perforation_states: typing.Tuple[PerforationState, ...] = attrs.field(
-        converter=tuple
-    )
-    phase_rates: typing.Mapping[FluidPhase, Number] = attrs.field(
-        converter=as_phase_mapping
-    )
+    perforation_states: typing.Tuple[PerforationState, ...]
+    phase_rates: typing.Mapping[FluidPhase, Number]
     active_limit: typing.Optional[Limit] = None
     thp: typing.Optional[Number] = None
 

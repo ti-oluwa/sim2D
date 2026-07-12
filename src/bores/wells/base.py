@@ -9,6 +9,7 @@ from typing_extensions import Self
 from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import (
     FluidPhase,
     Number,
@@ -16,8 +17,9 @@ from bores.typing import (
     UnitConversionTable,
     UnitSystem,
 )
+from bores.wells.base import Well, WellType
 
-__all__ = ["WellType", "CompletionStatus", "Perforation", "WellSpec"]
+__all__ = ["WellType", "CompletionStatus", "Perforation", "Well", "Wells"]
 
 
 class WellType(enum.Enum):
@@ -41,7 +43,7 @@ class CompletionStatus(enum.Enum):
     False` means "the whole well is currently shut for operational reasons".
 
     A perforation with `CompletionStatus.SHUT` is excluded from
-    `resolve_perforations()` output entirely; one with `OPEN` is still
+    `resolve_perforations_indices()` output entirely; one with `OPEN` is still
     subject to the well-level open/shut flag in `WellState` at simulation
     time.
     """
@@ -55,12 +57,11 @@ class CompletionStatus(enum.Enum):
 
 @attrs.frozen(kw_only=True, slots=True)
 class Perforation(Serializable):
-    """A single completion interval, defined purely by depth.
+    """
+    A single completion interval, defined purely by depth.
 
     Two `Perforation` instances with identical fields are interchangeable;
     nothing about a `Perforation` depends on which well it belongs to
-    (`WellSpec` is responsible for `wellbore_radius` fallback, not this
-    class).
     """
 
     top_depth: Number
@@ -81,8 +82,8 @@ class Perforation(Serializable):
 
     wellbore_radius: typing.Optional[Number] = None
     """
-    Overrides `WellSpec.wellbore_radius` for this completion only. `None`
-    inherits from `WellSpec`.
+    Overrides `Well.wellbore_radius` for this completion only. `None`
+    inherits from `Well`.
     """
 
     status: CompletionStatus = CompletionStatus.OPEN
@@ -97,19 +98,19 @@ class Perforation(Serializable):
     direction: typing.Optional[Orientation] = None
     """
     `bores.typing.Orientation` (`X`/`Y`/`Z`/`UNSET`). `None` means
-    `wells.index` resolves a direction per `D4`'s stated rule; this class
-    does not silently assume `Z`.
+    `wells.index` resolves a direction.
     """
 
     partial_penetration_fraction: typing.Optional[Number] = None
     """
     **Not set by the user.** Populated by
-    `wells.location.resolve_perforations` (overlap-length / cell-thickness
+    `wells.location.resolve_perforations_indices` (overlap-length / cell-thickness
     ratio). `None` on a freshly constructed `Perforation` is the correct/
-    expected state - the field exists on this class rather than a wrapper
-    struct so `PerforationIndex` (`wells.index`) can carry it through
-    without a second lookup. Validated: if set, must be in `(0, 1]`.
+    expected state. Validated: if set, must be in `(0, 1]`.
     """
+    # The field exists on this class rather than a wrapper
+    # struct so `PerforationIndex` (`wells.index`) can carry it through
+    # without a second lookup
 
     def __attrs_post_init__(self) -> None:
         if self.bottom_depth < self.top_depth:
@@ -143,23 +144,13 @@ class Perforation(Serializable):
 
 
 @attrs.frozen(kw_only=True, slots=True)
-class WellSpec(Serializable):
-    """
-    Static well identity and configuration.
-
-    No status field (`D2`), no methods beyond validation, trivial
-    properties, and unit conversion. A `WellSpec` is built once - from a
-    deck via `wells.factories`, by hand via `wells.factories`' manual sugar
-    constructors, or directly - and never mutated; operational changes are
-    expressed as new `WellState` snapshots or `WellSchedule` events, not
-    edits to this object.
-    """
+class Well(Serializable):
+    """Static well identity and configuration."""
 
     name: str
     """Unique identifier, deck `WELSPECS` item 1."""
 
     well_type: WellType
-    """See `D1`."""
 
     surface_location: typing.Tuple[Number, Number] = attrs.field(converter=tuple)  # type: ignore
     """`(x, y)` in `Grid` coordinate units"""
@@ -203,10 +194,6 @@ class WellSpec(Serializable):
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
-    """
-    Matches the `Grid`/`PVTRegion` convention of carrying `unit_system` on
-    every physically-dimensioned data object.
-    """
 
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
     """Free-form, mirrors `Grid.metadata`."""
@@ -216,14 +203,14 @@ class WellSpec(Serializable):
             raise ValidationError("`name` must be a non-empty string.")
         if not self.perforations:
             raise ValidationError(
-                f"WellSpec {self.name!r} must have at least one perforation."
+                f"Well {self.name!r} must have at least one perforation."
             )
         if self.wellbore_radius <= 0:
             raise ValidationError("`wellbore_radius` must be positive.")
         if self.tubing_inner_diameter is not None and self.tubing_inner_diameter <= 0:
             raise ValidationError("`tubing_inner_diameter` must be positive.")
         # Perforations carry no `unit_system` of their own (by design, D3) -
-        # they are always interpreted in this WellSpec's `unit_system`, so
+        # they are always interpreted in this Well's `unit_system`, so
         # there is nothing left to cross-validate here. Checked, not
         # overlooked.
 
@@ -259,12 +246,12 @@ class WellSpec(Serializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `WellSpec` with all dimensioned fields converted to *target*.
+        Return a new `Well` with all dimensioned fields converted to *target*.
 
         :param target: Target `UnitSystem`.
         :param table: Optional explicit `UnitConversionTable` override,
             same as every other `.convert()` in this codebase.
-        :returns: New `WellSpec` in `target` units, or `self` if already there.
+        :returns: New `Well` in `target` units, or `self` if already there.
         """
         if self.unit_system == target:
             return self
@@ -272,7 +259,7 @@ class WellSpec(Serializable):
         factors = get_conversion_factors(self.unit_system, target, table=table)
         length_factor = factors["length"]
 
-        converted_perforations = tuple(
+        perforations = tuple(
             attrs.evolve(
                 perforation,
                 top_depth=perforation.top_depth * length_factor,
@@ -292,7 +279,7 @@ class WellSpec(Serializable):
                 self.surface_location[1] * length_factor,
             ),
             reference_depth=self.reference_depth * length_factor,
-            perforations=converted_perforations,
+            perforations=perforations,
             wellbore_radius=self.wellbore_radius * length_factor,
             tubing_inner_diameter=(
                 self.tubing_inner_diameter * length_factor
@@ -306,3 +293,78 @@ class WellSpec(Serializable):
             ),
             unit_system=target,
         )
+
+
+class Wells(StoreSerializable):
+    """Name-keyed container of `Well`. Lookup and iteration only."""
+
+    __abstract_serializable__ = True
+
+    def __init__(self, wells: typing.Dict[str, Well]) -> None:
+        """
+        :param wells: Mapping from well name to `Well`.
+        :raises ValidationError: If `wells` is empty, or if any key doesn't
+            match its value's `Well.name`.
+        """
+        if not wells:
+            raise ValidationError("`wells` must contain at least one entry.")
+
+        mismatched = {key: well.name for key, well in wells.items() if key != well.name}
+        if mismatched:
+            raise ValidationError(
+                f"`wells` dict keys must match `Well.name`; mismatches "
+                f"(key -> well.name): {mismatched}."
+            )
+        self._wells = wells
+
+    def well(self, name: str) -> Well:
+        """
+        :param name: `Well` name.
+        :returns: `Well` for that well.
+        :raises KeyError: If no well with that name exists.
+        """
+        well = self._wells.get(name)
+        if well is None:
+            raise KeyError(f"No well named {name!r}. Available: {sorted(self._wells)}.")
+        return well
+
+    @property
+    def names(self) -> typing.Tuple[str, ...]:
+        """All well names, insertion order."""
+        return tuple(self._wells.keys())
+
+    @property
+    def producers(self) -> typing.Tuple[Well, ...]:
+        """All wells with `well_type is WellType.PRODUCER`."""
+        return tuple(
+            well for well in self._wells.values() if well.well_type is WellType.PRODUCER
+        )
+
+    @property
+    def injectors(self) -> typing.Tuple[Well, ...]:
+        """All wells with `well_type is WellType.INJECTOR`."""
+        return tuple(
+            well for well in self._wells.values() if well.well_type is WellType.INJECTOR
+        )
+
+    def __getitem__(self, name: str) -> Well:
+        return self.well(name)
+
+    def __iter__(self) -> typing.Iterator[str]:
+        return iter(self._wells)
+
+    def __len__(self) -> int:
+        return len(self._wells)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._wells
+
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        return {"wells": {name: well.dump() for name, well in self._wells.items()}}
+
+    @classmethod
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> "Wells":
+        wells = {
+            name: Well.load(spec_data) for name, spec_data in data["wells"].items()
+        }
+        return cls(wells=wells)

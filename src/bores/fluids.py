@@ -1,4 +1,4 @@
-"""Base API for reservoir simulation fluids."""
+"""Base API for reservoir fluids."""
 
 import logging
 import typing
@@ -35,9 +35,9 @@ def _validate_pseudo_pressure_phase(
             else str(instance.phase)
         )
         raise ValidationError(
-            f"`pseudo_pressure_table` can only be set on gas phase fluids. "
+            f"`pseudo_pressure` can only be set on gas phase fluids. "
             f"Fluid '{instance.name}' has phase '{phase_str}'. "
-            f"Remove `pseudo_pressure_table` or change phase to gas."
+            f"Remove `pseudo_pressure` or change phase to gas."
         )
 
 
@@ -55,23 +55,23 @@ class Fluid(StoreSerializable):
     phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
     """Fluid phase (oil, gas, or gas)."""
 
-    pvt_table: typing.Optional[PVTTable] = None
+    pvt: typing.Optional[PVTTable] = None
     """
     Optional `PVTTable` for this fluid.
 
     When set, callers can retrieve fluid properties directly:
 
     ```python
-    fluid.pvt_table.viscosity(pressure, temperature)
-    fluid.pvt_table.formation_volume_factor(pressure, temperature)
-    fluid.pvt_table.compressibility_factor(pressure, temperature)  # gas only
+    fluid.pvt.viscosity(pressure, temperature)
+    fluid.pvt.formation_volume_factor(pressure, temperature)
+    fluid.pvt.compressibility_factor(pressure, temperature)  # gas only
     ```
 
     `None` if no table was provided; property lookups fall back to
     correlations in that case (requires `specific_gravity` on the subclass).
     """
 
-    pseudo_pressure_table: typing.Optional[PseudoPressureTable] = attrs.field(
+    pseudo_pressure: typing.Optional[PseudoPressureTable] = attrs.field(
         default=None,
         validator=attrs.validators.optional(_validate_pseudo_pressure_phase),
     )
@@ -79,7 +79,7 @@ class Fluid(StoreSerializable):
     Optional pre-built gas pseudo-pressure table.  **Gas phase only.**
 
     If `None`, `get_pseudo_pressure_table` builds a table automatically
-    from `pvt_table` interpolators (preferred) or from correlations
+    from `pvt` interpolators (preferred) or from correlations
     (requires `specific_gravity` on the `WellFluid` subclass).
     """
 
@@ -97,16 +97,16 @@ class Fluid(StoreSerializable):
     ) -> typing.Tuple[typing.Any, ...]:
         """Stable hashable cache key for pseudo-pressure table construction."""
         pvt_hash: typing.Optional[tuple] = None
-        if self.pvt_table is not None:
-            bounds = getattr(self.pvt_table, "_extrapolation_bounds", {})
+        if self.pvt is not None:
+            bounds = getattr(self.pvt, "_extrapolation_bounds", {})
             p_b = bounds.get("pressure", (0.0, 0.0))
             t_b = bounds.get("temperature", (0.0, 0.0))
             pvt_hash = (
                 (round(p_b[0], 2), round(p_b[1], 2)),
                 (round(t_b[0], 2), round(t_b[1], 2)),
-                getattr(self.pvt_table, "interpolation_method", None),
-                self.pvt_table.exists("compressibility_factor"),
-                self.pvt_table.exists("viscosity"),
+                getattr(self.pvt, "interpolation_method", None),
+                self.pvt.exists("compressibility_factor"),
+                self.pvt.exists("viscosity"),
             )
 
         # Hash from global pvt_tables bundle gas slot (if used as fallback)
@@ -165,12 +165,12 @@ class Fluid(StoreSerializable):
 
         **Priority order:**
 
-        1. Return `self.pseudo_pressure_table` if explicitly set.
-        2. Build from `self.pvt_table` interpolators (`compressibility_factor`
+        1. Return `self.pseudo_pressure` if explicitly set.
+        2. Build from `self.pvt` interpolators (`compressibility_factor`
            and `viscosity`) when the fluid carries its own PVT table.
         3. Build from `pvt_tables.gas` interpolators when a global
            `PVTTables` bundle is passed and its gas slot has the required
-           interpolators.  Useful when the fluid itself has no `pvt_table`
+           interpolators.  Useful when the fluid itself has no `pvt`
            but the simulator holds a shared bundle.
         4. Fall back to DAK Z-factor / Lee-Kesler viscosity correlations using
            `self.specific_gravity` (available on `WellFluid` subclasses).
@@ -184,7 +184,7 @@ class Fluid(StoreSerializable):
         :param pressure_range: `(p_min, p_max)` for table construction (psi).
         :param points: Number of integration points (default 200).
         :param pvt_tables: Optional global `PVTTables`
-            bundle.  Its `gas` slot is consulted when `self.pvt_table` is
+            bundle.  Its `gas` slot is consulted when `self.pvt` is
             `None` or lacks the required interpolators.
         :param use_cache: Use global pseudo-pressure table cache.
         :return: `PseudoPressureTable`.
@@ -195,16 +195,16 @@ class Fluid(StoreSerializable):
                 f"Fluid '{self.name}' has phase '{self.phase.value}'."  # type: ignore
             )
 
-        if self.pseudo_pressure_table is not None:
+        if self.pseudo_pressure is not None:
             logger.debug("Using custom pseudo-pressure table for fluid '%s'", self.name)
-            return self.pseudo_pressure_table
+            return self.pseudo_pressure
 
         z_factor_func: typing.Optional[typing.Callable] = None  # type: ignore
         viscosity_func: typing.Optional[typing.Callable] = None  # type: ignore
 
-        if self.pvt_table is not None:
-            if self.pvt_table.exists("compressibility_factor"):
-                _pvt_table = self.pvt_table
+        if self.pvt is not None:
+            if self.pvt.exists("compressibility_factor"):
+                _pvt_table = self.pvt
                 _temperature = temperature
 
                 def z_factor_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
@@ -216,8 +216,8 @@ class Fluid(StoreSerializable):
 
                 z_factor_func._supports_arrays = True  # type: ignore[attr-defined]
 
-            if self.pvt_table.exists("viscosity"):
-                _pvt_table = self.pvt_table
+            if self.pvt.exists("viscosity"):
+                _pvt_table = self.pvt
                 _temperature = temperature
 
                 def viscosity_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
@@ -265,8 +265,8 @@ class Fluid(StoreSerializable):
             if specific_gravity is None:
                 raise ValidationError(
                     f"Cannot build pseudo-pressure table for fluid '{self.name}': "
-                    "neither `pvt_table` (with `compressibility_factor`) nor `specific_gravity` "
-                    "is available. Provide one of the two, or set `pseudo_pressure_table` directly."
+                    "neither `pvt` (with `compressibility_factor`) nor `specific_gravity` "
+                    "is available. Provide one of the two, or set `pseudo_pressure` directly."
                 )
 
             _specific_gravity = specific_gravity
@@ -286,7 +286,7 @@ class Fluid(StoreSerializable):
             if specific_gravity is None or molecular_weight is None:
                 raise ValidationError(
                     f"Cannot build pseudo-pressure table for fluid '{self.name}': "
-                    "neither `pvt_table` (with `viscosity`) nor `specific_gravity` + `molecular_weight` "
+                    "neither `pvt` (with `viscosity`) nor `specific_gravity` + `molecular_weight` "
                     "are available."
                 )
 

@@ -13,7 +13,6 @@ from bores.reservoir.state import EquilibriumRegions
 from bores.typing import UnitSystem
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
-print(df.keywords)
 
 # The reservoir
 grid = Grid.from_deck(df)
@@ -31,10 +30,10 @@ reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 # The fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-black_oil = BlackOilFluid(pvt=pvt, satfunc=satfunc)
+blackoil = BlackOilFluid(pvt=pvt, satfunc=satfunc)
 table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"
-print(table.density([4700, 200, 3456, 10000, 4000], 200))
+print(table.viscosity([4700, 200, 3456, 10000, 4000], 400))
 
 # The initial state
 equilibrium = EquilibriumRegions.from_deck(df)
@@ -45,15 +44,15 @@ initial_state = initialize_reservoir_state(
     satfunc=satfunc,
     temperature=temperature,
 )
-print(initial_state.dump())
+# print(initial_state.dump())
 
-# # Plot the grid
-# print(f"cells   : {grid.n_cells}")
-# print(f"faces   : {grid.n_faces}")
-# print(f"bbox    : {grid.bounding_box}")
+# Plot the grid
+print(f"cells   : {grid.n_cells}")
+print(f"faces   : {grid.n_faces}")
+print(f"bbox    : {grid.bounding_box}")
 
-# pv_grid = as_pyvista_grid(grid, cell_data={"pressure": initial_state.pressure})
-# pl = pv.Plotter()
-# pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
-# pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
-# pl.show()
+pv_grid = as_pyvista_grid(grid, cell_data={"pressure": initial_state.pressure})
+pl = pv.Plotter()
+pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
+pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
+pl.show()

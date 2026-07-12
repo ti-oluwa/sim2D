@@ -1,17 +1,15 @@
-"""Well index (connection factor) computation.
+"""
+Well index (connection factor) computation.
 
-Depends on `wells.data`, `wells.location` (`PerforationIndex` without
-`well_index`), and `bores.grids.base.Grid`.
+Resolves each open perforation to a connection factor per cell it
+intersects. The pipeline is three steps. First, an effective
+(direction-aware, geometric-mean) permeability is derived first, then an
+effective drainage radius from that permeability and the local cell
+geometry, then the well index itself from the standard Peaceman equation.
 
-`compute_well_index`, `compute_3D_effective_drainage_radius`, and
-`compute_2D_effective_drainage_radius` are ported verbatim from the current
-`wells/core.py` - same formulas, same numba bodies, unchanged. Note this is
-a 3-step pipeline in the real implementation (effective permeability ->
-effective drainage radius -> well index formula), not the single flattened
-`compute_well_index(permeability_i, permeability_j, ...)` signature
-sketched in `02_BEHAVIOR_LAYER.md` - that sketch doesn't match what's
-actually in `core.py`, so the real functions are ported here instead of
-the fictional one.
+Cells that aren't locally Cartesian-like fall back to an isotropic equivalent-radius
+formulation instead, since Peaceman's anisotropic radius formula assumes a clean
+local (dx, dy, dz) frame that a distorted or unstructured cell doesn't have.
 """
 
 import typing
@@ -24,9 +22,8 @@ from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
 from bores.typing import Number, NumberArray, OneDimension, Orientation
-from bores.wells.collection import Wells
-from bores.wells.data import Perforation
-from bores.wells.location import PerforationIndex, resolve_perforations
+from bores.wells.base import Perforation, Wells
+from bores.wells.perforations import PerforationIndex, resolve_perforations_indices
 
 __all__ = [
     "WellIndex",
@@ -71,9 +68,9 @@ def resolve_well_index_direction(
     otherwise `Orientation.Z` (vertical is the overwhelmingly common case).
 
     :param perforation: The perforation being resolved.
-    :param grid: Grid the cell belongs to (unused in this v1 body - kept as
-        a parameter so a future geometry-based strategy can be added
-        without a signature change).
+    :param grid: Grid the cell belongs to (unused by this implementation -
+        kept as a parameter so a future geometry-based resolution strategy
+        can be added without a signature change).
     :param cell_index: Cell the perforation resolved into.
     :returns: `Orientation.X`, `Orientation.Y`, or `Orientation.Z`.
     """
@@ -156,8 +153,6 @@ def compute_3D_effective_drainage_radius(
     model using Peaceman's (1983) anisotropic effective drainage radius
     formula.
 
-    Ported unchanged from `wells/core.py::compute_3D_effective_drainage_radius`.
-
     :param interval_thickness: Tuple of cell dimensions (dx, dy, dz) in ft.
     :param permeability: Tuple of permeabilities (kx, ky, kz) in mD.
     :param well_orientation: Wellbore axis.
@@ -200,8 +195,6 @@ def compute_2D_effective_drainage_radius(
     Compute the effective drainage radius for a well in a 2D reservoir
     model using Peaceman's (1983) anisotropic formula.
 
-    Ported unchanged from `wells/core.py::compute_2D_effective_drainage_radius`.
-
     :param interval_thickness: Tuple of cell dimensions (dx, dy) in ft.
     :param permeability: Tuple of permeabilities (kx, ky) in mD.
     :return: Effective drainage (Peaceman) radius in ft, or 0.0 if either
@@ -220,7 +213,7 @@ def compute_2D_effective_drainage_radius(
 
 @numba.njit(cache=True, inline="always")
 def _geometric_mean(values: typing.Sequence[Number]) -> Number:
-    """Ported unchanged from `wells/core.py::_geometric_mean`."""
+    """Geometric mean of `values`, clamping any negative input to zero."""
     prod = 1.0
     n = 0
     for v in values:
@@ -243,9 +236,6 @@ def compute_effective_permeability_for_well(
     :param orientation: `Orientation.X`/`Y`/`Z`.
     :return: Effective (geometric-mean) permeability.
     """
-    if len(permeability) != 3:
-        return _geometric_mean(permeability)
-
     kx, ky, kz = permeability
     if orientation == Orientation.Z:
         return np.sqrt(max(kx, 0.0) * max(ky, 0.0))
@@ -275,7 +265,7 @@ def compute_equivalent_radius_well_index(
     :param permeability: Isotropic (or geometric-mean) permeability (mD).
     :param cell_volume: `grid.cell_volumes[cell_index]`.
     :param completion_length: Perforation length within this cell (ft).
-    :param wellbore_radius: Perforation or WellSpec wellbore radius (ft).
+    :param wellbore_radius: Perforation or Well wellbore radius (ft).
     :param skin: Perforation skin factor.
     :returns: Well index (mD*ft).
     """
@@ -301,16 +291,10 @@ def _resolve_connection_factor(
     Single entry point `build_wells_indices` calls per (perforation, cell)
     pair.
 
-    Order: `perforation.connection_factor_override` if set > Peaceman
-    (`compute_well_index`) if `_is_locally_cartesian` > equivalent-radius
-    fallback (`compute_equivalent_radius_well_index`) otherwise.
-
-    Deviates from `02_BEHAVIOR_LAYER.md`'s literal signature by adding
-    `partial_penetration_fraction` and `wellbore_radius` as explicit
-    parameters - required to compute `completion_length` and resolve the
-    `Perforation.wellbore_radius` (may be `None`, falls back to
-    `WellSpec.wellbore_radius`) fallback, neither of which `perforation`
-    alone can supply.
+    Resolution order: `perforation.connection_factor_override` if set;
+    otherwise Peaceman (`compute_well_index`) if `_is_locally_cartesian`;
+    otherwise the equivalent-radius fallback
+    (`compute_equivalent_radius_well_index`).
 
     :param perforation: Source perforation (for skin, override).
     :param grid: Grid providing geometry.
@@ -330,12 +314,12 @@ def _resolve_connection_factor(
     ky = permeabilities[Orientation.Y]
     kz = permeabilities[Orientation.Z]
 
-    cell_length_by_axis = {
+    cell_axis_length = {
         Orientation.X: grid.cell_length_x[cell_index],
         Orientation.Y: grid.cell_length_y[cell_index],
         Orientation.Z: grid.cell_length_z[cell_index],
     }
-    completion_length = partial_penetration_fraction * cell_length_by_axis[direction]
+    completion_length = partial_penetration_fraction * cell_axis_length[direction]
     effective_permeability = compute_effective_permeability_for_well(
         permeability=(kx, ky, kz), orientation=direction
     )
@@ -374,8 +358,7 @@ def build_wells_indices(
     grid: Grid,
     wells: Wells,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
-    *,
-    resolve_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+    **resolve_kwargs: typing.Any,
 ) -> typing.Dict[str, WellIndex]:
     """
     Resolve every well in `wells` against `grid` and compute connection
@@ -385,17 +368,16 @@ def build_wells_indices(
     :param wells: `Wells` container (all wells to resolve).
     :param permeabilities: Per-axis permeability arrays, shape `(n_cells,)`
         each, keyed by `Orientation.X`/`Y`/`Z`.
-    :param resolve_kwargs: Passed through to `resolve_perforations`.
+    :param resolve_kwargs: Passed through to `resolve_perforations_indices`.
     :returns: Mapping from well name to `WellIndex`.
-    :raises ValidationError: Propagated from `resolve_perforations` for any
+    :raises ValidationError: Propagated from `resolve_perforations_indices` for any
         well with a dangling completion.
     """
-    resolve_kwargs = resolve_kwargs or {}
     result: typing.Dict[str, WellIndex] = {}
 
     for name in wells:
-        spec = wells[name]
-        raw_indices = resolve_perforations(grid, spec, **resolve_kwargs)
+        well = wells[name]
+        raw_indices = resolve_perforations_indices(grid, well, **resolve_kwargs)
 
         resolved: typing.List[PerforationIndex] = []
         total_well_index = 0.0
@@ -403,7 +385,7 @@ def build_wells_indices(
             wellbore_radius = (
                 pidx.perforation.wellbore_radius
                 if pidx.perforation.wellbore_radius is not None
-                else spec.wellbore_radius
+                else well.wellbore_radius
             )
             per_cell_permeabilities = {
                 axis: array[pidx.cell_index] for axis, array in permeabilities.items()
@@ -419,8 +401,8 @@ def build_wells_indices(
             resolved.append(attrs.evolve(pidx, well_index=well_index))
             total_well_index += well_index
 
-        result[spec.name] = WellIndex(
-            well_name=spec.name,
+        result[well.name] = WellIndex(
+            well_name=well.name,
             perforations=tuple(resolved),
             total_well_index=total_well_index,
         )
