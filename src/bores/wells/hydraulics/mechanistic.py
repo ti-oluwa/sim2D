@@ -28,10 +28,12 @@ __all__ = ["MechanisticWellboreModel"]
 @attrs.frozen(kw_only=True, slots=True)
 class MechanisticWellboreModel(Serializable):
     """
-    No-slip mixture `WellboreModel`. 
+    No-slip mixture `WellboreModel`.
 
-    One segment per (reference_depth -> connection) pair. 
-    Single straight segment each (assumes vertical wells; no intermediate discretization).
+    One segment per (reference_depth -> connection) pair, no intermediate
+    discretization. Inclination comes from
+    `PerforationIndex.inclination_from_vertical` and is populated by
+    `wells.perforations`, not derived here.
     """
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
@@ -99,7 +101,7 @@ class MechanisticWellboreModel(Serializable):
             velocity = compute_mixture_velocity(phase_rates, well.tubing_inner_diameter)
             drop = compute_segment_pressure_drop(
                 length=abs(dz),
-                inclination_from_vertical=0.0,
+                inclination_from_vertical=pidx.inclination_from_vertical,
                 tubing_inner_diameter=well.tubing_inner_diameter,
                 tubing_roughness=well.tubing_roughness,
                 mixture_density=mixture_density,
@@ -113,10 +115,6 @@ class MechanisticWellboreModel(Serializable):
                 friction_max_iterations=self.friction_max_iterations,
                 friction_tolerance=self.friction_tolerance,
             )
-            # Hydrostatic/acceleration follow geometric position (sign(dz));
-            # friction opposes flow direction instead, independent of
-            # geometric position - see `is_injector` in the protocol
-            # docstring.
             pressures[i] = (
                 reference_pressure
                 + geometric_sign * (drop.hydrostatic + drop.acceleration)
@@ -135,7 +133,7 @@ class MechanisticWellboreModel(Serializable):
     ) -> Number:
         assert well.tubing_inner_diameter is not None
         gravitational_acceleration = self._get_gravitational_acceleration()
-        dz = 0.0 - well.reference_depth  # negative: surface is above reference_depth
+        dz = 0.0 - well.reference_depth
         total_rate = sum(phase_rates.values())
         friction_sign = -1.0 if is_injector else 1.0
 
@@ -150,7 +148,7 @@ class MechanisticWellboreModel(Serializable):
         velocity = compute_mixture_velocity(phase_rates, well.tubing_inner_diameter)
         drop = compute_segment_pressure_drop(
             length=abs(dz),
-            inclination_from_vertical=0.0,
+            inclination_from_vertical=0.0,  # surface tubing: always vertical
             tubing_inner_diameter=well.tubing_inner_diameter,
             tubing_roughness=well.tubing_roughness,
             mixture_density=surface_fluid_properties.density,
@@ -164,10 +162,6 @@ class MechanisticWellboreModel(Serializable):
             friction_max_iterations=self.friction_max_iterations,
             friction_tolerance=self.friction_tolerance,
         )
-        # dz < 0 always here (surface above reference_depth): going from
-        # reference_depth to surface is with a producer's flow (pressure
-        # drops - subtract everything) but against an injector's flow
-        # (friction adds back rather than subtracting).
         return (
             reference_pressure
             - (drop.hydrostatic + drop.acceleration)

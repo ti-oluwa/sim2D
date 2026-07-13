@@ -299,17 +299,17 @@ class BeggsBrillWellboreModel(Serializable):
     """
     Beggs & Brill (1973) `WellboreModel`.
 
-    Implements flow-pattern-dependent liquid
-    holdup (in-situ mixture density differs from the no-slip/rate-weighted
-    density `MechanisticWellboreModel` uses) and a corrected two-phase
-    friction factor.
+    Implements flow-pattern-dependent liquid holdup (in-situ mixture
+    density differs from the no-slip/rate-weighted density
+    `MechanisticWellboreModel` uses) and a corrected two-phase friction
+    factor.
 
-    One segment per (reference_depth -> connection) pair,
-    same as `MechanisticWellboreModel`; holdup and friction correction
-    apply at any `inclination_from_vertical`, but every segment this model
-    is actually called with today is vertical
-    (`inclination_from_vertical=0.0`) - `Well` carries no trajectory/
-    deviation-survey data yet for a non-vertical segment to be built from.
+    One segment per (reference_depth -> connection) pair, same as
+    `MechanisticWellboreModel`. Inclination comes from
+    `PerforationIndex.inclination_from_vertical` and is populated by
+    `wells.perforations` from `Perforation.direction` (vertical/horizontal
+    only) for a well with no trajectory, or from the trajectory's local
+    tangent for one with a trajectory.
     """
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
@@ -333,6 +333,7 @@ class BeggsBrillWellboreModel(Serializable):
         self,
         *,
         length: Number,
+        inclination_from_vertical: Number,
         phase_rates: typing.Mapping[FluidPhase, Number],
         sample: ConnectionSample,
         tubing_inner_diameter: Number,
@@ -391,7 +392,7 @@ class BeggsBrillWellboreModel(Serializable):
             liquid_density=liquid_density,
             liquid_surface_tension=surface_tension,
             tubing_inner_diameter=tubing_inner_diameter,
-            inclination_from_vertical=0.0,
+            inclination_from_vertical=inclination_from_vertical,
             is_injector=is_injector,
             gravitational_acceleration=gravitational_acceleration,
         )
@@ -480,6 +481,7 @@ class BeggsBrillWellboreModel(Serializable):
 
             hydrostatic, friction = self._segment_drop(
                 length=abs(dz),
+                inclination_from_vertical=pidx.inclination_from_vertical,
                 phase_rates=phase_rates,
                 sample=sample,
                 tubing_inner_diameter=well.tubing_inner_diameter,
@@ -488,8 +490,8 @@ class BeggsBrillWellboreModel(Serializable):
             )
             pressures[i] = (
                 reference_pressure
-                + geometric_sign * hydrostatic
-                + friction_sign * friction
+                + (geometric_sign * hydrostatic)
+                + (friction_sign * friction)
             )
 
         return pressures
@@ -507,7 +509,10 @@ class BeggsBrillWellboreModel(Serializable):
         tension and per-phase densities/viscosities that
         `SurfaceFluidProperties` (density/viscosity only, no phase split)
         doesn't carry - falls back to no-slip mixture properties for this
-        segment instead of computing a surface-condition holdup.
+        segment instead of computing a surface-condition holdup. The
+        surface segment (reference_depth -> surface) is always treated as
+        vertical - tubing above the last connection isn't part of any
+        trajectory this package resolves.
         """
         gravitational_acceleration = self._get_gravitational_acceleration()
         dz = 0.0 - well.reference_depth
@@ -556,4 +561,4 @@ class BeggsBrillWellboreModel(Serializable):
             * (abs(dz) / well.tubing_inner_diameter)
             * (surface_fluid_properties.density * velocity**2 / 2.0)
         )
-        return reference_pressure - hydrostatic - friction_sign * friction
+        return reference_pressure - hydrostatic - (friction_sign * friction)

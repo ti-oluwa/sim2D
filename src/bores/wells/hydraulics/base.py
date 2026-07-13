@@ -386,7 +386,7 @@ class WellboreModel(typing.Protocol):
     """
     A well bore hydraulic model.
 
-    This is the interface every wellbore hydraulics strategy implements.
+    This is the interface every wellbore hydraulics model implements.
     """
 
     def perforation_pressures(
@@ -435,7 +435,7 @@ class WellboreModel(typing.Protocol):
     ) -> Number:
         """
         Computes tubing head pressure.
-        
+
         :param well: Static well data.
         :param reference_pressure: BHP at `well.reference_depth`.
         :param phase_rates: Well-total phase rates.

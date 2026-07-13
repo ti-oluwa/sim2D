@@ -22,7 +22,7 @@ from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
 from bores.typing import Number, NumberArray, OneDimension, Orientation
-from bores.wells.base import Perforation, Wells
+from bores.wells.base import AnyPerforation, MDPerforation, Perforation, Wells
 from bores.wells.perforations import PerforationIndex, resolve_perforations_indices
 
 __all__ = [
@@ -280,7 +280,7 @@ def compute_equivalent_radius_well_index(
 
 
 def _resolve_connection_factor(
-    perforation: Perforation,
+    perforation: AnyPerforation,
     grid: Grid,
     cell_index: int,
     partial_penetration_fraction: Number,
@@ -309,17 +309,33 @@ def _resolve_connection_factor(
     if perforation.connection_factor_override is not None:
         return perforation.connection_factor_override
 
-    direction = resolve_well_index_direction(perforation, grid, cell_index)
     kx = permeabilities[Orientation.X]
     ky = permeabilities[Orientation.Y]
     kz = permeabilities[Orientation.Z]
 
-    cell_axis_length = {
+    if isinstance(perforation, MDPerforation):
+        # No discrete axis to run Peaceman against so we always use isotropic
+        # equivalent-radius, using the geometric-mean permeability and this
+        # connection's true (MD-fraction-scaled) length within the cell.
+        effective_permeability = _geometric_mean((kx, ky, kz))
+        completion_length = partial_penetration_fraction * perforation.length
+        assert grid.cell_volumes is not None
+        return compute_equivalent_radius_well_index(
+            permeability=effective_permeability,
+            cell_volume=grid.cell_volumes[cell_index],
+            completion_length=completion_length,
+            wellbore_radius=wellbore_radius,
+            skin=perforation.skin,
+        )
+
+    # Perforation (TVD, axis-aligned).
+    direction = resolve_well_index_direction(perforation, grid, cell_index)
+    cell_length_by_axis = {
         Orientation.X: grid.cell_length_x[cell_index],
         Orientation.Y: grid.cell_length_y[cell_index],
         Orientation.Z: grid.cell_length_z[cell_index],
     }
-    completion_length = partial_penetration_fraction * cell_axis_length[direction]
+    completion_length = partial_penetration_fraction * cell_length_by_axis[direction]
     effective_permeability = compute_effective_permeability_for_well(
         permeability=(kx, ky, kz), orientation=direction
     )

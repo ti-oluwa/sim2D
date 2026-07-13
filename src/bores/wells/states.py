@@ -7,7 +7,7 @@ import attrs
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.typing import FluidPhase, Number
-from bores.wells.base import Perforation
+from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
 __all__ = ["ConnectionSample", "PerforationState", "WellState"]
@@ -35,7 +35,7 @@ class ConnectionSample(Serializable):
 class PerforationState(Serializable):
     """Per-perforation dynamic snapshot for one timestep."""
 
-    perforation: Perforation
+    perforation: AnyPerforation
     cell_index: int
     flowing_pressure: Number
     phase_rates: typing.Mapping[FluidPhase, Number]

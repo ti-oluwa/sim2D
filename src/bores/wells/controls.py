@@ -9,6 +9,7 @@ import attrs
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
+from bores.serde.stores.base import StoreSerializable
 from bores.typing import FluidPhase, Number
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "WellControl",
     "ProducerControl",
     "InjectorControl",
+    "WellControls",
 ]
 
 
@@ -308,3 +310,69 @@ class InjectorControl(WellControl):
             raise ValidationError(
                 f"`efficiency_factor` must be in (0, 1]; got {self.efficiency_factor}."
             )
+
+
+class WellControls(StoreSerializable):
+    """Name-keyed, mutable mapping from well name to its current `WellControl`."""
+
+    __abstract_serializable__ = True
+
+    def __init__(self, controls: typing.Dict[str, WellControl]) -> None:
+        self._controls = dict(controls)
+
+    def get(self, name: str) -> typing.Optional[WellControl]:
+        """Current control for `name`, or `None` if unset."""
+        return self._controls.get(name)
+
+    def set(self, name: str, control: WellControl) -> None:
+        """
+        Replace the current control for `name` wholesale (say fo a
+        WCONPROD/WCONINJE reissue, a limit-triggered mode switch, or an
+        initial assignment).
+        """
+        self._controls[name] = control
+
+    def update_target(self, name: str, **fields: typing.Any) -> None:
+        """
+        Modify one or more fields of `name`'s current control without
+        replacing it wholesale.
+
+        The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
+        once `factories.py` parses those.
+
+        :raises KeyError: If `name` has no current control set.
+        """
+        current = self._controls.get(name)
+        if current is None:
+            raise KeyError(f"No control set for well {name!r}.")
+        self._controls[name] = attrs.evolve(current, **fields)
+
+    def __getitem__(self, name: str) -> WellControl:
+        control = self.get(name)
+        if control is None:
+            raise KeyError(f"No control set for well {name!r}.")
+        return control
+
+    def __iter__(self) -> typing.Iterator[str]:
+        return iter(self._controls)
+
+    def __len__(self) -> int:
+        return len(self._controls)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._controls
+
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        return {
+            "controls": {
+                name: control.dump() for name, control in self._controls.items()
+            }
+        }
+
+    @classmethod
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> "WellControls":
+        controls = {
+            name: WellControl.load(control_data)
+            for name, control_data in data["controls"].items()
+        }
+        return cls(controls=controls)
