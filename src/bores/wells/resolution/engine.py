@@ -21,6 +21,7 @@ raise rather than silently truncating/zipping the shorter sequence.
 import typing
 
 from bores.errors import ValidationError
+from bores.typing import Number
 from bores.wells.base import Well
 from bores.wells.controls import (
     InjectorControl,
@@ -159,7 +160,9 @@ def resolve_control(
         raise ValidationError(f"Unknown WellControl type: {type(control)!r}.")
 
     min_pressure, max_pressure = get_default_pressure_bracket(
-        connection_samples, is_injector=is_injector, resolver_spec=resolver_spec
+        connection_samples,
+        is_injector=is_injector,
+        resolver_spec=resolver_spec,
     )
     return apply_limits(
         control=control,
@@ -185,6 +188,7 @@ def build_well_state(
     connection_samples: typing.Sequence[ConnectionSample],
     *,
     active_control: WellControl,
+    surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
 ) -> WellState:
     """
     Assembles the final `WellState` for this timestep from a `ControlResolution`.
@@ -240,12 +244,24 @@ def build_well_state(
             )
         )
 
+    thp: typing.Optional[Number] = None
+    if surface_fluid_properties is not None:
+        thp = wellbore_model.tubing_head_pressure(
+            well,
+            resolution.bhp,
+            resolution.phase_rates,
+            surface_fluid_properties=surface_fluid_properties,
+            is_injector=isinstance(active_control, InjectorControl),
+        )
     return WellState(
         well_name=well.name,
         is_open=True,
         active_control=active_control,
         bhp=resolution.bhp,
-        perforation_states=tuple(perforation_states),
+        perforation_states=(
+            () if resolution.economic_shutin else tuple(perforation_states)
+        ),
         phase_rates=resolution.phase_rates,
         active_limit=resolution.active_limit,
+        thp=thp,
     )

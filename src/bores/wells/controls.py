@@ -25,6 +25,8 @@ __all__ = [
     "ProducerControl",
     "InjectorControl",
     "WellControls",
+    "EconomicQuantity",
+    "EconomicLimit",
 ]
 
 
@@ -36,6 +38,19 @@ class RateQuantity(enum.Enum):
     GAS = "gas"
     LIQUID = "liquid"
     RESERVOIR = "reservoir"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
+
+class EconomicQuantity(enum.Enum):
+    WATER_CUT = "water_cut"
+    GOR = "gor"
+    WATER_GAS_RATIO = "wgr"
 
     def __str__(self) -> str:
         return self.value
@@ -58,6 +73,7 @@ class ProducerControlMode(enum.Enum):
     RESV = "resv"
     BHP = "bhp"
     THP = "thp"
+    GRUP = "grup"
 
     def __str__(self) -> str:
         return self.value
@@ -77,6 +93,7 @@ class InjectorControlMode(enum.Enum):
     RESV = "resv"
     BHP = "bhp"
     THP = "thp"
+    GRUP = "grup"
 
     def __str__(self) -> str:
         return self.value
@@ -204,6 +221,27 @@ class THPLimit(Limit):
             )
 
 
+@_limit_type
+@attrs.frozen(kw_only=True, slots=True)
+class EconomicLimit(Limit):
+    """
+    A fractional-flow economic limit (deck WECON).
+
+    Shuts the well in when the given ratio of produced phases exceeds `max_value`.
+    """
+
+    __type__ = "economic"
+
+    quantity: EconomicQuantity
+    max_value: Number
+
+    def __attrs_post_init__(self) -> None:
+        if self.max_value <= 0:
+            raise ValidationError(
+                f"`max_value` must be positive; got {self.max_value}."
+            )
+
+
 class WellControl(Serializable):
     """
     Abstract base for producer/injector control targets.
@@ -217,6 +255,13 @@ class WellControl(Serializable):
 
     limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
     efficiency_factor: Number = 1.0
+    guide_rate: typing.Optional[Number] = None
+    """
+    Weight used by group-target allocation (deck WGRUPCON item 3).
+    `None` falls back to equal-weight allocation among eligible wells.
+
+    See `wells.resolution.allocation`.
+    """
 
 
 _CONTROL_TYPES: typing.Dict[str, typing.Type[WellControl]] = {}
@@ -264,6 +309,13 @@ class ProducerControl(WellControl):
     target_thp: typing.Optional[Number] = None
     limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
     efficiency_factor: Number = 1.0
+    guide_rate: typing.Optional[Number] = None
+    """
+    Weight used by group-target allocation (deck WGRUPCON item 3).
+    `None` falls back to equal-weight allocation among eligible wells.
+
+    See `wells.resolution.allocation`.
+    """
 
     def __attrs_post_init__(self) -> None:
         if self.mode in PRODUCER_RATE_MODES and self.target_rate is None:
@@ -305,6 +357,13 @@ class InjectorControl(WellControl):
     target_thp: typing.Optional[Number] = None
     limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
     efficiency_factor: Number = 1.0
+    guide_rate: typing.Optional[Number] = None
+    """
+    Weight used by group-target allocation (deck WGRUPCON item 3).
+    `None` falls back to equal-weight allocation among eligible wells.
+
+    See `wells.resolution.allocation`.
+    """
 
     def __attrs_post_init__(self) -> None:
         if self.mode in INJECTOR_RATE_MODES and self.target_rate is None:

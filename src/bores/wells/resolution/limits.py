@@ -26,12 +26,21 @@ the mirror image: lowest required BHP wins). No outer iteration is needed;
 evaluating each limit once and taking the extreme is exact, not a heuristic.
 """
 
+import math
 import typing
 
 from bores.errors import ValidationError
 from bores.typing import FluidPhase, Number
 from bores.wells.base import Well
-from bores.wells.controls import BHPLimit, Limit, RateLimit, THPLimit, WellControl
+from bores.wells.controls import (
+    BHPLimit,
+    EconomicLimit,
+    EconomicQuantity,
+    Limit,
+    RateLimit,
+    THPLimit,
+    WellControl,
+)
 from bores.wells.hydraulics.base import SurfaceFluidProperties, WellboreModel
 from bores.wells.perforations import PerforationIndex
 from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
@@ -153,6 +162,34 @@ def _thp_bound(
     return bound_bhp
 
 
+def _check_economic_violation(
+    control: WellControl, phase_rates: typing.Mapping[FluidPhase, Number]
+) -> typing.Optional[EconomicLimit]:
+    """
+    First `EconomicLimit` in `control.limits` whose ratio is exceeded.
+
+    :param control: Control whose `limits` are checked.
+    :param phase_rates: Well-total phase rates to compute ratios from.
+    :returns: The violated `EconomicLimit`, or `None`.
+    """
+    oil = phase_rates.get(FluidPhase.OIL, 0.0)
+    water = phase_rates.get(FluidPhase.WATER, 0.0)
+    gas = phase_rates.get(FluidPhase.GAS, 0.0)
+
+    for limit in control.limits:
+        if not isinstance(limit, EconomicLimit):
+            continue
+        if limit.quantity is EconomicQuantity.WATER_CUT:
+            ratio = water / (oil + water) if (oil + water) > 0 else 0.0
+        elif limit.quantity is EconomicQuantity.GOR:
+            ratio = (gas / oil) if oil > 0 else (math.inf if gas > 0 else 0.0)
+        else:
+            ratio = (water / gas) if gas > 0 else (math.inf if water > 0 else 0.0)
+        if ratio > limit.max_value:
+            return limit
+    return None
+
+
 def apply_limits(
     *,
     control: WellControl,
@@ -256,6 +293,17 @@ def apply_limits(
         is_injector=is_injector,
         resolver_spec=resolver_spec,
     )
-    return ControlResolution(
-        bhp=governing_bhp, phase_rates=phase_rates, active_limit=governing_limit
+    governing = ControlResolution(
+        bhp=governing_bhp,
+        phase_rates=phase_rates,
+        active_limit=governing_limit,
     )
+    violated = _check_economic_violation(control, governing.phase_rates)
+    if violated is not None:
+        return ControlResolution(
+            bhp=governing.bhp,
+            phase_rates={phase: 0.0 for phase in governing.phase_rates},
+            active_limit=violated,
+            economic_shutin=True,
+        )
+    return governing

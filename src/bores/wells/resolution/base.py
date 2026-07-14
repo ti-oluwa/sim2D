@@ -13,17 +13,17 @@ __all__ = ["ControlResolution", "ControlResolverSpec"]
 
 @attrs.frozen(kw_only=True, slots=True)
 class ControlResolution(Serializable):
-    """
-    Everything needed to build a `WellState`
-    for this timestep, one level below the final `WellState` (doesn't yet
-    include per-connection allocation, see `wells.control.engine.build_well_state`).
-    """
+    """Result of resolving one well's control for one timestep."""
 
     bhp: Number
     phase_rates: typing.Mapping[FluidPhase, Number]
     active_limit: typing.Optional[Limit] = None
     """Which `Limit` from the spec's `limits` tuple is currently binding,
     `None` if the primary target is achieved without hitting any limit."""
+    economic_shutin: bool = False
+    """True if an `EconomicLimit` was violated. `phase_rates` are zeroed in
+    that case. The caller (simulation loop) decides whether/how to act on
+    this (e.g. set WellState.is_open=False for the next timestep)."""
 
 
 @attrs.frozen(kw_only=True, slots=True)

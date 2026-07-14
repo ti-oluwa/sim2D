@@ -750,9 +750,8 @@ class SerializableMeta(type):
         is_abstract_cls = bool(namespace.get("__abstract_serializable__", False))
         if not is_abstract_cls and not all_fields:
             raise ValidationError(
-                "Serializable classes must have fields defined. If the class "
-                "is an abstract base class, set `__abstract_serializable__` "
-                "to True."
+                "Serializable subclasses must define fields. If the class "
+                "is an abstract base class, set `__abstract_serializable__` to True."
             )
 
         if all_fields:
