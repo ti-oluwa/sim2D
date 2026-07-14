@@ -37,15 +37,19 @@ class WellType(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
+    
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
 
 
 class CompletionStatus(enum.Enum):
     """
     Static intent for a perforation (deck `COMPDAT` item 6 `OPEN`/`SHUT`).
 
-    This is **not** the same as a well being shut in by a control action at
+    This is not the same as a well being shut in by a control action at
     runtime, that's `WellState.is_open`. `CompletionStatus.SHUT`
-    means "this completion was never meant to flow" (e.g. a deck author
+    means **"this completion was never meant to flow"** (e.g. a deck author
     disabling one layer of a multi-layer completion); `WellState.is_open =
     False` means "the whole well is currently shut for operational reasons".
 
@@ -59,6 +63,10 @@ class CompletionStatus(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
+    
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
 
 
 @attrs.frozen(kw_only=True, slots=True)

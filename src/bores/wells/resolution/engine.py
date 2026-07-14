@@ -158,7 +158,7 @@ def resolve_control(
     else:
         raise ValidationError(f"Unknown WellControl type: {type(control)!r}.")
 
-    pressure_low, pressure_high = get_default_pressure_bracket(
+    min_pressure, max_pressure = get_default_pressure_bracket(
         connection_samples, is_injector=is_injector, resolver_spec=resolver_spec
     )
     return apply_limits(
@@ -170,8 +170,8 @@ def resolve_control(
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         resolution=nominal,
-        pressure_low=pressure_low,
-        pressure_high=pressure_high,
+        min_pressure=min_pressure,
+        max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         surface_fluid_properties=surface_fluid_properties,
     )
@@ -187,8 +187,7 @@ def build_well_state(
     active_control: WellControl,
 ) -> WellState:
     """
-    Assembles the final `WellState` for this timestep from a
-    `ControlResolution`.
+    Assembles the final `WellState` for this timestep from a `ControlResolution`.
 
     Turns the well-total numbers in `resolution` into
     the per-connection `PerforationState` tuple `WellState` requires. A
@@ -221,7 +220,7 @@ def build_well_state(
         resolution.bhp,
         resolution.phase_rates,
         perforation_indices,
-        connection_samples,
+        connection_samples=connection_samples,
         is_injector=isinstance(active_control, InjectorControl),
     )
 

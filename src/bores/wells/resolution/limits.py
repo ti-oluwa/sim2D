@@ -67,8 +67,8 @@ def _rate_bound(
     connection_samples: typing.Sequence[ConnectionSample],
     wellbore_model: WellboreModel,
     is_injector: bool,
-    pressure_low: Number,
-    pressure_high: Number,
+    min_pressure: Number,
+    max_pressure: Number,
     resolver_spec: ControlResolverSpec,
 ) -> typing.Optional[Number]:
     """
@@ -89,8 +89,8 @@ def _rate_bound(
         relevant_phases=quantity_phases,
         is_injector=is_injector,
         target=limit.max_value,
-        pressure_low=pressure_low,
-        pressure_high=pressure_high,
+        min_pressure=min_pressure,
+        max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         metric="rate",
     )
@@ -107,8 +107,8 @@ def _thp_bound(
     wellbore_model: WellboreModel,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
-    pressure_low: Number,
-    pressure_high: Number,
+    min_pressure: Number,
+    max_pressure: Number,
     resolver_spec: ControlResolverSpec,
     surface_fluid_properties: SurfaceFluidProperties,
 ) -> typing.Optional[Number]:
@@ -144,8 +144,8 @@ def _thp_bound(
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         target=target,
-        pressure_low=pressure_low,
-        pressure_high=pressure_high,
+        min_pressure=min_pressure,
+        max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         metric="thp",
         surface_fluid_properties=surface_fluid_properties,
@@ -163,8 +163,8 @@ def apply_limits(
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     resolution: ControlResolution,
-    pressure_low: Number,
-    pressure_high: Number,
+    min_pressure: Number,
+    max_pressure: Number,
     resolver_spec: ControlResolverSpec,
     surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
 ) -> ControlResolution:
@@ -202,8 +202,8 @@ def apply_limits(
                 connection_samples=connection_samples,
                 wellbore_model=wellbore_model,
                 is_injector=is_injector,
-                pressure_low=pressure_low,
-                pressure_high=pressure_high,
+                min_pressure=min_pressure,
+                max_pressure=max_pressure,
                 resolver_spec=resolver_spec,
             )
         elif isinstance(limit, THPLimit):
@@ -223,8 +223,8 @@ def apply_limits(
                 wellbore_model=wellbore_model,
                 relevant_phases=relevant_phases,
                 is_injector=is_injector,
-                pressure_low=pressure_low,
-                pressure_high=pressure_high,
+                min_pressure=min_pressure,
+                max_pressure=max_pressure,
                 resolver_spec=resolver_spec,
                 surface_fluid_properties=surface_fluid_properties,
             )

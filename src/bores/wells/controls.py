@@ -5,6 +5,7 @@ import threading
 import typing
 
 import attrs
+from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
@@ -39,6 +40,10 @@ class RateQuantity(enum.Enum):
     def __str__(self) -> str:
         return self.value
 
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
 
 class ProducerControlMode(enum.Enum):
     """
@@ -57,6 +62,10 @@ class ProducerControlMode(enum.Enum):
     def __str__(self) -> str:
         return self.value
 
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
 
 class InjectorControlMode(enum.Enum):
     """
@@ -71,6 +80,10 @@ class InjectorControlMode(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
 
 
 class Limit(Serializable):
@@ -332,15 +345,16 @@ class WellControls(StoreSerializable):
         """
         self._controls[name] = control
 
-    def update_target(self, name: str, **fields: typing.Any) -> None:
+    def update(self, name: str, **fields: typing.Any) -> None:
         """
-        Modify one or more fields of `name`'s current control without
-        replacing it wholesale.
+                Modify one or more fields of `name`'s current control without
+                replacing it wholesale.
 
-        The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
-        once `factories.py` parses those.
+                The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
+                once `factories.py` parses those.
 
-        :raises KeyError: If `name` has no current control set.
+                :raises KeyError    groups: typing.Optional[Groups] = None
+        : If `name` has no current control set.
         """
         current = self._controls.get(name)
         if current is None:
@@ -352,6 +366,14 @@ class WellControls(StoreSerializable):
         if control is None:
             raise KeyError(f"No control set for well {name!r}.")
         return control
+
+    def __setitem__(self, name: str, control: WellControl) -> None:
+        self.set(name, control)
+
+    def __delitem__(self, name: str) -> None:
+        if name not in self._controls:
+            raise KeyError(f"No control set for well {name!r}.")
+        del self._controls[name]
 
     def __iter__(self) -> typing.Iterator[str]:
         return iter(self._controls)
@@ -370,7 +392,7 @@ class WellControls(StoreSerializable):
         }
 
     @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> "WellControls":
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         controls = {
             name: WellControl.load(control_data)
             for name, control_data in data["controls"].items()

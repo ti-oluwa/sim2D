@@ -168,6 +168,7 @@ def _compute_face_geometry(
             cx += vertex_coordinates[vert_idx, 0]
             cy += vertex_coordinates[vert_idx, 1]
             cz += vertex_coordinates[vert_idx, 2]
+
         cx /= n_verts
         cy /= n_verts
         cz /= n_verts
@@ -608,13 +609,13 @@ class Grid(
     """Global AABB: `(x_min, x_max, y_min, y_max, z_min, z_max)`."""
 
     cell_length_x: NumberArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - AABB extent in x."""
+    """Shape `(n_cells,)` - AABB extent in x direction."""
 
     cell_length_y: NumberArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - AABB extent in y."""
+    """Shape `(n_cells,)` - AABB extent in y direction."""
 
     cell_length_z: NumberArray[OneDimension] = attrs.field(init=False)
-    """Shape `(n_cells,)` - AABB extent in z (thickness)."""
+    """Shape `(n_cells,)` - AABB extent in z direction (thickness)."""
 
     cell_thickness: NumberArray[OneDimension] = attrs.field(init=False)
     """Shape `(n_cells,)` - vertical thickness (alias for `cell_length_z`)."""
@@ -1074,12 +1075,10 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate(
-            [
-                owners[owners >= 0],
-                neighbours[neighbours >= 0],
-            ]
-        )
+        all_boundary = np.concatenate([
+            owners[owners >= 0],
+            neighbours[neighbours >= 0],
+        ])
         return typing.cast(
             IntArray[OneDimension], np.unique(all_boundary).astype(np.int32)
         )

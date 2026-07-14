@@ -21,14 +21,18 @@ import numpy as np
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
-from bores.typing import Number, NumberArray, OneDimension, Orientation
+from bores.typing import Number, NumberArray, NumberOrArray, OneDimension, Orientation
 from bores.wells.base import AnyPerforation, MDPerforation, Perforation, Wells
-from bores.wells.perforations import PerforationIndex, resolve_perforations_indices
+from bores.wells.perforations import (
+    PerforationIndex,
+    resolve_md_perforations_indices,
+    resolve_perforations_indices,
+)
 
 __all__ = [
     "WellIndex",
     "resolve_well_index_direction",
-    "compute_well_index",
+    "compute_peaceman_well_index",
     "compute_3D_effective_drainage_radius",
     "compute_2D_effective_drainage_radius",
     "compute_effective_permeability_for_well",
@@ -57,6 +61,7 @@ class WellIndex(Serializable):
         return iter(self.perforations)
 
 
+# TODO: Improve this and not just default to Z unnecessarily
 def resolve_well_index_direction(
     perforation: Perforation, grid: Grid, cell_index: int
 ) -> Orientation:
@@ -82,9 +87,7 @@ def resolve_well_index_direction(
     return Orientation.Z
 
 
-def _is_locally_cartesian(
-    grid: Grid, cell_index: int, tolerance: Number = 0.05
-) -> bool:
+def is_locally_cartesian(grid: Grid, cell_index: int, tolerance: Number = 0.05) -> bool:
     """
     Decide whether `cell_index` is "Cartesian-like enough" for Peaceman's
     formula to be valid, vs. requiring the equivalent-radius fallback.
@@ -112,7 +115,7 @@ def _is_locally_cartesian(
 
 
 @numba.njit(cache=True)
-def compute_well_index(
+def compute_peaceman_well_index(
     permeability: Number,
     interval_thickness: Number,
     wellbore_radius: Number,
@@ -255,7 +258,7 @@ def compute_equivalent_radius_well_index(
     skin: Number,
 ) -> Number:
     """
-    Well index for a cell where `_is_locally_cartesian` returned `False`.
+    Well index for a cell where `is_locally_cartesian` returned `False`.
 
     Isotropic equivalent-radius formulation: `r_0 = 0.14 * sqrt(cell_volume
     / completion_length)`, the volume-per-unit-length analogue of
@@ -279,6 +282,7 @@ def compute_equivalent_radius_well_index(
     )
 
 
+# NOTE: This should take the net to gross value and the regime constant too
 def _resolve_connection_factor(
     perforation: AnyPerforation,
     grid: Grid,
@@ -286,13 +290,15 @@ def _resolve_connection_factor(
     partial_penetration_fraction: Number,
     wellbore_radius: Number,
     permeabilities: typing.Mapping[Orientation, Number],
+    regime_constant: float = -3 / 4,
+    net_to_gross: float = 1.0,
 ) -> Number:
     """
     Single entry point `build_wells_indices` calls per (perforation, cell)
     pair.
 
     Resolution order: `perforation.connection_factor_override` if set;
-    otherwise Peaceman (`compute_well_index`) if `_is_locally_cartesian`;
+    otherwise Peaceman (`compute_peaceman_well_index`) if `is_locally_cartesian`;
     otherwise the equivalent-radius fallback
     (`compute_equivalent_radius_well_index`).
 
@@ -330,17 +336,17 @@ def _resolve_connection_factor(
 
     # Perforation (TVD, axis-aligned).
     direction = resolve_well_index_direction(perforation, grid, cell_index)
-    cell_length_by_axis = {
+    cell_axes_lengths = {
         Orientation.X: grid.cell_length_x[cell_index],
         Orientation.Y: grid.cell_length_y[cell_index],
         Orientation.Z: grid.cell_length_z[cell_index],
     }
-    completion_length = partial_penetration_fraction * cell_length_by_axis[direction]
+    completion_length = partial_penetration_fraction * cell_axes_lengths[direction]
     effective_permeability = compute_effective_permeability_for_well(
         permeability=(kx, ky, kz), orientation=direction
     )
 
-    if _is_locally_cartesian(grid, cell_index):
+    if is_locally_cartesian(grid, cell_index):
         effective_drainage_radius = compute_3D_effective_drainage_radius(
             interval_thickness=(
                 grid.cell_length_x[cell_index],
@@ -350,14 +356,14 @@ def _resolve_connection_factor(
             permeability=(kx, ky, kz),
             well_orientation=direction,
         )
-        return compute_well_index(
+        return compute_peaceman_well_index(
             permeability=effective_permeability,
             interval_thickness=completion_length,
             wellbore_radius=wellbore_radius,
             effective_drainage_radius=effective_drainage_radius,
             skin_factor=perforation.skin,
-            net_to_gross=1.0,
-            regime_constant=-3 / 4,
+            net_to_gross=net_to_gross,
+            regime_constant=regime_constant,
         )
 
     assert grid.cell_volumes is not None
@@ -374,6 +380,8 @@ def build_wells_indices(
     grid: Grid,
     wells: Wells,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
+    regime_constant: float = -3 / 4,
+    net_to_gross: NumberOrArray[OneDimension] = 1.0,
     **resolve_kwargs: typing.Any,
 ) -> typing.Dict[str, WellIndex]:
     """
@@ -393,28 +401,42 @@ def build_wells_indices(
 
     for name in wells:
         well = wells[name]
-        raw_indices = resolve_perforations_indices(grid, well, **resolve_kwargs)
+        if well.trajectory is None:
+            perforation_indices = resolve_perforations_indices(
+                grid, well, **resolve_kwargs
+            )
+        else:
+            perforation_indices = resolve_md_perforations_indices(
+                grid, well, **resolve_kwargs
+            )
 
         resolved: typing.List[PerforationIndex] = []
         total_well_index = 0.0
-        for pidx in raw_indices:
+        for perforation_idx in perforation_indices:
+            perforation = perforation_idx.perforation
+            cell_idx = perforation_idx.cell_index
             wellbore_radius = (
-                pidx.perforation.wellbore_radius
-                if pidx.perforation.wellbore_radius is not None
+                perforation.wellbore_radius
+                if perforation.wellbore_radius is not None
                 else well.wellbore_radius
             )
-            per_cell_permeabilities = {
-                axis: array[pidx.cell_index] for axis, array in permeabilities.items()
+            cell_permeabilities = {
+                axis: array[cell_idx] for axis, array in permeabilities.items()
             }
-            well_index = _resolve_connection_factor(
-                perforation=pidx.perforation,
-                grid=grid,
-                cell_index=pidx.cell_index,
-                partial_penetration_fraction=pidx.partial_penetration_fraction,
-                wellbore_radius=wellbore_radius,
-                permeabilities=per_cell_permeabilities,
+            cell_net_to_gross = (
+                net_to_gross[cell_idx] if isinstance(net_to_gross, np.ndarray) else 1.0
             )
-            resolved.append(attrs.evolve(pidx, well_index=well_index))
+            well_index = _resolve_connection_factor(
+                perforation=perforation,
+                grid=grid,
+                cell_index=cell_idx,
+                partial_penetration_fraction=perforation_idx.partial_penetration_fraction,
+                wellbore_radius=wellbore_radius,
+                permeabilities=cell_permeabilities,
+                regime_constant=regime_constant,
+                net_to_gross=cell_net_to_gross,
+            )
+            resolved.append(attrs.evolve(perforation_idx, well_index=well_index))
             total_well_index += well_index
 
         result[well.name] = WellIndex(

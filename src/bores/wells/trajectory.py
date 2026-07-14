@@ -42,7 +42,7 @@ class WellTrajectory(Serializable):
     `TrajectoryStation`.
 
     `MDPerforation` intervals are defined against this trajectory's
-    measured depth, not true vertical depth - TVD is not invertible along
+    measured depth, not true vertical depth as TVD is not invertible along
     a horizontal or S-shaped section (multiple measured depths can share
     the same TVD), so measured depth is the only interval representation
     that identifies a unique location on an arbitrary path.

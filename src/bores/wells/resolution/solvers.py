@@ -89,7 +89,7 @@ def get_default_pressure_bracket(
     resolver_spec: ControlResolverSpec,
 ) -> typing.Tuple[Number, Number]:
     """
-    Default `(pressure_low, pressure_high)` BHP bisection bracket.
+    Default `(min_pressure, max_pressure)` BHP bisection bracket.
 
     Producer: `[resolver_spec.producer_bhp_floor, max(cell pressures)]` -
     a producer's BHP can't usefully exceed the highest connected-cell
@@ -105,7 +105,7 @@ def get_default_pressure_bracket(
     :param is_injector: Selects which bracket shape to use.
     :param resolver_spec: Supplies `producer_bhp_floor`/
         `injector_bhp_bracket_multiplier`.
-    :returns: `(pressure_low, pressure_high)`.
+    :returns: `(min_pressure, max_pressure)`.
     """
     cell_pressures = [sample.pressure for sample in connection_samples]
     if is_injector:
@@ -242,14 +242,14 @@ def bisect_bhp(
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     target: Number,
-    pressure_low: Number,
-    pressure_high: Number,
+    min_pressure: Number,
+    max_pressure: Number,
     resolver_spec: ControlResolverSpec,
     metric: typing.Literal["rate", "thp"] = "rate",
     surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
 ) -> typing.Tuple[Number, NumberArray, typing.Dict[FluidPhase, Number]]:
     """
-    Bisect `reference_pressure` in `[pressure_low, pressure_high]` until
+    Bisect `reference_pressure` in `[min_pressure, max_pressure]` until
     the resulting metric (`relevant_phases` total rate, or THP) matches
     `target`.
 
@@ -265,7 +265,7 @@ def bisect_bhp(
       by geometric position (`is_injector`), so THP moves with BHP in the
       same direction either way.
 
-    `pressure_low`/`pressure_high` must bracket the target - callers pick
+    `min_pressure`/`max_pressure` must bracket the target - callers pick
     these via `get_default_pressure_bracket` (or their own). Best-effort (no
     exception) if `target` isn't achievable within the bracket - returns
     the closest bound reached after `resolver_spec.max_bisection_iterations`.
@@ -283,7 +283,7 @@ def bisect_bhp(
             "bisect_bhp(..., metric='thp') requires `surface_fluid_properties`."
         )
 
-    low, high = pressure_low, pressure_high
+    low, high = min_pressure, max_pressure
     mid = 0.5 * (low + high)
     pressures = None
     phase_rates: typing.Dict[FluidPhase, Number] = {}
@@ -340,7 +340,7 @@ def solve_producer_rate_mode(
     `wells.control.limits.apply_limits`.
     """
     relevant_phases = PRODUCER_RATE_MODE_PHASES[control.mode]
-    pressure_low, pressure_high = get_default_pressure_bracket(
+    min_pressure, max_pressure = get_default_pressure_bracket(
         connection_samples, is_injector=False, resolver_spec=resolver_spec
     )
     assert control.target_rate is not None
@@ -352,8 +352,8 @@ def solve_producer_rate_mode(
         relevant_phases=relevant_phases,
         is_injector=False,
         target=control.target_rate,
-        pressure_low=pressure_low,
-        pressure_high=pressure_high,
+        min_pressure=min_pressure,
+        max_pressure=max_pressure,
         resolver_spec=resolver_spec,
     )
     phase_rates = compute_full_phase_rates_at(
@@ -404,7 +404,7 @@ def solve_injector_rate_mode(
     `control.injected_phase` selects the single phase being allocated.
     Nominal resolution only - see `solve_producer_rate_mode`."""
     relevant_phases = (control.injected_phase,)
-    pressure_low, pressure_high = get_default_pressure_bracket(
+    min_pressure, max_pressure = get_default_pressure_bracket(
         connection_samples, is_injector=True, resolver_spec=resolver_spec
     )
     assert control.target_rate is not None
@@ -416,8 +416,8 @@ def solve_injector_rate_mode(
         relevant_phases=relevant_phases,
         is_injector=True,
         target=control.target_rate,
-        pressure_low=pressure_low,
-        pressure_high=pressure_high,
+        min_pressure=min_pressure,
+        max_pressure=max_pressure,
         resolver_spec=resolver_spec,
     )
     phase_rates = compute_full_phase_rates_at(

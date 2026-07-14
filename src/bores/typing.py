@@ -62,6 +62,10 @@ class UnitSystem(enum.Enum):
     LAB = "lab"
     SI = "si"
 
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
 
 NDimension = typing.TypeVar("NDimension", bound=typing.Tuple[int, ...])
 Coordinates = typing.TypeVar("Coordinates", bound=typing.Tuple[int, ...])
@@ -73,12 +77,16 @@ TwoDimensions: TypeAlias = typing.Tuple[int, int]
 OneDimension: TypeAlias = typing.Tuple[int]
 """1D index"""
 
+Integer: TypeAlias = typing.Union[int, np.integer]
+Float: TypeAlias = typing.Union[float, np.floating]
 Number: TypeAlias = typing.Union[int, float, np.floating, np.integer]
 Boolean: TypeAlias = typing.Union[bool, np.bool_]
 FloatArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 IntArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.integer]]
 NumberArray: TypeAlias = typing.Union[FloatArray[NDimension], IntArray[NDimension]]
 BooleanArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.bool_]]
+IntOrArray: TypeAlias = typing.Union[Integer, IntArray[NDimension]]
+FloatOrArray: TypeAlias = typing.Union[Float, FloatArray[NDimension]]
 NumberOrArray: TypeAlias = typing.Union[
     Number, FloatArray[NDimension], IntArray[NDimension]
 ]
@@ -121,6 +129,10 @@ class Orientation(enum.Enum):
     def __str__(self) -> str:
         return self.value
 
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
 
 class FluidPhase(enum.Enum):
     """Enum representing the phase of the fluid in the reservoir."""
@@ -131,6 +143,10 @@ class FluidPhase(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
 
 
 WellFluidType = typing.Literal["water", "oil", "gas"]
