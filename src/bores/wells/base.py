@@ -542,7 +542,8 @@ class Wells(StoreSerializable):
 
         :param deck_file: Parsed deck containing WELSPECS/COMPDAT/WCONINJE.
         :param grid: Grid built from the same deck.
-        :param well_kwargs: Forwarded to wells_from_records.
+        :param well_kwargs: Forwarded to `wells_from_records` and passed 
+            to the loaded `Well` instance.
         :returns: `Wells` for every well in the deck.
         """
         from bores.wells._deck import load_wells_from_deck

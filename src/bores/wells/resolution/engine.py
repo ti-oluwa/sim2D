@@ -23,7 +23,6 @@ import typing
 import attrs
 
 from bores.errors import ValidationError
-from bores.typing import Number
 from bores.wells.base import Well
 from bores.wells.controls import (
     InjectorControl,

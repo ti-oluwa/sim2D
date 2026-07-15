@@ -41,7 +41,7 @@ __all__ = [
 ]
 
 
-@attrs.frozen
+@attrs.frozen(slots=True)
 class SaturationFunctionTables(StoreSerializable):
     """
     Saturation function table(s) defining rock-fluid interactions in the reservoir.

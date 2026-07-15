@@ -41,7 +41,7 @@ def _validate_pseudo_pressure_phase(
         )
 
 
-@attrs.frozen
+@attrs.frozen(slots=True)
 class Fluid(StoreSerializable):
     """
     Base class for all reservoir fluids.

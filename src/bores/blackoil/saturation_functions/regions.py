@@ -40,6 +40,7 @@ class SaturationFunctionRegions(StoreSerializable):
     """
 
     __abstract_serializable__ = True
+    __slots__ = ("_tables", "unit_system")
 
     def __init__(
         self,

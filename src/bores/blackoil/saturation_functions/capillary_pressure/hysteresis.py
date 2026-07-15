@@ -229,7 +229,7 @@ def _get_gas_oil_capillary_pressure_derivative(
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class KilloughCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},

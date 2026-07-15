@@ -1,6 +1,5 @@
 """
-Utilities for building `Well`/`WellControl`/`WellGroup`/`GroupControl`/`WellModel` objects,
-from parsed Eclipse deck records.
+Utilities for building well model definition objects from parsed Eclipse deck records.
 """
 
 import typing
@@ -191,7 +190,7 @@ def make_producer_control_from_record(
 
     :param record: One parsed WCONPROD record.
     :returns: Constructed ProducerControl. If item bhp is present and mode
-        isn't BHP, adds an implicit BHPLimit(min_value=bhp).
+        isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
     """
     mode = ProducerControlMode(record["control_mode"])
     limits: typing.List[Limit] = []
@@ -274,7 +273,7 @@ def apply_economic_limits(
     Add each WECON record's `EconomicLimit`s onto the matching well's
     existing control in `controls`, in place.
 
-    :param controls: WellControls to update.
+    :param controls: `WellControls` to update.
     :param wecon_records: All parsed WECON records.
     :raises KeyError: If a record's well has no control set in `controls`
         yet - call this after make_controls_from_records, not before.
@@ -294,7 +293,7 @@ def make_controls_from_records(
     wconinje_records: typing.Sequence[typing.Mapping[str, typing.Any]],
 ) -> WellControls:
     """
-    Build a `WellControls` from every `WCONPROD`/`WCONINJE` record in a
+    Build a `WellControls` object from every `WCONPROD`/`WCONINJE` record in a
     deck. Later records for the same well name overwrite earlier ones
     (matches Eclipse's own reissue semantics).
 
@@ -364,7 +363,7 @@ def make_group_controls_from_records(
     gconinje_records: typing.Sequence[typing.Mapping[str, typing.Any]],
 ) -> GroupControls:
     """
-    Build a `GroupControls` from every `GCONPROD`/`GCONINJE` record.
+    Build a `GroupControls` object from every `GCONPROD`/`GCONINJE` record.
 
     :param gconprod_records: All parsed `GCONPROD` records, file order.
     :param gconinje_records: All parsed `GCONINJE` records, file order.
@@ -401,6 +400,7 @@ def load_wells_from_deck(
     compdat = deck_file.get("COMPDAT") or []
     wconinje = deck_file.get("WCONINJE") or []
     injector_names = {record["well"] for record in wconinje}
+    well_kwargs.setdefault("unit_system", deck_file.unit_system)
     return make_wells_from_records(
         grid,
         welspecs,

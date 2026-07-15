@@ -394,8 +394,8 @@ class PVTTable(StoreSerializable):
         self._build_interpolants(data)
 
         logger.debug(
-            "PVTTable init: phase=%s, n_p=%d, n_t=%d, method=%r, "
-            "n_interp=%d, n_deriv=%d",
+            "%s init: phase=%s, n_p=%d, n_t=%d, method=%r, n_interp=%d, n_deriv=%d",
+            self.__class__.__name__,
             data.phase.value.upper(),  # type: ignore
             len(data.pressures),
             len(data.temperatures),
@@ -1101,13 +1101,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:
@@ -1910,7 +1908,7 @@ class PVTTable(StoreSerializable):
         )
 
 
-@attrs.frozen
+@attrs.frozen(slots=True)
 class PVTTables(StoreSerializable):
     """
     Bundle of phase-specific `PVTTable` instances for a single PVT region.
@@ -1941,7 +1939,8 @@ class PVTTables(StoreSerializable):
     water: typing.Optional[PVTTable] = None
     """PVT table for the water phase."""
 
-    _unit_system: UnitSystem = attrs.field(init=False, repr=False, eq=False, hash=False)
+    unit_system: UnitSystem = attrs.field(init=False, repr=False, eq=False, hash=False)
+    """Unit system of the underlying tables."""
 
     def __attrs_post_init__(self) -> None:
         if self.oil is None and self.gas is None and self.water is None:
@@ -1970,16 +1969,7 @@ class PVTTables(StoreSerializable):
             raise ValidationError("All phase tables must have the same unit system.")
 
         unit_system = unit_systems.pop()
-        object.__setattr__(self, "_unit_system", unit_system)
-
-    @property
-    def unit_system(self) -> UnitSystem:
-        """
-        Unit system of the underlying tables.
-
-        :returns: `UnitSystem` instance.
-        """
-        return self._unit_system
+        object.__setattr__(self, "unit_system", unit_system)
 
     @classmethod
     def from_dataset(

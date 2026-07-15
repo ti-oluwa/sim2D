@@ -74,6 +74,15 @@ class ReservoirModel(
     declared `unit_system` (defaults to the grid's own unit system).
     """
 
+    __slots__ = (
+        "grid",
+        "rock",
+        "regions",
+        "unit_system",
+        "_transmissibilities",
+        "_face_transmissibility_map",
+    )
+
     def __init__(
         self,
         grid: Grid,

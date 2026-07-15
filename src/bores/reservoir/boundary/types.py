@@ -35,7 +35,7 @@ __all__ = [
 
 
 @boundary_condition
-@attrs.frozen
+@attrs.frozen(slots=True)
 class ConstantFluxBoundary(BoundaryCondition):
     """
     Constant-flux (Neumann) boundary condition.
@@ -138,7 +138,7 @@ class ConstantFluxBoundary(BoundaryCondition):
 
 
 @boundary_condition
-@attrs.frozen
+@attrs.frozen(slots=True)
 class ConstantPressureBoundary(BoundaryCondition):
     """
     Constant-pressure (Dirichlet) boundary condition.
@@ -229,7 +229,7 @@ class ConstantPressureBoundary(BoundaryCondition):
 
 
 @boundary_condition
-@attrs.frozen
+@attrs.frozen(slots=True)
 class ProductivityIndexBoundary(BoundaryCondition):
     """
     Robin (mixed) boundary condition using a productivity-index formulation.
@@ -450,7 +450,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
 
 
 @boundary_condition
-@attrs.frozen
+@attrs.frozen(slots=True)
 class TimeDependentFluxBoundary(BoundaryCondition):
     """
     Time-varying flux (Neumann) boundary condition driven by a registered

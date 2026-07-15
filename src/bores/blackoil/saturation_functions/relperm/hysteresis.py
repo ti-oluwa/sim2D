@@ -409,7 +409,7 @@ def _get_gas_oil_relative_permeability_derivatives(
 
 
 @relperm_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class KilloughLandRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},

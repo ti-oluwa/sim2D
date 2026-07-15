@@ -741,7 +741,7 @@ def compute_brooks_corey_capillary_pressure_derivatives(
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class BrooksCoreyCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
@@ -1883,7 +1883,7 @@ def compute_van_genuchten_derivatives(
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class VanGenuchtenCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
@@ -2964,7 +2964,7 @@ def _get_dyne_per_cm_to_pressure_unit(unit_system: UnitSystem) -> Number:
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class LeverettJCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},

@@ -112,6 +112,7 @@ class PVTRegions(StoreSerializable):
     """
 
     __abstract_serializable__ = True
+    __slots__ = ("_regions", "unit_system")
 
     def __init__(
         self,

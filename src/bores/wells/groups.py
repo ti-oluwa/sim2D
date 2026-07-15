@@ -306,7 +306,8 @@ class GroupInjectorControlMode(enum.Enum):
 
 @attrs.frozen(kw_only=True, slots=True)
 class GroupControl(Serializable):
-    """A group's production or injection target.
+    """
+    A group's production or injection target.
 
     Same "all targets may be populated, `mode` selects the active one"
     shape as `ProducerControl`/`InjectorControl` - deck `GCONPROD`/

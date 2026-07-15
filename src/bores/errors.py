@@ -30,8 +30,6 @@ class ValidationError(BORESError, ValueError):
 
 
 # Solver Errors
-
-
 class PreconditionerError(BORESError):
     """Raised when there is an error related to preconditioners."""
 

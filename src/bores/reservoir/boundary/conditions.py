@@ -84,6 +84,10 @@ class BoundaryRegion(StoreSerializable):
             raise ValidationError("`face_positions` must be a 1-D array.")
         object.__setattr__(self, "face_positions", face_positions)
 
+    @property
+    def unit_system(self) -> UnitSystem:
+        return self.condition.unit_system
+
     def convert(
         self,
         target: UnitSystem,
@@ -115,8 +119,7 @@ class BoundaryRegion(StoreSerializable):
         """
         Convenience constructor for a sealed (no-flow) boundary region.
 
-        Equivalent to `BoundaryRegion(name, face_positions,
-        ConstantFluxBoundary(flux=0.0))`.
+        Equivalent to `BoundaryRegion(name, face_positions, ConstantFluxBoundary(flux=0.0))`.
 
         :param name: Region label.
         :param face_positions: Boundary face positions.
@@ -154,12 +157,13 @@ class BoundaryRegion(StoreSerializable):
             f"{self.__class__.__name__}("
             f"name={self.name!r}, "
             f"n_faces={len(self.face_positions)}, "
-            f"condition={self.condition!r}"
+            f"condition={self.condition!r}, "
+            f"unit_system={self.unit_system!r}"
             f")"
         )
 
 
-@attrs.frozen
+@attrs.frozen(slots=True)
 class BoundaryConditions(StoreSerializable):
     """
     Ordered collection of `BoundaryRegion` objects governing all boundary
@@ -205,7 +209,16 @@ class BoundaryConditions(StoreSerializable):
     """
 
     regions: typing.List[BoundaryRegion] = attrs.field(factory=list)
-    """Ordered list of boundary regions."""
+    """
+    Ordered list of boundary regions. Evaluated in list order; 
+    later regions override earlier ones on overlapping faces.
+    """
+    unit_system: typing.Optional[UnitSystem] = None
+    """
+    Target unit system for all regions. `None` requires every region in
+    `regions` to already share the same unit system and then resolves to that
+    shared value post-initialization. When given, every region is converted to it.
+    """
 
     def __attrs_post_init__(self) -> None:
         # Warn on overlapping face assignments
@@ -222,6 +235,28 @@ class BoundaryConditions(StoreSerializable):
                         stacklevel=3,
                     )
                 seen[position] = region.name
+
+        unit_system = self.unit_system
+        if unit_system is None:
+            systems = {region.unit_system for region in self.regions}
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All regions must share the same unit system when "
+                    "`unit_system` is not explicitly provided. "
+                    f"Found: {sorted(s.value for s in systems)}. "
+                    "Pass `unit_system` explicitly to convert all regions to "
+                    "a common system."
+                )
+            resolved = systems.pop() if systems else UnitSystem.FIELD
+            object.__setattr__(self, "unit_system", resolved)
+        else:
+            converted = [
+                region
+                if region.unit_system == unit_system
+                else region.convert(unit_system)
+                for region in self.regions
+            ]
+            object.__setattr__(self, "regions", converted)
 
     def evaluate(
         self,
@@ -305,11 +340,14 @@ class BoundaryConditions(StoreSerializable):
         :param target: Target `UnitSystem`.
         :returns: New `BoundaryConditions` in *target* units.
         """
-        return self.__class__(
-            regions=[region.convert(target, table=table) for region in self.regions]
+        return attrs.evolve(
+            self,
+            regions=[region.convert(target, table=table) for region in self.regions],
         )
 
-    def add_region(self, region: BoundaryRegion) -> Self:
+    def add_region(
+        self, region: BoundaryRegion, unit_system: typing.Optional[UnitSystem] = None
+    ) -> Self:
         """
         Return a new `BoundaryConditions` with *region* appended.
 
@@ -321,7 +359,9 @@ class BoundaryConditions(StoreSerializable):
             list (lowest override priority among overlapping faces relative to
             later additions).
         """
-        return self.__class__(regions=[*self.regions, region])
+        return attrs.evolve(
+            self, regions=[*self.regions, region], unit_system=unit_system
+        )
 
     def remove_region(self, name: str) -> Self:
         """
@@ -342,7 +382,7 @@ class BoundaryConditions(StoreSerializable):
                 stacklevel=2,
             )
             return self
-        return self.__class__(regions=remaining)
+        return attrs.evolve(self, regions=remaining)
 
     def get_region(self, name: str) -> BoundaryRegion:
         """
@@ -381,4 +421,10 @@ class BoundaryConditions(StoreSerializable):
 
     def __repr__(self) -> str:
         region_names = [region.name for region in self.regions]
-        return f"{self.__class__.__name__}(n_regions={self.n_regions}, regions={region_names})"
+        return f"""
+        {self.__class__.__name__}(
+            n_regions={self.n_regions}, 
+            regions={region_names}, 
+            unit_system={self.unit_system!r},
+        )
+        """

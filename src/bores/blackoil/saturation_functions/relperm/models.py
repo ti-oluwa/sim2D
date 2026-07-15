@@ -340,7 +340,7 @@ def compute_brookes_corey_relative_permeabilities(
 
 
 @relperm_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class BrooksCoreyRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},
@@ -1737,7 +1737,7 @@ def _let_curve_slope_wrt_normalized_saturation(
 
 
 @relperm_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class LETThreePhaseRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},

@@ -1,6 +1,7 @@
 import pyvista as pv
 
 from bores.blackoil.fluid import BlackOilFluid
+from bores.blackoil.model import BlackOilModel
 from bores.blackoil.pvt import PVTRegions
 from bores.blackoil.saturation_functions import SaturationFunctionRegions
 from bores.deck import DeckFile
@@ -45,7 +46,6 @@ initial_state = initialize_reservoir_state(
     satfunc=satfunc,
     temperature=temperature,
 )
-# print(initial_state.dump())
 
 # Load Wells
 wells = WellModel.from_deck(
@@ -54,6 +54,9 @@ wells = WellModel.from_deck(
     wellbore_model=MechanisticWellboreModel(),
 )
 print(wells.controls["PROD"])
+
+# Construct the final model
+model = BlackOilModel(reservoir=reservoir, fluid=blackoil, wells=wells)
 
 # Plot the grid
 print(f"cells   : {grid.n_cells}")

@@ -389,6 +389,7 @@ class WellControls(StoreSerializable):
     """Name-keyed, mutable mapping from well name to its current `WellControl`."""
 
     __abstract_serializable__ = True
+    __slots__ = ("_controls",)
 
     def __init__(self, controls: typing.Dict[str, WellControl]) -> None:
         self._controls = dict(controls)

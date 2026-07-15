@@ -421,7 +421,7 @@ def get_relperm_table(name: str) -> typing.Type[RelativePermeabilityTable]:
 
 
 @relperm_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class TwoPhaseRelPermTable(
     RelativePermeabilityTable,
     load_exclude={
@@ -1488,7 +1488,7 @@ class TwoPhaseRelPermTable(
 
 
 @relperm_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class ThreePhaseRelPermTable(
     RelativePermeabilityTable,
     serializers={"mixing_rule": serialize_mixing_rule},

@@ -3,14 +3,16 @@
 import typing
 
 import attrs
+from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
+from bores.serde.stores import StoreSerializable
 from bores.typing import FluidPhase, Number
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
-__all__ = ["ConnectionSample", "PerforationState", "WellState"]
+__all__ = ["ConnectionSample", "PerforationState", "WellState", "WellStates"]
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -32,7 +34,7 @@ class ConnectionSample(Serializable):
 
 
 @attrs.frozen(kw_only=True, slots=True)
-class PerforationState(Serializable):
+class PerforationState(StoreSerializable):
     """Per-perforation dynamic snapshot for one timestep."""
 
     perforation: AnyPerforation
@@ -46,7 +48,7 @@ class PerforationState(Serializable):
 
 
 @attrs.frozen(kw_only=True, slots=True)
-class WellState(Serializable):
+class WellState(StoreSerializable):
     """Per-well dynamic snapshot for one timestep."""
 
     well_name: str
@@ -92,4 +94,84 @@ class WellState(Serializable):
         )
 
 
-# TODO: Add `WellStates` class
+class WellStates(StoreSerializable):
+    """Name-keyed collection of `WellState`, one per well, for a single timestep."""
+
+    __abstract_serializable__ = True
+
+    __slots__ = ("_states",)
+
+    def __init__(self, states: typing.Dict[str, WellState]) -> None:
+        """
+        Initialize the `WellStates` object.
+
+        :param states: Mapping from well name to WellState.
+        :raises ValidationError: If any key doesn't match its value's
+            WellState.well_name.
+        """
+        mismatched = {
+            key: state.well_name
+            for key, state in states.items()
+            if key != state.well_name
+        }
+        if mismatched:
+            raise ValidationError(
+                f"`states` dict keys must match WellState.well_name; "
+                f"mismatches (key -> well_name): {mismatched}."
+            )
+        self._states = dict(states)
+
+    def get(self, well_name: str) -> typing.Optional[WellState]:
+        """
+        Get the `WellState` for a given well.
+
+        :param well_name: Well to look up.
+        :returns: WellState, or None if unset.
+        """
+        return self._states.get(well_name)
+
+    def set(self, state: WellState) -> None:
+        """
+        Set the `WellState` for a given well.
+
+        :param state: WellState to store, keyed by `state.well_name`.
+        """
+        self._states[state.well_name] = state
+
+    @property
+    def open_wells(self) -> typing.Tuple[WellState, ...]:
+        """Returns Every WellState with is_open=True."""
+        return tuple(state for state in self._states.values() if state.is_open)
+
+    @property
+    def shut_wells(self) -> typing.Tuple[WellState, ...]:
+        """Returns every `WellState` with is_open=False."""
+        return tuple(state for state in self._states.values() if not state.is_open)
+
+    def __getitem__(self, well_name: str) -> WellState:
+        """
+        Get the `WellState` for a given well.
+
+        :raises KeyError: If no state is set for `well_name`.
+        """
+        state = self.get(well_name)
+        if state is None:
+            raise KeyError(f"No state set for well {well_name!r}.")
+        return state
+
+    def __iter__(self) -> typing.Iterator[str]:
+        return iter(self._states)
+
+    def __len__(self) -> int:
+        return len(self._states)
+
+    def __contains__(self, well_name: object) -> bool:
+        return well_name in self._states
+
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        return {"states": {name: state.dump() for name, state in self._states.items()}}
+
+    @classmethod
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
+        states = {name: WellState.load(sd) for name, sd in data["states"].items()}
+        return cls(states=states)

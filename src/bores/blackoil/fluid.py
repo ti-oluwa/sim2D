@@ -32,6 +32,8 @@ class BlackOilFluid(
     Use `convert(target)` to produce a fully rescaled copy.
     """
 
+    __slots__ = ("pvt", "satfunc", "unit_system")
+
     def __init__(
         self,
         pvt: PVTRegions,

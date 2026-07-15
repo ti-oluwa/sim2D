@@ -117,5 +117,4 @@ def allocate_group_targets(
         new_control = attrs.evolve(current, mode=target_mode, target_rate=share)
         wells_model.controls.set(name, new_control)
         updated[name] = new_control
-
     return updated

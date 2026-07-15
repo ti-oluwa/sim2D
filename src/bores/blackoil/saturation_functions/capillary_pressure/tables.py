@@ -166,7 +166,7 @@ def get_capillary_pressure_table(name: str) -> typing.Type[CapillaryPressureTabl
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class TwoPhaseCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"_interp", "_d_interp"},
@@ -835,7 +835,7 @@ class TwoPhaseCapillaryPressureTable(
 
 
 @capillary_pressure_table
-@attrs.frozen
+@attrs.frozen(slots=True)
 class ThreePhaseCapillaryPressureTable(
     CapillaryPressureTable,
     load_exclude={"supports_vector"},
