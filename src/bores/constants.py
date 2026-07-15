@@ -471,22 +471,22 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "STB_TO_CUBIC_FEET": Constant(
         value=5.614583,
-        description="Conversion factor from stock tank barrels to cubic feet",
+        description="Conversion factor from stock tank barrels to (standard) cubic feet",
         unit="ft³/STB",
     ),
     "CUBIC_FEET_TO_STB": Constant(
         value=1 / 5.614583,
-        description="Conversion factor from cubic feet to stock tank barrels",
+        description="Conversion factor from (standard) cubic feet to stock tank barrels",
         unit="STB/ft³",
     ),
     "STB_TO_CUBIC_METER": Constant(
         value=0.158987,
-        description="Conversion factor from stock tank barrels to cubic meters",
+        description="Conversion factor from stock tank barrels to (standard) cubic meters",
         unit="m³/STB",
     ),
     "CUBIC_METER_TO_STB": Constant(
         value=1 / 0.158987,
-        description="Conversion factor from cubic meters to stock tank barrels",
+        description="Conversion factor from (standard) cubic meters to stock tank barrels",
         unit="STB/m³",
     ),
     "BARRELS_TO_CUBIC_METER": Constant(
@@ -1702,7 +1702,7 @@ IDENTITY_FACTORS = UnitConversionFactors(
     gas_surface_rate=1.0,
     reservoir_rate=1.0,
 )
-"""Identity unit conversion factors - all multiplicative factors 1.0, offset 0.0."""
+"""Identity unit conversion factors. Has all multiplicative factors as 1.0, and offset 0.0."""
 
 UNIT_CONVERSION_TABLE = build_unit_conversion_table()
 """Default unit conversion table"""

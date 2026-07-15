@@ -189,7 +189,7 @@ def make_producer_control_from_record(
     Build a `ProducerControl` from one `WCONPROD` record.
 
     :param record: One parsed WCONPROD record.
-    :returns: Constructed ProducerControl. If item bhp is present and mode
+    :returns: Constructed `ProducerControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
     """
     mode = ProducerControlMode(record["control_mode"])
@@ -220,8 +220,8 @@ def make_injector_control_from_record(
     Build an `InjectorControl` from one `WCONINJE` record.
 
     :param record: One parsed WCONINJE record.
-    :returns: Constructed InjectorControl. If item bhp is present and mode
-        isn't BHP, adds an implicit BHPLimit(max_value=bhp).
+    :returns: Constructed `InjectorControl`. If item bhp is present and mode
+        isn't BHP, adds an implicit `BHPLimit(max_value=bhp)`.
     """
     mode = InjectorControlMode(record["control_mode"])
     limits: typing.List[Limit] = []
