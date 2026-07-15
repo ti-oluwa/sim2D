@@ -16,14 +16,23 @@ class ControlResolution(Serializable):
     """Result of resolving one well's control for one timestep."""
 
     bhp: Number
+    
     phase_rates: typing.Mapping[FluidPhase, Number]
+
     active_limit: typing.Optional[Limit] = None
-    """Which `Limit` from the spec's `limits` tuple is currently binding,
-    `None` if the primary target is achieved without hitting any limit."""
+    """
+    Which `Limit` from the spec's `limits` tuple is currently binding,
+    `None` if the primary target is achieved without hitting any limit.
+    """
+
     economic_shutin: bool = False
-    """True if an `EconomicLimit` was violated. `phase_rates` are zeroed in
+    """
+    True if an `EconomicLimit` was violated. `phase_rates` are zeroed in
     that case. The caller (simulation loop) decides whether/how to act on
-    this (e.g. set WellState.is_open=False for the next timestep)."""
+    this (e.g. set WellState.is_open=False for the next timestep).
+    """
+
+    thp: typing.Optional[Number] = None
 
 
 @attrs.frozen(kw_only=True, slots=True)

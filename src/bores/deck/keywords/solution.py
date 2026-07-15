@@ -32,7 +32,8 @@ import typing
 
 import numpy as np
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
+from bores.datastructures import GridDimensions
+from bores.deck.core import Deck, DeckParseError, tokenize
 from bores.deck.keywords.base import (
     ArrayKeyword,
     Field,

@@ -7,10 +7,10 @@ from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
 from bores.initialization import initialize_reservoir_state
-from bores.reservoir import Regions, Reservoir, Temperature
+from bores.reservoir import Regions, ReservoirModel, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import EquilibriumRegions
-from bores.typing import UnitSystem
+from bores.wells import MechanisticWellboreModel, WellModel
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
@@ -25,7 +25,7 @@ rock = Rock.from_deck(
     satfunc=satfunc,
     saturation_regions=regions.saturation_regions,
 )
-reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
+reservoir = ReservoirModel(grid=grid, rock=rock, regions=regions)
 
 # The fluid
 temperature = Temperature(200)
@@ -40,11 +40,20 @@ equilibrium = EquilibriumRegions.from_deck(df)
 initial_state = initialize_reservoir_state(
     reservoir=reservoir,
     pvt=pvt,
+    deck_file=df,
     equilibrium=equilibrium,
     satfunc=satfunc,
     temperature=temperature,
 )
 # print(initial_state.dump())
+
+# Load Wells
+wells = WellModel.from_deck(
+    df,
+    grid=grid,
+    wellbore_model=MechanisticWellboreModel(),
+)
+print(wells.controls["PROD"])
 
 # Plot the grid
 print(f"cells   : {grid.n_cells}")

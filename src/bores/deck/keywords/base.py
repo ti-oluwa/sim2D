@@ -13,10 +13,10 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
+from bores.datastructures import GridDimensions
 from bores.deck.core import (
     Deck,
     DeckParseError,
-    GridDimensions,
     parse_repeat_token,
     tokenize,
 )
@@ -41,8 +41,7 @@ T = typing.TypeVar("T")
 @attrs.frozen(slots=True, frozen=True)
 class Field(typing.Generic[T]):
     """
-    One positional field in a `RecordKeyword` or
-    `RepeatedRecordKeyword` layout.
+    One positional field in a `RecordKeyword` or `RepeatedRecordKeyword` layout.
 
     :param name: Field name (used as key in the returned `dict`).
     :param type: Callable that converts the raw token string to the field
@@ -72,25 +71,48 @@ class Field(typing.Generic[T]):
             )
         object.__setattr__(self, "options", options)
 
-    def parse(self, raw: str, name: str) -> typing.Optional[T]:
-        default = False
-        try:
-            value = self.type(raw)
-        except (ValueError, TypeError) as exc:
-            if self.on_error == "raise":
-                raise
+    def parse(self, raw: typing.Optional[str], keyword: str) -> typing.Optional[T]:
+        """
+        Parse one Eclipse field value.
 
+        - `raw=None` means the field was omitted entirely.
+        - `raw="1*"` is Eclipse's explicit "use the default value" designator.
+
+        :param raw: Raw token string, or `None` if the field is absent.
+        :param keyword: Keyword name for error messages.
+        :returns: Parsed value (or the field default).
+        :raises DeckParseError: If the field is missing, contains an invalid
+            value, or violates the declared option set.
+        """
+        # Field omitted entirely.
+        if raw is None:
             if self.required:
                 raise DeckParseError(
-                    f"{name} record: {self.name!r} got invalid value {raw!r}: {exc}"
-                ) from exc
-            value = self.default
-            default = True
+                    f"{keyword} record: missing required field {self.name!r}."
+                )
+            return self.default
 
-        if self.options and not default and value not in self.options:
+        # Eclipse explicit default ("1*").
+        if raw == "1*":
+            if self.required:
+                raise DeckParseError(
+                    f"{keyword} record: required field {self.name!r} "
+                    "cannot use the default designator ('1*')."
+                )
+            return self.default
+
+        try:
+            value = self.type(raw)
+        except (TypeError, ValueError) as exc:
             raise DeckParseError(
-                f"{name} record: {self.name!r} got unrecognised value {raw!r}. "
-                f"Value should be one of {', '.join([str(option) for option in self.options])}"
+                f"{keyword} record: {self.name!r} got invalid value {raw!r}: {exc}"
+            ) from exc
+
+        if self.options is not None and value not in self.options:
+            raise DeckParseError(
+                f"{keyword} record: {self.name!r} got unrecognised value {raw!r}. "
+                f"Value should be one of "
+                f"{', '.join(map(str, self.options))}."
             )
         return value
 
@@ -147,13 +169,13 @@ class Keyword(typing.Generic[T], abc.ABC):
 
 
 def _parse_tokens(
-    name: str, fields: typing.Sequence[Field[T]], tokens: typing.Sequence[str]
+    keyword: str, fields: typing.Sequence[Field[T]], tokens: typing.Sequence[str]
 ) -> typing.Dict[str, typing.Optional[T]]:
     """
     Convert a flat token sequence to a `{field_name: value}` dict
     according to `fields`.
 
-    :param name: Keyword name, used only in error messages.
+    :param keyword: Keyword name, used only in error messages.
     :param fields: Field descriptors in positional order.
     :param tokens: Already-expanded token list for this record.
     :returns: Parsed field dict.
@@ -163,16 +185,8 @@ def _parse_tokens(
     result: typing.Dict[str, typing.Optional[T]] = {}
     n_tokens = len(tokens)
     for idx, field in enumerate(fields):
-        if idx < n_tokens:
-            raw = tokens[idx]
-            result[field.name] = field.parse(raw, name)
-        elif field.required:
-            raise DeckParseError(
-                f"{name} record: missing required field {field.name!r} "
-                f"(got {n_tokens} token(s), expected at least {idx + 1})."
-            )
-        else:
-            result[field.name] = field.default
+        raw = tokens[idx] if idx < n_tokens else None
+        result[field.name] = field.parse(raw, keyword)
     return result
 
 
@@ -864,25 +878,8 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         row: PVTRow = {}
         n_tokens = len(tokens)
         for idx, column in enumerate(self.columns):
-            if idx < n_tokens:
-                raw = tokens[idx]
-                if raw == "1*":
-                    # Eclipse default designator - use the column default.
-                    if column.required:
-                        raise DeckParseError(
-                            f"{self.name}: required column {column.name!r} "
-                            "has a default designator ('1*') but no default value."
-                        )
-                    row[column.name] = column.default
-                else:
-                    row[column.name] = column.parse(raw, self.name)
-            elif column.required:
-                raise DeckParseError(
-                    f"{self.name}: missing required column {column.name!r} "
-                    f"(got {n_tokens} token(s), need at least {idx + 1})."
-                )
-            else:
-                row[column.name] = column.default
+            raw = tokens[idx] if idx < n_tokens else None
+            row[column.name] = column.parse(raw, self.name)
         return row
 
     def _parse_flat(self, body: str) -> PVTTable[Number]:

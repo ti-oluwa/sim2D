@@ -11,7 +11,7 @@ from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.reservoir.boundary.base import BoundaryCondition, BoundaryConditionType
 from bores.reservoir.boundary.types import ConstantFluxBoundary
-from bores.reservoir.model import Reservoir
+from bores.reservoir.model import ReservoirModel
 from bores.reservoir.state import ReservoirState
 from bores.serde.stores import StoreSerializable
 from bores.typing import (
@@ -227,7 +227,7 @@ class BoundaryConditions(StoreSerializable):
         self,
         n_boundary_faces: int,
         state: ReservoirState,
-        reservoir: Reservoir,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> typing.Tuple[

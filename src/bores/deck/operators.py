@@ -16,7 +16,8 @@ import warnings
 
 import numpy as np
 
-from bores.deck.core import Deck, GridDimensions, tokenize
+from bores.datastructures import GridDimensions
+from bores.deck.core import Deck, tokenize
 from bores.typing import FloatArray, IntArray, OneDimension
 
 __all__ = [

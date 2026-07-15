@@ -7,7 +7,9 @@ import attrs
 from typing_extensions import Self
 
 from bores.constants import get_conversion_factors
+from bores.deck.file import DeckFile
 from bores.errors import ValidationError
+from bores.grids.base import Grid
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
 from bores.typing import (
@@ -37,7 +39,7 @@ class WellType(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
-    
+
     @classmethod
     def _missing_(cls, value: object) -> Self:
         return cls(str(value).lower())
@@ -63,7 +65,7 @@ class CompletionStatus(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
-    
+
     @classmethod
     def _missing_(cls, value: object) -> Self:
         return cls(str(value).lower())
@@ -530,6 +532,22 @@ class Wells(StoreSerializable):
         return tuple(
             well for well in self._wells.values() if well.well_type is WellType.INJECTOR
         )
+
+    @classmethod
+    def from_deck(
+        cls, deck_file: DeckFile, *, grid: Grid, **well_kwargs: typing.Any
+    ) -> Self:
+        """
+        Load the `Wells` object from a parsed `DeckFile`.
+
+        :param deck_file: Parsed deck containing WELSPECS/COMPDAT/WCONINJE.
+        :param grid: Grid built from the same deck.
+        :param well_kwargs: Forwarded to wells_from_records.
+        :returns: `Wells` for every well in the deck.
+        """
+        from bores.wells._deck import load_wells_from_deck
+
+        return typing.cast(Self, load_wells_from_deck(deck_file, grid, **well_kwargs))
 
     def __getitem__(self, name: str) -> Well:
         return self.well(name)

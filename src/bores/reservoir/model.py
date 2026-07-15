@@ -22,7 +22,7 @@ from bores.reservoir.transmissibility import (
 from bores.serde.base import Serializable
 from bores.typing import CellArray, Number, UnitSystem
 
-__all__ = ["Reservoir"]
+__all__ = ["ReservoirModel"]
 
 
 def _validate_rock(rock: Rock, n_cells: int) -> Rock:
@@ -57,7 +57,7 @@ def _validate_rock(rock: Rock, n_cells: int) -> Rock:
     return rock
 
 
-class Reservoir(
+class ReservoirModel(
     Serializable,
     fields={
         "grid": Grid,

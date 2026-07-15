@@ -10,6 +10,7 @@ from scipy.spatial import cKDTree
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, get_conversion_factors
+from bores.datastructures import GridDimensions, MapAxes
 from bores.deck.file import DeckFile
 from bores.errors import (
     CellNotFoundError,
@@ -129,7 +130,7 @@ class CellStatus(enum.IntEnum):
     INACTIVE = 0
 
 
-_GEOMETRY_TOLERANCE: float = 1e-14
+GEOMETRY_TOLERANCE: float = 1e-14
 
 
 @numba.njit(parallel=True, cache=True)
@@ -352,7 +353,7 @@ def _compute_cell_bounding_boxes(
 
 
 @typing.final
-@attrs.mutable(frozen=True, slots=True, kw_only=True)
+@attrs.frozen(slots=True, kw_only=True)
 class Grid(
     Serializable,
     fields={
@@ -449,6 +450,9 @@ class Grid(
 
     unit_system: UnitSystem = attrs.field(default=UnitSystem.FIELD)
     """Declared unit system for all coordinate and geometry arrays."""
+
+    dimensions: typing.Optional[GridDimensions] = attrs.field(default=None)
+    """Dimension of the unstructure grid."""
 
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = attrs.field(
         default=None
@@ -630,6 +634,18 @@ class Grid(
     """KD-tree on cell centroids for fast nearest-cell queries."""
 
     def __attrs_post_init__(self) -> None:
+        if self.dimensions is None and self.metadata is not None:
+            dims = self.metadata.get("dimensions", None)
+            if isinstance(dims, tuple) and dims:
+                size = len(dims)
+                if size == 3:
+                    dimensions = GridDimensions(*dims)
+                elif size == 2:
+                    dimensions = GridDimensions(dims[0], dims[1], 0)
+                else:
+                    dimensions = GridDimensions(dims[0], 0, 0)
+                object.__setattr__(self, "dimensions", dimensions)
+
         self._validate_inputs()
         self._classify_faces()
         self._populate_defaults()
@@ -936,6 +952,12 @@ class Grid(
                 self.negative_z_transmissibility_multipliers,
             )
         )
+
+    @property
+    def map_axes(self) -> typing.Optional[MapAxes]:
+        if self.metadata is not None:
+            return self.metadata.get("map_axes", None)
+        return None
 
     def is_cell_active(self, cell_index: int) -> bool:
         """
@@ -1245,7 +1267,7 @@ class Grid(
             )
 
         normal_magnitudes = np.linalg.norm(self.face_unit_normals, axis=1)
-        active_mask = self.face_areas > _GEOMETRY_TOLERANCE
+        active_mask = self.face_areas > GEOMETRY_TOLERANCE
         if active_mask.any():
             deviation = np.abs(normal_magnitudes[active_mask] - 1.0)
             if (deviation > 1e-10).any():
@@ -1289,11 +1311,7 @@ class Grid(
 
         return typing.cast(
             Self,
-            load_grdecl(
-                source=deck_file,
-                unit_system=unit_system,
-                metadata=metadata,
-            ),
+            load_grdecl(source=deck_file, unit_system=unit_system, metadata=metadata),
         )
 
     def convert(
@@ -1359,7 +1377,7 @@ class Grid(
         )
 
     def __repr__(self) -> str:
-        bb = self.bounding_box
+        bbox = self.bounding_box
         fault_info = (
             f", n_faults={self.n_faults}"
             if (self.fault_face_indices or self.nnc_fault_indices)
@@ -1375,6 +1393,6 @@ class Grid(
             f"{nnc_info}"
             f"{fault_info}, "
             f"unit_system={self.unit_system.value!r}, "
-            f"bbox=({bb[0]:.2f}..{bb[1]:.2f}, {bb[2]:.2f}..{bb[3]:.2f}, {bb[4]:.2f}..{bb[5]:.2f})"
+            f"bbox=({bbox[0]:.2f}..{bbox[1]:.2f}, {bbox[2]:.2f}..{bbox[3]:.2f}, {bbox[4]:.2f}..{bbox[5]:.2f})"
             f")"
         )

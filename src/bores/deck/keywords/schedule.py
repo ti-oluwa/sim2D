@@ -41,8 +41,15 @@ import typing
 
 import numpy as np
 
-from bores.deck.core import Deck, DeckParseError, GridDimensions, tokenize
-from bores.deck.keywords.base import DatesKeyword, Field, Keyword, RepeatedRecordKeyword
+from bores.datastructures import GridDimensions
+from bores.deck.core import Deck, DeckParseError, tokenize
+from bores.deck.keywords.base import (
+    DatesKeyword,
+    Field,
+    Keyword,
+    RecordKeyword,
+    RepeatedRecordKeyword,
+)
 from bores.deck.operators import Operation
 
 __all__ = [
@@ -60,6 +67,13 @@ __all__ = [
     "GCONINJE",
     "WECON",
     "WTEST",
+    "WGRUPCON",
+    "GECON",
+    "WELPI",
+    "WPAVE",
+    "WCONHIST",
+    "WCONINJH",
+    "WDFAC",
 ]
 
 
@@ -598,4 +612,269 @@ Fields:
   as a string of one-letter codes: `P` (economic), `E` (group control
   efficiency), `W` (workover/economic limit, `WECON`); default `"PEW"`
   applies to all three.
+"""
+
+WGRUPCON = RepeatedRecordKeyword[typing.Union[str, float]](
+    "WGRUPCON",
+    fields=[
+        Field(name="well", type=str),
+        Field(
+            name="available_for_group_control",
+            type=lambda s: s.upper() == "YES",
+            required=False,
+            default=True,
+        ),
+        Field(name="guide_rate", type=float, required=False, default=None),
+        Field(
+            name="guide_rate_phase",
+            type=str,
+            required=False,
+            default=None,
+            options={"OIL", "WAT", "GAS", "LIQ", "RES", "COMB", "FORM"},
+        ),
+    ],
+)
+"""
+`WGRUPCON 'WELL' [available_for_group_control] [guide_rate] [guide_rate_phase] / ... /`
+- configure whether a well participates in group control and, optionally,
+assign an explicit guide rate.
+
+Group-control algorithms use guide rates to distribute production or
+injection targets among wells belonging to the same group. A well may be
+excluded from group allocation while still remaining under its own local
+controls.
+
+Fields:
+
+- `well`                        - well name.
+- `available_for_group_control` - whether the well may participate in
+  automatic group control (`YES`/`NO`); defaults to `YES`.
+- `guide_rate`                  - explicit guide rate used when allocating
+  group targets; `None` means Eclipse computes or inherits the guide rate.
+- `guide_rate_phase`            - phase used for the guide rate (`OIL`,
+  `WAT`, `GAS`, `LIQ`, `RES`, `COMB`, or `FORM`).
+"""
+
+GECON = RepeatedRecordKeyword[typing.Union[str, float, bool]](
+    "GECON",
+    fields=[
+        Field(name="group", type=str),
+        Field(name="min_oil_rate", type=float, required=False, default=None),
+        Field(name="min_gas_rate", type=float, required=False, default=None),
+        Field(name="max_water_cut", type=float, required=False, default=None),
+        Field(name="max_gor", type=float, required=False, default=None),
+        Field(name="max_water_gas_ratio", type=float, required=False, default=None),
+        Field(
+            name="workover_procedure",
+            type=str,
+            required=False,
+            default="NONE",
+            options={"NONE", "CON", "+CON", "WELL", "PLUG", "RATE"},
+        ),
+        Field(
+            name="end_run",
+            type=lambda s: s.upper() == "YES",
+            required=False,
+            default=False,
+        ),
+    ],
+)
+"""
+`GECON 'GROUP' [min_oil_rate] [min_gas_rate] [max_water_cut] [max_gor] [max_water_gas_ratio] [workover_procedure] [end_run] / ... /`
+- define economic operating limits for an entire production group.
+
+When one of the specified limits is exceeded, Eclipse performs the selected
+workover action on wells within the group. These limits are analogous to
+`WECON`, but apply collectively to all wells in the group.
+
+Fields:
+
+- `group`                  - group name.
+- `min_oil_rate`           - minimum economic oil production rate.
+- `min_gas_rate`           - minimum economic gas production rate.
+- `max_water_cut`          - maximum allowable water cut.
+- `max_gor`                - maximum allowable gas-oil ratio.
+- `max_water_gas_ratio`    - maximum allowable water-gas ratio.
+- `workover_procedure`     - action taken when a limit is exceeded
+  (`NONE`, `CON`, `+CON`, `WELL`, `PLUG`, or `RATE`).
+- `end_run`                - whether exceeding the limit terminates the
+  simulation (`YES` or `NO`).
+"""
+
+WELPI = RepeatedRecordKeyword[typing.Union[str, float]](
+    "WELPI",
+    fields=[Field(name="well", type=str), Field(name="target_pi", type=float)],
+)
+"""
+`WELPI 'WELL' TARGET_PI / ... /`
+- explicitly assign a productivity index (PI) to a well.
+
+Normally the productivity index is computed automatically from the reservoir
+geometry, permeability, completion data, and well properties. `WELPI`
+overrides that calculation with a user-specified target value.
+
+Fields:
+
+- `well`      - well name.
+- `target_pi` - explicit productivity index assigned to the well.
+"""
+
+WPAVE = RecordKeyword[typing.Union[str, float, bool]](
+    "WPAVE",
+    fields=[
+        Field(name="f1", type=float, required=False, default=1.0),
+        Field(
+            name="procedure",
+            type=str,
+            required=False,
+            default="WBP4",
+            options={"WBP", "WBP4", "WBP5", "WBP9", "PBHP"},
+        ),
+        Field(name="f2", type=float, required=False, default=0.0),
+        Field(
+            name="depth_correction",
+            type=str,
+            required=False,
+            default="WELL",
+            options={"WELL", "RES"},
+        ),
+        Field(
+            name="open_connections_only",
+            type=lambda s: s.upper() == "YES",
+            required=False,
+            default=True,
+        ),
+    ],
+)
+"""
+`WPAVE [f1] [procedure] [f2] [depth_correction] [open_connections_only] /`
+- configure how average well pressure is calculated.
+
+Average well pressure is used by several well-control algorithms and
+reporting functions. This keyword selects the averaging procedure and
+controls whether only open completions contribute to the calculation.
+
+Fields:
+
+- `f1`                    - procedure-specific weighting factor.
+- `procedure`             - averaging method (`WBP`, `WBP4`, `WBP5`,
+  `WBP9`, or `PBHP`).
+- `f2`                    - additional procedure-specific parameter.
+- `depth_correction`      - apply depth correction using either the well
+  reference depth (`WELL`) or reservoir depth (`RES`).
+- `open_connections_only` - whether only open completions contribute to the
+  average pressure (`YES` or `NO`); defaults to `YES`.
+"""
+
+WCONHIST = RepeatedRecordKeyword[typing.Union[str, float]](
+    "WCONHIST",
+    fields=[
+        Field(name="well", type=str),
+        Field(
+            name="status",
+            type=str,
+            required=False,
+            default="OPEN",
+            options={"OPEN", "SHUT"},
+        ),
+        Field(
+            name="control_mode",
+            type=str,
+            required=False,
+            default="RESV",
+            options={"ORAT", "WRAT", "GRAT", "RESV", "BHP"},
+        ),
+        Field(name="orat", type=float, required=False, default=0.0),
+        Field(name="wrat", type=float, required=False, default=0.0),
+        Field(name="grat", type=float, required=False, default=0.0),
+        Field(name="vfp_table", type=int, required=False, default=None),
+        Field(name="alq", type=float, required=False, default=None),
+        Field(name="thp", type=float, required=False, default=None),
+        Field(name="bhp", type=float, required=False, default=None),
+    ],
+)
+"""
+`WCONHIST 'WELL' [status] [control_mode] [orat] [wrat] [grat] [vfp_table] [alq] [thp] [bhp] / ... /`
+- specify historical production data for history matching.
+
+Unlike `WCONPROD`, which defines simulation targets, `WCONHIST` supplies
+observed production rates and operating conditions that the simulator
+attempts to reproduce during history matching.
+
+Fields:
+
+- `well`         - well name.
+- `status`       - well status (`OPEN` or `SHUT`).
+- `control_mode` - historical control mode (`ORAT`, `WRAT`, `GRAT`,
+  `RESV`, or `BHP`).
+- `orat`         - observed oil production rate.
+- `wrat`         - observed water production rate.
+- `grat`         - observed gas production rate.
+- `vfp_table`    - VFP table used for THP/BHP calculations.
+- `alq`          - artificial lift quantity.
+- `thp`          - observed tubing-head pressure.
+- `bhp`          - observed bottom-hole pressure.
+"""
+
+WCONINJH = RepeatedRecordKeyword[typing.Union[str, float]](
+    "WCONINJH",
+    fields=[
+        Field(name="well", type=str),
+        Field(name="phase", type=str, options={"OIL", "WAT", "GAS"}),
+        Field(
+            name="status",
+            type=str,
+            required=False,
+            default="OPEN",
+            options={"OPEN", "SHUT"},
+        ),
+        Field(name="rate", type=float, required=False, default=0.0),
+        Field(name="bhp", type=float, required=False, default=None),
+        Field(name="thp", type=float, required=False, default=None),
+        Field(name="vfp_table", type=int, required=False, default=None),
+        Field(
+            name="control_mode",
+            type=str,
+            required=False,
+            default="RATE",
+            options={"RATE", "BHP"},
+        ),
+    ],
+)
+"""
+`WCONINJH 'WELL' PHASE [status] [rate] [bhp] [thp] [vfp_table] [control_mode] / ... /`
+- specify historical injection data for history matching.
+
+Unlike `WCONINJE`, which defines simulator control targets, `WCONINJH`
+describes measured injection performance that the simulator should honour
+during history matching.
+
+Fields:
+
+- `well`         - well name.
+- `phase`        - injected fluid (`OIL`, `WAT`, or `GAS`).
+- `status`       - injector status (`OPEN` or `SHUT`).
+- `rate`         - observed surface injection rate.
+- `bhp`          - observed bottom-hole pressure.
+- `thp`          - observed tubing-head pressure.
+- `vfp_table`    - VFP table used for THP/BHP calculations.
+- `control_mode` - historical injection control mode (`RATE` or `BHP`).
+"""
+
+WDFAC = RepeatedRecordKeyword[typing.Union[str, float]](
+    "WDFAC",
+    fields=[Field(name="well", type=str), Field(name="d_factor", type=float)],
+)
+"""
+`WDFAC 'WELL' D_FACTOR / ... /`
+- assign a non-Darcy flow (D-factor) coefficient to a well.
+
+The D-factor models additional pressure losses caused by high-velocity,
+non-Darcy flow near the wellbore. It supplements the mechanical skin factor
+and is primarily used for high-rate gas wells.
+
+Fields:
+
+- `well`     - well name.
+- `d_factor` - non-Darcy flow coefficient assigned to the well.
 """

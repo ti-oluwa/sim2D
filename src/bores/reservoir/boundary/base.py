@@ -10,7 +10,7 @@ from typing_extensions import Self
 from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.precision import get_dtype
-from bores.reservoir.model import Reservoir
+from bores.reservoir.model import ReservoirModel
 from bores.reservoir.state import ReservoirState
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
@@ -385,7 +385,7 @@ class BoundaryCondition(StoreSerializable):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: Reservoir,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -413,7 +413,7 @@ class BoundaryCondition(StoreSerializable):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: Reservoir,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:

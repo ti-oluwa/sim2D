@@ -8,7 +8,6 @@ from pathlib import Path
 from bores.errors import ValidationError
 
 __all__ = [
-    "GridDimensions",
     "Record",
     "Deck",
     "DeckParseError",
@@ -21,42 +20,6 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 class DeckParseError(ValidationError):
     """Raised when an Eclipse deck or one of its keyword records is malformed."""
-
-
-class GridDimensions(typing.NamedTuple):
-    """
-    Structured grid extent, as declared by `SPECGRID` (or `DIMENS`).
-
-    Needed by every per-cell array keyword (for expected length / reshape)
-    and by `BOX` / operator resolution (for IJK -> flat index mapping).
-    """
-
-    nx: int
-    ny: int
-    nz: int
-
-    @property
-    def n_cells(self) -> int:
-        """Total number of cells `nx * ny * nz`."""
-        return self.nx * self.ny * self.nz
-
-    def flat_index(self, i: int, j: int, k: int) -> int:
-        """
-        Convert 0-based `(i, j, k)` to a flat index in Eclipse's natural
-        ordering (`i` fastest, `k` slowest):
-        `index = i + j*nx + k*nx*ny`.
-
-        :param i: 0-based x index.
-        :param j: 0-based y index.
-        :param k: 0-based z index.
-        :returns: Flat cell index.
-        """
-        return i + j * self.nx + k * self.nx * self.ny
-
-    def __iter__(self) -> typing.Iterator[int]:
-        yield self.nx
-        yield self.ny
-        yield self.nz
 
 
 _COMMENT_RE = re.compile(r"--[^\n]*")
@@ -174,7 +137,14 @@ def parse_repeat_token(token: str) -> typing.Optional[typing.Tuple[int, str]]:
     match = _REPEAT_RE.match(token)
     if match is None:
         return None
-    return int(match.group(1)), match.group(2)
+
+    count = int(match.group(1))
+    value = match.group(2)
+
+    # Eclipse "N*" means N defaulted fields.
+    if value == "":
+        value = "1*"
+    return count, value
 
 
 def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
@@ -191,11 +161,14 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
     "MY FAULT 1" -> ["MY FAULT", "1"]
     ```
 
-    Note:
-    A bare `"N*"` (empty value) expands to `N` empty strings.
-    Callers that convert tokens to `float` will receive a
-    `ValueError`; they should surface this as a
-    `DeckParseError` with context about which keyword failed.
+    **Note**:
+        A bare "N*" expands to N occurrences of the Eclipse default
+        designator ("1*"). This preserves the distinction between an
+        explicit default and an empty string.
+        
+        Callers that convert tokens to `float` will receive a
+        `ValueError`; they should surface this as a
+        `DeckParseError` with context about which keyword failed.
 
     :param text: Comment-stripped Eclipse text.
     :param expand_repeats: When `True` (default), `N*value` expands to `N`
@@ -211,7 +184,7 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
     """
     placeholders: typing.List[str] = []
 
-    def _stash(match: "re.Match[str]") -> str:
+    def _stash(match: re.Match[str]) -> str:
         placeholders.append(match.group(2))
         return f"\x00{len(placeholders) - 1}\x00"
 
@@ -219,13 +192,14 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
 
     tokens: typing.List[str] = []
     for raw_token in stashed_text.split():
-        match = _REPEAT_RE.match(raw_token)
-        if match:
-            if expand_repeats:
-                count, value = int(match.group(1)), match.group(2)
-                tokens.extend([value] * count)
-            else:
-                tokens.append(raw_token)
+        repeat = parse_repeat_token(raw_token)
+        if repeat is None:
+            tokens.append(raw_token)
+            continue
+
+        count, value = repeat
+        if expand_repeats:
+            tokens.extend([value] * count)
         else:
             tokens.append(raw_token)
 

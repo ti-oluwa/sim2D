@@ -53,7 +53,7 @@ def _normalize_loaded_mapping_sequence(value: typing.Any) -> typing.Any:
     """
     Detect if a loaded mapping represents a sequence and convert it back.
 
-    Groups with numeric string keys "0", "1", "2", ... are sequences.
+    WellGroups with numeric string keys "0", "1", "2", ... are sequences.
     """
     if (
         isinstance(value, dict)
@@ -280,13 +280,11 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
         group_name = _get_group_name(index)
         item_group = f.require_group(group_name)
         self._write_data(item_group, item.dump())
-        item_group.attrs.update(
-            {
-                "_meta": orjson.dumps(meta(item) if meta is not None else {}),
-                "_index": index,
-                "_group_name": group_name,
-            }
-        )
+        item_group.attrs.update({
+            "_meta": orjson.dumps(meta(item) if meta is not None else {}),
+            "_index": index,
+            "_group_name": group_name,
+        })
         return EntryMeta(idx=index, group_name=group_name, meta={})
 
     def _read_entry(self, group: h5py.Group) -> typing.Dict[str, typing.Any]:

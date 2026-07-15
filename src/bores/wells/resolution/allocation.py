@@ -1,5 +1,5 @@
 """
-Group target allocation. Logic for spliting a `GroupControl` target rate across
+WellGroup target allocation. Logic for spliting a `GroupControl` target rate across
 member wells by guide rate, producing concrete per-well WellControl
 objects for wells whose mode is GRUP.
 
@@ -22,7 +22,7 @@ from bores.wells.controls import (
     WellControl,
 )
 from bores.wells.groups import GroupInjectorControlMode, GroupProducerControlMode
-from bores.wells.model import WellsModel
+from bores.wells.model import WellModel
 
 __all__ = ["allocate_group_targets"]
 
@@ -40,7 +40,7 @@ INJECTOR_MODE_MAP: typing.Dict[GroupInjectorControlMode, InjectorControlMode] = 
 
 
 def allocate_group_targets(
-    group_name: str, wells_model: WellsModel
+    group_name: str, wells_model: WellModel
 ) -> typing.Dict[str, WellControl]:
     """
     Allocate `group_name`'s current `GroupControl` target across its
@@ -50,7 +50,7 @@ def allocate_group_targets(
     concrete rate mode, `target_rate` set to the well's share) into
     `wells_model.controls` via `WellControls.set`.
 
-    :param group_name: Group to allocate.
+    :param group_name: WellGroup to allocate.
     :param wells_model: Supplies `wells_model.groups`, `wells_model.group_controls`,
         `wells_model.controls`, and `wells_model.wells_in_group`.
     :returns: Mapping from well name to its updated `WellControl`, for the
@@ -74,11 +74,11 @@ def allocate_group_targets(
 
     if target_mode is None:
         raise ValidationError(
-            f"Group {group_name!r}'s control mode {group_control.mode} has no "
+            f"WellGroup {group_name!r}'s control mode {group_control.mode} has no "
             "directly allocatable rate target."
         )
     if group_control.target_rate is None:
-        raise ValidationError(f"Group {group_name!r}'s control has no target_rate.")
+        raise ValidationError(f"WellGroup {group_name!r}'s control has no target_rate.")
 
     member_names = wells_model.wells_in_group(group_name)
     eligible: typing.List[str] = []

@@ -13,7 +13,7 @@ from bores.reservoir.boundary.base import (
     BoundaryConditionType,
     boundary_condition,
 )
-from bores.reservoir.model import Reservoir
+from bores.reservoir.model import ReservoirModel
 from bores.reservoir.state.base import ReservoirState
 from bores.typing import (
     IntArray,
@@ -117,7 +117,7 @@ class CarterTracyAquifer(BoundaryCondition):
     - Edwardson, M.J. et al. (1962). *Calculation of Formation Temperature
       Disturbances Caused by Mud Circulation.* JPT, 14(4), 416-426.
       (source of the pD polynomial approximations)
-    - Ahmed, T. (2010). *Reservoir Engineering Handbook*, 4th ed.
+    - Ahmed, T. (2010). *ReservoirModel Engineering Handbook*, 4th ed.
       Gulf Professional Publishing. (Carter-Tracy chapter.)
     """
 
@@ -139,7 +139,7 @@ class CarterTracyAquifer(BoundaryCondition):
     """Water viscosity at reservoir conditions. Physical mode only."""
 
     inner_radius: typing.Optional[Number] = attrs.field(default=None)
-    """Reservoir-aquifer contact radius. Physical mode only."""
+    """ReservoirModel-aquifer contact radius. Physical mode only."""
 
     outer_radius: typing.Optional[Number] = attrs.field(default=None)
     """Outer aquifer extent. Physical mode only."""
@@ -492,7 +492,7 @@ class CarterTracyAquifer(BoundaryCondition):
         self,
         face_positions: IntArray[NDimension],
         state: ReservoirState,
-        reservoir: Reservoir,
+        reservoir: ReservoirModel,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[NDimension]:

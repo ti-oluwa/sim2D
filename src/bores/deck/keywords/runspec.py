@@ -8,7 +8,8 @@ table-sizing hints, well/group dimensioning, and the simulation start date.
 
 import typing
 
-from bores.deck.core import Deck, GridDimensions
+from bores.datastructures import GridDimensions
+from bores.deck.core import Deck
 from bores.deck.keywords.base import (
     DateKeyword,
     Field,

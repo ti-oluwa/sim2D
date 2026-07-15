@@ -20,6 +20,8 @@ raise rather than silently truncating/zipping the shorter sequence.
 
 import typing
 
+import attrs
+
 from bores.errors import ValidationError
 from bores.typing import Number
 from bores.wells.base import Well
@@ -164,7 +166,7 @@ def resolve_control(
         is_injector=is_injector,
         resolver_spec=resolver_spec,
     )
-    return apply_limits(
+    resolution = apply_limits(
         control=control,
         well=well,
         perforation_indices=perforation_indices,
@@ -178,6 +180,16 @@ def resolve_control(
         resolver_spec=resolver_spec,
         surface_fluid_properties=surface_fluid_properties,
     )
+    if surface_fluid_properties is not None and not resolution.economic_shutin:
+        thp = wellbore_model.tubing_head_pressure(
+            well,
+            reference_pressure=resolution.bhp,
+            phase_rates=resolution.phase_rates,
+            surface_fluid_properties=surface_fluid_properties,
+            is_injector=is_injector,
+        )
+        resolution = attrs.evolve(resolution, thp=thp)
+    return resolution
 
 
 def build_well_state(
@@ -243,16 +255,6 @@ def build_well_state(
                 phase_rates=connection_phase_rates,
             )
         )
-
-    thp: typing.Optional[Number] = None
-    if surface_fluid_properties is not None:
-        thp = wellbore_model.tubing_head_pressure(
-            well,
-            resolution.bhp,
-            resolution.phase_rates,
-            surface_fluid_properties=surface_fluid_properties,
-            is_injector=isinstance(active_control, InjectorControl),
-        )
     return WellState(
         well_name=well.name,
         is_open=True,
@@ -263,5 +265,5 @@ def build_well_state(
         ),
         phase_rates=resolution.phase_rates,
         active_limit=resolution.active_limit,
-        thp=thp,
+        thp=resolution.thp,
     )

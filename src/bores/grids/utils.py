@@ -196,8 +196,7 @@ def as_pyvista_grid(
 
     # Apply MapAxes rotation when present.
     # Rotates only XY; Z (depth) is unchanged.
-    meta = getattr(grid, "metadata", {}) or {}
-    map_axes = meta.get("map_axes", None)
+    map_axes = grid.map_axes
     if map_axes is not None:
         if map_axes.unit_system != grid.unit_system:
             map_axes = map_axes.convert(grid.unit_system)

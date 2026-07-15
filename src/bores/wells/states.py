@@ -90,3 +90,6 @@ class WellState(Serializable):
             f"No open perforation connected to cell_index={cell_index} for "
             f"well {self.well_name!r}."
         )
+
+
+# TODO: Add `WellStates` class

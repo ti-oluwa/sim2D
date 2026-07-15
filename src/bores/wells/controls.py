@@ -7,6 +7,7 @@ import typing
 import attrs
 from typing_extensions import Self
 
+from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
@@ -412,13 +413,25 @@ class WellControls(StoreSerializable):
                 The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
                 once `factories.py` parses those.
 
-                :raises KeyError    groups: typing.Optional[Groups] = None
+                :raises KeyError    groups: typing.Optional[WellGroups] = None
         : If `name` has no current control set.
         """
         current = self._controls.get(name)
         if current is None:
             raise KeyError(f"No control set for well {name!r}.")
         self._controls[name] = attrs.evolve(current, **fields)
+
+    @classmethod
+    def from_deck(cls, deck_file: DeckFile) -> Self:
+        """
+        Load a `WellControls` object froma parsed `DeckFile`.
+
+        :param deck_file: Parsed deck containing WCONPROD/WCONINJE/WECON.
+        :returns: WellControls for every well with a control record.
+        """
+        from bores.wells._deck import load_well_controls_from_deck
+
+        return typing.cast(Self, load_well_controls_from_deck(deck_file))
 
     def __getitem__(self, name: str) -> WellControl:
         control = self.get(name)
