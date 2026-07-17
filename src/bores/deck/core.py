@@ -165,7 +165,7 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
         A bare "N*" expands to N occurrences of the Eclipse default
         designator ("1*"). This preserves the distinction between an
         explicit default and an empty string.
-        
+
         Callers that convert tokens to `float` will receive a
         `ValueError`; they should surface this as a
         `DeckParseError` with context about which keyword failed.

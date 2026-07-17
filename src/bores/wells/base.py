@@ -53,10 +53,10 @@ class CompletionStatus(enum.Enum):
     runtime, that's `WellState.is_open`. `CompletionStatus.SHUT`
     means **"this completion was never meant to flow"** (e.g. a deck author
     disabling one layer of a multi-layer completion); `WellState.is_open =
-    False` means "the whole well is currently shut for operational reasons".
+    False` means **"the whole well is currently shut for operational reasons"**.
 
     A perforation with `CompletionStatus.SHUT` is excluded from
-    `resolve_perforations_indices()` output entirely; one with `OPEN` is still
+    the perforation indices resolution output entirely; one with `OPEN` is still
     subject to the well-level open/shut flag in `WellState` at simulation time.
     """
 
@@ -79,8 +79,9 @@ class Perforation(Serializable):
 
     Two `Perforation` instances with identical fields are interchangeable;
     nothing about a `Perforation` depends on which well it belongs to. Only
-    valid on a `Well` with no `trajectory`. See `MDPerforation` for a well
-    with one.
+    valid on a `Well` with no `trajectory`. 
+    
+    See `MDPerforation` for a well with one.
     """
 
     top_depth: Number
@@ -90,7 +91,7 @@ class Perforation(Serializable):
     """
 
     bottom_depth: Number
-    """`== top_depth` for a point perforation. Validated `>= top_depth`."""
+    """Equals `top_depth` for a point perforation. Validated `>= top_depth`."""
 
     skin: Number = 0.0
     """
@@ -110,8 +111,15 @@ class Perforation(Serializable):
 
     connection_factor_override: typing.Optional[Number] = None
     """
-    Deck `COMPDAT` item 8 (`CF`). When present, `wells.indices` uses this
+    Deck `COMPDAT` item 8 (`CF`). When present, wells indices computation uses this
     directly instead of computing a Peaceman/equivalent-radius well index.
+    """
+
+    connection_factor_multiplier: typing.Optional[Number] = None
+    """
+    Deck `WPIMULT`. Scales the computed well index rather than replacing
+    it. Applied after `connection_factor_override`, if that's also set,
+    though the two would not normally both be present on one perforation.
     """
 
     direction: typing.Optional[Orientation] = None
@@ -122,8 +130,9 @@ class Perforation(Serializable):
 
     partial_penetration_fraction: typing.Optional[Number] = None
     """
-    **Not set by the user.** Populated by
-    `wells.perforations.resolve_perforations_indices` (overlap-length /
+    **Not set by the user.** 
+
+    Populated during perforation indices computation (overlap-length /
     cell-thickness ratio). `None` on a freshly constructed `Perforation` is
     the correct/expected state. Validated: if set, must be in `(0, 1]`.
     """
@@ -171,21 +180,21 @@ class MDPerforation(Serializable):
     unique location on an arbitrary path.
 
     Carries no `direction` field, unlike `Perforation`, orientation
-    comes from the trajectory's local tangent at this interval, not a
-    discrete axis choice, and wells.indices` never runs Peaceman's formula against an
-    `MDPerforation` connection for the same reason - Peaceman's formula
+    comes from the trajectory's local tangent at this interval, not a discrete axis 
+    choice, and wells indices computations never runs Peaceman's formula against an
+    `MDPerforation` connection for the same reason. As Peaceman's formula
     assumes a wellbore aligned with a principal permeability axis, which an
     arbitrary trajectory azimuth generally isn't.
 
-    Connections at an `MDPerforation` always resolve through the isotropic
+    Therefore, connections at an `MDPerforation` always resolve through the isotropic
     equivalent-radius well index instead.
     """
 
     top_md: Number
-    """Measured depth. Must fall within the owning `Well.trajectory`'s range."""
+    """Measured depth. Must fall within the owning `Well`'s trajectory range."""
 
     bottom_md: Number
-    """`== top_md` for a point perforation. Validated `>= top_md`."""
+    """Equals `top_md` for a point perforation. Validated `>= top_md`."""
 
     skin: Number = 0.0
     """Dimensionless skin factor."""
@@ -201,6 +210,13 @@ class MDPerforation(Serializable):
     """
     When present, `wells.indices` uses this directly instead of
     computing an equivalent-radius well index.
+    """
+
+    connection_factor_multiplier: typing.Optional[Number] = None
+    """
+    Deck `WPIMULT`. Scales the computed well index rather than replacing
+    it. Applied after `connection_factor_override`, if that's also set,
+    though the two would not normally both be present on one perforation.
     """
 
     partial_penetration_fraction: typing.Optional[Number] = None
@@ -237,9 +253,12 @@ class MDPerforation(Serializable):
 
     @property
     def length(self) -> Number:
-        """`bottom_md - top_md` - a measured-depth length, not a true
-        vertical depth length; along a horizontal section these differ
-        substantially."""
+        """
+        `bottom_md - top_md`.
+        
+        Measured-depth length, not a true vertical depth length; 
+        along a horizontal section these differ substantially.
+        """
         return self.bottom_md - self.top_md
 
 
@@ -266,8 +285,10 @@ class Well(Serializable):
 
     perforations: typing.Tuple[AnyPerforation, ...] = attrs.field(converter=tuple)
     """
-    Non-empty, validated. `Perforation` (TVD) if `trajectory` is `None`;
+    `Perforation` (TVD) if `trajectory` is `None`;
     `MDPerforation` (measured depth) if it's set. Do not mix.
+
+    Must not be empty. 
     """
 
     trajectory: typing.Optional[WellTrajectory] = None
@@ -482,15 +503,23 @@ class Well(Serializable):
 
 
 class Wells(StoreSerializable):
-    """Name-keyed container of `Well`. Lookup and iteration only."""
+    """Name-keyed container of `Well` objects"""
 
     __abstract_serializable__ = True
+    __slots__ = ("_wells", "unit_system")
 
-    def __init__(self, wells: typing.Dict[str, Well]) -> None:
+    def __init__(
+        self,
+        wells: typing.Dict[str, Well],
+        unit_system: typing.Optional[UnitSystem] = None,
+    ) -> None:
         """
-        :param wells: Mapping from well name to `Well`.
-        :raises ValidationError: If `wells` is empty, or if any key doesn't
-            match its value's `Well.name`.
+        :param wells: Mapping from well name to Well.
+        :param unit_system: Target unit system for every well. None
+            requires all wells to already share the same unit system.
+        :raises ValidationError: If wells is empty, any key doesn't match
+            its value's Well.name, or (unit_system is None) the wells
+            don't all share one unit system.
         """
         if not wells:
             raise ValidationError("`wells` must contain at least one entry.")
@@ -498,13 +527,34 @@ class Wells(StoreSerializable):
         mismatched = {key: well.name for key, well in wells.items() if key != well.name}
         if mismatched:
             raise ValidationError(
-                f"`wells` dict keys must match `Well.name`; mismatches "
+                f"`wells` dict keys must match Well.name; mismatches "
                 f"(key -> well.name): {mismatched}."
             )
+
+        if unit_system is None:
+            systems = {well.unit_system for well in wells.values()}
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All wells must share the same unit system when "
+                    "`unit_system` is not explicitly provided. Found: "
+                    f"{sorted(s.value for s in systems)}."
+                )
+            unit_system = systems.pop()
+        else:
+            wells = {
+                name: well
+                if well.unit_system == unit_system
+                else well.convert(unit_system)
+                for name, well in wells.items()
+            }
+
         self._wells = wells
+        self.unit_system = unit_system
 
     def well(self, name: str) -> Well:
         """
+        Retrieve a registered `Well` by name.
+
         :param name: `Well` name.
         :returns: `Well` for that well.
         :raises KeyError: If no well with that name exists.
@@ -516,7 +566,7 @@ class Wells(StoreSerializable):
 
     @property
     def names(self) -> typing.Tuple[str, ...]:
-        """All well names, insertion order."""
+        """All well names, in insertion order."""
         return tuple(self._wells.keys())
 
     @property
@@ -542,7 +592,7 @@ class Wells(StoreSerializable):
 
         :param deck_file: Parsed deck containing WELSPECS/COMPDAT/WCONINJE.
         :param grid: Grid built from the same deck.
-        :param well_kwargs: Forwarded to `wells_from_records` and passed 
+        :param well_kwargs: Forwarded to `wells_from_records` and passed
             to the loaded `Well` instance.
         :returns: `Wells` for every well in the deck.
         """
@@ -571,3 +621,27 @@ class Wells(StoreSerializable):
             name: Well.load(spec_data) for name, spec_data in data["wells"].items()
         }
         return cls(wells=wells)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a new `Wells` object in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New Wells with every well converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        return self.__class__(
+            wells={
+                name: well.convert(target, table=table)
+                for name, well in self._wells.items()
+            },
+            unit_system=target,
+        )

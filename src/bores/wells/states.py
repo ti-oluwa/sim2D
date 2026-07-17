@@ -5,14 +5,15 @@ import typing
 import attrs
 from typing_extensions import Self
 
+from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase, Number
+from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
-__all__ = ["ConnectionSample", "PerforationState", "WellState", "WellStates"]
+__all__ = ["ConnectionSample", "PerforationState", "WellState", "WellsStates"]
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -41,10 +42,39 @@ class PerforationState(StoreSerializable):
     cell_index: int
     flowing_pressure: Number
     phase_rates: typing.Mapping[FluidPhase, Number]
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.cell_index < 0:
             raise ValidationError(f"`cell_index` must be >= 0; got {self.cell_index}.")
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New PerforationState with flowing_pressure and every
+            entry in phase_rates converted to target.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        reservoir_rate_factor = factors["reservoir_rate"]
+        return attrs.evolve(
+            self,
+            flowing_pressure=self.flowing_pressure * factors["pressure"],
+            phase_rates={
+                phase: rate * reservoir_rate_factor
+                for phase, rate in self.phase_rates.items()
+            },
+            unit_system=target,
+        )
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -59,15 +89,31 @@ class WellState(StoreSerializable):
     phase_rates: typing.Mapping[FluidPhase, Number]
     active_limit: typing.Optional[Limit] = None
     thp: typing.Optional[Number] = None
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if not self.well_name:
             raise ValidationError("`well_name` must be a non-empty string.")
+
         if not self.is_open and self.perforation_states:
             raise ValidationError(
                 f"WellState for {self.well_name!r} is shut (`is_open=False`) "
                 "but has non-empty `perforation_states`; a shut well must "
                 "have an empty tuple."
+            )
+
+        if self.active_control.unit_system != self.unit_system:
+            raise ValidationError(
+                f"`active_control.unit_system` ({self.active_control.unit_system.value}) "
+                f"!= this WellState's unit_system ({self.unit_system.value})."
+            )
+        if (
+            self.active_limit is not None
+            and self.active_limit.unit_system != self.unit_system
+        ):
+            raise ValidationError(
+                f"`active_limit.unit_system` ({self.active_limit.unit_system.value}) "
+                f"!= this WellState's unit_system ({self.unit_system.value})."
             )
 
     @property
@@ -93,21 +139,67 @@ class WellState(StoreSerializable):
             f"well {self.well_name!r}."
         )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `WellState` in the *target* unit system.
 
-class WellStates(StoreSerializable):
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New WellState with bhp, thp, phase_rates,
+            perforation_states, active_control, and active_limit (if set)
+            all converted to target.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        reservoir_rate_factor = factors["reservoir_rate"]
+        return attrs.evolve(
+            self,
+            bhp=self.bhp * factors["pressure"],
+            thp=self.thp * factors["pressure"] if self.thp is not None else None,
+            phase_rates={
+                phase: rate * reservoir_rate_factor
+                for phase, rate in self.phase_rates.items()
+            },
+            perforation_states=tuple(
+                ps.convert(target, table=table) for ps in self.perforation_states
+            ),
+            active_control=self.active_control.convert(target, table=table),
+            active_limit=self.active_limit.convert(target, table=table)
+            if self.active_limit is not None
+            else None,
+            unit_system=target,
+        )
+
+
+class WellsStates(StoreSerializable):
     """Name-keyed collection of `WellState`, one per well, for a single timestep."""
 
     __abstract_serializable__ = True
 
-    __slots__ = ("_states",)
+    __slots__ = ("_states", "unit_system")
 
-    def __init__(self, states: typing.Dict[str, WellState]) -> None:
+    def __init__(
+        self,
+        states: typing.Dict[str, WellState],
+        unit_system: typing.Optional[UnitSystem] = None,
+    ) -> None:
         """
-        Initialize the `WellStates` object.
+        Initialize a `WellsStates` instance.
 
-        :param states: Mapping from well name to WellState.
+        :param states: Mapping from well name to `WellState`.
+        :param unit_system: Target unit system for every state. None
+            requires all states to already share the same unit system.
         :raises ValidationError: If any key doesn't match its value's
-            WellState.well_name.
+            `WellState.well_name`, or (unit_system is None) the states
+            don't all share one unit system.
         """
         mismatched = {
             key: state.well_name
@@ -116,10 +208,29 @@ class WellStates(StoreSerializable):
         }
         if mismatched:
             raise ValidationError(
-                f"`states` dict keys must match WellState.well_name; "
+                f"`states` dict keys must match `WellState.well_name`; "
                 f"mismatches (key -> well_name): {mismatched}."
             )
+
+        if unit_system is None:
+            systems = {state.unit_system for state in states.values()}
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All states must share the same unit system when "
+                    "`unit_system` is not explicitly provided. Found: "
+                    f"{sorted(s.value for s in systems)}."
+                )
+            unit_system = systems.pop() if systems else UnitSystem.FIELD
+        else:
+            states = {
+                name: state
+                if state.unit_system == unit_system
+                else state.convert(unit_system)
+                for name, state in states.items()
+            }
+
         self._states = dict(states)
+        self.unit_system = unit_system
 
     def get(self, well_name: str) -> typing.Optional[WellState]:
         """
@@ -175,3 +286,27 @@ class WellStates(StoreSerializable):
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         states = {name: WellState.load(sd) for name, sd in data["states"].items()}
         return cls(states=states)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `WellsStates` in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New `WellsStates` with every state converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        return self.__class__(
+            states={
+                name: state.convert(target, table=table)
+                for name, state in self._states.items()
+            },
+            unit_system=target,
+        )

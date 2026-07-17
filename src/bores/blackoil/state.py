@@ -3,11 +3,13 @@
 import typing
 
 import attrs
+from typing_extensions import Self
 
+from bores.errors import ValidationError
 from bores.reservoir.state.base import ReservoirState
 from bores.serde.base import Serializable
-from bores.typing import Number
-from bores.wells.states import WellStates
+from bores.typing import Number, UnitConversionTable, UnitSystem
+from bores.wells.states import WellsStates
 
 __all__ = ["BlackOilModelState"]
 
@@ -17,6 +19,44 @@ class BlackOilModelState(Serializable):
     """Reservoir state plus well states at one simulation time."""
 
     reservoir: ReservoirState
-    wells: typing.Optional[WellStates] = None
+    wells: typing.Optional[WellsStates] = None
     time: Number = 0.0
     """Simulation time this state corresponds to (days)."""
+
+    def __attrs_post_init__(self) -> None:
+        if (
+            self.wells is not None
+            and self.wells.unit_system != self.reservoir.unit_system
+        ):
+            raise ValidationError(
+                f"`wells.unit_system` ({self.wells.unit_system.value}) != "
+                f"`reservoir.unit_system` ({self.reservoir.unit_system.value})."
+            )
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system shared by reservoir and wells."""
+        return self.reservoir.unit_system
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New BlackOilModelState with reservoir and wells (if set)
+            converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        return attrs.evolve(
+            self,
+            reservoir=self.reservoir.convert(target, table=table),
+            wells=self.wells.convert(target, table=table)
+            if self.wells is not None
+            else None,
+        )

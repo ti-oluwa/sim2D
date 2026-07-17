@@ -16,7 +16,7 @@ class ControlResolution(Serializable):
     """Result of resolving one well's control for one timestep."""
 
     bhp: Number
-    
+
     phase_rates: typing.Mapping[FluidPhase, Number]
 
     active_limit: typing.Optional[Limit] = None
@@ -122,10 +122,12 @@ class ControlResolverSpec(Serializable):
 
     @property
     def max_bisection_iterations(self) -> int:
-        """Bound on the BHP bisection search for a rate-mode or THP-limit
+        """
+        Bound on the BHP bisection search for a rate-mode or THP-limit
         target. Best-effort, not exact: the search returns its closest
         bound reached after this many iterations rather than raising if
-        the target isn't achievable within the bracket."""
+        the target isn't achievable within the bracket.
+        """
         if self._max_bisection_iterations is not None:
             return self._max_bisection_iterations
 
@@ -141,8 +143,10 @@ class ControlResolverSpec(Serializable):
 
     @property
     def injector_bhp_bracket_multiplier(self) -> Number:
-        """Upper bracket bound for an injector's BHP bisection search,
-        expressed as a multiple of the highest connected-cell pressure."""
+        """
+        Upper bracket bound for an injector's BHP bisection search,
+        expressed as a multiple of the highest connected-cell pressure.
+        """
         if self._injector_bhp_bracket_multiplier is not None:
             return self._injector_bhp_bracket_multiplier
 

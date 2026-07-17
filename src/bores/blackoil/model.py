@@ -61,18 +61,18 @@ class BlackOilModel(
 
         reservoir_unit_system = reservoir.unit_system
         fluid_unit_system = fluid.unit_system
-        # wells_unit_system = wells.unit_system if wells is not None else None
+        wells_unit_system = wells.unit_system if wells is not None else None
         boundary_conditions_unit_system = (
             boundary_conditions.unit_system if boundary_conditions is not None else None
         )
 
         if unit_system is None:
             systems = {reservoir_unit_system, fluid_unit_system}
-            # if wells_unit_system is not None:
-            #     systems.add(wells_unit_system)
+            if wells_unit_system is not None:
+                systems.add(wells_unit_system)
             if boundary_conditions_unit_system is not None:
                 systems.add(boundary_conditions_unit_system)
-            
+
             if len(systems) > 1:
                 raise ValidationError(
                     "All components must share the same unit system when "
@@ -85,12 +85,12 @@ class BlackOilModel(
 
         if reservoir_unit_system != unit_system:
             reservoir = reservoir.convert(unit_system, table=unit_conversion_table)
-        
+
         if fluid_unit_system != unit_system:
             fluid = fluid.convert(unit_system, table=unit_conversion_table)
 
-        # if wells is not None and wells_unit_system != unit_system:
-        #     wells = wells.convert(unit_system, table=unit_conversion_table)
+        if wells is not None and wells_unit_system != unit_system:
+            wells = wells.convert(unit_system, table=unit_conversion_table)
 
         if (
             boundary_conditions is not None
@@ -134,11 +134,11 @@ class BlackOilModel(
         return self.__class__(
             reservoir=self.reservoir.convert(target, table=table),
             fluid=self.fluid.convert(target, table=table),
-            # wells=(
-            #     self.wells.convert(target, table=table)
-            #     if self.wells is not None
-            #     else None
-            # ),
+            wells=(
+                self.wells.convert(target, table=table)
+                if self.wells is not None
+                else None
+            ),
             boundary_conditions=(
                 self.boundary_conditions.convert(target, table=table)
                 if self.boundary_conditions is not None

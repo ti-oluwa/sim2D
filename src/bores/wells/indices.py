@@ -17,11 +17,21 @@ import typing
 import attrs
 import numba
 import numpy as np
+from typing_extensions import Self
 
+from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
-from bores.typing import Number, NumberArray, NumberOrArray, OneDimension, Orientation
+from bores.typing import (
+    Number,
+    NumberArray,
+    NumberOrArray,
+    OneDimension,
+    Orientation,
+    UnitConversionTable,
+    UnitSystem,
+)
 from bores.wells.base import AnyPerforation, MDPerforation, Perforation, Wells
 from bores.wells.perforations import (
     PerforationIndex,
@@ -48,9 +58,22 @@ class WellIndex(Serializable):
     well_name: str
     perforations: typing.Tuple[PerforationIndex, ...] = attrs.field(converter=tuple)
     total_well_index: Number
+    unit_system: UnitSystem = UnitSystem.FIELD
+
+    def __attrs_post_init__(self) -> None:
+        mismatched = [
+            perforation
+            for perforation in self.perforations
+            if perforation.unit_system != self.unit_system
+        ]
+        if mismatched:
+            raise ValidationError(
+                f"All `perforations` must share this WellIndex's unit_system "
+                f"({self.unit_system.value}); found {mismatched[0].unit_system.value}."
+            )
 
     def get_allocation_fraction(self, perforation: PerforationIndex) -> Number:
-        """Fraction of `total_well_index` contributed by one `perforation`."""
+        """Get the fraction of `total_well_index` contributed by one `perforation`."""
         if self.total_well_index <= 0:
             return 1.0
         if perforation.well_index is None:
@@ -59,6 +82,35 @@ class WellIndex(Serializable):
 
     def __iter__(self) -> typing.Iterator[PerforationIndex]:
         return iter(self.perforations)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `WellIndex` in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New `WellIndex` with every `PerforationIndex` and
+            `total_well_index` converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        well_index_factor = factors["permeability"] * factors["length"]
+        return attrs.evolve(
+            self,
+            perforations=tuple(
+                perforation.convert(target, table=table)
+                for perforation in self.perforations
+            ),
+            total_well_index=self.total_well_index * well_index_factor,
+            unit_system=target,
+        )
 
 
 # TODO: Improve this and not just default to Z unnecessarily
@@ -326,13 +378,16 @@ def _resolve_connection_factor(
         effective_permeability = _geometric_mean((kx, ky, kz))
         completion_length = partial_penetration_fraction * perforation.length
         assert grid.cell_volumes is not None
-        return compute_equivalent_radius_well_index(
+        well_index = compute_equivalent_radius_well_index(
             permeability=effective_permeability,
             cell_volume=grid.cell_volumes[cell_index],
             completion_length=completion_length,
             wellbore_radius=wellbore_radius,
             skin=perforation.skin,
         )
+        if perforation.connection_factor_multiplier is not None:
+            well_index *= perforation.connection_factor_multiplier
+        return well_index
 
     # Perforation (TVD, axis-aligned).
     direction = resolve_well_index_direction(perforation, grid, cell_index)
@@ -356,7 +411,7 @@ def _resolve_connection_factor(
             permeability=(kx, ky, kz),
             well_orientation=direction,
         )
-        return compute_peaceman_well_index(
+        well_index = compute_peaceman_well_index(
             permeability=effective_permeability,
             interval_thickness=completion_length,
             wellbore_radius=wellbore_radius,
@@ -365,15 +420,21 @@ def _resolve_connection_factor(
             net_to_gross=net_to_gross,
             regime_constant=regime_constant,
         )
+        if perforation.connection_factor_multiplier is not None:
+            well_index *= perforation.connection_factor_multiplier
+        return well_index
 
     assert grid.cell_volumes is not None
-    return compute_equivalent_radius_well_index(
+    well_index = compute_equivalent_radius_well_index(
         permeability=effective_permeability,
         cell_volume=grid.cell_volumes[cell_index],
         completion_length=completion_length,
         wellbore_radius=wellbore_radius,
         skin=perforation.skin,
     )
+    if perforation.connection_factor_multiplier is not None:
+        well_index *= perforation.connection_factor_multiplier
+    return well_index
 
 
 def build_wells_indices(
@@ -397,6 +458,12 @@ def build_wells_indices(
     :raises ValidationError: Propagated from `resolve_perforations_indices` for any
         well with a dangling completion.
     """
+    if grid.unit_system != wells.unit_system:
+        raise ValidationError(
+            f"Grid `unit_system` ({grid.unit_system.value}) != Wells "
+            f"`unit_system` ({wells.unit_system.value})."
+        )
+
     result: typing.Dict[str, WellIndex] = {}
 
     for name in wells:
@@ -443,5 +510,6 @@ def build_wells_indices(
             well_name=well.name,
             perforations=tuple(resolved),
             total_well_index=total_well_index,
+            unit_system=wells.unit_system,
         )
     return result

@@ -1,7 +1,7 @@
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import FluidPhase
+from bores.typing import FluidPhase, Number
 from bores.wells.base import Perforation, Well, Wells, WellType
 from bores.wells.controls import (
     BHPLimit,
@@ -28,20 +28,29 @@ from bores.wells.model import WellModel
 __all__ = ["make_producer", "make_injector"]
 
 
+QUANTITY_PRODUCER_CONTROL_MODES = {
+    RateQuantity.OIL: ProducerControlMode.ORAT,
+    RateQuantity.WATER: ProducerControlMode.WRAT,
+    RateQuantity.GAS: ProducerControlMode.GRAT,
+    RateQuantity.LIQUID: ProducerControlMode.LRAT,
+    RateQuantity.RESERVOIR: ProducerControlMode.RESV,
+}
+
+
 def make_producer(
     name: str,
     *,
-    surface_location: typing.Tuple[float, float],
-    perforation_depths: typing.Tuple[float, float],
-    reference_depth: typing.Optional[float] = None,
-    target_rate: typing.Optional[float] = None,
+    surface_location: typing.Tuple[Number, Number],
+    perforation_depths: typing.Tuple[Number, Number],
+    reference_depth: typing.Optional[Number] = None,
+    target_rate: typing.Optional[Number] = None,
     rate_quantity: RateQuantity = RateQuantity.OIL,
-    target_bhp: typing.Optional[float] = None,
-    min_bhp: typing.Optional[float] = None,
-    max_rate: typing.Optional[float] = None,
-    wellbore_radius: float = 0.25,
-    tubing_inner_diameter: typing.Optional[float] = None,
-    skin: float = 0.0,
+    target_bhp: typing.Optional[Number] = None,
+    min_bhp: typing.Optional[Number] = None,
+    max_rate: typing.Optional[Number] = None,
+    wellbore_radius: Number = 0.25,
+    tubing_inner_diameter: typing.Optional[Number] = None,
+    skin: Number = 0.0,
     group: typing.Optional[str] = None,
 ) -> typing.Tuple[Well, ProducerControl]:
     """
@@ -99,18 +108,13 @@ def make_producer(
 
     if target_bhp is not None:
         control = ProducerControl(
-            mode=ProducerControlMode.BHP, target_bhp=target_bhp, limits=tuple(limits)
+            mode=ProducerControlMode.BHP,
+            target_bhp=target_bhp,
+            limits=tuple(limits),
         )
     else:
-        mode_by_quantity = {
-            RateQuantity.OIL: ProducerControlMode.ORAT,
-            RateQuantity.WATER: ProducerControlMode.WRAT,
-            RateQuantity.GAS: ProducerControlMode.GRAT,
-            RateQuantity.LIQUID: ProducerControlMode.LRAT,
-            RateQuantity.RESERVOIR: ProducerControlMode.RESV,
-        }
         control = ProducerControl(
-            mode=mode_by_quantity[rate_quantity],
+            mode=QUANTITY_PRODUCER_CONTROL_MODES[rate_quantity],
             target_rate=target_rate,
             limits=tuple(limits),
         )
@@ -122,15 +126,15 @@ def make_injector(
     name: str,
     *,
     injected_phase: FluidPhase,
-    surface_location: typing.Tuple[float, float],
-    perforation_depths: typing.Tuple[float, float],
-    reference_depth: typing.Optional[float] = None,
-    target_rate: typing.Optional[float] = None,
-    target_bhp: typing.Optional[float] = None,
-    max_bhp: typing.Optional[float] = None,
-    wellbore_radius: float = 0.25,
-    tubing_inner_diameter: typing.Optional[float] = None,
-    skin: float = 0.0,
+    surface_location: typing.Tuple[Number, Number],
+    perforation_depths: typing.Tuple[Number, Number],
+    reference_depth: typing.Optional[Number] = None,
+    target_rate: typing.Optional[Number] = None,
+    target_bhp: typing.Optional[Number] = None,
+    max_bhp: typing.Optional[Number] = None,
+    wellbore_radius: Number = 0.25,
+    tubing_inner_diameter: typing.Optional[Number] = None,
+    skin: Number = 0.0,
     group: typing.Optional[str] = None,
 ) -> typing.Tuple[Well, InjectorControl]:
     """
@@ -197,7 +201,7 @@ def make_injector(
     return well, control
 
 
-QUANTITY_CONTROL_MODES = {
+QUANTITY_GROUP_CONTROL_MODES = {
     RateQuantity.OIL: GroupProducerControlMode.ORAT,
     RateQuantity.WATER: GroupProducerControlMode.WRAT,
     RateQuantity.GAS: GroupProducerControlMode.GRAT,
@@ -208,7 +212,7 @@ QUANTITY_CONTROL_MODES = {
 
 def make_group_control(
     *,
-    target_rate: float,
+    target_rate: Number,
     quantity: RateQuantity = RateQuantity.OIL,
     injected_phase: typing.Optional[FluidPhase] = None,
 ) -> GroupControl:
@@ -226,7 +230,10 @@ def make_group_control(
             target_rate=target_rate,
             injected_phase=injected_phase,
         )
-    return GroupControl(mode=QUANTITY_CONTROL_MODES[quantity], target_rate=target_rate)
+    return GroupControl(
+        mode=QUANTITY_GROUP_CONTROL_MODES[quantity],
+        target_rate=target_rate,
+    )
 
 
 def make_wells(*wells: Well) -> Wells:

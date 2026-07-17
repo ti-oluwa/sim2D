@@ -46,9 +46,7 @@ def make_serializable_type_registrar(
     def registrar(cls: typing.Type[_SerializableT]) -> typing.Type[_SerializableT]:
         """Decorator to register a `Serializable` subclass."""
         if not issubclass(cls, base_cls):
-            raise ValidationError(
-                f"Class {cls.__name__} is not a subclass of {base_cls.__name__}"
-            )
+            raise ValidationError(f"Class {cls!r} is not a subclass of {base_cls!r}")
 
         key = getattr(cls, key_attr, None)
         if not key:
@@ -57,7 +55,7 @@ def make_serializable_type_registrar(
 
         if not override and key in registry and not issubclass(cls, registry[key]):
             raise ValidationError(
-                f"Class {cls.__name__} is already registered under key '{key}'. Rename the class or set a unique '{key_attr}'."
+                f"Class {cls!r} is already registered under key '{key}'. Rename the class or set a unique '{key_attr}'."
             )
         with lock:
             registry[key] = cls
@@ -95,7 +93,7 @@ def make_registry_serializer(
         key = getattr(obj, key_attr, None)
         if not key or key not in registry:
             raise ValidationError(
-                f"Unsupported {base_cls.__name__} type: {type(obj)!r}"
+                f"Unsupported {base_cls.__name__!r} type: {type(obj)!r}"
             )
 
         return {key: obj.dump()}
@@ -122,7 +120,9 @@ def make_registry_deserializer(
 
         key, value = next(iter(data.items()))
         if key not in registry:
-            raise DeserializationError(f"Unsupported {base_cls.__name__} type: {key!r}")
+            raise DeserializationError(
+                f"Unsupported {base_cls.__name__!r} type: {key!r}"
+            )
 
         cls = registry[key]
         return cls.load(value)

@@ -53,7 +53,9 @@ wells = WellModel.from_deck(
     grid=grid,
     wellbore_model=MechanisticWellboreModel(),
 )
-print(wells.controls["PROD"])
+d = wells.dump()
+w = WellModel.load(d)
+print(w)
 
 # Construct the final model
 model = BlackOilModel(reservoir=reservoir, fluid=blackoil, wells=wells)
@@ -68,3 +70,6 @@ pl = pv.Plotter()
 pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
 pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
 pl.show()
+
+
+# TODO: Support region in well keywords

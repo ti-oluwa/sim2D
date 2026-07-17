@@ -1,5 +1,5 @@
 """
-WellGroup target allocation. Logic for spliting a `GroupControl` target rate across
+`WellGroup` target allocation. Logic for spliting a `GroupControl` target rate across
 member wells by guide rate, producing concrete per-well WellControl
 objects for wells whose mode is GRUP.
 
@@ -40,7 +40,7 @@ INJECTOR_MODE_MAP: typing.Dict[GroupInjectorControlMode, InjectorControlMode] = 
 
 
 def allocate_group_targets(
-    group_name: str, wells_model: WellModel
+    group_name: str, well_model: WellModel
 ) -> typing.Dict[str, WellControl]:
     """
     Allocate `group_name`'s current `GroupControl` target across its
@@ -48,21 +48,21 @@ def allocate_group_targets(
 
     Writes the resulting per-well `WellControl` (mode switched to a
     concrete rate mode, `target_rate` set to the well's share) into
-    `wells_model.controls` via `WellControls.set`.
+    `well_model.controls` via `WellControls.set`.
 
-    :param group_name: WellGroup to allocate.
-    :param wells_model: Supplies `wells_model.groups`, `wells_model.group_controls`,
-        `wells_model.controls`, and `wells_model.wells_in_group`.
+    :param group_name: `WellGroup` to allocate.
+    :param well_model: Supplies `well_model.groups`, `well_model.group_controls`,
+        `well_model.controls`, and `well_model.wells_in_group`.
     :returns: Mapping from well name to its updated `WellControl`, for the
         wells actually allocated (empty if none are eligible).
-    :raises ValidationError: If `wells_model.group_controls` is `None`, or
+    :raises ValidationError: If `well_model.group_controls` is `None`, or
         `group_name` has no `GroupControl` set, or its `mode` has no
         allocatable target (`FLD`/`NONE`/`VREP`/`REIN`).
     """
-    if wells_model.group_controls is None:
-        raise ValidationError("`wells_model.group_controls` is not set.")
+    if well_model.group_controls is None:
+        raise ValidationError("`well_model.group_controls` is not set.")
 
-    group_control = wells_model.group_controls.get(group_name)
+    group_control = well_model.group_controls.get(group_name)
     if group_control is None:
         raise ValidationError(f"No `GroupControl` set for group {group_name!r}.")
 
@@ -74,16 +74,16 @@ def allocate_group_targets(
 
     if target_mode is None:
         raise ValidationError(
-            f"WellGroup {group_name!r}'s control mode {group_control.mode} has no "
+            f"`WellGroup` {group_name!r}'s control mode {group_control.mode} has no "
             "directly allocatable rate target."
         )
     if group_control.target_rate is None:
-        raise ValidationError(f"WellGroup {group_name!r}'s control has no target_rate.")
+        raise ValidationError(f"`WellGroup` {group_name!r}'s control has no target_rate.")
 
-    member_names = wells_model.wells_in_group(group_name)
+    member_names = well_model.wells_in_group(group_name)
     eligible: typing.List[str] = []
     for name in member_names:
-        control = wells_model.controls.get(name)
+        control = well_model.controls.get(name)
         if control is None:
             continue
         if is_injection:
@@ -103,7 +103,7 @@ def allocate_group_targets(
 
     weights: typing.Dict[str, Number] = {}
     for name in eligible:
-        guide_rate = wells_model.controls[name].guide_rate
+        guide_rate = well_model.controls[name].guide_rate
         if guide_rate is not None:
             weights[name] = guide_rate
         else:
@@ -113,8 +113,8 @@ def allocate_group_targets(
     updated: typing.Dict[str, WellControl] = {}
     for name in eligible:
         share = group_control.target_rate * (weights[name] / total_weight)
-        current = wells_model.controls[name]
+        current = well_model.controls[name]
         new_control = attrs.evolve(current, mode=target_mode, target_rate=share)
-        wells_model.controls.set(name, new_control)
+        well_model.controls.set(name, new_control)
         updated[name] = new_control
     return updated

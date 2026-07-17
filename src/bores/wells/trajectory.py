@@ -24,8 +24,10 @@ class TrajectoryStation(Serializable):
     """One survey station: position along the wellbore at a given measured depth."""
 
     measured_depth: Number
-    """Distance along the wellbore from its measured-depth origin (usually
-    the rotary table / surface reference point)."""
+    """
+    Distance along the wellbore from its measured-depth origin (usually
+    the rotary table / surface reference point).
+    """
     x: Number
     y: Number
     z: Number
@@ -77,8 +79,7 @@ class WellTrajectory(Serializable):
     def _bracketing_leg(
         self, measured_depth: Number
     ) -> typing.Tuple[TrajectoryStation, TrajectoryStation]:
-        """The two consecutive stations whose measured-depth range contains
-        `measured_depth`."""
+        """Returns the two consecutive stations whose measured-depth range contains `measured_depth`."""
         if not (
             self.top_measured_depth <= measured_depth <= self.bottom_measured_depth
         ):
@@ -96,10 +97,12 @@ class WellTrajectory(Serializable):
         self, start_md: Number, end_md: Number
     ) -> typing.Tuple[TrajectoryStation, ...]:
         """
-        Every vertex on the polyline between `start_md` and `end_md`,
+        Returns every vertex on the polyline between `start_md` and `end_md`,
         inclusive - the interpolated position at `start_md`, every real
         survey station strictly between them, and the interpolated
-        position at `end_md`. Two entries (just the endpoints) if no real
+        position at `end_md`.
+
+        Returns two entries (just the endpoints) if no real
         station falls strictly inside the range.
 
         :param start_md: Range start, `<= end_md`.
@@ -134,10 +137,9 @@ class WellTrajectory(Serializable):
         self, measured_depth: Number
     ) -> typing.Tuple[Number, Number, Number]:
         """
-        Linearly-interpolated `(x, y, z)` at `measured_depth`.
+        Returns a linearly-interpolated `(x, y, z)` at `measured_depth`.
 
-        :param measured_depth: Must be within
-            `[top_measured_depth, bottom_measured_depth]`.
+        :param measured_depth: Must be within `[top_measured_depth, bottom_measured_depth]`.
         :returns: `(x, y, z)`.
         :raises ValidationError: If `measured_depth` is outside range.
         """
@@ -156,7 +158,7 @@ class WellTrajectory(Serializable):
         self, measured_depth: Number
     ) -> typing.Tuple[Number, Number, Number]:
         """
-        Unit tangent vector at `measured_depth`. The direction of the leg
+        Returns the unit tangent vector at `measured_depth`. The direction of the leg
         containing it. Constant within a leg (piecewise-linear trajectory).
 
         :returns: Unit vector `(dx, dy, dz)`.
@@ -176,7 +178,7 @@ class WellTrajectory(Serializable):
 
     def inclination_at(self, measured_depth: Number) -> Number:
         """
-        Angle between the local tangent and vertical (+z, positive-down),
+        Returns the angle between the local tangent and vertical (+z, positive-down),
         in radians. `0` for a vertical-and-descending trajectory, `pi/2`
         for horizontal, matching `inclination_from_vertical` everywhere
         else in `wells`.

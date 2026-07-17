@@ -6,11 +6,12 @@ import typing
 import attrs
 from typing_extensions import Self
 
+from bores.constants import get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase, Number
+from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 
 __all__ = [
     "WellGroup",
@@ -195,16 +196,10 @@ class WellGroups(StoreSerializable):
 
         def visit(name: str, prefix: str) -> None:
             children = sorted(self.children(name))
-
             for index, child in enumerate(children):
                 last = index == len(children) - 1
-
                 lines.append(prefix + (elbow if last else tee) + child)
-
-                visit(
-                    child,
-                    prefix + (blank if last else pipe),
-                )
+                visit(child, prefix + (blank if last else pipe))
 
         visit(root, "")
         return "\n".join(lines)
@@ -221,7 +216,7 @@ class WellGroups(StoreSerializable):
 
         return typing.cast(Self, load_groups_from_deck(deck_file))
 
-    def __format__(self, format_spec: str) -> str:
+    def __format__(self, spec: str) -> str:
         """
         Format the group hierarchy.
 
@@ -231,20 +226,20 @@ class WellGroups(StoreSerializable):
         - ``"tree"``  : Unicode tree.
         - ``"ascii"`` : ASCII-only tree.
 
-        :param format_spec: Format specifier.
+        :param spec: Format specifier.
         :returns: Formatted string.
         :raises ValueError: If the format specifier is unknown.
         """
-        if format_spec == "":
+        if spec == "":
             return str(self)
 
-        if format_spec == "tree":
+        if spec == "tree":
             return self.format_tree()
 
-        if format_spec == "ascii":
+        if spec == "ascii":
             return self.format_tree(ascii=True)
 
-        raise ValueError(f"Unknown `WellGroups` format specifier {format_spec!r}.")
+        raise ValueError(f"Unknown `WellGroups` format specifier {spec!r}.")
 
     def __getitem__(self, name: str) -> WellGroup:
         return self.group(name)
@@ -319,6 +314,45 @@ class GroupControl(Serializable):
     target_rate: typing.Optional[Number] = None
     injected_phase: typing.Optional[FluidPhase] = None
     """Set only for an injection group (`mode` is a `GroupInjectorControlMode`)."""
+    unit_system: UnitSystem = UnitSystem.FIELD
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `GroupControl` in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New GroupControl with target_rate converted to target.
+        """
+        if target == self.unit_system or self.target_rate is None:
+            return attrs.evolve(self, unit_system=target)
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        if self.injected_phase is not None:
+            factor = (
+                factors["reservoir_rate"]
+                if self.mode is GroupInjectorControlMode.RESV
+                else factors["gas_surface_rate"]
+                if self.injected_phase is FluidPhase.GAS
+                else factors["liquid_surface_rate"]
+            )
+        else:
+            factor = (
+                factors["reservoir_rate"]
+                if self.mode is GroupProducerControlMode.RESV
+                else factors["gas_surface_rate"]
+                if self.mode is GroupProducerControlMode.GRAT
+                else factors["liquid_surface_rate"]
+            )
+        return attrs.evolve(
+            self, target_rate=self.target_rate * factor, unit_system=target
+        )
 
 
 class GroupControls(StoreSerializable):
@@ -327,9 +361,41 @@ class GroupControls(StoreSerializable):
     """
 
     __abstract_serializable__ = True
+    __slots__ = ("_controls", "unit_system")
 
-    def __init__(self, controls: typing.Dict[str, GroupControl]) -> None:
+    def __init__(
+        self,
+        controls: typing.Dict[str, GroupControl],
+        unit_system: typing.Optional[UnitSystem] = None,
+    ) -> None:
+        """
+        Initialize the `GroupControls` object.
+
+        :param controls: Mapping from group name to GroupControl.
+        :param unit_system: Target unit system for every control. None
+            requires all controls to already share the same unit system.
+        :raises ValidationError: If unit_system is None and the controls
+            don't all share one unit system.
+        """
+        if unit_system is None:
+            systems = {control.unit_system for control in controls.values()}
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All controls must share the same unit system when "
+                    "`unit_system` is not explicitly provided. Found: "
+                    f"{sorted(s.value for s in systems)}."
+                )
+            unit_system = systems.pop() if systems else UnitSystem.FIELD
+        else:
+            controls = {
+                name: control
+                if control.unit_system == unit_system
+                else control.convert(unit_system)
+                for name, control in controls.items()
+            }
+
         self._controls = dict(controls)
+        self.unit_system = unit_system
 
     def get(self, name: str) -> typing.Optional[GroupControl]:
         return self._controls.get(name)
@@ -386,3 +452,27 @@ class GroupControls(StoreSerializable):
             for name, control_data in data["controls"].items()
         }
         return cls(controls=controls)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `GroupControls` object in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New GroupControls with every control converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        return self.__class__(
+            controls={
+                name: control.convert(target, table=table)
+                for name, control in self._controls.items()
+            },
+            unit_system=target,
+        )

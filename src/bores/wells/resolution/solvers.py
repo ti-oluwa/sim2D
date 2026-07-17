@@ -335,9 +335,8 @@ def solve_producer_rate_mode(
     """
     Resolve a producer under `mode in {ORAT, WRAT, GRAT, LRAT, RESV}`.
 
-    Nominal resolution only - does not check `control.limits`; the caller
-    (`wells.control.engine.resolve_control`) applies those afterward via
-    `wells.control.limits.apply_limits`.
+    Nominal resolution only. Does not check `control.limits`; the caller
+    should apply limits afterward via `wells.resolution.limits.apply_limits`.
     """
     relevant_phases = PRODUCER_RATE_MODE_PHASES[control.mode]
     min_pressure, max_pressure = get_default_pressure_bracket(
@@ -377,8 +376,11 @@ def solve_producer_bhp_mode(
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
-    """Resolve a producer held at a fixed BHP; rates are the output.
-    Nominal resolution only - see `solve_producer_rate_mode`."""
+    """
+    Resolve a producer held at a fixed BHP; rates are the output.
+
+    Nominal resolution only - see `solve_producer_rate_mode`.
+    """
     phase_rates = compute_full_phase_rates_at(
         well=well,
         perforation_indices=perforation_indices,
@@ -400,9 +402,12 @@ def solve_injector_rate_mode(
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
-    """Injector analogue of `solve_producer_rate_mode` -
+    """
+    Injector analogue of `solve_producer_rate_mode` -
     `control.injected_phase` selects the single phase being allocated.
-    Nominal resolution only - see `solve_producer_rate_mode`."""
+
+    Nominal resolution only - see `solve_producer_rate_mode`.
+    """
     relevant_phases = (control.injected_phase,)
     min_pressure, max_pressure = get_default_pressure_bracket(
         connection_samples, is_injector=True, resolver_spec=resolver_spec
@@ -442,8 +447,11 @@ def solve_injector_bhp_mode(
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
-    """Injector analogue of `solve_producer_bhp_mode`. Nominal resolution
-    only - see `solve_producer_rate_mode`."""
+    """
+    Injector analogue of `solve_producer_bhp_mode`.
+
+    Nominal resolution only - see `solve_producer_rate_mode`.
+    """
     phase_rates = compute_full_phase_rates_at(
         well=well,
         perforation_indices=perforation_indices,

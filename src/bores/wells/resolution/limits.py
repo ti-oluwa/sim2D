@@ -124,9 +124,8 @@ def _thp_bound(
     """
     Bounding BHP if `limit` is violated by `resolution`'s implied THP, else `None`.
 
-    Checked in the forward direction only (candidate BHP ->
-    `wellbore_model.tubing_head_pressure`), bisected against
-    `limit.min_value`/`max_value` as a target.
+    Checked in the forward direction only (candidate BHP -> `wellbore_model.tubing_head_pressure`), 
+    bisected against `limit.min_value`/`max_value` as a target.
     """
     current_thp = wellbore_model.tubing_head_pressure(
         well,

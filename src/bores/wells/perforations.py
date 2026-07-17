@@ -5,7 +5,9 @@ import typing
 
 import attrs
 import numpy as np
+from typing_extensions import Self
 
+from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
@@ -17,6 +19,8 @@ from bores.typing import (
     OneDimension,
     Orientation,
     TwoDimensions,
+    UnitConversionTable,
+    UnitSystem,
 )
 from bores.wells.base import MDPerforation, Perforation, Well
 
@@ -45,6 +49,36 @@ class PerforationIndex(Serializable):
     that package derives an inclination itself."""
     well_index: typing.Optional[Number] = None
     """Connection factor for this connection. `None` until computed."""
+    unit_system: UnitSystem = UnitSystem.FIELD
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `PerforationIndex` in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New PerforationIndex with representative_depth and
+            well_index converted to target.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        well_index_factor = factors["permeability"] * factors["length"]
+        return attrs.evolve(
+            self,
+            representative_depth=self.representative_depth * factors["length"],
+            well_index=self.well_index * well_index_factor
+            if self.well_index is not None
+            else None,
+            unit_system=target,
+        )
 
 
 def resolve_perforation_orientation(perforation: Perforation) -> Orientation:
@@ -84,7 +118,7 @@ def _default_horizontal_tolerance(grid: Grid, x: Number, y: Number) -> Number:
     return 0.5 * math.sqrt(dx**2 + dy**2)
 
 
-def _vertical_column_candidates(
+def _get_vertical_column_candidates(
     grid: Grid, x: Number, y: Number, tolerance: Number
 ) -> IntArray[OneDimension]:
     """
@@ -121,15 +155,15 @@ def _vertical_column_candidates(
     return typing.cast(IntArray[OneDimension], np.sort(filtered))
 
 
-def _local_vertical_extent_aabb(
+def _compute_local_vertical_extent_aabb(
     grid: Grid, cell_index: int, x: Number, y: Number
 ) -> typing.Optional[typing.Tuple[Number, Number]]:
     """
-    Vertical extent of cell `cell_index`'s axis-aligned bounding box.
+    Get vertical extent of cell `cell_index`'s axis-aligned bounding box.
 
     Every point within the cell's horizontal footprint sees the same
     `[cell_min_z, cell_max_z]` window under this method - `x`/`y` are
-    accepted for signature parity with `_local_vertical_extent_exact` and
+    accepted for signature parity with `_compute_local_vertical_extent_exact` and
     otherwise unused.
 
     :param grid: Grid providing `cell_min_xyz`/`cell_max_xyz`.
@@ -210,6 +244,7 @@ def _point_in_polygon_3d(
     Projects both the polygon and the point onto whichever pair of axes
     `normal` is *least* aligned with (drops the axis `normal` is most
     aligned with), then runs `_point_in_polygon_2d` on that projection.
+
     Dropping a fixed axis (as the purely-vertical-line special case could
     get away with, since every face it tested was near-horizontal) would
     collapse a steeply-tilted face's projection to near-zero area here,
@@ -234,11 +269,11 @@ def _point_in_polygon_3d(
     )
 
 
-def _local_vertical_extent_exact(
+def _compute_local_vertical_extent_exact(
     grid: Grid, cell_index: int, x: Number, y: Number
 ) -> typing.Optional[typing.Tuple[Number, Number]]:
     """
-    Exact vertical extent of cell `cell_index` at horizontal position
+    Get exact vertical extent of cell `cell_index` at horizontal position
     `(x, y)`.
 
     A vertical line through `(x, y)` pierces a convex cell's boundary at
@@ -246,7 +281,9 @@ def _local_vertical_extent_exact(
     with that face's plane (via the face centroid and outward normal),
     then keeps the intersection only if `(x, y)` falls inside that face's
     actual polygon (projected to the horizontal plane) rather than just
-    its infinite plane. Faces whose outward normal is close to horizontal
+    its infinite plane.
+
+    Faces whose outward normal is close to horizontal
     are skipped outright as a vertical line doesn't pierce a vertical
     (side) face at a well-defined single point, and those faces bound the
     cell's sides, not its top or bottom.
@@ -320,17 +357,23 @@ def resolve_perforations_indices(
             "resolve_md_perforations_indices instead."
         )
 
+    if grid.unit_system != well.unit_system:
+        raise ValidationError(
+            f"Grid `unit_system` ({grid.unit_system.value}) != well "
+            f"{well.name!r}'s `unit_system` ({well.unit_system.value})."
+        )
+
     x, y = well.surface_location
     tolerance = (
         horizontal_tolerance
         if horizontal_tolerance is not None
         else _default_horizontal_tolerance(grid, x, y)
     )
-    candidates = _vertical_column_candidates(grid, x, y, tolerance)
+    candidates = _get_vertical_column_candidates(grid, x, y, tolerance)
     extent_func = (
-        _local_vertical_extent_aabb
+        _compute_local_vertical_extent_aabb
         if method == "aabb"
-        else _local_vertical_extent_exact
+        else _compute_local_vertical_extent_exact
     )
 
     results: typing.List[PerforationIndex] = []
@@ -360,6 +403,7 @@ def resolve_perforations_indices(
                             partial_penetration_fraction=1.0,
                             representative_depth=depth,
                             inclination_from_vertical=inclination,
+                            unit_system=well.unit_system,
                         )
                     )
                     break
@@ -383,12 +427,13 @@ def resolve_perforations_indices(
                         partial_penetration_fraction=length / perforation.length,
                         representative_depth=0.5 * (overlap_top + overlap_bottom),
                         inclination_from_vertical=inclination,
+                        unit_system=well.unit_system,
                     )
                 )
 
         if not matches:
             raise ValidationError(
-                f"Perforation [{perforation.top_depth}, {perforation.bottom_depth}] "
+                f"`Perforation` [{perforation.top_depth}, {perforation.bottom_depth}] "
                 f"on well {well.name!r} does not overlap any grid cell near "
                 f"surface_location={well.surface_location} (dangling completion)."
             )
@@ -462,7 +507,7 @@ def _locate_cell(
     return None
 
 
-def _segment_face_intersection(
+def _get_segment_face_intersection(
     start: typing.Tuple[Number, Number, Number],
     direction: typing.Tuple[Number, Number, Number],
     grid: Grid,
@@ -470,7 +515,7 @@ def _segment_face_intersection(
     cell_index: int,
 ) -> typing.Optional[Number]:
     """
-    Parameter `t` (`point = start + t * direction`) at which the ray from
+    Get a parameter `t` (`point = start + t * direction`) at which the ray from
     `start` along `direction` crosses `face_index`'s plane *and* actually
     lands within that face's polygon - `None` if the ray is (near-)
     parallel to the plane, or the crossing point falls outside the
@@ -558,7 +603,7 @@ def _walk_segment_through_grid(
         best_face: typing.Optional[int] = None
         for face_idx in grid.get_cell_face_indices(current_cell):
             face_idx = int(face_idx)
-            t = _segment_face_intersection(
+            t = _get_segment_face_intersection(
                 start, direction, grid, face_idx, current_cell
             )
             if t is None or t <= current_t + 1e-9 or t > 1.0 + 1e-9:
@@ -568,29 +613,25 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside current_cell without crossing another face.
-            results.append(
-                (
-                    current_cell,
-                    start_md + current_t * md_span,
-                    start_md + 1.0 * md_span,
-                )
-            )
+            results.append((
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + 1.0 * md_span,
+            ))
             break
 
         exit_t = min(best_t, 1.0)
-        results.append(
-            (
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + exit_t * md_span,
-            )
-        )
+        results.append((
+            current_cell,
+            start_md + current_t * md_span,
+            start_md + exit_t * md_span,
+        ))
         if best_t >= 1.0 - 1e-9:
             break
 
         owner, neighbour = (
-            int(grid.face_cell_indices[best_face, 0]),
-            int(grid.face_cell_indices[best_face, 1]),
+            grid.face_cell_indices[best_face, 0],
+            grid.face_cell_indices[best_face, 1],
         )
         next_cell = neighbour if owner == current_cell else owner
         if next_cell < 0:
@@ -639,8 +680,14 @@ def resolve_md_perforations_indices(
             f"Well {well.name!r} has no trajectory; use "
             "resolve_perforations_indices instead."
         )
-    trajectory = well.trajectory
 
+    if grid.unit_system != well.unit_system:
+        raise ValidationError(
+            f"Grid `unit_system` ({grid.unit_system.value}) != well "
+            f"{well.name!r}'s `unit_system` ({well.unit_system.value})."
+        )
+
+    trajectory = well.trajectory
     x, y = well.surface_location
     radius = (
         search_radius
@@ -700,12 +747,13 @@ def resolve_md_perforations_indices(
                             0.5 * (entry_md + exit_md)
                         )[2],
                         inclination_from_vertical=inclination,
+                        unit_system=well.unit_system,
                     )
                 )
 
         if not matches:
             raise ValidationError(
-                f"MDPerforation [{perforation.top_md}, {perforation.bottom_md}] on "
+                f"`MDPerforation` [{perforation.top_md}, {perforation.bottom_md}] on "
                 f"well {well.name!r} does not intersect any grid cell along its "
                 "trajectory (dangling completion, or the trajectory passes "
                 "outside the active grid over this range)."

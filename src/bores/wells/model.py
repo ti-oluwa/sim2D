@@ -6,8 +6,10 @@ import attrs
 from typing_extensions import Self
 
 from bores.deck.file import DeckFile
+from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
+from bores.typing import UnitConversionTable, UnitSystem
 from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
@@ -34,6 +36,26 @@ class WellModel(Serializable):
     group_controls: typing.Optional[GroupControls] = None
     resolver_spec: ControlResolverSpec = attrs.field(factory=ControlResolverSpec)
 
+    def __attrs_post_init__(self) -> None:
+        if self.controls.unit_system != self.wells.unit_system:
+            raise ValidationError(
+                f"`controls.unit_system` ({self.controls.unit_system.value}) != "
+                f"`wells.unit_system` ({self.wells.unit_system.value})."
+            )
+        if (
+            self.group_controls is not None
+            and self.group_controls.unit_system != self.wells.unit_system
+        ):
+            raise ValidationError(
+                f"`group_controls.unit_system` ({self.group_controls.unit_system.value}) "
+                f"!= `wells.unit_system` ({self.wells.unit_system.value})."
+            )
+
+    @property
+    def unit_system(self) -> UnitSystem:
+        """Unit system shared by wells/controls/group_controls."""
+        return self.wells.unit_system
+
     def get_wellbore_model(self, well_name: str) -> WellboreModel:
         """
         The `WellboreModel` to use for `well_name`.
@@ -44,7 +66,7 @@ class WellModel(Serializable):
 
     def wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
         """
-        Every well name whose `Well.group` is `group_name` or any group
+        Returns every well name whose `group == group_name` or any group
         under it (recursively, via `self.groups`).
 
         :raises ValidationError: If `self.groups` is `None`.
@@ -70,6 +92,8 @@ class WellModel(Serializable):
         **well_kwargs: typing.Any,
     ) -> Self:
         """
+        Load a `WellModel` from a parsed `DeckFile`.
+
         :param deck_file: Parsed deck.
         :param grid: `Grid` built from the same deck.
         :param wellbore_model: `WellModel.wellbore_model`.
@@ -90,4 +114,33 @@ class WellModel(Serializable):
             wellbore_model=wellbore_model,
             groups=groups,
             group_controls=group_controls,
+        )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Returns a  new `WellModel` in the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New WellsModel with wells/controls/group_controls
+            converted to target. groups (pure hierarchy, no dimensioned
+            data) and the wellbore models are unchanged.
+        """
+        if target == self.unit_system:
+            return self
+        return attrs.evolve(
+            self,
+            wells=self.wells.convert(target, table=table),
+            controls=self.controls.convert(target, table=table),
+            group_controls=(
+                self.group_controls.convert(target, table=table)
+                if self.group_controls is not None
+                else None
+            ),
         )

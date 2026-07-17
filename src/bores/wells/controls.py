@@ -7,12 +7,13 @@ import typing
 import attrs
 from typing_extensions import Self
 
+from bores.constants import get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores.base import StoreSerializable
-from bores.typing import FluidPhase, Number
+from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 
 __all__ = [
     "RateQuantity",
@@ -105,16 +106,20 @@ class InjectorControlMode(enum.Enum):
 
 
 class Limit(Serializable):
-    """
-    Abstract base for well-control secondary limits.
-
-    Carries no fields of its own - see the module docstring for why this
-    is a real base class (registered against a type registry) rather than
-    the `typing.Union[RateLimit, BHPLimit, THPLimit]` alias the original
-    sketch used.
-    """
+    """Abstract base for well-control secondary limits."""
 
     __abstract_serializable__ = True
+
+    unit_system: UnitSystem
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        raise NotImplementedError
 
 
 _LIMIT_TYPES: typing.Dict[str, typing.Type[Limit]] = {}
@@ -135,20 +140,47 @@ class RateLimit(Limit):
 
     `quantity` is independent of the well's active `ProducerControlMode`/
     `InjectorControlMode`. A well on `BHP` control can still carry an
-    `ORAT` `RateLimit` that forces a switch to rate control if exceeded;
-    resolving that switch is `control_engine.py`'s job, not this class's.
+    `ORAT` `RateLimit` that forces a switch to rate control if exceeded.
     """
 
     __type__ = "rate"
 
     quantity: RateQuantity
     max_value: Number
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.max_value <= 0:
             raise ValidationError(
                 f"`max_value` must be positive; got {self.max_value}."
             )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Convert the limit to the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New RateLimit with max_value converted to target.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        factor = (
+            factors["gas_surface_rate"]
+            if self.quantity is RateQuantity.GAS
+            else factors["reservoir_rate"]
+            if self.quantity is RateQuantity.RESERVOIR
+            else factors["liquid_surface_rate"]
+        )
+        return attrs.evolve(self, max_value=self.max_value * factor, unit_system=target)
 
 
 @_limit_type
@@ -167,6 +199,7 @@ class BHPLimit(Limit):
 
     min_value: typing.Optional[Number] = None
     max_value: typing.Optional[Number] = None
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.min_value is None and self.max_value is None:
@@ -182,6 +215,32 @@ class BHPLimit(Limit):
                 f"`min_value` ({self.min_value}) must be <= `max_value` "
                 f"({self.max_value})."
             )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Convert the limit to the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New limit with min_value/max_value converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        factor = get_conversion_factors(self.unit_system, target, table=table)[
+            "pressure"
+        ]
+        return attrs.evolve(
+            self,
+            min_value=self.min_value * factor if self.min_value is not None else None,
+            max_value=self.max_value * factor if self.max_value is not None else None,
+            unit_system=target,
+        )
 
 
 @_limit_type
@@ -205,6 +264,7 @@ class THPLimit(Limit):
 
     min_value: typing.Optional[Number] = None
     max_value: typing.Optional[Number] = None
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.min_value is None and self.max_value is None:
@@ -221,12 +281,38 @@ class THPLimit(Limit):
                 f"({self.max_value})."
             )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Convert the limit to the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New limit with min_value/max_value converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        factor = get_conversion_factors(self.unit_system, target, table=table)[
+            "pressure"
+        ]
+        return attrs.evolve(
+            self,
+            min_value=self.min_value * factor if self.min_value is not None else None,
+            max_value=self.max_value * factor if self.max_value is not None else None,
+            unit_system=target,
+        )
+
 
 @_limit_type
 @attrs.frozen(kw_only=True, slots=True)
 class EconomicLimit(Limit):
     """
-    A fractional-flow economic limit (deck WECON).
+    A fractional-flow economic limit (deck `WECON`).
 
     Shuts the well in when the given ratio of produced phases exceeds `max_value`.
     """
@@ -235,6 +321,7 @@ class EconomicLimit(Limit):
 
     quantity: EconomicQuantity
     max_value: Number
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.max_value <= 0:
@@ -242,27 +329,57 @@ class EconomicLimit(Limit):
                 f"`max_value` must be positive; got {self.max_value}."
             )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        Convert the limit to the *target* unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New EconomicLimit with max_value converted to target
+            (unchanged for WATER_CUT, which is dimensionless).
+        """
+        if target == self.unit_system or self.quantity is EconomicQuantity.WATER_CUT:
+            return attrs.evolve(self, unit_system=target)
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        factor = (
+            factors["gas_oil_ratio"]
+            if self.quantity is EconomicQuantity.GOR
+            else factors["oil_gas_ratio"]  # WATER_GAS_RATIO: water is dimensionally
+        )  # identical to oil (liquid_surface_volume)
+        return attrs.evolve(self, max_value=self.max_value * factor, unit_system=target)
+
 
 class WellControl(Serializable):
-    """
-    Abstract base for producer/injector control targets.
-
-    Carries no fields of its own - see the module docstring for why this
-    is a real base class rather than the `typing.Union[ProducerControl,
-    InjectorControl]` alias the original sketch used.
-    """
+    """Abstract base for producer/injector control targets."""
 
     __abstract_serializable__ = True
 
-    limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
+    limits: typing.Tuple[Limit, ...]
     efficiency_factor: Number = 1.0
-    guide_rate: typing.Optional[Number] = None
+    guide_rate: typing.Optional[Number]
     """
     Weight used by group-target allocation (deck WGRUPCON item 3).
     `None` falls back to equal-weight allocation among eligible wells.
 
     See `wells.resolution.allocation`.
     """
+    unit_system: UnitSystem
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        raise NotImplementedError
 
 
 _CONTROL_TYPES: typing.Dict[str, typing.Type[WellControl]] = {}
@@ -294,10 +411,9 @@ class ProducerControl(WellControl):
     Although all three may be populated at once (e.g. an `ORAT` target alongside a
     `BHP` floor as a `BHPLimit`, an `ORAT` *cap* is a `RateLimit`.
 
-    `target_bhp` here is the value used only
-    when `mode is ProducerControlMode.BHP`). Deck `WCONPROD` naturally
-    supplies several target items at once regardless of which one item 2
-    selects, so all three are kept rather than only the active one, so
+    `target_bhp` here is the value used only when `mode is ProducerControlMode.BHP`).
+    Deck `WCONPROD` naturally supplies several target items at once regardless of
+    which one item 2 selects, so all three are kept rather than only the active one, so
     switching `mode` at runtime (e.g. rate-to-BHP on limit violation) does
     not require re-supplying the other targets.
     """
@@ -317,6 +433,7 @@ class ProducerControl(WellControl):
 
     See `wells.resolution.allocation`.
     """
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.mode in PRODUCER_RATE_MODES and self.target_rate is None:
@@ -335,6 +452,56 @@ class ProducerControl(WellControl):
             raise ValidationError(
                 f"`efficiency_factor` must be in (0, 1]; got {self.efficiency_factor}."
             )
+
+        mismatched = [
+            limit for limit in self.limits if limit.unit_system != self.unit_system
+        ]
+        if mismatched:
+            raise ValidationError(
+                f"All `limits` must share this control's unit_system "
+                f"({self.unit_system.value}); found {mismatched[0].unit_system.value}."
+            )
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New ProducerControl with every rate/pressure field and
+            every entry in limits converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        rate_modes = {
+            ProducerControlMode.ORAT: "liquid_surface_rate",
+            ProducerControlMode.WRAT: "liquid_surface_rate",
+            ProducerControlMode.GRAT: "gas_surface_rate",
+            ProducerControlMode.LRAT: "liquid_surface_rate",
+            ProducerControlMode.RESV: "reservoir_rate",
+        }
+        rate_factor = (
+            factors[rate_modes[self.mode]] if self.mode in rate_modes else None
+        )
+        return attrs.evolve(
+            self,
+            target_rate=self.target_rate * rate_factor
+            if rate_factor and self.target_rate is not None
+            else self.target_rate,
+            target_bhp=self.target_bhp * factors["pressure"]
+            if self.target_bhp is not None
+            else None,
+            target_thp=self.target_thp * factors["pressure"]
+            if self.target_thp is not None
+            else None,
+            limits=tuple(limit.convert(target, table=table) for limit in self.limits),
+            unit_system=target,
+        )
 
 
 @_control_type
@@ -365,6 +532,7 @@ class InjectorControl(WellControl):
 
     See `wells.resolution.allocation`.
     """
+    unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.mode in INJECTOR_RATE_MODES and self.target_rate is None:
@@ -384,15 +552,86 @@ class InjectorControl(WellControl):
                 f"`efficiency_factor` must be in (0, 1]; got {self.efficiency_factor}."
             )
 
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New InjectorControl with every rate/pressure field and
+            every entry in limits converted to target.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        rate_factor = (
+            factors["gas_surface_rate"]
+            if self.injected_phase is FluidPhase.GAS
+            else factors["liquid_surface_rate"]
+        )
+        # Note: `InjectorControlMode.RESV` also exists and
+        # we should use factors["reservoir_rate"] instead
+        if self.mode is InjectorControlMode.RESV:
+            rate_factor = factors["reservoir_rate"]
+
+        return attrs.evolve(
+            self,
+            target_rate=self.target_rate * rate_factor
+            if self.target_rate is not None
+            else None,
+            target_bhp=self.target_bhp * factors["pressure"]
+            if self.target_bhp is not None
+            else None,
+            target_thp=self.target_thp * factors["pressure"]
+            if self.target_thp is not None
+            else None,
+            limits=tuple(limit.convert(target, table=table) for limit in self.limits),
+            unit_system=target,
+        )
+
 
 class WellControls(StoreSerializable):
     """Name-keyed, mutable mapping from well name to its current `WellControl`."""
 
     __abstract_serializable__ = True
-    __slots__ = ("_controls",)
+    __slots__ = ("_controls", "unit_system")
 
-    def __init__(self, controls: typing.Dict[str, WellControl]) -> None:
+    def __init__(
+        self,
+        controls: typing.Dict[str, WellControl],
+        unit_system: typing.Optional[UnitSystem] = None,
+    ) -> None:
+        """
+        :param controls: Mapping from well name to WellControl.
+        :param unit_system: Target unit system for every control. None
+            requires all controls to already share the same unit system.
+        :raises ValidationError: If unit_system is None and the controls
+            don't all share one unit system.
+        """
+        if unit_system is None:
+            systems = {control.unit_system for control in controls.values()}
+            if len(systems) > 1:
+                raise ValidationError(
+                    "All controls must share the same unit system when "
+                    "`unit_system` is not explicitly provided. Found: "
+                    f"{sorted(s.value for s in systems)}."
+                )
+            unit_system = systems.pop() if systems else UnitSystem.FIELD
+        else:
+            controls = {
+                name: control
+                if control.unit_system == unit_system
+                else control.convert(unit_system)
+                for name, control in controls.items()
+            }
+
         self._controls = dict(controls)
+        self.unit_system = unit_system
 
     def get(self, name: str) -> typing.Optional[WellControl]:
         """Current control for `name`, or `None` if unset."""
@@ -471,3 +710,25 @@ class WellControls(StoreSerializable):
             for name, control_data in data["controls"].items()
         }
         return cls(controls=controls)
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        """
+        :param target: Target unit system.
+        :param table: Optional custom conversion table.
+        :returns: New `WellControls` with every control converted to target.
+        """
+        if target == self.unit_system:
+            return self
+        return self.__class__(
+            controls={
+                name: control.convert(target, table=table)
+                for name, control in self._controls.items()
+            },
+            unit_system=target,
+        )

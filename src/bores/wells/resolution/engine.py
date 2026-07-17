@@ -47,6 +47,8 @@ from bores.wells.states import ConnectionSample, PerforationState, WellState
 
 __all__ = ["resolve_control", "build_well_state"]
 
+DEFAULT_RESOLVER_SPEC = ControlResolverSpec()
+
 
 def resolve_control(
     control: WellControl,
@@ -55,7 +57,7 @@ def resolve_control(
     wellbore_model: WellboreModel,
     connection_samples: typing.Sequence[ConnectionSample],
     *,
-    resolver_spec: ControlResolverSpec = ControlResolverSpec(),
+    resolver_spec: ControlResolverSpec = DEFAULT_RESOLVER_SPEC,
     surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
 ) -> ControlResolution:
     """
@@ -74,7 +76,7 @@ def resolve_control(
     :param connection_samples: Reservoir samples, one per connection,
         `well_index.perforations` order (see module docstring - **not**
         `well.open_perforations` order).
-    :param resolver_spec: Solver tunables; `ControlResolverSpec()`
+    :param resolver_spec: Solver tunables; `DEFAULT_RESOLVER_SPEC`
         (all-default) if not supplied.
     :param surface_fluid_properties: Required only if `control.limits`
         contains a `THPLimit`.
@@ -222,6 +224,12 @@ def build_well_state(
     :returns: Complete `WellState`, `is_open=True`.
     :raises ValidationError: If `len(connection_samples) != len(well_index.perforations)`.
     """
+    if well.unit_system != well_index.unit_system:
+        raise ValidationError(
+            f"Well `unit_system` ({well.unit_system.value}) != WellIndex "
+            f"`unit_system` ({well_index.unit_system.value})."
+        )
+
     perforation_indices = well_index.perforations
     if len(connection_samples) != len(perforation_indices):
         raise ValidationError(
@@ -233,8 +241,8 @@ def build_well_state(
     connection_pressures = wellbore_model.perforation_pressures(
         well,
         resolution.bhp,
-        resolution.phase_rates,
-        perforation_indices,
+        phase_rates=resolution.phase_rates,
+        perforation_indices=perforation_indices,
         connection_samples=connection_samples,
         is_injector=isinstance(active_control, InjectorControl),
     )
@@ -252,6 +260,7 @@ def build_well_state(
                 cell_index=pidx.cell_index,
                 flowing_pressure=float(p_wf),
                 phase_rates=connection_phase_rates,
+                unit_system=well.unit_system,
             )
         )
     return WellState(
@@ -265,4 +274,5 @@ def build_well_state(
         phase_rates=resolution.phase_rates,
         active_limit=resolution.active_limit,
         thp=resolution.thp,
+        unit_system=well.unit_system,
     )
