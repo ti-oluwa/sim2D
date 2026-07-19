@@ -80,7 +80,9 @@ def _classify_flow_pattern(
         pattern_name = "distributed"
 
     return FlowPattern(
-        name=pattern_name, no_slip_holdup=no_slip_holdup, froude_number=froude_number
+        name=pattern_name,
+        no_slip_holdup=no_slip_holdup,
+        froude_number=froude_number,
     )
 
 
@@ -276,8 +278,8 @@ def _compute_two_phase_friction_factor(
     :returns: Two-phase Darcy friction factor.
     """
     no_slip_friction_factor = compute_friction_factor(
-        no_slip_reynolds_number,
-        relative_roughness,
+        reynolds_number=no_slip_reynolds_number,
+        relative_roughness=relative_roughness,
         method=friction_method,
         laminar_reynolds_limit=laminar_reynolds_limit,
         turbulent_reynolds_limit=turbulent_reynolds_limit,
@@ -313,14 +315,19 @@ class BeggsBrillWellboreModel(Serializable):
     """
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
+
     gravitational_acceleration: typing.Optional[Number] = None
     """`c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE` if `None`."""
+
     laminar_reynolds_limit: typing.Optional[Number] = None
     """`c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None`."""
+
     turbulent_reynolds_limit: typing.Optional[Number] = None
     """`c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`."""
+
     friction_max_iterations: typing.Optional[int] = None
     """`c.COLEBROOK_MAX_ITERATIONS` if `None`."""
+
     friction_tolerance: typing.Optional[Number] = None
     """`c.COLEBROOK_TOLERANCE` if `None`."""
 
@@ -329,7 +336,7 @@ class BeggsBrillWellboreModel(Serializable):
             return self.gravitational_acceleration
         return c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
 
-    def _segment_drop(
+    def _get_segment_drop(
         self,
         *,
         length: Number,
@@ -341,7 +348,7 @@ class BeggsBrillWellboreModel(Serializable):
         is_injector: bool,
     ) -> typing.Tuple[Number, Number]:
         """
-        `(hydrostatic, friction)` for one segment, using Beggs-Brill
+        Return `(hydrostatic, friction)` for one segment, using Beggs-Brill
         in-situ holdup for the hydrostatic term and two-phase-corrected
         friction for the friction term.
 
@@ -396,17 +403,17 @@ class BeggsBrillWellboreModel(Serializable):
             is_injector=is_injector,
             gravitational_acceleration=gravitational_acceleration,
         )
-        in_situ_density = liquid_density * in_situ_holdup + gas_density * (
+        in_situ_density = (liquid_density * in_situ_holdup) + gas_density * (
             1.0 - in_situ_holdup
         )
-        hydrostatic = in_situ_density * gravitational_acceleration * length
+        hydrostatic_drop = in_situ_density * gravitational_acceleration * length
 
         mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
         no_slip_holdup = superficial_liquid_velocity / mixture_velocity
-        no_slip_density = liquid_density * no_slip_holdup + gas_density * (
+        no_slip_density = (liquid_density * no_slip_holdup) + gas_density * (
             1.0 - no_slip_holdup
         )
-        no_slip_viscosity = liquid_viscosity * no_slip_holdup + gas_viscosity * (
+        no_slip_viscosity = (liquid_viscosity * no_slip_holdup) + gas_viscosity * (
             1.0 - no_slip_holdup
         )
         relative_roughness = (
@@ -420,7 +427,7 @@ class BeggsBrillWellboreModel(Serializable):
             * tubing_inner_diameter
             / no_slip_viscosity
         )
-        two_phase_friction_factor = _compute_two_phase_friction_factor(
+        friction_factor = _compute_two_phase_friction_factor(
             no_slip_holdup=no_slip_holdup,
             in_situ_holdup=in_situ_holdup,
             no_slip_reynolds_number=no_slip_reynolds_number,
@@ -431,12 +438,12 @@ class BeggsBrillWellboreModel(Serializable):
             friction_max_iterations=self.friction_max_iterations,
             friction_tolerance=self.friction_tolerance,
         )
-        friction = (
-            two_phase_friction_factor
+        friction_drop = (
+            friction_factor
             * (length / tubing_inner_diameter)
             * (no_slip_density * mixture_velocity**2 / 2.0)
         )
-        return hydrostatic, friction
+        return hydrostatic_drop, friction_drop
 
     def perforation_pressures(
         self,
@@ -479,7 +486,7 @@ class BeggsBrillWellboreModel(Serializable):
                     "`well.tubing_inner_diameter` is required for non-static flow"
                 )
 
-            hydrostatic, friction = self._segment_drop(
+            hydrostatic_drop, friction_drop = self._get_segment_drop(
                 length=abs(dz),
                 inclination_from_vertical=pidx.inclination_from_vertical,
                 phase_rates=phase_rates,
@@ -490,10 +497,9 @@ class BeggsBrillWellboreModel(Serializable):
             )
             pressures[i] = (
                 reference_pressure
-                + (geometric_sign * hydrostatic)
-                + (friction_sign * friction)
+                + (geometric_sign * hydrostatic_drop)
+                + (friction_sign * friction_drop)
             )
-
         return pressures
 
     def tubing_head_pressure(
@@ -545,20 +551,20 @@ class BeggsBrillWellboreModel(Serializable):
             / surface_fluid_properties.viscosity
         )
         friction_factor = compute_friction_factor(
-            reynolds_number,
-            relative_roughness,
+            reynolds_number=reynolds_number,
+            relative_roughness=relative_roughness,
             method=self.friction_method,
             laminar_reynolds_limit=self.laminar_reynolds_limit,
             turbulent_reynolds_limit=self.turbulent_reynolds_limit,
             max_iterations=self.friction_max_iterations,
             tolerance=self.friction_tolerance,
         )
-        hydrostatic = (
+        hydrostatic_drop = (
             surface_fluid_properties.density * gravitational_acceleration * abs(dz)
         )
-        friction = (
+        friction_drop = (
             friction_factor
             * (abs(dz) / well.tubing_inner_diameter)
             * (surface_fluid_properties.density * velocity**2 / 2.0)
         )
-        return reference_pressure - hydrostatic - (friction_sign * friction)
+        return reference_pressure - hydrostatic_drop - (friction_sign * friction_drop)

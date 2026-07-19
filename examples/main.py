@@ -15,7 +15,7 @@ from bores.wells import MechanisticWellboreModel, WellModel
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
-# The reservoir
+# Load reservoir model
 grid = Grid.from_deck(df)
 regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
 satfunc = SaturationFunctionRegions.from_deck(df, mixing_rule="eclipse_rule")
@@ -28,7 +28,7 @@ rock = Rock.from_deck(
 )
 reservoir = ReservoirModel(grid=grid, rock=rock, regions=regions)
 
-# The fluid
+# Define fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
 blackoil = BlackOilFluid(pvt=pvt, satfunc=satfunc)
@@ -36,7 +36,7 @@ table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"
 print(table.viscosity([4700, 200, 3456, 10000, 4000], 400))
 
-# The initial state
+# Load initial state
 equilibrium = EquilibriumRegions.from_deck(df)
 initial_state = initialize_reservoir_state(
     reservoir=reservoir,
@@ -47,15 +47,15 @@ initial_state = initialize_reservoir_state(
     temperature=temperature,
 )
 
-# Load Wells
+# Load wells
 wells = WellModel.from_deck(
     df,
     grid=grid,
     wellbore_model=MechanisticWellboreModel(),
 )
-d = wells.dump()
-w = WellModel.load(d)
-print(w)
+# d = wells.dump()
+# w = WellModel.load(d)
+# print(w)
 
 # Construct the final model
 model = BlackOilModel(reservoir=reservoir, fluid=blackoil, wells=wells)

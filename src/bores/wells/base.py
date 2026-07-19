@@ -79,8 +79,8 @@ class Perforation(Serializable):
 
     Two `Perforation` instances with identical fields are interchangeable;
     nothing about a `Perforation` depends on which well it belongs to. Only
-    valid on a `Well` with no `trajectory`. 
-    
+    valid on a `Well` with no `trajectory`.
+
     See `MDPerforation` for a well with one.
     """
 
@@ -180,7 +180,7 @@ class MDPerforation(Serializable):
     unique location on an arbitrary path.
 
     Carries no `direction` field, unlike `Perforation`, orientation
-    comes from the trajectory's local tangent at this interval, not a discrete axis 
+    comes from the trajectory's local tangent at this interval, not a discrete axis
     choice, and wells indices computations never runs Peaceman's formula against an
     `MDPerforation` connection for the same reason. As Peaceman's formula
     assumes a wellbore aligned with a principal permeability axis, which an
@@ -255,8 +255,8 @@ class MDPerforation(Serializable):
     def length(self) -> Number:
         """
         `bottom_md - top_md`.
-        
-        Measured-depth length, not a true vertical depth length; 
+
+        Measured-depth length, not a true vertical depth length;
         along a horizontal section these differ substantially.
         """
         return self.bottom_md - self.top_md

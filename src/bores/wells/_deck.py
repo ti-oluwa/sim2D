@@ -504,9 +504,9 @@ def load_wells_from_deck(
     wpimult = deck_file.get("WPIMULT")
     injector_names = {record["well"] for record in wconinje}
     return make_wells_from_records(
-        grid,
-        welspecs,
-        compdat,
+        grid=grid,
+        welspecs_records=welspecs,
+        compdat_records=compdat,
         wpimult_records=wpimult,
         unit_system=deck_file.unit_system,
         injector_names=injector_names,
@@ -521,15 +521,15 @@ def load_well_controls_from_deck(deck_file: DeckFile) -> WellControls:
         record, with WECON limits merged in where present.
     """
     controls = make_controls_from_records(
-        deck_file.get("WCONPROD") or [],
-        deck_file.get("WCONINJE") or [],
+        wconprod_records=deck_file.get("WCONPROD") or [],
+        wconinje_records=deck_file.get("WCONINJE") or [],
         unit_system=deck_file.unit_system,
     )
     wecon = deck_file.get("WECON") or []
     if wecon:
         apply_economic_limits(
-            controls,
-            wecon,
+            controls=controls,
+            wecon_records=wecon,
             unit_system=deck_file.unit_system,
         )
 
@@ -566,7 +566,7 @@ def load_group_controls_from_deck(deck_file: DeckFile) -> GroupControls:
             "Atleast one should be present."
         )
     return make_group_controls_from_records(
-        gconprod,
-        gconinje,
+        gconprod_records=gconprod,
+        gconinje_records=gconinje,
         unit_system=deck_file.unit_system,
     )

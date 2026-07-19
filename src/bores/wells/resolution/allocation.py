@@ -78,7 +78,9 @@ def allocate_group_targets(
             "directly allocatable rate target."
         )
     if group_control.target_rate is None:
-        raise ValidationError(f"`WellGroup` {group_name!r}'s control has no target_rate.")
+        raise ValidationError(
+            f"`WellGroup` {group_name!r}'s control has no target_rate."
+        )
 
     member_names = well_model.wells_in_group(group_name)
     eligible: typing.List[str] = []

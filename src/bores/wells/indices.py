@@ -113,7 +113,6 @@ class WellIndex(Serializable):
         )
 
 
-# TODO: Improve this and not just default to Z unnecessarily
 def resolve_well_index_direction(
     perforation: Perforation, grid: Grid, cell_index: int
 ) -> Orientation:
@@ -122,12 +121,12 @@ def resolve_well_index_direction(
     "along-wellbore" direction for `perforation` in `cell_index`.
 
     Resolution order: `perforation.direction` if set (and not `UNSET`);
-    otherwise `Orientation.Z` (vertical is the overwhelmingly common case).
+    otherwise the cell's geometrically thinnest axis. The well is assumed
+    to pierce perpendicular to the layering, which for a typical grid is
+    Z, but isn't guaranteed to be for a rotated or irregularly-shaped cell.
 
     :param perforation: The perforation being resolved.
-    :param grid: Grid the cell belongs to (unused by this implementation -
-        kept as a parameter so a future geometry-based resolution strategy
-        can be added without a signature change).
+    :param grid: Grid the cell belongs to.
     :param cell_index: Cell the perforation resolved into.
     :returns: `Orientation.X`, `Orientation.Y`, or `Orientation.Z`.
     """
@@ -136,7 +135,13 @@ def resolve_well_index_direction(
         and perforation.direction is not Orientation.UNSET
     ):
         return perforation.direction
-    return Orientation.Z
+
+    lengths = {
+        Orientation.X: grid.cell_length_x[cell_index],
+        Orientation.Y: grid.cell_length_y[cell_index],
+        Orientation.Z: grid.cell_length_z[cell_index],
+    }
+    return min(lengths, key=lengths.get)  # type: ignore[arg-type]
 
 
 def is_locally_cartesian(grid: Grid, cell_index: int, tolerance: Number = 0.05) -> bool:

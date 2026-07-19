@@ -15,7 +15,7 @@ from bores.wells.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
 
 __all__ = [
-    "PressureDropComponents",
+    "PressureDrop",
     "SurfaceFluidProperties",
     "compute_mixture_density",
     "compute_mixture_viscosity",
@@ -29,7 +29,7 @@ __all__ = [
 
 
 @attrs.frozen(kw_only=True, slots=True)
-class PressureDropComponents(Serializable):
+class PressureDrop(Serializable):
     """One tubing segment's pressure drop, broken out by mechanism."""
 
     hydrostatic: Number
@@ -49,10 +49,11 @@ class PressureDropComponents(Serializable):
 
 @attrs.frozen(kw_only=True, slots=True)
 class SurfaceFluidProperties(Serializable):
-    """Density and viscosity of the produced/injected stream at surface
-    conditions - there's no reservoir cell at surface to pull a
-    `ConnectionSample` from, so `WellboreModel.tubing_head_pressure` takes
-    this instead.
+    """
+    Density and viscosity of the produced/injected stream at surface conditions.
+
+    There's no reservoir cell at surface to pull a `ConnectionSample` from,
+    so `WellboreModel.tubing_head_pressure` takes this instead.
     """
 
     density: Number
@@ -64,10 +65,11 @@ def compute_mixture_density(
     phase_densities: typing.Mapping[FluidPhase, Number],
 ) -> Number:
     """
-    No-slip rate-weighted mixture density:
+    Computes no-slip rate-weighted mixture density:
 
-    `sum(rate_p * density_p) / sum(rate_p)` across phases present in
-    `phase_rates`.
+    `sum(phase_rate * phase_density) / sum(phase_rate)`
+
+    across phases present in `phase_rates`.
 
     :param phase_rates: Rates per phase, consistent condition with
         `phase_densities`.
@@ -75,7 +77,7 @@ def compute_mixture_density(
         `phase_rates`. A phase present in `phase_rates` with rate `0.0`
         doesn't need an entry here.
     :returns: Mixture density.
-    :raises ValidationError: If `phase_rates` sums to zero - use
+    :raises ValidationError: If `phase_rates` sums to zero. Use
         `compute_static_hydrostatic_drop` instead.
     """
     total_rate = sum(phase_rates.values())
@@ -99,8 +101,7 @@ def compute_mixture_viscosity(
     phase_viscosities: typing.Mapping[FluidPhase, Number],
 ) -> Number:
     """
-    No-slip rate-weighted mixture viscosity, same formula/convention as
-    `compute_mixture_density`.
+    Computes no-slip rate-weighted mixture viscosity.
 
     :param phase_rates: Rates per phase.
     :param phase_viscosities: Viscosity per phase, same condition as
@@ -128,8 +129,9 @@ def compute_mixture_velocity(
     phase_rates: typing.Mapping[FluidPhase, Number], tubing_inner_diameter: Number
 ) -> Number:
     """
-    No-slip superficial mixture velocity:
-    `sum(rate_p) / cross_sectional_area`.
+    Computes no-slip superficial mixture velocity:
+
+    `sum(phase_rate) / cross_sectional_area`.
 
     :param phase_rates: Rates per phase, reservoir condition.
     :param tubing_inner_diameter: Tubing inner diameter.
@@ -157,18 +159,22 @@ def compute_friction_factor(
     tolerance: typing.Optional[Number] = None,
 ) -> Number:
     """
-    Darcy friction factor for a tubing segment.
+    Computes the Darcy friction factor for a tubing segment.
 
-    `method="simplified"` (default): `64/Re` for `Re < laminar_reynolds_limit`
-    (laminar); Blasius `0.316 * Re**-0.25` for
-    `laminar_reynolds_limit <= Re < turbulent_reynolds_limit`; a
-    Swamee-Jain-style explicit approximation (includes `relative_roughness`)
+    **`method="simplified"` (default):**
+
+    - `64/Re` for `Re < laminar_reynolds_limit` (laminar)
+    - Blasius `0.316 * Re**-0.25` for `laminar_reynolds_limit <= Re < turbulent_reynolds_limit`
+
+    A Swamee-Jain-style explicit approximation (includes `relative_roughness`)
     above that. Closed-form, no iteration.
 
-    `method="colebrook"` (standard/rigorous): solves
-    `1/sqrt(f) = -2*log10(relative_roughness/3.7 + 2.51/(Re*sqrt(f)))` via
-    fixed-point iteration, bounded by `max_iterations`/`tolerance`. More
-    accurate across the full turbulent range; the simplified method
+    **`method="colebrook"` (standard/rigorous):**
+
+    Solves `1/sqrt(f) = -2*log10(relative_roughness/3.7 + 2.51/(Re*sqrt(f)))`
+    via fixed-point iteration, bounded by `max_iterations`/`tolerance`.
+
+    This is more accurate across the full turbulent range; the simplified method
     degrades at very rough pipe / low relative roughness combinations.
 
     :param reynolds_number: `rho * v * D / mu`.
@@ -251,16 +257,17 @@ def compute_segment_pressure_drop(
     turbulent_reynolds_limit: typing.Optional[Number] = None,
     friction_max_iterations: typing.Optional[int] = None,
     friction_tolerance: typing.Optional[Number] = None,
-) -> PressureDropComponents:
+) -> PressureDrop:
     """
-    Pressure drop across one tubing segment of length `length`.
+    Computes the pressure drop across one tubing segment of length `length`.
 
-    Returns the three components unsigned (magnitudes) - the caller
-    combines them with whatever sign convention its integration direction
-    and flow direction require. `MechanisticWellboreModel` applies
-    hydrostatic/acceleration by geometric position and friction by flow
-    direction (opposing it), since the two aren't the same thing once an
-    injector's flow direction is considered - see
+    Returns the three components unsigned (magnitudes). The caller will need
+    to combine them with whatever sign convention its integration direction
+    and flow direction require.
+
+    `MechanisticWellboreModel` applies hydrostatic/acceleration by geometric
+    position and friction by flow direction (opposing it), since the two aren't
+    the same thing once an injector's flow direction is considered - see
     `WellboreModel.perforation_pressures`'s `is_injector` parameter.
 
     :param length: Segment length (along-wellbore, not vertical depth).
@@ -272,17 +279,15 @@ def compute_segment_pressure_drop(
     :param mixture_viscosity: From `compute_mixture_viscosity`.
     :param mixture_velocity_in: Superficial velocity entering the segment.
     :param mixture_velocity_out: Superficial velocity leaving the segment.
-    :param gravitational_acceleration: Passed explicitly - use
-        `bores.constants.c.ACCELERATION_DUE_TO_GRAVITY_*` for the caller's
-        unit system.
+    :param gravitational_acceleration: Passed explicitly.
+        Use `bores.constants.c.ACCELERATION_DUE_TO_GRAVITY_*` for the
+        caller's unit system.
     :param friction_method: See `compute_friction_factor`.
     :param laminar_reynolds_limit: Forwarded to `compute_friction_factor`.
     :param turbulent_reynolds_limit: Forwarded to `compute_friction_factor`.
-    :param friction_max_iterations: Forwarded to `compute_friction_factor`
-        as `max_iterations`.
-    :param friction_tolerance: Forwarded to `compute_friction_factor` as
-        `tolerance`.
-    :returns: `PressureDropComponents` for this segment.
+    :param friction_max_iterations: Forwarded to `compute_friction_factor` as `max_iterations`.
+    :param friction_tolerance: Forwarded to `compute_friction_factor` as `tolerance`.
+    :returns: `PressureDrop` for this segment.
 
     **Unit note, caught by testing this against FIELD-unit numbers, not
     assumed correct:** `hydrostatic = density * g * length` does not land
@@ -292,7 +297,7 @@ def compute_segment_pressure_drop(
     applied here: the formula is implemented exactly as specified, with
     unit-system consistency left to the caller.
     """
-    hydrostatic = (
+    hydrostatic_drop = (
         mixture_density
         * gravitational_acceleration
         * length
@@ -309,46 +314,47 @@ def compute_segment_pressure_drop(
         mixture_density * abs(mean_velocity) * tubing_inner_diameter / mixture_viscosity
     )
     if reynolds_number <= 0.0:
-        friction = 0.0
+        friction_drop = 0.0
     else:
         friction_factor = compute_friction_factor(
-            reynolds_number,
-            relative_roughness,
+            reynolds_number=reynolds_number,
+            relative_roughness=relative_roughness,
             method=friction_method,
             laminar_reynolds_limit=laminar_reynolds_limit,
             turbulent_reynolds_limit=turbulent_reynolds_limit,
             max_iterations=friction_max_iterations,
             tolerance=friction_tolerance,
         )
-        friction = (
+        friction_drop = (
             friction_factor
             * (length / tubing_inner_diameter)
             * (mixture_density * mean_velocity**2 / 2.0)
         )
 
-    acceleration = (
+    acceleration_drop = (
         mixture_density * (mixture_velocity_out**2 - mixture_velocity_in**2) / 2.0
     )
-    return PressureDropComponents(
-        hydrostatic=hydrostatic, friction=friction, acceleration=acceleration
+    return PressureDrop(
+        hydrostatic=hydrostatic_drop,
+        friction=friction_drop,
+        acceleration=acceleration_drop,
     )
 
 
 def compute_static_hydrostatic_drop(
     mixture_density: Number, length: Number, gravitational_acceleration: Number
-) -> PressureDropComponents:
+) -> PressureDrop:
     """
-    No-flow special case (shut-in well, or a well evaluated at zero rate)
-    - hydrostatic term only; `friction`/`acceleration` are exactly zero
-    rather than computed-and-happening-to-be-zero (avoids a divide-by-zero
-    Reynolds number at `velocity=0`).
+    Computes no-flow special case (shut-in well, or a well evaluated at zero rate).
+
+    Hydrostatic term only; `friction` and `acceleration` are exactly zero.
 
     :param mixture_density: Static column density.
     :param length: Vertical length.
     :param gravitational_acceleration: See `compute_segment_pressure_drop`.
-    :returns: `PressureDropComponents` with `friction=0`, `acceleration=0`.
+    :returns: `PressureDrop` with `friction=0`, `acceleration=0`.
     """
-    return PressureDropComponents(
+    return PressureDrop(
         hydrostatic=mixture_density * gravitational_acceleration * length,
         friction=0.0,
         acceleration=0.0,
@@ -357,7 +363,7 @@ def compute_static_hydrostatic_drop(
 
 def static_mixture_density(sample: ConnectionSample) -> Number:
     """
-    Saturation-weighted density for the no-flow case.
+    Computes saturation-weighted density for the no-flow case.
 
     `compute_mixture_density` is rate-weighted and undefined at zero rate;
     the static column instead reflects whatever's in place, so this weights
@@ -439,10 +445,8 @@ class WellboreModel(typing.Protocol):
         :param well: Static well data.
         :param reference_pressure: BHP at `well.reference_depth`.
         :param phase_rates: Well-total phase rates.
-        :param surface_fluid_properties: Density/viscosity at surface
-            conditions.
+        :param surface_fluid_properties: Density/viscosity at surface conditions.
         :param is_injector: See `perforation_pressures`.
-        :returns: THP, integrating from `reference_depth` up to surface
-            (depth `0`).
+        :returns: THP, integrating from `reference_depth` up to surface (depth `0`).
         """
         ...

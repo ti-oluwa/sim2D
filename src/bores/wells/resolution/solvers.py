@@ -156,23 +156,25 @@ def iterate_perforation_pressures_and_rates(
         phase: 0.0 for phase in relevant_phases
     }
     connection_pressures = wellbore_model.perforation_pressures(
-        well,
-        reference_pressure,
-        phase_rates,
-        perforation_indices,
-        connection_samples,
-        is_injector,
+        well=well,
+        reference_pressure=reference_pressure,
+        phase_rates=phase_rates,
+        perforation_indices=perforation_indices,
+        connection_samples=connection_samples,
+        is_injector=is_injector,
     )
     total_rate = 0.0
 
     for _ in range(resolver_spec.max_fixed_point_iterations):
         phase_rates = {phase: 0.0 for phase in relevant_phases}
-        for pidx, sample, p_wf in zip(
+        for pidx, sample, flowing_pressure in zip(
             perforation_indices, connection_samples, connection_pressures
         ):
             assert pidx.well_index is not None
             drawdown = _compute_perforation_drawdown(
-                sample.pressure, p_wf, is_injector=is_injector
+                cell_pressure=sample.pressure,
+                flowing_pressure=flowing_pressure,
+                is_injector=is_injector,
             )
             for phase in relevant_phases:
                 mobility = sample.phase_mobilities.get(phase, 0.0)
@@ -180,12 +182,12 @@ def iterate_perforation_pressures_and_rates(
 
         new_total_rate = sum(phase_rates.values())
         connection_pressures = wellbore_model.perforation_pressures(
-            well,
-            reference_pressure,
-            phase_rates,
-            perforation_indices,
-            connection_samples,
-            is_injector,
+            well=well,
+            reference_pressure=reference_pressure,
+            phase_rates=phase_rates,
+            perforation_indices=perforation_indices,
+            connection_samples=connection_samples,
+            is_injector=is_injector,
         )
         if abs(
             new_total_rate - total_rate
@@ -284,18 +286,18 @@ def bisect_bhp(
         )
 
     low, high = min_pressure, max_pressure
-    mid = 0.5 * (low + high)
+    average_pressure = 0.5 * (low + high)
     pressures = None
     phase_rates: typing.Dict[FluidPhase, Number] = {}
 
     for _ in range(resolver_spec.max_bisection_iterations):
-        mid = 0.5 * (low + high)
+        average_pressure = 0.5 * (low + high)
         pressures, phase_rates = iterate_perforation_pressures_and_rates(
             well=well,
             perforation_indices=perforation_indices,
             connection_samples=connection_samples,
             wellbore_model=wellbore_model,
-            reference_pressure=mid,
+            reference_pressure=average_pressure,
             relevant_phases=relevant_phases,
             is_injector=is_injector,
             resolver_spec=resolver_spec,
@@ -307,7 +309,11 @@ def bisect_bhp(
         else:
             assert surface_fluid_properties is not None
             value = wellbore_model.tubing_head_pressure(
-                well, mid, phase_rates, surface_fluid_properties, is_injector
+                well=well,
+                reference_pressure=average_pressure,
+                phase_rates=phase_rates,
+                surface_fluid_properties=surface_fluid_properties,
+                is_injector=is_injector,
             )
             increasing_with_bhp = True
 
@@ -316,12 +322,12 @@ def bisect_bhp(
         ):
             break
         if (value < target) == increasing_with_bhp:
-            low = mid
+            low = average_pressure
         else:
-            high = mid
+            high = average_pressure
 
     assert pressures is not None
-    return mid, pressures, phase_rates
+    return average_pressure, pressures, phase_rates
 
 
 def solve_producer_rate_mode(
@@ -410,7 +416,9 @@ def solve_injector_rate_mode(
     """
     relevant_phases = (control.injected_phase,)
     min_pressure, max_pressure = get_default_pressure_bracket(
-        connection_samples, is_injector=True, resolver_spec=resolver_spec
+        connection_samples=connection_samples,
+        is_injector=True,
+        resolver_spec=resolver_spec,
     )
     assert control.target_rate is not None
     bhp, _, _ = bisect_bhp(

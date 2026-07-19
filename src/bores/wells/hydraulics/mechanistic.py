@@ -30,24 +30,29 @@ class MechanisticWellboreModel(Serializable):
     """
     No-slip mixture `WellboreModel`.
 
-    One segment per (reference_depth -> connection) pair, no intermediate
-    discretization. Inclination comes from
-    `PerforationIndex.inclination_from_vertical` and is populated by
-    `wells.perforations`, not derived here.
+    One segment per (reference_depth -> connection) pair, 
+    no intermediate discretization. 
     """
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
+    
     gravitational_acceleration: typing.Optional[Number] = None
-    """`c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE` if `None` -
+    """
+    `c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE` if `None` -
     a `METRIC`/`SI` well needs the matching
     `c.ACCELERATION_DUE_TO_GRAVITY_*` value supplied explicitly, never
-    silently assumed for a non-FIELD well."""
+    silently assumed for a non-FIELD well.
+    """
+
     laminar_reynolds_limit: typing.Optional[Number] = None
     """`c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None`."""
+
     turbulent_reynolds_limit: typing.Optional[Number] = None
     """`c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`."""
+
     friction_max_iterations: typing.Optional[int] = None
     """`c.COLEBROOK_MAX_ITERATIONS` if `None`."""
+
     friction_tolerance: typing.Optional[Number] = None
     """`c.COLEBROOK_TOLERANCE` if `None`."""
 
@@ -120,7 +125,6 @@ class MechanisticWellboreModel(Serializable):
                 + geometric_sign * (drop.hydrostatic + drop.acceleration)
                 + friction_sign * drop.friction
             )
-
         return pressures
 
     def tubing_head_pressure(
