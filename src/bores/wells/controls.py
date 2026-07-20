@@ -167,7 +167,7 @@ class RateLimit(Limit):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New RateLimit with max_value converted to target.
+        :returns: New `RateLimit` with `max_value` converted to target.
         """
         if target == self.unit_system:
             return self
@@ -228,7 +228,7 @@ class BHPLimit(Limit):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New limit with min_value/max_value converted to target.
+        :returns: New `BHPLimit` with `min_value`/`max_value` converted to target.
         """
         if target == self.unit_system:
             return self
@@ -293,7 +293,7 @@ class THPLimit(Limit):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New limit with min_value/max_value converted to target.
+        :returns: New `THPLimit` with min_value/max_value converted to target.
         """
         if target == self.unit_system:
             return self
@@ -472,7 +472,7 @@ class ProducerControl(WellControl):
         """
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New ProducerControl with every rate/pressure field and
+        :returns: New `ProducerControl` with every rate/pressure field and
             every entry in limits converted to target.
         """
         if target == self.unit_system:
@@ -562,7 +562,7 @@ class InjectorControl(WellControl):
         """
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New InjectorControl with every rate/pressure field and
+        :returns: New `InjectorControl` with every rate/pressure field and
             every entry in limits converted to target.
         """
         if target == self.unit_system:
@@ -639,21 +639,21 @@ class WellControls(StoreSerializable):
 
     def set(self, name: str, control: WellControl) -> None:
         """
-        Replace the current control for `name` wholesale (say fo a
-        WCONPROD/WCONINJE reissue, a limit-triggered mode switch, or an
+        Replace the current control for `name` wholesale (say for a
+        `WCONPROD`/`WCONINJE` reissue, a limit-triggered mode switch, or an
         initial assignment).
         """
         self._controls[name] = control
 
     def update(self, name: str, **fields: typing.Any) -> None:
         """
-                Modify one or more fields of `name`'s current control without
-                replacing it wholesale.
+        Modify one or more fields of `name`'s current control without
+        replacing it wholesale.
 
-                The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
-                once `factories.py` parses those.
+        The `WellControl` analogue of deck `WELTARG`/`WELCNTL` (single-target edits),
+        once `factories.py` parses those.
 
-                :raises KeyError    groups: typing.Optional[WellGroups] = None
+        :raises KeyError    groups: typing.Optional[WellGroups] = None
         : If `name` has no current control set.
         """
         current = self._controls.get(name)

@@ -356,7 +356,7 @@ class Rock(StoreSerializable):
         )
 
     @staticmethod
-    def _saturation_endpoints_from_tables(
+    def _get_saturation_endpoints_from_tables(
         satfunc: SaturationFunctionRegions,
         saturation_regions: IntCellArray,
         n_cells: int,
@@ -431,7 +431,7 @@ class Rock(StoreSerializable):
 
         Whichever of the five is absent from the deck is derived from
         `satfunc`'s per-SATNUM tables when `satfunc` is supplied (see
-        `_saturation_endpoints_from_tables`); only truly defaults to `0.0`
+        `_get_saturation_endpoints_from_tables`); only truly defaults to `0.0`
         if `satfunc` isn't given either. Explicit deck arrays always take
         precedence, per keyword independently.
 
@@ -499,7 +499,7 @@ class Rock(StoreSerializable):
             if saturation_regions is None:
                 saturation_regions = _load_region_array(deck_file, "SATNUM", n_cells)
             if saturation_regions is not None:
-                table_derived_endpoints = cls._saturation_endpoints_from_tables(
+                table_derived_endpoints = cls._get_saturation_endpoints_from_tables(
                     satfunc=satfunc,
                     saturation_regions=saturation_regions,
                     n_cells=n_cells,

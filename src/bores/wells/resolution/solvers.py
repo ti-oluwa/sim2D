@@ -1,8 +1,7 @@
 """
 Per-mode numerical solvers for well control resolution.
 
-Two coupled numerical problems, both against a single scalar
-(`reference_pressure`, i.e. BHP):
+Two coupled numerical problems, both against a single scalar (`reference_pressure`, i.e. BHP):
 
 1. **Fixed-point**: at a *fixed* BHP, perforation flowing pressures and
    IPR-derived phase rates depend on each other (`wellbore_model` needs
@@ -23,6 +22,7 @@ from bores.typing import FluidPhase, Number, NumberArray
 from bores.wells.base import Well
 from bores.wells.controls import (
     InjectorControl,
+    InjectorControlMode,
     ProducerControl,
     ProducerControlMode,
     RateQuantity,
@@ -50,20 +50,6 @@ PRODUCER_RATE_MODE_PHASES: typing.Dict[
     ProducerControlMode.WRAT: (FluidPhase.WATER,),
     ProducerControlMode.GRAT: (FluidPhase.GAS,),
     ProducerControlMode.LRAT: (FluidPhase.OIL, FluidPhase.WATER),
-    # Every rate this engine computes (`well_index * mobility * drawdown`,
-    # Darcy's law) is already reservoir-condition. RESV's "sum of
-    # reservoir-condition rates across all three phases" isn't an
-    # approximation of a voidage rate, it is the voidage rate, exactly, by
-    # construction. No FVF conversion needed at this layer for RESV.
-    #
-    # TODO: ORAT/WRAT/GRAT/LRAT are a separate question: those targets are
-    # conventionally *surface*-condition (deck WCONPROD items), and
-    # nothing in this module converts between the two. Either
-    # `ProducerControl.target_rate` is expected to already arrive here
-    # pre-converted to reservoir condition by whatever builds the control, or
-    # there's a live surface/reservoir unit mismatch for any well with FVF
-    # meaningfully different from 1. Not resolved in this module - flagged
-    # here rather than silently assumed consistent.
     ProducerControlMode.RESV: (FluidPhase.OIL, FluidPhase.WATER, FluidPhase.GAS),
 }
 
@@ -136,7 +122,9 @@ def iterate_perforation_pressures_and_rates(
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     resolver_spec: ControlResolverSpec,
-) -> typing.Tuple[NumberArray, typing.Dict[FluidPhase, Number]]:
+) -> typing.Tuple[
+    NumberArray, typing.Dict[FluidPhase, Number], typing.Dict[FluidPhase, Number]
+]:
     """
     Fixed-point iterate connection flowing pressures against IPR-derived
     rates at a fixed `reference_pressure` (BHP), until the well-total
@@ -150,7 +138,22 @@ def iterate_perforation_pressures_and_rates(
     `resolver_spec.rate_convergence_tolerance`, or
     `resolver_spec.max_fixed_point_iterations` is reached (best-effort).
 
-    :returns: `(connection_pressures, phase_rates)`.
+    Every connection's IPR contribution is also divided by that
+    connection's own formation volume factor and accumulated separately,
+    since the two totals are needed for different purposes: `phase_rates`
+    (reservoir-condition) is what `wellbore_model` and a RESERVOIR-condition
+    target need, `surface_condition_phase_rates` is what a surface-condition
+    target (ORAT/WRAT/GRAT/LRAT) needs to be compared against.
+
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param reference_pressure: BHP held fixed while iterating.
+    :param relevant_phases: Phases to accumulate rates for.
+    :param is_injector: Selects the drawdown sign convention.
+    :param resolver_spec: Supplies the iteration cap and convergence tolerance.
+    :returns: `(connection_pressures, phase_rates, surface_condition_phase_rates)`.
     """
     phase_rates: typing.Dict[FluidPhase, Number] = {
         phase: 0.0 for phase in relevant_phases
@@ -164,9 +167,11 @@ def iterate_perforation_pressures_and_rates(
         is_injector=is_injector,
     )
     total_rate = 0.0
+    surface_condition_phase_rates: typing.Dict[FluidPhase, Number] = dict(phase_rates)
 
     for _ in range(resolver_spec.max_fixed_point_iterations):
         phase_rates = {phase: 0.0 for phase in relevant_phases}
+        surface_condition_phase_rates = {phase: 0.0 for phase in relevant_phases}
         for pidx, sample, flowing_pressure in zip(
             perforation_indices, connection_samples, connection_pressures
         ):
@@ -178,7 +183,14 @@ def iterate_perforation_pressures_and_rates(
             )
             for phase in relevant_phases:
                 mobility = sample.phase_mobilities.get(phase, 0.0)
-                phase_rates[phase] += pidx.well_index * mobility * drawdown
+                reservoir_condition_contribution = pidx.well_index * mobility * drawdown
+                phase_rates[phase] += reservoir_condition_contribution
+                formation_volume_factor = sample.phase_formation_volume_factors.get(
+                    phase, 1.0
+                )
+                surface_condition_phase_rates[phase] += (
+                    reservoir_condition_contribution / formation_volume_factor
+                )
 
         new_total_rate = sum(phase_rates.values())
         connection_pressures = wellbore_model.perforation_pressures(
@@ -196,7 +208,7 @@ def iterate_perforation_pressures_and_rates(
             break
         total_rate = new_total_rate
 
-    return connection_pressures, phase_rates
+    return connection_pressures, phase_rates, surface_condition_phase_rates
 
 
 def compute_full_phase_rates_at(
@@ -216,13 +228,23 @@ def compute_full_phase_rates_at(
 
     For a producer, `relevant_phases` is every phase (`ALL_PHASES`) - a
     producer can legitimately flow oil, water, and gas simultaneously. For
-    an injector, `relevant_phases` must be `(spec.injected_phase,)` only -
+    an injector, `relevant_phases` must be `(control.injected_phase,)` only -
     an injector displaces reservoir fluid rather than having an
     IPR-driven "oil rate" of its own; computing one via the same
     mobility-weighted formula used for producers would be physically
     wrong, not just cosmetically incomplete.
+
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param reference_pressure: BHP to report rates at.
+    :param relevant_phases: Phases to compute a real rate for.
+    :param is_injector: Selects the drawdown sign convention.
+    :param resolver_spec: Forwarded to `iterate_perforation_pressures_and_rates`.
+    :returns: Reservoir-condition phase rates, one entry per `FluidPhase`.
     """
-    _, computed_rates = iterate_perforation_pressures_and_rates(
+    _, computed_rates, _ = iterate_perforation_pressures_and_rates(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
@@ -248,6 +270,7 @@ def bisect_bhp(
     max_pressure: Number,
     resolver_spec: ControlResolverSpec,
     metric: typing.Literal["rate", "thp"] = "rate",
+    target_rate_condition: typing.Literal["surface", "reservoir"] = "surface",
     surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
 ) -> typing.Tuple[Number, NumberArray, typing.Dict[FluidPhase, Number]]:
     """
@@ -272,11 +295,30 @@ def bisect_bhp(
     exception) if `target` isn't achievable within the bracket - returns
     the closest bound reached after `resolver_spec.max_bisection_iterations`.
 
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param relevant_phases: Phases the `"rate"` metric sums over.
+    :param is_injector: Selects the drawdown sign convention and the
+        direction `"rate"` moves in as BHP changes.
+    :param target: Value the chosen metric is bisected toward.
+    :param min_pressure: Lower bracket bound.
+    :param max_pressure: Upper bracket bound.
+    :param resolver_spec: Supplies the iteration cap and convergence tolerance.
     :param metric: `"rate"` (default) matches `relevant_phases`' total
         rate against `target`; `"thp"` matches `wellbore_model.tubing_head_pressure`
         against `target` instead (requires `surface_fluid_properties`).
+    :param target_rate_condition: `"surface"` (default) bisects against
+        the surface-condition total (ORAT/WRAT/GRAT/LRAT-style targets,
+        and most `RateLimit` quantities); `"reservoir"` bisects against
+        the raw reservoir-condition total instead (RESV-mode targets,
+        `RateLimit(quantity=RateQuantity.RESERVOIR)`). Ignored when
+        `metric="thp"`.
+    :param surface_fluid_properties: Required if `metric="thp"`.
     :returns: `(bhp, connection_pressures, phase_rates)`, `phase_rates`
-        restricted to `relevant_phases`.
+        restricted to `relevant_phases` and always reservoir-condition,
+        regardless of `target_rate_condition`.
     :raises ValidationError: If `metric="thp"` and `surface_fluid_properties`
         is `None`.
     """
@@ -292,19 +334,26 @@ def bisect_bhp(
 
     for _ in range(resolver_spec.max_bisection_iterations):
         average_pressure = 0.5 * (low + high)
-        pressures, phase_rates = iterate_perforation_pressures_and_rates(
-            well=well,
-            perforation_indices=perforation_indices,
-            connection_samples=connection_samples,
-            wellbore_model=wellbore_model,
-            reference_pressure=average_pressure,
-            relevant_phases=relevant_phases,
-            is_injector=is_injector,
-            resolver_spec=resolver_spec,
+        pressures, phase_rates, surface_condition_phase_rates = (
+            iterate_perforation_pressures_and_rates(
+                well=well,
+                perforation_indices=perforation_indices,
+                connection_samples=connection_samples,
+                wellbore_model=wellbore_model,
+                reference_pressure=average_pressure,
+                relevant_phases=relevant_phases,
+                is_injector=is_injector,
+                resolver_spec=resolver_spec,
+            )
         )
 
         if metric == "rate":
-            value = sum(phase_rates.values())
+            rates_for_target = (
+                phase_rates
+                if target_rate_condition == "reservoir"
+                else surface_condition_phase_rates
+            )
+            value = sum(rates_for_target.values())
             increasing_with_bhp = is_injector
         else:
             assert surface_fluid_properties is not None
@@ -343,6 +392,14 @@ def solve_producer_rate_mode(
 
     Nominal resolution only. Does not check `control.limits`; the caller
     should apply limits afterward via `wells.resolution.limits.apply_limits`.
+
+    :param control: The producer's nominal control for this timestep.
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param resolver_spec: Solver tunables.
+    :returns: Nominal `ControlResolution`.
     """
     relevant_phases = PRODUCER_RATE_MODE_PHASES[control.mode]
     min_pressure, max_pressure = get_default_pressure_bracket(
@@ -360,6 +417,9 @@ def solve_producer_rate_mode(
         min_pressure=min_pressure,
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
+        target_rate_condition="reservoir"
+        if control.mode is ProducerControlMode.RESV
+        else "surface",
     )
     phase_rates = compute_full_phase_rates_at(
         well=well,
@@ -413,6 +473,14 @@ def solve_injector_rate_mode(
     `control.injected_phase` selects the single phase being allocated.
 
     Nominal resolution only - see `solve_producer_rate_mode`.
+
+    :param control: The injector's nominal control for this timestep.
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param resolver_spec: Solver tunables.
+    :returns: Nominal `ControlResolution`.
     """
     relevant_phases = (control.injected_phase,)
     min_pressure, max_pressure = get_default_pressure_bracket(
@@ -432,6 +500,9 @@ def solve_injector_rate_mode(
         min_pressure=min_pressure,
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
+        target_rate_condition="reservoir"
+        if control.mode is InjectorControlMode.RESV
+        else "surface",
     )
     phase_rates = compute_full_phase_rates_at(
         well=well,

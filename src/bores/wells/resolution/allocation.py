@@ -52,7 +52,7 @@ def allocate_group_targets(
 
     :param group_name: `WellGroup` to allocate.
     :param well_model: Supplies `well_model.groups`, `well_model.group_controls`,
-        `well_model.controls`, and `well_model.wells_in_group`.
+        `well_model.controls`, and `well_model.get_wells_in_group`.
     :returns: Mapping from well name to its updated `WellControl`, for the
         wells actually allocated (empty if none are eligible).
     :raises ValidationError: If `well_model.group_controls` is `None`, or
@@ -82,7 +82,7 @@ def allocate_group_targets(
             f"`WellGroup` {group_name!r}'s control has no target_rate."
         )
 
-    member_names = well_model.wells_in_group(group_name)
+    member_names = well_model.get_wells_in_group(group_name)
     eligible: typing.List[str] = []
     for name in member_names:
         control = well_model.controls.get(name)

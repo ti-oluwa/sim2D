@@ -309,8 +309,7 @@ class Well(Serializable):
 
     group: typing.Optional[str] = None
     """
-    Deck `WELSPECS` item 2. `None` = ungrouped (fine - group control is out
-    of scope for this rewrite).
+    Deck `WELSPECS` item 2. `None` if ungrouped.
     """
 
     wellbore_radius: Number = 0.25
@@ -329,7 +328,7 @@ class Well(Serializable):
     tubing_roughness: typing.Optional[Number] = None
     """
     Absolute roughness, same length unit as `unit_system`. `None` means
-    `wells.hydraulics` uses a smooth-pipe assumption.
+    `wells.hydraulics` would use a smooth-pipe assumption.
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -350,11 +349,15 @@ class Well(Serializable):
             raise ValidationError("`tubing_inner_diameter` must be positive.")
 
         if self.trajectory is not None:
-            if not all(isinstance(p, MDPerforation) for p in self.perforations):
+            if not all(
+                isinstance(perforation, MDPerforation)
+                for perforation in self.perforations
+            ):
                 raise ValidationError(
                     f"Well {self.name!r} has a `trajectory`; every entry in "
                     "`perforations` must be an `MDPerforation`, not `Perforation`."
                 )
+
             for perforation in self.perforations:
                 assert isinstance(perforation, MDPerforation)
                 if not (
@@ -371,7 +374,10 @@ class Well(Serializable):
                         f"{self.trajectory.bottom_measured_depth}]."
                     )
         else:
-            if not all(isinstance(p, Perforation) for p in self.perforations):
+            if not all(
+                isinstance(perforation, Perforation)
+                for perforation in self.perforations
+            ):
                 raise ValidationError(
                     f"Well {self.name!r} has no `trajectory`; every entry in "
                     "`perforations` must be a `Perforation`, not `MDPerforation`. "
@@ -477,7 +483,6 @@ class Well(Serializable):
                 )
                 for perforation in self.perforations
             )
-
         return attrs.evolve(
             self,
             surface_location=(
@@ -616,9 +621,9 @@ class Wells(StoreSerializable):
         return {"wells": {name: well.dump() for name, well in self._wells.items()}}
 
     @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> "Wells":
+    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         wells = {
-            name: Well.load(spec_data) for name, spec_data in data["wells"].items()
+            name: Well.load(wll_data) for name, wll_data in data["wells"].items()
         }
         return cls(wells=wells)
 
@@ -634,7 +639,7 @@ class Wells(StoreSerializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New Wells with every well converted to target.
+        :returns: New `Wells` with every well converted to target.
         """
         if target == self.unit_system:
             return self

@@ -210,7 +210,7 @@ class WellGroups(StoreSerializable):
         Load `WellGroups` from a parsed `DeckFile` if any exists.
 
         :param deck_file: Parsed deck.
-        :returns: `WellGroups` from GRUPTREE, or None if absent.
+        :returns: `WellGroups` from `GRUPTREE`, or None if absent.
         """
         from bores.wells._deck import load_groups_from_deck
 
@@ -328,7 +328,7 @@ class GroupControl(Serializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New GroupControl with target_rate converted to target.
+        :returns: New `GroupControl` with `target_rate` converted to target.
         """
         if target == self.unit_system or self.target_rate is None:
             return attrs.evolve(self, unit_system=target)
@@ -409,7 +409,7 @@ class GroupControls(StoreSerializable):
         Load `GroupControls` from a parsed `DeckFile` if any exists.
 
         :param deck_file: Parsed deck.
-        :returns: `GroupControls` from GCONPROD/GCONINJE, or None if absent.
+        :returns: `GroupControls` from `GCONPROD`/`GCONINJE`, or None if absent.
         """
         from bores.wells._deck import load_group_controls_from_deck
 
@@ -465,7 +465,7 @@ class GroupControls(StoreSerializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New GroupControls with every control converted to target.
+        :returns: New `GroupControls` with every control converted to target.
         """
         if target == self.unit_system:
             return self

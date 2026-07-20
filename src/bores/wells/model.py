@@ -53,7 +53,7 @@ class WellModel(Serializable):
 
     @property
     def unit_system(self) -> UnitSystem:
-        """Unit system shared by wells/controls/group_controls."""
+        """Unit system shared by `wells`/`controls`/`group_controls`."""
         return self.wells.unit_system
 
     def get_wellbore_model(self, well_name: str) -> WellboreModel:
@@ -64,7 +64,7 @@ class WellModel(Serializable):
         """
         return self.wellbore_model_overrides.get(well_name, self.wellbore_model)
 
-    def wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
+    def get_wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
         """
         Returns every well name whose `group == group_name` or any group
         under it (recursively, via `self.groups`).
@@ -75,7 +75,7 @@ class WellModel(Serializable):
             from bores.errors import ValidationError
 
             raise ValidationError(
-                "wells_in_group requires `groups` to be set on this WellModel."
+                "`get_wells_in_group` requires `groups` to be set on this WellModel."
             )
         member_group_names = {group_name, *self.groups.descendants(group_name)}
         return tuple(
@@ -100,7 +100,7 @@ class WellModel(Serializable):
         :param well_kwargs: Forwarded to `Wells.from_deck`.
         :returns: `WellModel` built from every well/control/group keyword
             present in the deck. groups/group_controls are None if the
-            deck has no GRUPTREE/GCONPROD/GCONINJE.
+            deck has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.
         """
         groups = WellGroups.from_deck(deck_file) if deck_file.has("GRUPTREE") else None
         group_controls = (
@@ -128,7 +128,7 @@ class WellModel(Serializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New WellsModel with wells/controls/group_controls
+        :returns: New `WellsModel` with wells/controls/group_controls
             converted to target. groups (pure hierarchy, no dimensioned
             data) and the wellbore models are unchanged.
         """

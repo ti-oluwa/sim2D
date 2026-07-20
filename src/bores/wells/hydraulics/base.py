@@ -50,14 +50,63 @@ class PressureDrop(Serializable):
 @attrs.frozen(kw_only=True, slots=True)
 class SurfaceFluidProperties(Serializable):
     """
-    Density and viscosity of the produced/injected stream at surface conditions.
-
-    There's no reservoir cell at surface to pull a `ConnectionSample` from,
-    so `WellboreModel.tubing_head_pressure` takes this instead.
+    Fluid properties at surface conditions as there's no reservoir cell at
+    surface to pull a `ConnectionSample` from, so this carries whatever a
+    given model needs instead.
     """
 
-    density: Number
-    viscosity: Number
+    density: typing.Optional[Number] = None
+    viscosity: typing.Optional[Number] = None
+    phase_densities: typing.Optional[typing.Mapping[FluidPhase, Number]] = None
+    phase_viscosities: typing.Optional[typing.Mapping[FluidPhase, Number]] = None
+    gas_liquid_surface_tension: typing.Optional[Number] = None
+    """
+    `density`/`viscosity` are the no-slip mixture values - every
+    `WellboreModel` can use these directly. `phase_densities`/
+    `phase_viscosities`/`gas_liquid_surface_tension` are per-phase, only
+    needed by a slip-correlation model (e.g. `BeggsBrillWellboreModel`) to
+    compute a real surface-condition holdup instead of a no-slip mixture.
+    At least `density`+`viscosity` or `phase_densities`+`phase_viscosities`
+    must be supplied - if only the phase-level pair is given, the mixture
+    values are derived from it on demand (`get_mixture_density`/
+    `get_mixture_viscosity`) rather than needing to be supplied separately
+    and kept in sync by hand.
+    """
+
+    def __attrs_post_init__(self) -> None:
+        has_mixture_properties = self.density is not None and self.viscosity is not None
+        has_phase_properties = (
+            self.phase_densities is not None and self.phase_viscosities is not None
+        )
+        if not has_mixture_properties and not has_phase_properties:
+            raise ValidationError(
+                "`SurfaceFluidProperties` needs either (`density`, `viscosity`) "
+                "or (`phase_densities`, `phase_viscosities`)."
+            )
+
+    def get_mixture_density(
+        self, phase_rates: typing.Mapping[FluidPhase, Number]
+    ) -> Number:
+        """
+        No-slip mixture density: `density` directly if set, otherwise
+        rate-weighted from `phase_densities` at `phase_rates`.
+        """
+        if self.density is not None:
+            return self.density
+        assert self.phase_densities is not None
+        return compute_mixture_density(phase_rates, self.phase_densities)
+
+    def get_mixture_viscosity(
+        self, phase_rates: typing.Mapping[FluidPhase, Number]
+    ) -> Number:
+        """
+        No-slip mixture viscosity: `viscosity` directly if set, otherwise
+        rate-weighted from `phase_viscosities` at `phase_rates`.
+        """
+        if self.viscosity is not None:
+            return self.viscosity
+        assert self.phase_viscosities is not None
+        return compute_mixture_viscosity(phase_rates, self.phase_viscosities)
 
 
 def compute_mixture_density(

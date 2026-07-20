@@ -38,6 +38,7 @@ from bores.wells.controls import (
     EconomicQuantity,
     Limit,
     RateLimit,
+    RateQuantity,
     THPLimit,
     WellControl,
 )
@@ -48,6 +49,7 @@ from bores.wells.resolution.solvers import (
     RATE_QUANTITY_PHASES,
     bisect_bhp,
     compute_full_phase_rates_at,
+    iterate_perforation_pressures_and_rates,
 )
 from bores.wells.states import ConnectionSample
 
@@ -83,10 +85,49 @@ def _rate_bound(
     """
     Bounding BHP if `limit` is violated by `resolution.phase_rates`, else `None`.
 
-    Found by bisecting BHP against `limit.max_value` as a rate target.
+    Found by bisecting BHP against `limit.max_value` as a rate target -
+    against the reservoir-condition total for a RESERVOIR-quantity limit,
+    the surface-condition total otherwise. The initial violation check
+    recomputes whichever total is relevant at `resolution.bhp` rather than
+    reading `resolution.phase_rates` directly, since that field is always
+    reservoir-condition and a RateLimit on a surface quantity would
+    otherwise be checked against the wrong condition.
+
+    :param limit: The `RateLimit` being checked.
+    :param resolution: Resolution to check `limit` against.
+    :param well: Static well data.
+    :param perforation_indices: Connections, `well_index.perforations` order.
+    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
+    :param wellbore_model: Hydraulics strategy for this well.
+    :param is_injector: Selects the drawdown sign convention.
+    :param min_pressure: Lower bisection bracket bound.
+    :param max_pressure: Upper bisection bracket bound.
+    :param resolver_spec: Solver tunables.
+    :returns: Bounding BHP, or `None` if not violated.
     """
     quantity_phases = RATE_QUANTITY_PHASES[limit.quantity]
-    current = sum(resolution.phase_rates.get(phase, 0.0) for phase in quantity_phases)
+    target_rate_condition: typing.Literal["surface", "reservoir"] = (
+        "reservoir" if limit.quantity is RateQuantity.RESERVOIR else "surface"
+    )
+
+    _, reservoir_condition_rates, surface_condition_rates = (
+        iterate_perforation_pressures_and_rates(
+            well=well,
+            perforation_indices=perforation_indices,
+            connection_samples=connection_samples,
+            wellbore_model=wellbore_model,
+            reference_pressure=resolution.bhp,
+            relevant_phases=quantity_phases,
+            is_injector=is_injector,
+            resolver_spec=resolver_spec,
+        )
+    )
+    rates_to_check = (
+        reservoir_condition_rates
+        if target_rate_condition == "reservoir"
+        else surface_condition_rates
+    )
+    current = sum(rates_to_check.get(phase, 0.0) for phase in quantity_phases)
     if current <= limit.max_value:
         return None
 
@@ -102,6 +143,7 @@ def _rate_bound(
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         metric="rate",
+        target_rate_condition=target_rate_condition,
     )
     return bound_bhp
 

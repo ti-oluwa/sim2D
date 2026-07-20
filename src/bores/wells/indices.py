@@ -339,7 +339,6 @@ def compute_equivalent_radius_well_index(
     )
 
 
-# NOTE: This should take the net to gross value and the regime constant too
 def _resolve_connection_factor(
     perforation: AnyPerforation,
     grid: Grid,

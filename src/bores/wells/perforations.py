@@ -63,8 +63,8 @@ class PerforationIndex(Serializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New PerforationIndex with representative_depth and
-            well_index converted to target.
+        :returns: New `PerforationIndex` with `representative_depth` and
+            `well_index` converted to target.
         """
         if target == self.unit_system:
             return self
@@ -442,7 +442,7 @@ def resolve_perforations_indices(
     return tuple(results)
 
 
-def _cell_contains_point(
+def _check_cell_contains_point(
     grid: Grid,
     cell_index: int,
     point: typing.Tuple[Number, Number, Number],
@@ -483,7 +483,7 @@ def _locate_cell(
     time); if that guess isn't actually the containing cell (common near a
     distorted or unstructured cell boundary), falls back to an
     expanding-radius search over every cell whose centroid is nearby,
-    testing each with `_cell_contains_point`.
+    testing each with `_check_cell_contains_point`.
 
     :param grid: Grid to search.
     :param point: Point to locate.
@@ -493,7 +493,7 @@ def _locate_cell(
         search budget (point outside the grid, or resolution too coarse).
     """
     nearest = int(grid.find_nearest_cell(*point))
-    if _cell_contains_point(grid, nearest, point):
+    if _check_cell_contains_point(grid, nearest, point):
         return nearest
 
     radius = search_radius
@@ -501,7 +501,7 @@ def _locate_cell(
         candidates = grid.find_cells_in_radius(point[0], point[1], point[2], radius)
         for candidate in candidates:
             candidate = int(candidate)
-            if _cell_contains_point(grid, candidate, point):
+            if _check_cell_contains_point(grid, candidate, point):
                 return candidate
         radius *= 2.0
     return None
@@ -604,7 +604,11 @@ def _walk_segment_through_grid(
         for face_idx in grid.get_cell_face_indices(current_cell):
             face_idx = int(face_idx)
             t = _get_segment_face_intersection(
-                start, direction, grid, face_idx, current_cell
+                start=start,
+                direction=direction,
+                grid=grid,
+                face_index=face_idx,
+                cell_index=current_cell,
             )
             if t is None or t <= current_t + 1e-9 or t > 1.0 + 1e-9:
                 continue
@@ -613,23 +617,19 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside current_cell without crossing another face.
-            results.append(
-                (
-                    current_cell,
-                    start_md + current_t * md_span,
-                    start_md + 1.0 * md_span,
-                )
-            )
+            results.append((
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + 1.0 * md_span,
+            ))
             break
 
         exit_t = min(best_t, 1.0)
-        results.append(
-            (
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + exit_t * md_span,
-            )
-        )
+        results.append((
+            current_cell,
+            start_md + current_t * md_span,
+            start_md + exit_t * md_span,
+        ))
         if best_t >= 1.0 - 1e-9:
             break
 
@@ -726,12 +726,12 @@ def resolve_md_perforations_indices(
             inclination = math.acos(max(-1.0, min(1.0, leg_dz / leg_length)))
 
             crossings = _walk_segment_through_grid(
-                grid,
-                start,
-                end,
-                previous.measured_depth,
-                current.measured_depth,
-                radius,
+                grid=grid,
+                start=start,
+                end=end,
+                start_md=previous.measured_depth,
+                end_md=current.measured_depth,
+                search_radius=radius,
             )
             for cell_index, entry_md, exit_md in crossings:
                 sub_length = exit_md - entry_md

@@ -28,6 +28,17 @@ class ConnectionSample(Serializable):
     phase_densities: typing.Mapping[FluidPhase, Number]
     phase_viscosities: typing.Mapping[FluidPhase, Number]
     gas_liquid_surface_tension: Number
+    phase_formation_volume_factors: typing.Mapping[FluidPhase, Number] = attrs.field(
+        factory=dict
+    )
+    """
+    Reservoir volume per surface volume, per phase, at this
+    connection's current pressure. A phase missing from this mapping is
+    treated as having a formation volume factor of 1 - correct for a
+    RESERVOIR-condition target (no conversion needed there) but wrong for
+    a surface-condition target (ORAT/WRAT/GRAT/LRAT) if the phase's real
+    formation volume factor differs from 1; not silently assumed correct.
+    """
 
     def __attrs_post_init__(self) -> None:
         if self.cell_index < 0:
@@ -58,8 +69,8 @@ class PerforationState(StoreSerializable):
         """
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New PerforationState with flowing_pressure and every
-            entry in phase_rates converted to target.
+        :returns: New `PerforationState` with `flowing_pressure` and every
+            entry in `phase_rates` converted to target.
         """
         if target == self.unit_system:
             return self
@@ -151,8 +162,8 @@ class WellState(StoreSerializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New WellState with bhp, thp, phase_rates,
-            perforation_states, active_control, and active_limit (if set)
+        :returns: New `WellState` with bhp, thp, phase_rates,
+            `perforation_states`, `active_control`, and `active_limit` (if set)
             all converted to target.
         """
         if target == self.unit_system:

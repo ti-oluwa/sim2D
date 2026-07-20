@@ -303,6 +303,8 @@ def make_economic_limits_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> typing.Tuple[EconomicLimit, ...]:
     """
+    Load `EconomicLimit`s from `WECON` records.
+
     :param record: One parsed WECON record.
     :param unit_system: The deck's unit system.
     :returns: One `EconomicLimit` per non-None ratio item present on the
@@ -345,8 +347,7 @@ def apply_economic_limits(
     :param controls: `WellControls` to update.
     :param wecon_records: All parsed WECON records.
     :param unit_system: The deck's unit system.
-    :raises KeyError: If a record's well has no control set in `controls`
-        yet - call this after make_controls_from_records, not before.
+    :raises KeyError: If a record's well has no control set in `controls` yet.
     """
     for record in wecon_records:
         well_name = record["well"]
@@ -487,15 +488,14 @@ def load_wells_from_deck(
 ) -> Wells:
     """
     :param deck_file: Parsed deck containing `WELSPECS`/`COMPDAT`/`WCONINJE`.
-    :param grid: Grid built from the same deck (via Grid.from_deck), for
-        completion depth lookups.
+    :param grid: Grid built from the same deck, for completion depth lookups.
     :param well_kwargs: Forwarded to `make_wells_from_records` (wellbore_radius, etc.).
     :returns: Wells for every `WELSPECS`/`COMPDAT` well in the deck.
     :raises ValidationError: If the deck has no SPECGRID/DIMENS.
     """
     if deck_file.dimensions is None:
         raise ValidationError(
-            "Deck has no SPECGRID/DIMENS; COMPDAT (I, J, K) can't be resolved."
+            "Deck has no `SPECGRID`/`DIMENS`; `COMPDAT` (I, J, K) can't be resolved."
         )
 
     welspecs = deck_file.get("WELSPECS") or []
@@ -535,7 +535,7 @@ def load_well_controls_from_deck(deck_file: DeckFile) -> WellControls:
 
     wgrupcon = deck_file.get("WGRUPCON") or []
     if wgrupcon:
-        apply_guide_rates(controls, wgrupcon)
+        apply_guide_rates(controls=controls, wgrupcon_records=wgrupcon)
     return controls
 
 
