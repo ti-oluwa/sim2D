@@ -100,7 +100,7 @@ class StorageError(BORESError):
 
 
 # Gridding Errors
-class GridError(Exception):
+class GridError(BORESError):
     """
     Base exception for all grid-related errors.
     """

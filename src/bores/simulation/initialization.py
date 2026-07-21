@@ -532,7 +532,7 @@ def check_zero_flow_initialization(
 
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-        / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
+        / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
     md_per_cp_to_ft2_per_psi_per_day = (
         c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY

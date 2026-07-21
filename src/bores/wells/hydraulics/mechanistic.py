@@ -8,7 +8,6 @@ from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
 from bores.errors import ValidationError
-from bores.serde.base import Serializable
 from bores.typing import (
     FluidPhase,
     Number,
@@ -20,27 +19,32 @@ from bores.typing import (
 from bores.wells.base import Well
 from bores.wells.hydraulics.base import (
     SurfaceFluidProperties,
+    Wellbore,
     compute_mixture_density,
     compute_mixture_velocity,
     compute_mixture_viscosity,
     compute_segment_pressure_drop,
     compute_static_hydrostatic_drop,
     static_mixture_density,
+    wellbore_type,
 )
 from bores.wells.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
 
-__all__ = ["MechanisticWellboreModel"]
+__all__ = ["MechanisticWellbore"]
 
 
+@wellbore_type
 @attrs.frozen(kw_only=True, slots=True)
-class MechanisticWellboreModel(Serializable):
+class MechanisticWellbore(Wellbore):
     """
-    No-slip mixture `WellboreModel`.
+    No-slip mixture `Wellbore`.
 
     One segment per (reference_depth -> connection) pair,
     no intermediate discretization.
     """
+
+    __type__ = "mechanistic"
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
 
@@ -105,7 +109,7 @@ class MechanisticWellboreModel(Serializable):
         if self.friction_tolerance is None:
             object.__setattr__(self, "friction_tolerance", c.COLEBROOK_TOLERANCE)
 
-    def perforation_pressures(
+    def compute_perforation_pressures(
         self,
         well: Well,
         reference_pressure: Number,
@@ -137,6 +141,7 @@ class MechanisticWellboreModel(Serializable):
                     mixture_density=static_mixture_density(sample),
                     length=abs(dz),
                     gravitational_acceleration=self.gravitational_acceleration,
+                    unit_system=self.unit_system,
                 )
                 pressures[i] = reference_pressure + geometric_sign * drop.total
                 continue
@@ -158,6 +163,7 @@ class MechanisticWellboreModel(Serializable):
                 mixture_velocity_in=velocity,
                 mixture_velocity_out=velocity,
                 gravitational_acceleration=self.gravitational_acceleration,
+                unit_system=self.unit_system,
                 friction_method=self.friction_method,
                 laminar_reynolds_limit=self.laminar_reynolds_limit,
                 turbulent_reynolds_limit=self.turbulent_reynolds_limit,
@@ -171,7 +177,7 @@ class MechanisticWellboreModel(Serializable):
             )
         return pressures
 
-    def tubing_head_pressure(
+    def compute_tubing_head_pressure(
         self,
         well: Well,
         reference_pressure: Number,
@@ -191,6 +197,7 @@ class MechanisticWellboreModel(Serializable):
                 mixture_density=mixture_density,
                 length=abs(dz),
                 gravitational_acceleration=self.gravitational_acceleration,
+                unit_system=self.unit_system,
             )
             return reference_pressure - drop.total
 
@@ -206,6 +213,7 @@ class MechanisticWellboreModel(Serializable):
             mixture_velocity_in=velocity,
             mixture_velocity_out=velocity,
             gravitational_acceleration=self.gravitational_acceleration,
+            unit_system=self.unit_system,
             friction_method=self.friction_method,
             laminar_reynolds_limit=self.laminar_reynolds_limit,
             turbulent_reynolds_limit=self.turbulent_reynolds_limit,
@@ -226,7 +234,7 @@ class MechanisticWellboreModel(Serializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Returns a new `MechanisticWellboreModel` in the *target* unit system.
+        Returns a new `MechanisticWellbore` in the *target* unit system.
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.

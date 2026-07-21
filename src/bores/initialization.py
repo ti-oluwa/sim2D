@@ -25,7 +25,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
-from bores.reservoir.model import ReservoirModel
+from bores.reservoir.model import Reservoir
 from bores.reservoir.state.base import Hysteresis, ReservoirState
 from bores.reservoir.state.equilibrium import (
     DepthTable,
@@ -757,7 +757,7 @@ def _initialize_tilted_subdivision_equilibrium(
 
 
 def initialize_equilibrium_arrays(
-    reservoir: ReservoirModel,
+    reservoir: Reservoir,
     pvt: PVTRegions,
     equilibrium: EquilibriumRegions,
     temperature: CellArray,
@@ -983,7 +983,7 @@ def _get_temperature_array_from_regions(
 
 
 def _resolve_temperature(
-    reservoir: ReservoirModel,
+    reservoir: Reservoir,
     deck_file: typing.Optional[DeckFile],
     temperature: typing.Optional[typing.Union[Temperature, Number]],
     dtype: npt.DTypeLike = None,
@@ -1022,7 +1022,7 @@ def _resolve_temperature(
 
 
 def initialize_reservoir_state(
-    reservoir: ReservoirModel,
+    reservoir: Reservoir,
     pvt: PVTRegions,
     *,
     deck_file: typing.Optional[DeckFile] = None,

@@ -190,16 +190,20 @@ class WellState(StoreSerializable):
         )
 
 
-class WellsStates(StoreSerializable):
+class WellsStates(
+    StoreSerializable,
+    fields={
+        "states": typing.Mapping[str, WellState],
+        "unit_system": typing.Optional[UnitSystem],
+    },
+):
     """Name-keyed collection of `WellState`, one per well, for a single timestep."""
 
-    __abstract_serializable__ = True
-
-    __slots__ = ("_states", "unit_system")
+    __slots__ = ("states", "unit_system")
 
     def __init__(
         self,
-        states: typing.Dict[str, WellState],
+        states: typing.Mapping[str, WellState],
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
@@ -240,7 +244,7 @@ class WellsStates(StoreSerializable):
                 for name, state in states.items()
             }
 
-        self._states = dict(states)
+        self.states = dict(states)
         self.unit_system = unit_system
 
     def get(self, well_name: str) -> typing.Optional[WellState]:
@@ -250,7 +254,7 @@ class WellsStates(StoreSerializable):
         :param well_name: Well to look up.
         :returns: WellState, or None if unset.
         """
-        return self._states.get(well_name)
+        return self.states.get(well_name)
 
     def set(self, state: WellState) -> None:
         """
@@ -258,17 +262,17 @@ class WellsStates(StoreSerializable):
 
         :param state: WellState to store, keyed by `state.well_name`.
         """
-        self._states[state.well_name] = state
+        self.states[state.well_name] = state
 
     @property
     def open_wells(self) -> typing.Tuple[WellState, ...]:
         """Returns Every WellState with is_open=True."""
-        return tuple(state for state in self._states.values() if state.is_open)
+        return tuple(state for state in self.states.values() if state.is_open)
 
     @property
     def shut_wells(self) -> typing.Tuple[WellState, ...]:
         """Returns every `WellState` with is_open=False."""
-        return tuple(state for state in self._states.values() if not state.is_open)
+        return tuple(state for state in self.states.values() if not state.is_open)
 
     def __getitem__(self, well_name: str) -> WellState:
         """
@@ -282,21 +286,13 @@ class WellsStates(StoreSerializable):
         return state
 
     def __iter__(self) -> typing.Iterator[str]:
-        return iter(self._states)
+        return iter(self.states)
 
     def __len__(self) -> int:
-        return len(self._states)
+        return len(self.states)
 
     def __contains__(self, well_name: object) -> bool:
-        return well_name in self._states
-
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {"states": {name: state.dump() for name, state in self._states.items()}}
-
-    @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        states = {name: WellState.load(sd) for name, sd in data["states"].items()}
-        return cls(states=states)
+        return well_name in self.states
 
     def convert(
         self,
@@ -317,7 +313,7 @@ class WellsStates(StoreSerializable):
         return self.__class__(
             states={
                 name: state.convert(target, table=table)
-                for name, state in self._states.items()
+                for name, state in self.states.items()
             },
             unit_system=target,
         )

@@ -10,8 +10,16 @@ from typing_extensions import Self
 from bores.constants import get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.serde.base import Serializable
-from bores.serde.registry import make_serializable_type_registrar
+from bores.serde.base import (
+    Serializable,
+    register_type_deserializer,
+    register_type_serializer,
+)
+from bores.serde.registry import (
+    make_registry_deserializer,
+    make_registry_serializer,
+    make_serializable_type_registrar,
+)
 from bores.serde.stores.base import StoreSerializable
 from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 
@@ -383,7 +391,7 @@ class WellControl(Serializable):
 
 
 _CONTROL_TYPES: typing.Dict[str, typing.Type[WellControl]] = {}
-_control_type = make_serializable_type_registrar(
+control_type = make_serializable_type_registrar(
     base_cls=WellControl,
     registry=_CONTROL_TYPES,
     lock=threading.Lock(),
@@ -401,7 +409,7 @@ PRODUCER_RATE_MODES = (
 INJECTOR_RATE_MODES = (InjectorControlMode.RATE, InjectorControlMode.RESV)
 
 
-@_control_type
+@control_type
 @attrs.frozen(kw_only=True, slots=True)
 class ProducerControl(WellControl):
     """
@@ -504,7 +512,7 @@ class ProducerControl(WellControl):
         )
 
 
-@_control_type
+@control_type
 @attrs.frozen(kw_only=True, slots=True)
 class InjectorControl(WellControl):
     """
@@ -595,15 +603,20 @@ class InjectorControl(WellControl):
         )
 
 
-class WellControls(StoreSerializable):
+class WellControls(
+    StoreSerializable,
+    fields={
+        "controls": typing.Mapping[str, WellControl],
+        "unit_system": typing.Optional[UnitSystem],
+    },
+):
     """Name-keyed, mutable mapping from well name to its current `WellControl`."""
 
-    __abstract_serializable__ = True
-    __slots__ = ("_controls", "unit_system")
+    __slots__ = ("controls", "unit_system")
 
     def __init__(
         self,
-        controls: typing.Dict[str, WellControl],
+        controls: typing.Mapping[str, WellControl],
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
@@ -630,12 +643,12 @@ class WellControls(StoreSerializable):
                 for name, control in controls.items()
             }
 
-        self._controls = dict(controls)
+        self.controls = dict(controls)
         self.unit_system = unit_system
 
     def get(self, name: str) -> typing.Optional[WellControl]:
         """Current control for `name`, or `None` if unset."""
-        return self._controls.get(name)
+        return self.controls.get(name)
 
     def set(self, name: str, control: WellControl) -> None:
         """
@@ -643,7 +656,7 @@ class WellControls(StoreSerializable):
         `WCONPROD`/`WCONINJE` reissue, a limit-triggered mode switch, or an
         initial assignment).
         """
-        self._controls[name] = control
+        self.controls[name] = control
 
     def update(self, name: str, **fields: typing.Any) -> None:
         """
@@ -656,10 +669,10 @@ class WellControls(StoreSerializable):
         :raises KeyError    groups: typing.Optional[WellGroups] = None
         : If `name` has no current control set.
         """
-        current = self._controls.get(name)
+        current = self.controls.get(name)
         if current is None:
             raise KeyError(f"No control set for well {name!r}.")
-        self._controls[name] = attrs.evolve(current, **fields)
+        self.controls[name] = attrs.evolve(current, **fields)
 
     @classmethod
     def from_deck(cls, deck_file: DeckFile) -> Self:
@@ -683,33 +696,18 @@ class WellControls(StoreSerializable):
         self.set(name, control)
 
     def __delitem__(self, name: str) -> None:
-        if name not in self._controls:
+        if name not in self.controls:
             raise KeyError(f"No control set for well {name!r}.")
-        del self._controls[name]
+        del self.controls[name]
 
     def __iter__(self) -> typing.Iterator[str]:
-        return iter(self._controls)
+        return iter(self.controls)
 
     def __len__(self) -> int:
-        return len(self._controls)
+        return len(self.controls)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._controls
-
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {
-            "controls": {
-                name: control.dump() for name, control in self._controls.items()
-            }
-        }
-
-    @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        controls = {
-            name: WellControl.load(control_data)
-            for name, control_data in data["controls"].items()
-        }
-        return cls(controls=controls)
+        return name in self.controls
 
     def convert(
         self,
@@ -728,7 +726,7 @@ class WellControls(StoreSerializable):
         return self.__class__(
             controls={
                 name: control.convert(target, table=table)
-                for name, control in self._controls.items()
+                for name, control in self.controls.items()
             },
             unit_system=target,
         )

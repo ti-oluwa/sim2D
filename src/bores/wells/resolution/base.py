@@ -40,114 +40,71 @@ class ControlResolverSpec(Serializable):
     """
     Numerical tuning for well-control resolution.
 
-    Solver tunables for `resolve_control`/`build_well_state`.
-
-    Construct once and pass explicitly to override any default; every
-    function in `wells.control` that needs one of these falls back to
-    `ControlResolverSpec()` (all-default) if the caller doesn't supply
-    one.
+    Solver tunables for well control resolution.
     """
 
-    _max_fixed_point_iterations: typing.Optional[int] = attrs.field(
-        default=None, alias="max_fixed_point_iterations"
-    )
-    _rate_convergence_tolerance: typing.Optional[Number] = attrs.field(
-        default=None, alias="rate_convergence_tolerance"
-    )
-    _max_bisection_iterations: typing.Optional[int] = attrs.field(
-        default=None, alias="max_bisection_iterations"
-    )
-    _producer_bhp_floor: typing.Optional[Number] = attrs.field(
-        default=None, alias="producer_bhp_floor"
-    )
-    _injector_bhp_bracket_multiplier: typing.Optional[Number] = attrs.field(
-        default=None, alias="injector_bhp_bracket_multiplier"
-    )
+    max_fixed_point_iterations: typing.Optional[int] = None
+    rate_convergence_tolerance: typing.Optional[Number] = None
+    max_bisection_iterations: typing.Optional[int] = None
+    producer_bhp_floor: typing.Optional[Number] = None
+    injector_bhp_bracket_multiplier: typing.Optional[Number] = None
 
     def __attrs_post_init__(self) -> None:
-        if (
-            self._max_fixed_point_iterations is not None
-            and self._max_fixed_point_iterations < 1
-        ):
+        if self.max_fixed_point_iterations is None:
+            object.__setattr__(
+                self,
+                "max_fixed_point_iterations",
+                c.CONTROL_MAX_FIXED_POINT_ITERATIONS,
+            )
+        elif self.max_fixed_point_iterations < 1:
             raise ValidationError(
                 "`max_fixed_point_iterations` must be >= 1; got "
-                f"{self._max_fixed_point_iterations}."
+                f"{self.max_fixed_point_iterations}."
             )
-        if (
-            self._max_bisection_iterations is not None
-            and self._max_bisection_iterations < 1
-        ):
-            raise ValidationError(
-                f"`max_bisection_iterations` must be >= 1; got "
-                f"{self._max_bisection_iterations}."
+
+        if self.rate_convergence_tolerance is None:
+            object.__setattr__(
+                self,
+                "rate_convergence_tolerance",
+                c.CONTROL_RATE_CONVERGENCE_TOLERANCE,
             )
-        if (
-            self._rate_convergence_tolerance is not None
-            and self._rate_convergence_tolerance <= 0
-        ):
+        elif self.rate_convergence_tolerance <= 0:
             raise ValidationError(
                 "`rate_convergence_tolerance` must be positive; got "
-                f"{self._rate_convergence_tolerance}."
+                f"{self.rate_convergence_tolerance}."
             )
-        if self._producer_bhp_floor is not None and self._producer_bhp_floor <= 0:
+
+        if self.max_bisection_iterations is None:
+            object.__setattr__(
+                self,
+                "max_bisection_iterations",
+                c.CONTROL_MAX_BISECTION_ITERATIONS,
+            )
+        elif self.max_bisection_iterations < 1:
             raise ValidationError(
-                f"`producer_bhp_floor` must be positive; got {self._producer_bhp_floor}."
+                "`max_bisection_iterations` must be >= 1; got "
+                f"{self.max_bisection_iterations}."
             )
-        if (
-            self._injector_bhp_bracket_multiplier is not None
-            and self._injector_bhp_bracket_multiplier <= 1.0
-        ):
+
+        if self.producer_bhp_floor is None:
+            object.__setattr__(
+                self,
+                "producer_bhp_floor",
+                c.MINIMUM_VALID_PRESSURE,
+            )
+        elif self.producer_bhp_floor <= 0:
+            raise ValidationError(
+                f"`producer_bhp_floor` must be positive; got {self.producer_bhp_floor}."
+            )
+
+        if self.injector_bhp_bracket_multiplier is None:
+            object.__setattr__(
+                self,
+                "injector_bhp_bracket_multiplier",
+                c.CONTROL_INJECTOR_BHP_BRACKET_MULTIPLIER,
+            )
+        elif self.injector_bhp_bracket_multiplier <= 1.0:
             raise ValidationError(
                 "`injector_bhp_bracket_multiplier` must be > 1.0; got "
-                f"{self._injector_bhp_bracket_multiplier}."
+                f"{self.injector_bhp_bracket_multiplier}."
             )
-
-    @property
-    def max_fixed_point_iterations(self) -> int:
-        """Bound on the perforation-pressure <-> IPR-rate fixed-point loop
-        that reconciles flowing pressures against rates at a fixed BHP."""
-        if self._max_fixed_point_iterations is not None:
-            return self._max_fixed_point_iterations
-
-        return c.CONTROL_MAX_FIXED_POINT_ITERATIONS
-
-    @property
-    def rate_convergence_tolerance(self) -> Number:
-        """Relative convergence tolerance on total phase rate, shared by
-        the fixed-point loop and the BHP bisection search."""
-        if self._rate_convergence_tolerance is not None:
-            return self._rate_convergence_tolerance
-
-        return c.CONTROL_RATE_CONVERGENCE_TOLERANCE
-
-    @property
-    def max_bisection_iterations(self) -> int:
-        """
-        Bound on the BHP bisection search for a rate-mode or THP-limit
-        target. Best-effort, not exact: the search returns its closest
-        bound reached after this many iterations rather than raising if
-        the target isn't achievable within the bracket.
-        """
-        if self._max_bisection_iterations is not None:
-            return self._max_bisection_iterations
-
-        return c.CONTROL_MAX_BISECTION_ITERATIONS
-
-    @property
-    def producer_bhp_floor(self) -> Number:
-        """Lower bracket bound for a producer's BHP bisection search."""
-        if self._producer_bhp_floor is not None:
-            return self._producer_bhp_floor
-
-        return c.MINIMUM_VALID_PRESSURE
-
-    @property
-    def injector_bhp_bracket_multiplier(self) -> Number:
-        """
-        Upper bracket bound for an injector's BHP bisection search,
-        expressed as a multiple of the highest connected-cell pressure.
-        """
-        if self._injector_bhp_bracket_multiplier is not None:
-            return self._injector_bhp_bracket_multiplier
-
-        return c.CONTROL_INJECTOR_BHP_BRACKET_MULTIPLIER

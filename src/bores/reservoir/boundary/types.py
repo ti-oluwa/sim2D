@@ -15,7 +15,7 @@ from bores.reservoir.boundary.base import (
     _serialise_boundary_func,
     boundary_condition,
 )
-from bores.reservoir.model import ReservoirModel
+from bores.reservoir.model import Reservoir
 from bores.reservoir.state import ReservoirState
 from bores.typing import (
     IntArray,
@@ -85,7 +85,7 @@ class ConstantFluxBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -189,7 +189,7 @@ class ConstantPressureBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -263,7 +263,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     alpha_function(
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -312,7 +312,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
             [
                 IntArray[OneDimension],
                 ReservoirState,
-                ReservoirModel,
+                Reservoir,
                 Number,
             ],
             npt.NDArray,
@@ -327,7 +327,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     alpha_function(
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -350,7 +350,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:
@@ -462,7 +462,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,)
     ```
@@ -492,7 +492,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
         [
             IntArray[OneDimension],
             ReservoirState,
-            ReservoirModel,
+            Reservoir,
             Number,
         ],
         npt.NDArray,
@@ -505,7 +505,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        rreservoir: ReservoirModel,
+        rreservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,), volume/time in `unit_system`
     ```
@@ -525,7 +525,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
         self,
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        reservoir: ReservoirModel,
+        reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
     ) -> NumberArray[OneDimension]:

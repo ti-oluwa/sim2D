@@ -507,15 +507,21 @@ class Well(Serializable):
         )
 
 
-class Wells(StoreSerializable):
+class Wells(
+    StoreSerializable,
+    fields={
+        "wells": typing.Mapping[str, Well],
+        "unit_system": typing.Optional[UnitSystem],
+    },
+):
     """Name-keyed container of `Well` objects"""
 
     __abstract_serializable__ = True
-    __slots__ = ("_wells", "unit_system")
+    __slots__ = ("wells", "unit_system")
 
     def __init__(
         self,
-        wells: typing.Dict[str, Well],
+        wells: typing.Mapping[str, Well],
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
@@ -545,6 +551,7 @@ class Wells(StoreSerializable):
                     f"{sorted(s.value for s in systems)}."
                 )
             unit_system = systems.pop()
+            wells = dict(wells)
         else:
             wells = {
                 name: well
@@ -553,7 +560,7 @@ class Wells(StoreSerializable):
                 for name, well in wells.items()
             }
 
-        self._wells = wells
+        self.wells = wells
         self.unit_system = unit_system
 
     def well(self, name: str) -> Well:
@@ -564,28 +571,28 @@ class Wells(StoreSerializable):
         :returns: `Well` for that well.
         :raises KeyError: If no well with that name exists.
         """
-        well = self._wells.get(name)
+        well = self.wells.get(name)
         if well is None:
-            raise KeyError(f"No well named {name!r}. Available: {sorted(self._wells)}.")
+            raise KeyError(f"No well named {name!r}. Available: {sorted(self.wells)}.")
         return well
 
     @property
     def names(self) -> typing.Tuple[str, ...]:
         """All well names, in insertion order."""
-        return tuple(self._wells.keys())
+        return tuple(self.wells.keys())
 
     @property
     def producers(self) -> typing.Tuple[Well, ...]:
         """All wells with `well_type is WellType.PRODUCER`."""
         return tuple(
-            well for well in self._wells.values() if well.well_type is WellType.PRODUCER
+            well for well in self.wells.values() if well.well_type is WellType.PRODUCER
         )
 
     @property
     def injectors(self) -> typing.Tuple[Well, ...]:
         """All wells with `well_type is WellType.INJECTOR`."""
         return tuple(
-            well for well in self._wells.values() if well.well_type is WellType.INJECTOR
+            well for well in self.wells.values() if well.well_type is WellType.INJECTOR
         )
 
     @classmethod
@@ -609,22 +616,20 @@ class Wells(StoreSerializable):
         return self.well(name)
 
     def __iter__(self) -> typing.Iterator[str]:
-        return iter(self._wells)
+        return iter(self.wells)
 
     def __len__(self) -> int:
-        return len(self._wells)
+        return len(self.wells)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._wells
+        return name in self.wells
 
     def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {"wells": {name: well.dump() for name, well in self._wells.items()}}
+        return {"wells": {name: well.dump() for name, well in self.wells.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        wells = {
-            name: Well.load(wll_data) for name, wll_data in data["wells"].items()
-        }
+        wells = {name: Well.load(wll_data) for name, wll_data in data["wells"].items()}
         return cls(wells=wells)
 
     def convert(
@@ -646,7 +651,7 @@ class Wells(StoreSerializable):
         return self.__class__(
             wells={
                 name: well.convert(target, table=table)
-                for name, well in self._wells.items()
+                for name, well in self.wells.items()
             },
             unit_system=target,
         )

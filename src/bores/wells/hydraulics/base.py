@@ -1,15 +1,25 @@
 """Shared wellbore hydraulics primitives."""
 
 import math
+import threading
 import typing
 
 import attrs
 import numpy as np
+from typing_extensions import Self
 
 from bores.constants import c
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import FluidPhase, Number, NumberArray, OneDimension
+from bores.serde.registry import make_serializable_type_registrar
+from bores.typing import (
+    FluidPhase,
+    Number,
+    NumberArray,
+    OneDimension,
+    UnitConversionTable,
+    UnitSystem,
+)
 from bores.wells.base import Well
 from bores.wells.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
@@ -24,7 +34,7 @@ __all__ = [
     "compute_segment_pressure_drop",
     "compute_static_hydrostatic_drop",
     "static_mixture_density",
-    "WellboreModel",
+    "Wellbore",
 ]
 
 
@@ -62,9 +72,9 @@ class SurfaceFluidProperties(Serializable):
     gas_liquid_surface_tension: typing.Optional[Number] = None
     """
     `density`/`viscosity` are the no-slip mixture values - every
-    `WellboreModel` can use these directly. `phase_densities`/
+    `Wellbore` can use these directly. `phase_densities`/
     `phase_viscosities`/`gas_liquid_surface_tension` are per-phase, only
-    needed by a slip-correlation model (e.g. `BeggsBrillWellboreModel`) to
+    needed by a slip-correlation model (e.g. `BeggsBrillWellbore`) to
     compute a real surface-condition holdup instead of a no-slip mixture.
     At least `density`+`viscosity` or `phase_densities`+`phase_viscosities`
     must be supplied - if only the phase-level pair is given, the mixture
@@ -290,6 +300,63 @@ def compute_friction_factor(
     raise ValidationError(f"Unknown friction method {method!r}.")
 
 
+def _get_unit_system_constant(prefix: str, unit_system: UnitSystem) -> Number:
+    """
+    Look up `f"{prefix}_{unit_system.name}"` from `bores.constants.c`.
+
+    :param prefix: Constant name prefix, e.g. `"GRAVITATIONAL_FACTOR"`.
+    :param unit_system: Selects which per-system entry to read.
+    :returns: The constant's value.
+    """
+    return getattr(c, f"{prefix}_{unit_system.name.upper()}")
+
+
+def compute_hydrostatic_pressure(
+    *,
+    density: Number,
+    gravitational_acceleration: Number,
+    length: Number,
+    unit_system: UnitSystem,
+    gravitational_factor: typing.Optional[Number] = None,
+    hydrostatic_area_factor: typing.Optional[Number] = None,
+) -> Number:
+    """
+    Computes the hydrostatic pressure `density * gravitational_acceleration * length`,
+    corrected to land/planet in `unit_system`'s actual pressure unit rather than
+    whatever unit that raw product happens to produce.
+
+    FIELD's lbm/lbf aren't a coherent mass/force pair, so `gc`
+    (`gravitational_factor`) is needed to convert the raw `mass*acceleration`
+    product into a real force before it's a pressure at all; `METRIC`/`LAB`/`SI`
+    are internally coherent (kg-N, g-dyne, `SI` throughout), so `gc` is 1.0
+    for those and this step is a no-op. Every system then needs an area/
+    base-unit correction (`hydrostatic_area_factor`) to land in the
+    system's actual named pressure unit (psi, bar, atm, Pa).
+
+    :param density: Column density.
+    :param gravitational_acceleration: Local gravitational acceleration,
+        already in `unit_system`'s units.
+    :param length: Column length.
+    :param unit_system: Selects which per-system constants apply.
+    :param gravitational_factor: `c.GRAVITATIONAL_FACTOR_<unit_system>` if `None`.
+    :param hydrostatic_area_factor: `c.HYDROSTATIC_AREA_FACTOR_<unit_system>` if `None`.
+    :returns: Hydrostatic pressure, in `unit_system`'s pressure unit.
+    """
+    resolved_gravitational_constant = (
+        gravitational_factor
+        if gravitational_factor is not None
+        else _get_unit_system_constant("GRAVITATIONAL_FACTOR", unit_system)
+    )
+    resolved_area_factor = (
+        hydrostatic_area_factor
+        if hydrostatic_area_factor is not None
+        else _get_unit_system_constant("HYDROSTATIC_AREA_FACTOR", unit_system)
+    )
+    return (density * gravitational_acceleration * length) / (
+        resolved_gravitational_constant * resolved_area_factor
+    )
+
+
 def compute_segment_pressure_drop(
     *,
     length: Number,
@@ -301,6 +368,9 @@ def compute_segment_pressure_drop(
     mixture_velocity_in: Number,
     mixture_velocity_out: Number,
     gravitational_acceleration: Number,
+    unit_system: UnitSystem,
+    gravitational_factor: typing.Optional[Number] = None,
+    hydrostatic_area_factor: typing.Optional[Number] = None,
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified",
     laminar_reynolds_limit: typing.Optional[Number] = None,
     turbulent_reynolds_limit: typing.Optional[Number] = None,
@@ -314,10 +384,10 @@ def compute_segment_pressure_drop(
     to combine them with whatever sign convention its integration direction
     and flow direction require.
 
-    `MechanisticWellboreModel` applies hydrostatic/acceleration by geometric
+    `MechanisticWellbore` applies hydrostatic/acceleration by geometric
     position and friction by flow direction (opposing it), since the two aren't
     the same thing once an injector's flow direction is considered - see
-    `WellboreModel.perforation_pressures`'s `is_injector` parameter.
+    `Wellbore.perforation_pressures`'s `is_injector` parameter.
 
     :param length: Segment length (along-wellbore, not vertical depth).
     :param inclination_from_vertical: `0` = vertical, `pi/2` = horizontal.
@@ -337,20 +407,14 @@ def compute_segment_pressure_drop(
     :param friction_max_iterations: Forwarded to `compute_friction_factor` as `max_iterations`.
     :param friction_tolerance: Forwarded to `compute_friction_factor` as `tolerance`.
     :returns: `PressureDrop` for this segment.
-
-    **Unit note, caught by testing this against FIELD-unit numbers, not
-    assumed correct:** `hydrostatic = density * g * length` does not land
-    in psi when `density` is `lbm/ft3` and `g` is `ft/s2` - FIELD-unit
-    convention needs an additional `/ (gc * 144)`, where `gc =
-    bores.constants.c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2`. Not
-    applied here: the formula is implemented exactly as specified, with
-    unit-system consistency left to the caller.
     """
-    hydrostatic_drop = (
-        mixture_density
-        * gravitational_acceleration
-        * length
-        * math.cos(inclination_from_vertical)
+    hydrostatic_drop = compute_hydrostatic_pressure(
+        density=mixture_density,
+        gravitational_acceleration=gravitational_acceleration,
+        length=length * math.cos(inclination_from_vertical),
+        unit_system=unit_system,
+        gravitational_factor=gravitational_factor,
+        hydrostatic_area_factor=hydrostatic_area_factor,
     )
 
     mean_velocity = 0.5 * (mixture_velocity_in + mixture_velocity_out)
@@ -391,7 +455,13 @@ def compute_segment_pressure_drop(
 
 
 def compute_static_hydrostatic_drop(
-    mixture_density: Number, length: Number, gravitational_acceleration: Number
+    mixture_density: Number,
+    length: Number,
+    gravitational_acceleration: Number,
+    *,
+    unit_system: UnitSystem,
+    gravitational_factor: typing.Optional[Number] = None,
+    hydrostatic_area_factor: typing.Optional[Number] = None,
 ) -> PressureDrop:
     """
     Computes no-flow special case (shut-in well, or a well evaluated at zero rate).
@@ -401,10 +471,20 @@ def compute_static_hydrostatic_drop(
     :param mixture_density: Static column density.
     :param length: Vertical length.
     :param gravitational_acceleration: See `compute_segment_pressure_drop`.
+    :param unit_system: Forwarded to `compute_hydrostatic_pressure`.
+    :param gravitational_factor: Forwarded to `compute_hydrostatic_pressure`.
+    :param hydrostatic_area_factor: Forwarded to `compute_hydrostatic_pressure`.
     :returns: `PressureDrop` with `friction=0`, `acceleration=0`.
     """
     return PressureDrop(
-        hydrostatic=mixture_density * gravitational_acceleration * length,
+        hydrostatic=compute_hydrostatic_pressure(
+            density=mixture_density,
+            gravitational_acceleration=gravitational_acceleration,
+            length=length,
+            unit_system=unit_system,
+            gravitational_factor=gravitational_factor,
+            hydrostatic_area_factor=hydrostatic_area_factor,
+        ),
         friction=0.0,
         acceleration=0.0,
     )
@@ -437,14 +517,16 @@ def static_mixture_density(sample: ConnectionSample) -> Number:
     )
 
 
-class WellboreModel(typing.Protocol):
+class Wellbore(Serializable):
     """
     A well bore hydraulic model.
 
     This is the interface every wellbore hydraulics model implements.
     """
 
-    def perforation_pressures(
+    __abstract_serializable__ = True
+
+    def compute_perforation_pressures(
         self,
         well: Well,
         reference_pressure: Number,
@@ -478,9 +560,9 @@ class WellboreModel(typing.Protocol):
         :returns: Array of flowing pressures, one per connection, same
             order as `perforation_indices`/`connection_samples`.
         """
-        ...
+        raise NotImplementedError
 
-    def tubing_head_pressure(
+    def compute_tubing_head_pressure(
         self,
         well: Well,
         reference_pressure: Number,
@@ -498,4 +580,22 @@ class WellboreModel(typing.Protocol):
         :param is_injector: See `perforation_pressures`.
         :returns: THP, integrating from `reference_depth` up to surface (depth `0`).
         """
-        ...
+        raise NotImplementedError
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> Self:
+        raise NotImplementedError
+
+
+_WELLBORE_TYPES: typing.Dict[str, typing.Type[Wellbore]] = {}
+wellbore_type = make_serializable_type_registrar(
+    base_cls=Wellbore,
+    registry=_WELLBORE_TYPES,
+    lock=threading.Lock(),
+    key_attr="__type__",
+)

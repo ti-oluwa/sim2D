@@ -22,8 +22,8 @@ from bores.wells.groups import (
     GroupProducerControlMode,
     WellGroups,
 )
-from bores.wells.hydraulics.base import WellboreModel
-from bores.wells.model import WellModel
+from bores.wells.hydraulics.base import Wellbore
+from bores.wells.model import WellSystem
 
 __all__ = ["make_producer", "make_injector"]
 

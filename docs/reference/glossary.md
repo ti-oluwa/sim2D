@@ -315,14 +315,14 @@
 **PVT tables**
 : Pre-computed lookup tables (`bores.PVTTables`) that map pressure to fluid properties (formation volume factor, viscosity, density, compressibility, solution GOR). Using PVT tables instead of correlations replaces floating-point arithmetic with interpolation, which is typically 2 to 5x faster for large grids.
 
-**BlackOilFluid**
-: The central data object (`bores.BlackOilFluid`) that contains the grid geometry, rock properties (porosity, permeability, compressibility), fluid properties (pressure, saturations, PVT data), and initial conditions. The model is immutable; each timestep produces a new model with updated state.
+**BlackOil**
+: The central data object (`bores.BlackOil`) that contains the grid geometry, rock properties (porosity, permeability, compressibility), fluid properties (pressure, saturations, PVT data), and initial conditions. The model is immutable; each timestep produces a new model with updated state.
 
 **Rock-fluid tables**
 : Tabular data (`bores.RockFluidTables`) defining relative permeability and capillary pressure as functions of saturation for each rock type in the model. These tables control how easily each phase flows and how saturations distribute within the reservoir.
 
 **Run**
-: A serializable bundle (`bores.Run`) that pairs a `BlackOilFluid` with a `Config` and optional metadata (name, description, tags). A `Run` is callable and iterable: iterating over it executes the simulation and yields `ModelState` objects. Saving a `Run` to a file captures the complete simulation definition for later reproduction.
+: A serializable bundle (`bores.Run`) that pairs a `BlackOil` with a `Config` and optional metadata (name, description, tags). A `Run` is callable and iterable: iterating over it executes the simulation and yields `ModelState` objects. Saving a `Run` to a file captures the complete simulation definition for later reproduction.
 
 **StateStream**
 : A memory-efficient wrapper (`bores.StateStream`) around the simulation generator that persists states to a `DataStore` as they are produced. The stream acts as both a context manager and an iterator, keeping peak memory proportional to the batch size rather than the total number of states. Supports background I/O, checkpointing, filtering, and replay.

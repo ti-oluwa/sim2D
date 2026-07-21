@@ -4,14 +4,14 @@ import typing
 
 from typing_extensions import Self
 
-from bores.blackoil.fluid import BlackOilFluid
+from bores.blackoil.fluid import BlackOil
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.reservoir.boundary.conditions import BoundaryConditions
-from bores.reservoir.model import ReservoirModel
+from bores.reservoir.model import Reservoir
 from bores.serde.stores import StoreSerializable
 from bores.typing import UnitSystem
-from bores.wells.model import WellModel
+from bores.wells.model import WellSystem
 
 __all__ = ["BlackOilModel"]
 
@@ -19,9 +19,9 @@ __all__ = ["BlackOilModel"]
 class BlackOilModel(
     StoreSerializable,
     fields={
-        "reservoir": ReservoirModel,
-        "fluid": BlackOilFluid,
-        "wells": typing.Optional[WellModel],
+        "reservoir": Reservoir,
+        "fluid": BlackOil,
+        "wells": typing.Optional[WellSystem],
         "boundary_conditions": typing.Optional[BoundaryConditions],
         "unit_system": UnitSystem,
     },
@@ -36,9 +36,9 @@ class BlackOilModel(
 
     def __init__(
         self,
-        reservoir: ReservoirModel,
-        fluid: BlackOilFluid,
-        wells: typing.Optional[WellModel] = None,
+        reservoir: Reservoir,
+        fluid: BlackOil,
+        wells: typing.Optional[WellSystem] = None,
         boundary_conditions: typing.Optional[BoundaryConditions] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:

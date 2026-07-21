@@ -45,6 +45,8 @@ from bores.grids.factories.corner_point import (
 )
 from bores.typing import (
     IntArray,
+    Integer,
+    Number,
     NumberArray,
     OneDimension,
     TwoDimensions,
@@ -138,9 +140,9 @@ def _build_map_axes(deck_file: DeckFile) -> typing.Optional[MapAxes]:
 
 def _build_nnc_arrays(
     deck_file: DeckFile,
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
 ) -> typing.Tuple[
     typing.Optional[IntArray[TwoDimensions]],
     typing.Optional[NumberArray[OneDimension]],
@@ -217,9 +219,7 @@ def _build_fault_records(deck_file: DeckFile) -> typing.List[FaultRecord]:
     ]
 
 
-def _build_multflt(
-    deck_file: DeckFile,
-) -> typing.Optional[typing.Dict[str, float]]:
+def _build_multflt(deck_file: DeckFile) -> typing.Optional[typing.Dict[str, Number]]:
     """
     Convert parsed `MULTFLT` records to a `{name: multiplier}` dict.
 
@@ -236,11 +236,11 @@ def _resolve_vector_spacing(
     deck_file: DeckFile,
     vector_key: str,
     per_cell_key: str,
-    count: int,
+    count: Integer,
     axis: str,
-    nz: int,
-    ny: int,
-    nx: int,
+    nz: Integer,
+    ny: Integer,
+    nx: Integer,
 ) -> typing.Optional[npt.NDArray[np.float64]]:
     """
     Try to obtain a 1-D spacing vector for one axis.
@@ -454,9 +454,9 @@ def _assemble_grid(
 
 def _assemble_corner_point(
     deck_file: DeckFile,
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
     unit_system: UnitSystem,
     meta: typing.Dict[str, typing.Any],
 ) -> Grid:
@@ -515,9 +515,9 @@ def _assemble_corner_point(
 
 def _assemble_cartesian(
     deck_file: DeckFile,
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
     unit_system: UnitSystem,
     meta: typing.Dict[str, typing.Any],
 ) -> Grid:
@@ -639,7 +639,9 @@ def _build_grdecl_text(
     return _build_grdecl_corner_point_text(grid, actnum=actnum)
 
 
-def _emit_specgrid(lines: typing.List[str], nx: int, ny: int, nz: int) -> None:
+def _emit_specgrid(
+    lines: typing.List[str], nx: Integer, ny: Integer, nz: Integer
+) -> None:
     """Append a `SPECGRID` block."""
     lines.append("SPECGRID")
     lines.append(f"  {nx}  {ny}  {nz}  1  F /")
@@ -679,9 +681,9 @@ def _emit_actnum(
     lines: typing.List[str],
     actnum: ActNumArray,
     n_cells: int,
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
 ) -> None:
     """Append an `ACTNUM` block in Eclipse Fortran order (i fastest)."""
     actnum_arr = np.asarray(actnum, dtype=np.int32)
@@ -702,9 +704,9 @@ def _emit_mult_array(
     lines: typing.List[str],
     keyword: str,
     arr: NumberArray[OneDimension],
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
 ) -> None:
     """Append a `MULT*` array block in Eclipse Fortran order (i fastest)."""
     lines.append("")
@@ -724,11 +726,11 @@ def _emit_mult_array(
 def _emit_mult_arrays(
     lines: typing.List[str],
     grid: Grid,
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
 ) -> None:
-    """Emit all non-`None` MULT* arrays from `grid`."""
+    """Emit all non-`None` `MULT*` arrays from `grid`."""
     pairs = [
         ("MULTX", grid.positive_x_transmissibility_multipliers),
         ("MULTX-", grid.negative_x_transmissibility_multipliers),
@@ -742,7 +744,7 @@ def _emit_mult_arrays(
             _emit_mult_array(lines, kw, arr, nx, ny, nz)
 
 
-def _emit_faults(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
+def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> None:
     """
     Append a `FAULTS` block to `lines` covering all named faults on the grid.
 
@@ -880,7 +882,7 @@ def _emit_multflt(
     lines.append("")
 
 
-def _emit_nnc(lines: typing.List[str], grid: Grid, nx: int, ny: int) -> None:
+def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> None:
     """
     Emit a `NNC` block containing only explicitly user-defined NNCs
     (`ConnectionType.USER_NNC`).

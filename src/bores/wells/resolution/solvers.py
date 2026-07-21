@@ -4,7 +4,7 @@ Per-mode numerical solvers for well control resolution.
 Two coupled numerical problems, both against a single scalar (`reference_pressure`, i.e. BHP):
 
 1. **Fixed-point**: at a *fixed* BHP, perforation flowing pressures and
-   IPR-derived phase rates depend on each other (`wellbore_model` needs
+   IPR-derived phase rates depend on each other (`wellbore` needs
    rates to compute mixture density/friction; the IPR needs flowing
    pressures to compute rates), `_iterate_perforation_pressures_and_rates`
    reconciles the two.
@@ -27,7 +27,7 @@ from bores.wells.controls import (
     ProducerControlMode,
     RateQuantity,
 )
-from bores.wells.hydraulics.base import SurfaceFluidProperties, WellboreModel
+from bores.wells.hydraulics.base import SurfaceFluidProperties, Wellbore
 from bores.wells.perforations import PerforationIndex
 from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
 from bores.wells.states import ConnectionSample
@@ -117,7 +117,7 @@ def iterate_perforation_pressures_and_rates(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     reference_pressure: Number,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
@@ -133,7 +133,7 @@ def iterate_perforation_pressures_and_rates(
     Starts from static (zero-rate) connection pressures, derives IPR rates
     from those (`well_index * mobility * drawdown` per connection), feeds
     the resulting `phase_rates` back through
-    `wellbore_model.perforation_pressures` for updated flowing pressures,
+    `wellbore.perforation_pressures` for updated flowing pressures,
     and repeats until the relative change in total rate is within
     `resolver_spec.rate_convergence_tolerance`, or
     `resolver_spec.max_fixed_point_iterations` is reached (best-effort).
@@ -141,14 +141,14 @@ def iterate_perforation_pressures_and_rates(
     Every connection's IPR contribution is also divided by that
     connection's own formation volume factor and accumulated separately,
     since the two totals are needed for different purposes: `phase_rates`
-    (reservoir-condition) is what `wellbore_model` and a RESERVOIR-condition
+    (reservoir-condition) is what `wellbore` and a RESERVOIR-condition
     target need, `surface_condition_phase_rates` is what a surface-condition
     target (ORAT/WRAT/GRAT/LRAT) needs to be compared against.
 
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param reference_pressure: BHP held fixed while iterating.
     :param relevant_phases: Phases to accumulate rates for.
     :param is_injector: Selects the drawdown sign convention.
@@ -158,7 +158,7 @@ def iterate_perforation_pressures_and_rates(
     phase_rates: typing.Dict[FluidPhase, Number] = {
         phase: 0.0 for phase in relevant_phases
     }
-    connection_pressures = wellbore_model.perforation_pressures(
+    connection_pressures = wellbore.compute_perforation_pressures(
         well=well,
         reference_pressure=reference_pressure,
         phase_rates=phase_rates,
@@ -193,7 +193,7 @@ def iterate_perforation_pressures_and_rates(
                 )
 
         new_total_rate = sum(phase_rates.values())
-        connection_pressures = wellbore_model.perforation_pressures(
+        connection_pressures = wellbore.compute_perforation_pressures(
             well=well,
             reference_pressure=reference_pressure,
             phase_rates=phase_rates,
@@ -216,7 +216,7 @@ def compute_full_phase_rates_at(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     reference_pressure: Number,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
@@ -237,7 +237,7 @@ def compute_full_phase_rates_at(
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param reference_pressure: BHP to report rates at.
     :param relevant_phases: Phases to compute a real rate for.
     :param is_injector: Selects the drawdown sign convention.
@@ -248,7 +248,7 @@ def compute_full_phase_rates_at(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=reference_pressure,
         relevant_phases=relevant_phases,
         is_injector=is_injector,
@@ -262,7 +262,7 @@ def bisect_bhp(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     target: Number,
@@ -285,7 +285,7 @@ def bisect_bhp(
       higher injector rate.
     - `metric="thp"`: higher BHP -> higher THP, for both well types - a
       producer's rate (and so friction magnitude) falls as BHP rises, and
-      an injector's rate rises as BHP rises, but `WellboreModel`
+      an injector's rate rises as BHP rises, but `Wellbore`
       implementations apply friction opposing flow direction rather than
       by geometric position (`is_injector`), so THP moves with BHP in the
       same direction either way.
@@ -298,7 +298,7 @@ def bisect_bhp(
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param relevant_phases: Phases the `"rate"` metric sums over.
     :param is_injector: Selects the drawdown sign convention and the
         direction `"rate"` moves in as BHP changes.
@@ -307,7 +307,7 @@ def bisect_bhp(
     :param max_pressure: Upper bracket bound.
     :param resolver_spec: Supplies the iteration cap and convergence tolerance.
     :param metric: `"rate"` (default) matches `relevant_phases`' total
-        rate against `target`; `"thp"` matches `wellbore_model.tubing_head_pressure`
+        rate against `target`; `"thp"` matches `wellbore.tubing_head_pressure`
         against `target` instead (requires `surface_fluid_properties`).
     :param target_rate_condition: `"surface"` (default) bisects against
         the surface-condition total (ORAT/WRAT/GRAT/LRAT-style targets,
@@ -339,7 +339,7 @@ def bisect_bhp(
                 well=well,
                 perforation_indices=perforation_indices,
                 connection_samples=connection_samples,
-                wellbore_model=wellbore_model,
+                wellbore=wellbore,
                 reference_pressure=average_pressure,
                 relevant_phases=relevant_phases,
                 is_injector=is_injector,
@@ -357,7 +357,7 @@ def bisect_bhp(
             increasing_with_bhp = is_injector
         else:
             assert surface_fluid_properties is not None
-            value = wellbore_model.tubing_head_pressure(
+            value = wellbore.compute_tubing_head_pressure(
                 well=well,
                 reference_pressure=average_pressure,
                 phase_rates=phase_rates,
@@ -383,7 +383,7 @@ def solve_producer_rate_mode(
     control: ProducerControl,
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
@@ -396,7 +396,7 @@ def solve_producer_rate_mode(
     :param control: The producer's nominal control for this timestep.
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
     :param resolver_spec: Solver tunables.
     :returns: Nominal `ControlResolution`.
@@ -410,7 +410,7 @@ def solve_producer_rate_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         relevant_phases=relevant_phases,
         is_injector=False,
         target=control.target_rate,
@@ -425,7 +425,7 @@ def solve_producer_rate_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=bhp,
         relevant_phases=ALL_PHASES,
         is_injector=False,
@@ -438,7 +438,7 @@ def solve_producer_bhp_mode(
     target_bhp: Number,
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
@@ -451,7 +451,7 @@ def solve_producer_bhp_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=target_bhp,
         relevant_phases=ALL_PHASES,
         is_injector=False,
@@ -464,7 +464,7 @@ def solve_injector_rate_mode(
     control: InjectorControl,
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
@@ -477,7 +477,7 @@ def solve_injector_rate_mode(
     :param control: The injector's nominal control for this timestep.
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
     :param resolver_spec: Solver tunables.
     :returns: Nominal `ControlResolution`.
@@ -493,7 +493,7 @@ def solve_injector_rate_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         relevant_phases=relevant_phases,
         is_injector=True,
         target=control.target_rate,
@@ -508,7 +508,7 @@ def solve_injector_rate_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=bhp,
         relevant_phases=(control.injected_phase,),
         is_injector=True,
@@ -522,7 +522,7 @@ def solve_injector_bhp_mode(
     injected_phase: FluidPhase,
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: ControlResolverSpec,
 ) -> ControlResolution:
@@ -535,7 +535,7 @@ def solve_injector_bhp_mode(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=target_bhp,
         relevant_phases=(injected_phase,),
         is_injector=True,

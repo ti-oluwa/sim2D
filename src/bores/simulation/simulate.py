@@ -40,7 +40,7 @@ from bores.material_balance import (
 )
 from bores.precision import get_dtype
 from bores.reservoir import (
-    BlackOilFluid,
+    BlackOil,
     FluidProperties,
     HysteresisState,
     RockProperties,
@@ -1811,9 +1811,9 @@ class Run(StoreSerializable):
     Example:
 
     ```python
-    from bores import BlackOilFluid, Config, Run
+    from bores import BlackOil, Config, Run
 
-    model = BlackOilFluid.from_file("path/to/3d_model.h5")
+    model = BlackOil.from_file("path/to/3d_model.h5")
     config = Config.from_file("path/to/simulation_config.yaml")
 
     run = Run(model=model, config=config)
@@ -1822,7 +1822,7 @@ class Run(StoreSerializable):
     ```
     """
 
-    model: BlackOilFluid[ThreeDimensions]
+    model: BlackOil[ThreeDimensions]
     """The reservoir model to simulate."""
 
     config: Config
@@ -1915,11 +1915,11 @@ class Run(StoreSerializable):
         :param pvt_tables_path: Optional path to a dumped `PVTTables` file.
         :param pvt_data_path: Optional path to a dumped `PVTDataSet` file.
         :return: `Run` instance with loaded model and config.
-        :raises ValidationError: If the loaded model is not a 3-D `BlackOilFluid`.
+        :raises ValidationError: If the loaded model is not a 3-D `BlackOil`.
         """
-        model = BlackOilFluid.from_file(model_path)
-        if not isinstance(model, BlackOilFluid) or model.dimensions != 3:
-            raise ValidationError("Loaded model must be a 3D `BlackOilFluid` instance.")
+        model = BlackOil.from_file(model_path)
+        if not isinstance(model, BlackOil) or model.dimensions != 3:
+            raise ValidationError("Loaded model must be a 3D `BlackOil` instance.")
 
         config = Config.from_file(config_path)
         if config is None:
@@ -1974,7 +1974,7 @@ def stop(reason: typing.Optional[str] = None):
 
 
 def run(
-    input: typing.Union[BlackOilFluid[ThreeDimensions], Run],
+    input: typing.Union[BlackOil[ThreeDimensions], Run],
     config: typing.Optional[Config] = None,
     *,
     on_step_rejected: typing.Optional[StepCallback] = None,
@@ -1986,10 +1986,10 @@ def run(
     The simulation evolves pressure and saturation over time using the chosen
     evolution scheme.
 
-    :param input: Either a `BlackOilFluid` or a `Run` instance. If a `Run` is
+    :param input: Either a `BlackOil` or a `Run` instance. If a `Run` is
         supplied and *config* is also provided, the explicit *config* takes precedence.
     :param config: Simulation configuration. Required when *input* is a
-        `BlackOilFluid`; optional when *input* is a `Run`.
+        `BlackOil`; optional when *input* is a `Run`.
     :param on_step_rejected: Optional callback invoked each time a step is
         rejected due to stability or convergence issues. Receives the
         `StepResult`, the attempted step size (seconds), and the total elapsed
@@ -2007,7 +2007,7 @@ def run(
 
     import bores
 
-    model = bores.BlackOilFluid.from_file("path/to/3d_model.h5")
+    model = bores.BlackOil.from_file("path/to/3d_model.h5")
     config = bores.Config.from_file("path/to/simulation_config.yaml")
     for state in bores.run(model, config):
         process(state)
@@ -2027,7 +2027,7 @@ def run(
         else:
             if config is None:
                 raise ValidationError(
-                    "Must provide `config` when `input` is a `BlackOilFluid`."
+                    "Must provide `config` when `input` is a `BlackOil`."
                 )
             model = input
 

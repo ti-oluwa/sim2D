@@ -22,7 +22,7 @@ from bores.wells.controls import (
     WellControl,
 )
 from bores.wells.groups import GroupInjectorControlMode, GroupProducerControlMode
-from bores.wells.model import WellModel
+from bores.wells.model import WellSystem
 
 __all__ = ["allocate_group_targets"]
 
@@ -40,7 +40,7 @@ INJECTOR_MODE_MAP: typing.Dict[GroupInjectorControlMode, InjectorControlMode] = 
 
 
 def allocate_group_targets(
-    group_name: str, well_model: WellModel
+    group_name: str, well_model: WellSystem
 ) -> typing.Dict[str, WellControl]:
     """
     Allocate `group_name`'s current `GroupControl` target across its

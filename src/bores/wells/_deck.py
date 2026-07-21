@@ -134,10 +134,13 @@ def make_well_from_records(
         )
 
     deepest_bottom_depth = max(perforation.bottom_depth for perforation in perforations)
+    surface_location = grid.get_cell_center_at(
+        welspecs_record["i"], welspecs_record["j"], 0
+    )[:2]
     return Well(
         name=welspecs_record["well"],
         well_type=well_type,
-        surface_location=(welspecs_record["i"], welspecs_record["j"]),
+        surface_location=surface_location,
         reference_depth=welspecs_record.get("ref_depth") or deepest_bottom_depth,
         perforations=tuple(perforations),
         preferred_phase=(

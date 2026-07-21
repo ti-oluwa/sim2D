@@ -617,19 +617,23 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside current_cell without crossing another face.
-            results.append((
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + 1.0 * md_span,
-            ))
+            results.append(
+                (
+                    current_cell,
+                    start_md + current_t * md_span,
+                    start_md + 1.0 * md_span,
+                )
+            )
             break
 
         exit_t = min(best_t, 1.0)
-        results.append((
-            current_cell,
-            start_md + current_t * md_span,
-            start_md + exit_t * md_span,
-        ))
+        results.append(
+            (
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + exit_t * md_span,
+            )
+        )
         if best_t >= 1.0 - 1e-9:
             break
 

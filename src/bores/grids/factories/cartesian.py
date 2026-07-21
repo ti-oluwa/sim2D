@@ -14,6 +14,7 @@ from bores.grids.factories.base import (
 from bores.typing import (
     FloatArray,
     IntArray,
+    Integer,
     Number,
     NumberArray,
     NumberOrArray,
@@ -27,9 +28,9 @@ __all__ = ["make_cartesian_grid"]
 
 def make_cartesian_grid(
     *,
-    nx: typing.Optional[int] = None,
-    ny: typing.Optional[int] = None,
-    nz: typing.Optional[int] = None,
+    nx: typing.Optional[Integer] = None,
+    ny: typing.Optional[Integer] = None,
+    nz: typing.Optional[Integer] = None,
     dx: NumberOrArray[OneDimension] = 1.0,
     dy: NumberOrArray[OneDimension] = 1.0,
     dz: NumberOrArray[OneDimension] = 1.0,
@@ -249,11 +250,11 @@ def make_cartesian_grid(
 
 def _resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
-    nx: int,
-    ny: int,
-    nz: int,
-    n_x_faces: int,
-    n_y_faces: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
+    n_x_faces: Integer,
+    n_y_faces: Integer,
 ) -> typing.Tuple[
     typing.Dict[str, IntArray[OneDimension]],
     typing.List[typing.Tuple[int, int, str]],
@@ -264,7 +265,7 @@ def _resolve_fault_face_indices(
     The Cartesian face layout (from `_build_face_arrays`):
 
     - X-normal faces (count `(nx+1)*ny*nz`): face at plane `i_plane`,
-      cell `(j, k)` → global index `i_plane * ny * nz + j * nz + k`.
+      cell `(j, k)` -> global index `i_plane * ny * nz + j * nz + k`.
     - Y-normal faces (count `nx*(ny+1)*nz`, offset `n_x_faces`):
       `n_x_faces + i * (ny+1) * nz + j_plane * nz + k`.
     - Z-normal faces (count `nx*ny*(nz+1)`, offset `n_x_faces + n_y_faces`):
@@ -388,9 +389,9 @@ def _resolve_fault_face_indices(
 
 
 def _resolve_spacing(
-    nx: typing.Optional[int],
-    ny: typing.Optional[int],
-    nz: typing.Optional[int],
+    nx: typing.Optional[Integer],
+    ny: typing.Optional[Integer],
+    nz: typing.Optional[Integer],
     dx: NumberOrArray[OneDimension],
     dy: NumberOrArray[OneDimension],
     dz: NumberOrArray[OneDimension],
@@ -414,7 +415,7 @@ def _resolve_spacing(
 
     def _to_array(
         value: NumberOrArray[OneDimension],
-        count: typing.Optional[int],
+        count: typing.Optional[Integer],
         axis: str,
     ) -> FloatArray[OneDimension]:
         arr = np.atleast_1d(value).astype(np.float64, copy=False).ravel()
@@ -474,7 +475,7 @@ def _build_vertex_coordinates(
 
 
 def _build_face_arrays(
-    nx: int, ny: int, nz: int
+    nx: Integer, ny: Integer, nz: Integer
 ) -> typing.Tuple[
     IntArray[OneDimension],
     IntArray[OneDimension],
@@ -485,9 +486,9 @@ def _build_face_arrays(
 
     Face winding conventions (CCW from owner = lower-index side):
 
-    - X-normal: `(i,j,k) → (i,j+1,k) → (i,j+1,k+1) → (i,j,k+1)`
-    - Y-normal: `(i,j,k) → (i,j,k+1) → (i+1,j,k+1) → (i+1,j,k)`
-    - Z-normal: `(i,j,k) → (i+1,j,k) → (i+1,j+1,k) → (i,j+1,k)`
+    - X-normal: `(i,j,k) -> (i,j+1,k) -> (i,j+1,k+1) -> (i,j,k+1)`
+    - Y-normal: `(i,j,k) -> (i,j,k+1) -> (i+1,j,k+1) -> (i+1,j,k)`
+    - Z-normal: `(i,j,k) -> (i+1,j,k) -> (i+1,j+1,k) -> (i,j+1,k)`
 
     :param nx: Number of cells in x.
     :param ny: Number of cells in y.

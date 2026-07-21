@@ -31,7 +31,10 @@ from bores.grids.factories.base import (
     _FaceRecord,
 )
 from bores.typing import (
+    Boolean,
     IntArray,
+    Integer,
+    Number,
     NumberArray,
     OneDimension,
     ThreeDimensions,
@@ -79,15 +82,15 @@ def make_corner_point_grid(
     coord: CoordArray,
     zcorn: ZCornArray,
     actnum: typing.Optional[ActNumArray] = None,
-    vertex_tolerance: float = 1e-8,
-    pinch_tolerance: typing.Optional[float] = None,
+    vertex_tolerance: Number = 1e-8,
+    pinch_tolerance: typing.Optional[Number] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
-        typing.Mapping[str, float]
+        typing.Mapping[str, Number]
     ] = None,
     positive_x_transmissibility_multipliers: typing.Optional[
         NumberArray[OneDimension]
@@ -345,7 +348,7 @@ def make_corner_point_grid(
 def _interpolate_pillar_point(
     pillar_top: NumberArray[OneDimension],
     pillar_bottom: NumberArray[OneDimension],
-    z: float,
+    z: Number,
 ) -> NumberArray[OneDimension]:
     """
     Interpolate an (x, y, z) position along a pillar at depth `z`.
@@ -441,10 +444,10 @@ def _compute_active_cell_corner_coordinates(
 
 @numba.njit(cache=True)
 def _is_cell_pinched(
-    vtk_vertices: typing.List[int],
+    vtk_vertices: typing.List[Integer],
     vertex_coordinates: VertexCoordinates,
-    pinch_tolerance: float,
-) -> bool:
+    pinch_tolerance: Number,
+) -> Boolean:
     """
     Return `True` if the cell's average thickness is at or below `pinch_tolerance`.
 
@@ -459,6 +462,7 @@ def _is_cell_pinched(
         return True
     if pinch_tolerance <= 0.0:
         return False
+
     total_dz = 0.0
     for k in range(4):
         z_top = vertex_coordinates[vtk_vertices[k], 2]
@@ -471,8 +475,8 @@ def _compute_corner_point_geometry(
     coord: CoordArray,
     zcorn: ZCornArray,
     actnum: ActNumArray,
-    vertex_tolerance: float = 1e-8,
-    pinch_tolerance: float = 0.0,
+    vertex_tolerance: Number = 1e-8,
+    pinch_tolerance: Number = 0.0,
 ) -> typing.Tuple[
     VertexCoordinates,
     IntArray[OneDimension],
@@ -522,7 +526,7 @@ def _compute_corner_point_geometry(
     vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
 
     face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
-    nnc_pairs: typing.List[typing.Tuple[int, int]] = []
+    nnc_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
     nnc_pair_types: typing.List[int] = []
     nnc_face_keys: typing.Set[FaceKey] = set()
 
@@ -530,9 +534,7 @@ def _compute_corner_point_geometry(
     n_degenerate = 0
 
     for cell_idx in range(n_active):
-        vtk_vertices = [
-            int(corner_global[cell_idx, vtk_to_corner[v]]) for v in range(8)
-        ]
+        vtk_vertices = [corner_global[cell_idx, vtk_to_corner[v]] for v in range(8)]
         pinched = _is_cell_pinched(
             vtk_vertices,
             vertex_coordinates,  # type: ignore[arg-type]
@@ -567,7 +569,7 @@ def _compute_corner_point_geometry(
 
     if n_pinched > 0:
         n_pinchout_nncs = sum(
-            1 for t in nnc_pair_types if t == int(ConnectionType.PINCHOUT_NNC)
+            1 for typ in nnc_pair_types if typ == int(ConnectionType.PINCHOUT_NNC)
         )
         warnings.warn(
             f"{n_pinched} pinched-out cell(s) detected "
@@ -576,9 +578,9 @@ def _compute_corner_point_geometry(
             stacklevel=4,
         )
 
-    flat_face_vertex_indices: typing.List[int] = []
+    flat_face_vertex_indices: typing.List[Integer] = []
     face_vertex_offsets: typing.List[int] = [0]
-    face_cell_pairs: typing.List[typing.Tuple[int, int]] = []
+    face_cell_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
     face_connection_types: typing.List[int] = []
 
     for record in face_registry.values():
@@ -599,14 +601,14 @@ def _compute_corner_point_geometry(
 
     vtk_corner_indices = np.empty((n_active, 8), dtype=np.int32)
     for cell_idx in range(n_active):
-        for v in range(8):
-            vtk_corner_indices[cell_idx, v] = int(
-                corner_global[cell_idx, vtk_to_corner[v]]
-            )
+        for vertex in range(8):
+            vtk_corner_indices[cell_idx, vertex] = corner_global[
+                cell_idx, vtk_to_corner[vertex]
+            ]
 
     cell_volumes, cell_centroids = _compute_hex_volumes_and_centroids(
-        vtk_corner_indices,
-        vertex_coordinates,  # type: ignore[arg-type]
+        vtk_corner_indices=vtk_corner_indices,
+        vertex_coordinates=vertex_coordinates,  # type: ignore[arg-type]
     )
     return (  # type: ignore[return-value]
         vertex_coordinates,
@@ -718,9 +720,9 @@ def _resolve_fault_face_indices(
 def _accumulate_pillars(
     cell_min_xyz: NumberArray[TwoDimensions],
     cell_max_xyz: NumberArray[TwoDimensions],
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
     pillar_x: NumberArray[TwoDimensions],
     pillar_y: NumberArray[TwoDimensions],
     pillar_z_top: NumberArray[TwoDimensions],
@@ -775,13 +777,13 @@ def _accumulate_pillars(
 def _fill_zcorn(
     cell_min_xyz: NumberArray[TwoDimensions],
     cell_max_xyz: NumberArray[TwoDimensions],
-    nx: int,
-    ny: int,
-    nz: int,
+    nx: Integer,
+    ny: Integer,
+    nz: Integer,
     zcorn: ZCornArray,
 ) -> None:
     """
-    Fill ZCORN array from per-cell Z bounding-box extents.
+    Fill `ZCORN` array from per-cell Z bounding-box extents.
 
     :param cell_min_xyz: Shape `(n_cells, 3)` bounding-box minima.
     :param cell_max_xyz: Shape `(n_cells, 3)` bounding-box maxima.
@@ -913,7 +915,7 @@ def _compute_hex_volumes_and_centroids(
 
 def rederive_corner_point_arrays(
     grid: Grid,
-) -> typing.Tuple[CoordArray, ZCornArray, int, int, int]:
+) -> typing.Tuple[CoordArray, ZCornArray, Integer, Integer, Integer]:
     """
     Reconstruct approximate COORD and ZCORN arrays from a `Grid`.
 

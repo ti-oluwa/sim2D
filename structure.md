@@ -8,7 +8,7 @@ Reservoir
 ├── Regions
 └── Geometry
 
-BlackOilFluid
+BlackOil
 ├── PVT
 └── Saturation
 

@@ -27,7 +27,7 @@ import numpy.typing as npt
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
 from bores.precision import get_dtype
-from bores.reservoir import BlackOilFluid
+from bores.reservoir import BlackOil
 from bores.states import ModelState
 from bores.typing import ThreeDimensionalGrid, ThreeDimensions
 from bores.visualization.base import (
@@ -1932,7 +1932,7 @@ class DataVisualizer:
 
     def _get_data(
         self,
-        source: typing.Union[ModelState[ThreeDimensions], BlackOilFluid],
+        source: typing.Union[ModelState[ThreeDimensions], BlackOil],
         name: str,
     ) -> ThreeDimensionalGrid:
         """
@@ -1978,7 +1978,7 @@ class DataVisualizer:
     def make_plot(
         self,
         source: typing.Union[
-            BlackOilFluid[ThreeDimensions],
+            BlackOil[ThreeDimensions],
             ModelState[ThreeDimensions],
             ThreeDimensionalGrid,
         ],
@@ -2007,7 +2007,7 @@ class DataVisualizer:
         Call `.show()` to open interactive window, `.screenshot("file.png")`
         for image export, or use in Jupyter notebooks with `notebook=True`.
 
-        :param source: Data source - `BlackOilFluid`, `ModelState`, or raw 3D array
+        :param source: Data source - `BlackOil`, `ModelState`, or raw 3D array
         :param property: Property name to visualize (required for model/state sources).
             Supports dot notation like "permeability.x"
         :param plot_type: Visualization type - "volume", "isosurface", "scatter_3d",
@@ -2070,7 +2070,7 @@ class DataVisualizer:
                 )
 
         is_model_state = isinstance(source, ModelState)
-        is_model = isinstance(source, BlackOilFluid)
+        is_model = isinstance(source, BlackOil)
 
         if is_model_state or is_model:
             if property is None:
@@ -2228,7 +2228,7 @@ class DataVisualizer:
     def animate(
         self,
         sequence: typing.Union[
-            typing.List[BlackOilFluid[ThreeDimensions]],
+            typing.List[BlackOil[ThreeDimensions]],
             typing.Sequence[ModelState[ThreeDimensions]],
             typing.Sequence[ThreeDimensionalGrid],
         ],
@@ -2261,7 +2261,7 @@ class DataVisualizer:
         passed to the save for export, and `Plotter`s are closed to free GPU memory.
         Without a save, returns list of `Plotter` instances for manual inspection.
 
-        :param sequence: Time-ordered collection of `BlackOilFluid`s, `ModelState`s, or 3D arrays
+        :param sequence: Time-ordered collection of `BlackOil`s, `ModelState`s, or 3D arrays
         :param property: Property name to visualize (required for model/state sequences).
             Supports dot notation like "permeability.x"
         :param plot_type: Visualization type - "volume", "isosurface", "scatter_3d",
@@ -2312,7 +2312,7 @@ class DataVisualizer:
         if not sequence:
             raise ValidationError("Empty sequence")
 
-        is_model_sequence = isinstance(sequence[0], (ModelState, BlackOilFluid))
+        is_model_sequence = isinstance(sequence[0], (ModelState, BlackOil))
         if is_model_sequence and property is None:
             raise ValidationError(
                 "`property` required for model / model state sequences"

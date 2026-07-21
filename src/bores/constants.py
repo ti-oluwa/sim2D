@@ -681,23 +681,82 @@ DEFAULT_CONSTANTS: typing.Dict[
     # Gravity
     "ACCELERATION_DUE_TO_GRAVITY_METER_PER_SECONDS_SQUARE": Constant(
         value=9.80665,
-        description="Standard acceleration due to gravity in m/s²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in m/s²",
         unit="m/s²",
     ),
     "ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE": Constant(
         value=32.174,
-        description="Standard acceleration due to gravity in ft/s²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in ft/s²",
         unit="ft/s²",
     ),
     "ACCELERATION_DUE_TO_GRAVITY_FEET_PER_DAY_SQUARE": Constant(
         value=32.174 * 86400.0**2,
-        description="Standard acceleration due to gravity in ft/day²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in ft/day²",
         unit="ft/day²",
     ),
-    "GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2": Constant(
+    "GRAVITATIONAL_FACTOR_FIELD": Constant(
         value=32.174,
-        description="Gravitational constant in lbm·ft/(lbf·s²). Conversion factor from pound-force to pound-mass or vice versa under Earth's gravity.",
+        description="Gravitational conversion factor in lbm·ft/(lbf·s²). Conversion factor from pound-force to pound-mass or vice versa under Earth's gravity.",
         unit="lbm·ft/(lbf·s²)",
+        aliases=("GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2",),
+    ),
+    "GRAVITATIONAL_FACTOR_METRIC": Constant(
+        value=1.0,
+        description=(
+            "Mass/force coherence factor for METRIC units. kg is already a "
+            "coherent SI mass unit (1 N = 1 kg*m/s2 with no separate "
+            "conversion factor), so this is 1.0 - included for a uniform "
+            "per-system lookup, not because METRIC needs a real correction "
+            "the way FIELD's lbm/lbf split does."
+        ),
+        unit="dimensionless",
+    ),
+    "GRAVITATIONAL_FACTOR_LAB": Constant(
+        value=1.0,
+        description=(
+            "Mass/force coherence factor for LAB units. Grams are a "
+            "coherent CGS mass unit (1 dyne = 1 g*cm/s2), so this is 1.0 - "
+            "same reasoning as GRAVITATIONAL_FACTOR_METRIC."
+        ),
+        unit="dimensionless",
+    ),
+    "GRAVITATIONAL_FACTOR_SI": Constant(
+        value=1.0,
+        description="Mass/force coherence factor for SI units - 1.0, SI is coherent by construction.",
+        unit="dimensionless",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_FIELD": Constant(
+        value=144.0,
+        description=(
+            "density * gravitational_acceleration * length, divided by "
+            "GRAVITATIONAL_FACTOR_FIELD, lands in lbf/ft2 for FIELD units - "
+            "this converts that to lbf/in2 (psi)."
+        ),
+        unit="in²/ft²",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_METRIC": Constant(
+        value=100_000.0,
+        description=(
+            "density * gravitational_acceleration * length lands in Pa for "
+            "METRIC units (kg/m3 * m/s2 * m is already coherent) - this "
+            "converts Pa to bar."
+        ),
+        unit="Pa/bar",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_LAB": Constant(
+        value=1_013_250.0,
+        description=(
+            "density * gravitational_acceleration * length lands in barye "
+            "(dyne/cm2) for LAB units (g/cm3 * cm/s2 * cm is already "
+            "coherent CGS) - this converts barye to atm "
+            "(1 atm = 101325 Pa = 1013250 barye)."
+        ),
+        unit="barye/atm",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_SI": Constant(
+        value=1.0,
+        description="density * gravitational_acceleration * length already lands in Pa for SI units - no conversion needed.",
+        unit="dimensionless",
     ),
     # Reservoir `Fluid` Defaults
     "RESERVOIR_GAS": Constant(

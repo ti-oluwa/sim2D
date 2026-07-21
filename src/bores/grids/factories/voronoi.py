@@ -629,9 +629,7 @@ def _signed_area_2d(
     :param point: Test point, shape `(2,)`.
     :returns: Signed area (positive if `point` is left of `a -> b`).
     """
-    return 0.5 * float(
-        (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
-    )
+    return 0.5 * (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
 
 
 def _compute_depth_nodes(
@@ -680,7 +678,7 @@ def _resolve_2d_bounding_box(
             f"Bounding box has zero or negative extent: "
             f"x=[{x_min}, {x_max}], y=[{y_min}, {y_max}]."
         )
-    return float(x_min), float(x_max), float(y_min), float(y_max)
+    return x_min, x_max, y_min, y_max
 
 
 def _resolve_3d_bounding_box(
@@ -718,14 +716,7 @@ def _resolve_3d_bounding_box(
             f"Bounding box has zero or negative extent in at least one dimension: "
             f"x=[{x_min}, {x_max}], y=[{y_min}, {y_max}], z=[{z_min}, {z_max}]."
         )
-    return (
-        float(x_min),
-        float(x_max),
-        float(y_min),
-        float(y_max),
-        float(z_min),
-        float(z_max),
-    )
+    return (x_min, x_max, y_min, y_max, z_min, z_max)
 
 
 def _resolve_layer_thicknesses(

@@ -362,7 +362,7 @@ config = bores.Config(
     pvt_tables=pvt_tables,      # Tables override correlations everywhere
 )
 
-model = bores.BlackOilFluid.from_file("reservoir.h5")
+model = bores.BlackOil.from_file("reservoir.h5")
 for state in bores.run(model, config):
     print(f"Step {state.step}: avg pressure = {state.average_pressure:.1f} psi")
 ```

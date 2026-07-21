@@ -42,7 +42,7 @@ from bores.wells.controls import (
     THPLimit,
     WellControl,
 )
-from bores.wells.hydraulics.base import SurfaceFluidProperties, WellboreModel
+from bores.wells.hydraulics.base import SurfaceFluidProperties, Wellbore
 from bores.wells.perforations import PerforationIndex
 from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
 from bores.wells.resolution.solvers import (
@@ -76,7 +76,7 @@ def _rate_bound(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     is_injector: bool,
     min_pressure: Number,
     max_pressure: Number,
@@ -98,7 +98,7 @@ def _rate_bound(
     :param well: Static well data.
     :param perforation_indices: Connections, `well_index.perforations` order.
     :param connection_samples: Reservoir samples, same order as `perforation_indices`.
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param is_injector: Selects the drawdown sign convention.
     :param min_pressure: Lower bisection bracket bound.
     :param max_pressure: Upper bisection bracket bound.
@@ -115,7 +115,7 @@ def _rate_bound(
             well=well,
             perforation_indices=perforation_indices,
             connection_samples=connection_samples,
-            wellbore_model=wellbore_model,
+            wellbore=wellbore,
             reference_pressure=resolution.bhp,
             relevant_phases=quantity_phases,
             is_injector=is_injector,
@@ -135,7 +135,7 @@ def _rate_bound(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         relevant_phases=quantity_phases,
         is_injector=is_injector,
         target=limit.max_value,
@@ -155,7 +155,7 @@ def _thp_bound(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     min_pressure: Number,
@@ -166,10 +166,10 @@ def _thp_bound(
     """
     Bounding BHP if `limit` is violated by `resolution`'s implied THP, else `None`.
 
-    Checked in the forward direction only (candidate BHP -> `wellbore_model.tubing_head_pressure`),
+    Checked in the forward direction only (candidate BHP -> `wellbore.tubing_head_pressure`),
     bisected against `limit.min_value`/`max_value` as a target.
     """
-    current_thp = wellbore_model.tubing_head_pressure(
+    current_thp = wellbore.compute_tubing_head_pressure(
         well,
         resolution.bhp,
         resolution.phase_rates,
@@ -190,7 +190,7 @@ def _thp_bound(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         target=target,
@@ -237,7 +237,7 @@ def apply_limits(
     well: Well,
     perforation_indices: typing.Sequence[PerforationIndex],
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     relevant_phases: typing.Sequence[FluidPhase],
     is_injector: bool,
     resolution: ControlResolution,
@@ -278,7 +278,7 @@ def apply_limits(
                 well=well,
                 perforation_indices=perforation_indices,
                 connection_samples=connection_samples,
-                wellbore_model=wellbore_model,
+                wellbore=wellbore,
                 is_injector=is_injector,
                 min_pressure=min_pressure,
                 max_pressure=max_pressure,
@@ -298,7 +298,7 @@ def apply_limits(
                 well=well,
                 perforation_indices=perforation_indices,
                 connection_samples=connection_samples,
-                wellbore_model=wellbore_model,
+                wellbore=wellbore,
                 relevant_phases=relevant_phases,
                 is_injector=is_injector,
                 min_pressure=min_pressure,
@@ -328,7 +328,7 @@ def apply_limits(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         reference_pressure=governing_bhp,
         relevant_phases=relevant_phases,
         is_injector=is_injector,

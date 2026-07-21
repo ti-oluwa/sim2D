@@ -51,12 +51,13 @@ class WellGroup(Serializable):
 WellGroupTree = typing.Dict[typing.Union[str, WellGroup], "WellGroupTree"]
 
 
-class WellGroups(StoreSerializable):
+class WellGroups(
+    StoreSerializable,
+    fields={"groups": typing.Mapping[str, WellGroup]},
+):
     """Name-keyed group hierarchy. Lookup and traversal only."""
 
-    __abstract_serializable__ = True
-
-    def __init__(self, groups: typing.Dict[str, WellGroup]) -> None:
+    def __init__(self, groups: typing.Mapping[str, WellGroup]) -> None:
         groups = dict(groups)
         groups.setdefault(FIELD_GROUP, WellGroup(name=FIELD_GROUP, parent=None))
         for name, group in groups.items():
@@ -65,7 +66,7 @@ class WellGroups(StoreSerializable):
                     f"WellGroup {name!r}'s parent {group.parent!r} is not itself "
                     "a declared group."
                 )
-        self._groups = groups
+        self.groups = groups
 
     def group(self, name: str) -> WellGroup:
         """
@@ -74,17 +75,17 @@ class WellGroups(StoreSerializable):
         :param name: The group name
         :raises KeyError: If no group with that name exists.
         """
-        group = self._groups.get(name)
+        group = self.groups.get(name)
         if group is None:
             raise KeyError(f"No group named {name!r}.")
         return group
 
     def children(self, name: str) -> typing.Tuple[str, ...]:
         """Direct child group names of `name` only (not grandchildren)."""
-        if name not in self._groups:
+        if name not in self.groups:
             raise KeyError(f"No group named {name!r}.")
         return tuple(
-            name for name, group in self._groups.items() if group.parent == name
+            name for name, group in self.groups.items() if group.parent == name
         )
 
     def descendants(self, name: str) -> typing.Tuple[str, ...]:
@@ -245,21 +246,13 @@ class WellGroups(StoreSerializable):
         return self.group(name)
 
     def __iter__(self) -> typing.Iterator[str]:
-        return iter(self._groups)
+        return iter(self.groups)
 
     def __len__(self) -> int:
-        return len(self._groups)
+        return len(self.groups)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._groups
-
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {"groups": {name: group.dump() for name, group in self._groups.items()}}
-
-    @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        groups = {name: WellGroup.load(gd) for name, gd in data["groups"].items()}
-        return cls(groups=groups)
+        return name in self.groups
 
 
 class GroupProducerControlMode(enum.Enum):
@@ -355,17 +348,22 @@ class GroupControl(Serializable):
         )
 
 
-class GroupControls(StoreSerializable):
+class GroupControls(
+    StoreSerializable,
+    fields={
+        "controls": typing.Mapping[str, GroupControl],
+        "unit_system": typing.Optional[UnitSystem],
+    },
+):
     """
     Name-keyed, mutable mapping from group name to its current `GroupControl`.
     """
 
-    __abstract_serializable__ = True
-    __slots__ = ("_controls", "unit_system")
+    __slots__ = ("controls", "unit_system")
 
     def __init__(
         self,
-        controls: typing.Dict[str, GroupControl],
+        controls: typing.Mapping[str, GroupControl],
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
@@ -394,14 +392,14 @@ class GroupControls(StoreSerializable):
                 for name, control in controls.items()
             }
 
-        self._controls = dict(controls)
+        self.controls = dict(controls)
         self.unit_system = unit_system
 
     def get(self, name: str) -> typing.Optional[GroupControl]:
-        return self._controls.get(name)
+        return self.controls.get(name)
 
     def set(self, name: str, control: GroupControl) -> None:
-        self._controls[name] = control
+        self.controls[name] = control
 
     @classmethod
     def from_deck(cls, deck_file: DeckFile) -> Self:
@@ -425,33 +423,18 @@ class GroupControls(StoreSerializable):
         self.set(name, control)
 
     def __delitem__(self, name: str) -> None:
-        if name not in self._controls:
+        if name not in self.controls:
             raise KeyError(f"No control set for group {name!r}.")
-        del self._controls[name]
+        del self.controls[name]
 
     def __iter__(self) -> typing.Iterator[str]:
-        return iter(self._controls)
+        return iter(self.controls)
 
     def __len__(self) -> int:
-        return len(self._controls)
+        return len(self.controls)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._controls
-
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {
-            "controls": {
-                name: control.dump() for name, control in self._controls.items()
-            }
-        }
-
-    @classmethod
-    def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        controls = {
-            name: GroupControl.load(control_data)
-            for name, control_data in data["controls"].items()
-        }
-        return cls(controls=controls)
+        return name in self.controls
 
     def convert(
         self,
@@ -472,7 +455,7 @@ class GroupControls(StoreSerializable):
         return self.__class__(
             controls={
                 name: control.convert(target, table=table)
-                for name, control in self._controls.items()
+                for name, control in self.controls.items()
             },
             unit_system=target,
         )

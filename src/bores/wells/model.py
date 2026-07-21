@@ -8,38 +8,39 @@ from typing_extensions import Self
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.serde.base import Serializable
+from bores.serde.stores.base import StoreSerializable
 from bores.typing import UnitConversionTable, UnitSystem
 from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
-from bores.wells.hydraulics.base import WellboreModel
+from bores.wells.hydraulics.base import Wellbore
+from bores.wells.hydraulics.mechanistic import MechanisticWellbore
 from bores.wells.resolution.base import ControlResolverSpec
 
-__all__ = ["WellModel"]
+__all__ = ["WellSystem"]
 
 
 @attrs.frozen(kw_only=True, slots=True)
-class WellModel(Serializable):
+class WellSystem(StoreSerializable):
+    """The wells sub-system"""
+
     wells: Wells
-    controls: WellControls
-    wellbore_model: WellboreModel
-    wellbore_model_overrides: typing.Mapping[str, WellboreModel] = attrs.field(
-        factory=dict
-    )
+    well_controls: WellControls
+    default_wellbore: Wellbore
+    wellbore_overrides: typing.Mapping[str, Wellbore] = attrs.field(factory=dict)
     """
     Per-well hydraulics override (e.g. a gas well on Beggs-Brill while
     every oil well uses the mechanistic no-slip model). Falls back to
-    `wellbore_model` for any well not listed here.
+    `default_wellbore` for any well not listed here.
     """
     groups: typing.Optional[WellGroups] = None
     group_controls: typing.Optional[GroupControls] = None
     resolver_spec: ControlResolverSpec = attrs.field(factory=ControlResolverSpec)
 
     def __attrs_post_init__(self) -> None:
-        if self.controls.unit_system != self.wells.unit_system:
+        if self.well_controls.unit_system != self.wells.unit_system:
             raise ValidationError(
-                f"`controls.unit_system` ({self.controls.unit_system.value}) != "
+                f"`well_controls.unit_system` ({self.well_controls.unit_system.value}) != "
                 f"`wells.unit_system` ({self.wells.unit_system.value})."
             )
         if (
@@ -53,16 +54,16 @@ class WellModel(Serializable):
 
     @property
     def unit_system(self) -> UnitSystem:
-        """Unit system shared by `wells`/`controls`/`group_controls`."""
+        """Unit system shared by `wells`/`well_controls`/`group_controls`."""
         return self.wells.unit_system
 
-    def get_wellbore_model(self, well_name: str) -> WellboreModel:
+    def get_wellbore_model(self, well_name: str) -> Wellbore:
         """
-        The `WellboreModel` to use for `well_name`.
+        The `Wellbore` to use for `well_name`.
 
-        Uses `wellbore_model_overrides[well_name]` if present, else `wellbore_model`.
+        Uses `wellbore_overrides[well_name]` if present, else `default_wellbore`.
         """
-        return self.wellbore_model_overrides.get(well_name, self.wellbore_model)
+        return self.wellbore_overrides.get(well_name, self.default_wellbore)
 
     def get_wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
         """
@@ -75,7 +76,7 @@ class WellModel(Serializable):
             from bores.errors import ValidationError
 
             raise ValidationError(
-                "`get_wells_in_group` requires `groups` to be set on this WellModel."
+                "`get_wells_in_group` requires `groups` to be set on this WellSystem."
             )
         member_group_names = {group_name, *self.groups.descendants(group_name)}
         return tuple(
@@ -88,17 +89,18 @@ class WellModel(Serializable):
         deck_file: DeckFile,
         *,
         grid: Grid,
-        wellbore_model: WellboreModel,
+        default_wellbore: typing.Optional[Wellbore] = None,
         **well_kwargs: typing.Any,
     ) -> Self:
         """
-        Load a `WellModel` from a parsed `DeckFile`.
+        Load a `WellSystem` from a parsed `DeckFile`.
 
         :param deck_file: Parsed deck.
         :param grid: `Grid` built from the same deck.
-        :param wellbore_model: `WellModel.wellbore_model`.
+        :param default_wellbore: `Wellbore` that describes the wells' hydraulics.
+            Defaults to `MechanisticWellbore` if not provided.
         :param well_kwargs: Forwarded to `Wells.from_deck`.
-        :returns: `WellModel` built from every well/control/group keyword
+        :returns: `WellSystem` built from every well/control/group keyword
             present in the deck. groups/group_controls are None if the
             deck has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.
         """
@@ -110,8 +112,10 @@ class WellModel(Serializable):
         )
         return cls(
             wells=Wells.from_deck(deck_file, grid=grid, **well_kwargs),
-            controls=WellControls.from_deck(deck_file),
-            wellbore_model=wellbore_model,
+            well_controls=WellControls.from_deck(deck_file),
+            default_wellbore=default_wellbore
+            if default_wellbore is not None
+            else MechanisticWellbore(),
             groups=groups,
             group_controls=group_controls,
         )
@@ -124,11 +128,11 @@ class WellModel(Serializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Returns a  new `WellModel` in the *target* unit system.
+        Returns a  new `WellSystem` in the *target* unit system.
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New `WellsModel` with wells/controls/group_controls
+        :returns: New `WellsModel` with wells/well_controls/group_controls
             converted to target. groups (pure hierarchy, no dimensioned
             data) and the wellbore models are unchanged.
         """
@@ -137,7 +141,12 @@ class WellModel(Serializable):
         return attrs.evolve(
             self,
             wells=self.wells.convert(target, table=table),
-            controls=self.controls.convert(target, table=table),
+            well_controls=self.well_controls.convert(target, table=table),
+            default_wellbore=self.default_wellbore.convert(target, table=table),
+            wellbore_overrides={
+                well_name: wellbore.convert(target, table=table)
+                for well_name, wellbore in self.wellbore_overrides.items()
+            },
             group_controls=(
                 self.group_controls.convert(target, table=table)
                 if self.group_controls is not None

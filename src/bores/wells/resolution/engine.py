@@ -2,7 +2,7 @@
 Well control resolution: target -> per-connection result.
 
 Depends on `wells.data`, `wells.controls`, `wells.state`, `wells.location`,
-`wells.hydraulics.WellboreModel`, `wells.index.WellIndex`,
+`wells.hydraulics.Wellbore`, `wells.index.WellIndex`,
 `wells.control.solvers`, `wells.control.limits`.
 
 `resolve_control` operates at connection (`PerforationIndex`) granularity,
@@ -31,7 +31,7 @@ from bores.wells.controls import (
     ProducerControlMode,
     WellControl,
 )
-from bores.wells.hydraulics.base import SurfaceFluidProperties, WellboreModel
+from bores.wells.hydraulics.base import SurfaceFluidProperties, Wellbore
 from bores.wells.indices import WellIndex
 from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
 from bores.wells.resolution.limits import apply_limits
@@ -54,7 +54,7 @@ def resolve_control(
     control: WellControl,
     well: Well,
     well_index: WellIndex,
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     *,
     resolver_spec: ControlResolverSpec = DEFAULT_RESOLVER_SPEC,
@@ -72,7 +72,7 @@ def resolve_control(
         May not be necessarily what ends up governing if a limit fires.
     :param well: Static well data.
     :param well_index: Resolved connection factors (`wells.index`).
-    :param wellbore_model: Hydraulics strategy for this well.
+    :param wellbore: Hydraulics strategy for this well.
     :param connection_samples: Reservoir samples, one per connection,
         `well_index.perforations` order (see module docstring - **not**
         `well.open_perforations` order).
@@ -113,7 +113,7 @@ def resolve_control(
                 control.target_bhp,
                 well,
                 perforation_indices,
-                wellbore_model,
+                wellbore,
                 connection_samples,
                 resolver_spec,
             )
@@ -122,7 +122,7 @@ def resolve_control(
                 control,
                 well,
                 perforation_indices,
-                wellbore_model,
+                wellbore,
                 connection_samples,
                 resolver_spec,
             )
@@ -143,7 +143,7 @@ def resolve_control(
                 control.injected_phase,
                 well,
                 perforation_indices,
-                wellbore_model,
+                wellbore,
                 connection_samples,
                 resolver_spec,
             )
@@ -152,7 +152,7 @@ def resolve_control(
                 control,
                 well,
                 perforation_indices,
-                wellbore_model,
+                wellbore,
                 connection_samples,
                 resolver_spec,
             )
@@ -172,7 +172,7 @@ def resolve_control(
         well=well,
         perforation_indices=perforation_indices,
         connection_samples=connection_samples,
-        wellbore_model=wellbore_model,
+        wellbore=wellbore,
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         resolution=nominal,
@@ -182,7 +182,7 @@ def resolve_control(
         surface_fluid_properties=surface_fluid_properties,
     )
     if surface_fluid_properties is not None and not resolution.economic_shutin:
-        thp = wellbore_model.tubing_head_pressure(
+        thp = wellbore.compute_tubing_head_pressure(
             well,
             reference_pressure=resolution.bhp,
             phase_rates=resolution.phase_rates,
@@ -197,7 +197,7 @@ def build_well_state(
     well: Well,
     resolution: ControlResolution,
     well_index: WellIndex,
-    wellbore_model: WellboreModel,
+    wellbore: Wellbore,
     connection_samples: typing.Sequence[ConnectionSample],
     *,
     active_control: WellControl,
@@ -214,7 +214,7 @@ def build_well_state(
     :param well: Static well data.
     :param resolution: Output of `resolve_control`.
     :param well_index: Resolved connection factors (allocation weights).
-    :param wellbore_model: Used to get each connection's flowing pressure
+    :param wellbore: Used to get each connection's flowing pressure
         at `resolution.bhp`.
     :param connection_samples: Reservoir samples, `well_index.perforations`
         order, same contract as `resolve_control`.
@@ -238,7 +238,7 @@ def build_well_state(
             f"well {well.name!r}."
         )
 
-    connection_pressures = wellbore_model.perforation_pressures(
+    connection_pressures = wellbore.compute_perforation_pressures(
         well,
         resolution.bhp,
         phase_rates=resolution.phase_rates,

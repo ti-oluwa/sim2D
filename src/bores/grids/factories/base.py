@@ -4,15 +4,15 @@ import numpy as np
 from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
-from bores.typing import IntArray, NumberArray, OneDimension, TwoDimensions
+from bores.typing import IntArray, Integer, NumberArray, OneDimension, TwoDimensions
 
 VertexCoordinates: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
-FaceVertexIndices: TypeAlias = typing.List[int]
+FaceVertexIndices: TypeAlias = typing.List[Integer]
 """Ordered list of vertex indices for a single face (CCW from owner)."""
 
-FaceKey: TypeAlias = typing.Tuple[int, ...]
+FaceKey: TypeAlias = typing.Tuple[Integer, ...]
 """Sorted tuple of vertex indices used as a face deduplication key."""
 
 ElementFaces: TypeAlias = typing.List[FaceVertexIndices]
@@ -89,7 +89,7 @@ class _FaceRecord:
     __slots__ = ("owner_cell_index", "neighbour_cell_index", "face_vertex_indices")
 
     def __init__(
-        self, owner_cell_index: int, face_vertex_indices: FaceVertexIndices
+        self, owner_cell_index: Integer, face_vertex_indices: FaceVertexIndices
     ) -> None:
         """
         Initialise with only an owner; neighbour is set later if face is interior.
@@ -97,8 +97,8 @@ class _FaceRecord:
         :param owner_cell_index: The cell that first registered this face.
         :param face_vertex_indices: Face vertex indices winding from the owner's perspective.
         """
-        self.owner_cell_index: int = owner_cell_index
-        self.neighbour_cell_index: int = -1
+        self.owner_cell_index: Integer = owner_cell_index
+        self.neighbour_cell_index: Integer = -1
         self.face_vertex_indices: FaceVertexIndices = face_vertex_indices
 
 
@@ -152,9 +152,9 @@ def build_csr_face_arrays(
                 record.neighbour_cell_index = cell_index
 
     # Flatten registry to CSR arrays
-    flat_face_vertex_indices: typing.List[int] = []
+    flat_face_vertex_indices: typing.List[Integer] = []
     face_vertex_offsets: typing.List[int] = [0]
-    face_cell_pairs: typing.List[typing.Tuple[int, int]] = []
+    face_cell_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
 
     for record in face_registry.values():
         flat_face_vertex_indices.extend(record.face_vertex_indices)

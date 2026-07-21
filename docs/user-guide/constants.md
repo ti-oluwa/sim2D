@@ -242,7 +242,7 @@ if const is not None:
 | `ACCELERATION_DUE_TO_GRAVITY_METER_PER_SECONDS_SQUARE` | 9.807 | m/s² | Standard gravity (SI) |
 | `ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE` | 32.174 | ft/s² | Standard gravity (Imperial) |
 | `ACCELERATION_DUE_TO_GRAVITY_FEET_PER_DAY_SQUARE` | 2.388e10 | ft/day² | Standard gravity (Imperial, daily basis) |
-| `GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2` | 32.174 | lbm ft/(lbf s²) | gc conversion factor |
+| `GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2` | 32.174 | lbm ft/(lbf s²) | gc conversion factor |
 
 ### Numerical Thresholds
 

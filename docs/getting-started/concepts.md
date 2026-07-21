@@ -12,7 +12,7 @@ This page covers the design principles and conventions that run through every pa
 
 Every BORES simulation follows the same five-stage pipeline: **Model Construction**, **Configuration**, **Simulation Run**, **State Streaming**, and **Analysis**. Understanding this pipeline is the key to understanding how the framework fits together.
 
-In the first stage, you construct a `BlackOilFluid` by defining the grid geometry, fluid properties, rock properties, and saturation distributions. The `reservoir_model()` factory function handles the heavy lifting: it runs PVT correlations, validates inputs, builds derived property grids, and assembles everything into an immutable model object. You can provide as few or as many properties as you like, and the factory will estimate the rest from correlations.
+In the first stage, you construct a `BlackOil` by defining the grid geometry, fluid properties, rock properties, and saturation distributions. The `reservoir_model()` factory function handles the heavy lifting: it runs PVT correlations, validates inputs, builds derived property grids, and assembles everything into an immutable model object. You can provide as few or as many properties as you like, and the factory will estimate the rest from correlations.
 
 In the second stage, you create a `Config` object that specifies how the simulation should run: the time stepping strategy, the evolution scheme, well definitions, boundary conditions, solver settings, and convergence tolerances. The config is also immutable, ensuring that your simulation parameters are locked in before the run begins.
 
@@ -40,9 +40,9 @@ flowchart LR
 
 ## Immutable Data Models
 
-BORES represents *almost* all reservoir data using immutable (frozen) classes built with the [attrs](https://www.attrs.org/) library. The core model classes - `BlackOilFluid`, `FluidProperties`, `RockProperties`, `HysteresisState`, and `Config` - are all frozen. Once created, their fields cannot be changed in place.
+BORES represents *almost* all reservoir data using immutable (frozen) classes built with the [attrs](https://www.attrs.org/) library. The core model classes - `BlackOil`, `FluidProperties`, `RockProperties`, `HysteresisState`, and `Config` - are all frozen. Once created, their fields cannot be changed in place.
 
-Immutability matters deeply in simulation software. When you pass a `BlackOilFluid` to `bores.run()`, the simulator works on internal copies of the data. Your original model object remains untouched, so you can safely reuse it for parameter sweeps, what-if scenarios, or debugging. There is no hidden state mutation that could silently corrupt your baseline.
+Immutability matters deeply in simulation software. When you pass a `BlackOil` to `bores.run()`, the simulator works on internal copies of the data. Your original model object remains untouched, so you can safely reuse it for parameter sweeps, what-if scenarios, or debugging. There is no hidden state mutation that could silently corrupt your baseline.
 
 When you need a modified version of an immutable object, you use `attrs.evolve()` to create a new instance with specific fields replaced. BORES surfaces this pattern through convenience methods like `config.copy()` and `config.new()`. The original object is never modified; you always get a fresh copy with the changes applied.
 
@@ -79,7 +79,7 @@ assert explicit_config.scheme == "explicit"
 
 ## Factory Functions
 
-BORES uses factory functions - `reservoir_model()`, `injection_well()`, `production_well()`, and `wells_()` - as the primary way to construct complex objects. You will rarely need to instantiate `BlackOilFluid`, `InjectionWell`, or `ProductionWell` directly.
+BORES uses factory functions - `reservoir_model()`, `injection_well()`, `production_well()`, and `wells_()` - as the primary way to construct complex objects. You will rarely need to instantiate `BlackOil`, `InjectionWell`, or `ProductionWell` directly.
 
 The reason for this design is that building a reservoir model involves far more than assigning values to fields. The `reservoir_model()` factory validates your inputs against physical constraints, estimates missing properties from PVT correlations (Standing, Vasquez-Beggs, Lee-Gonzalez, and others), resolves circular dependencies between oil compressibility and formation volume factor through iterative bootstrapping, normalizes saturations to sum to 1.0, builds depth and elevation grids, and applies fracture transmissibility modifications if fractures are defined. Doing all of this inside a constructor would make the class difficult to understand and test.
 
@@ -123,9 +123,9 @@ model = bores.reservoir_model(
 
 ## Generics and Dimensions
 
-BORES models are generic over a dimension type parameter called `NDimension`. This means the same classes - `BlackOilFluid`, `FluidProperties`, `RockProperties`, wells, boundary conditions, and grid utilities - work across 1D, 2D, and 3D simulations without separate implementations for each dimensionality.
+BORES models are generic over a dimension type parameter called `NDimension`. This means the same classes - `BlackOil`, `FluidProperties`, `RockProperties`, wells, boundary conditions, and grid utilities - work across 1D, 2D, and 3D simulations without separate implementations for each dimensionality.
 
-In practice, the dimension is determined by the shape of your grid. A `grid_shape` of `(100,)` creates a 1D model, `(10, 10)` creates a 2D model, and `(10, 10, 3)` creates a 3D model. The type system tracks dimensionality through type aliases: `OneDimension = Tuple[int]`, `TwoDimensions = Tuple[int, int]`, and `ThreeDimensions = Tuple[int, int, int]`. When you build a 3D model, the resulting `BlackOilFluid[ThreeDimensions]` carries its dimensionality in the type signature.
+In practice, the dimension is determined by the shape of your grid. A `grid_shape` of `(100,)` creates a 1D model, `(10, 10)` creates a 2D model, and `(10, 10, 3)` creates a 3D model. The type system tracks dimensionality through type aliases: `OneDimension = Tuple[int]`, `TwoDimensions = Tuple[int, int]`, and `ThreeDimensions = Tuple[int, int, int]`. When you build a 3D model, the resulting `BlackOil[ThreeDimensions]` carries its dimensionality in the type signature.
 
 This generic design has practical benefits. You can prototype and debug on a fast 1D or 2D model, then scale up to 3D for your final study without changing any of your analysis code. The property grids, well definitions, and boundary conditions all adapt to the dimensionality of the model they belong to.
 
@@ -141,8 +141,8 @@ model_1d = bores.reservoir_model(grid_shape=(100,), ...)
 model_3d = bores.reservoir_model(grid_shape=(50, 50, 10), ...)
 
 # Type annotations reflect dimensionality
-# model_1d: BlackOilFluid[OneDimension]
-# model_3d: BlackOilFluid[ThreeDimensions]
+# model_1d: BlackOil[OneDimension]
+# model_3d: BlackOil[ThreeDimensions]
 ```
 
 ---
@@ -251,7 +251,7 @@ print(bores.get_dtype())  # <class 'numpy.float32'> (back to default outside con
 
 BORES provides a two-tier serialization system for saving and loading simulation objects. The base tier, `Serializable`, supports dictionary round-tripping via the [cattrs](https://cattrs.readthedocs.io/) library. Any `Serializable` class can be converted to a plain Python dictionary and reconstructed from one. The second tier, `StoreSerializable`, extends this with `to_store(...)`, `from_store(...)`, `to_file(...)`, and `from_file(...)` methods that write to and read from file-backed storage (HDF5, Zarr, YAML, JSON).
 
-All core BORES classes - `BlackOilFluid`, `Config`, `FluidProperties`, `RockProperties`, well classes, boundary conditions, and relative permeability models - are serializable out of the box. You can save a model to disk, load it back, and get an identical object.
+All core BORES classes - `BlackOil`, `Config`, `FluidProperties`, `RockProperties`, well classes, boundary conditions, and relative permeability models - are serializable out of the box. You can save a model to disk, load it back, and get an identical object.
 
 When you define custom types that should participate in BORES serialization (for example, a custom relative permeability model or a custom well control), you need to register them using the provided decorators. This ensures that the deserializer knows how to reconstruct your custom type from its dictionary representation. The registration system uses a type registry that maps string type identifiers to Python classes.
 
@@ -262,7 +262,7 @@ import bores
 model.to_file("my_model.h5")
 
 # Load it back
-loaded_model = bores.BlackOilFluid.from_file("my_model.h5")
+loaded_model = bores.BlackOil.from_file("my_model.h5")
 
 # Save a config to YAML
 config.to_file("config.yaml") # or config.save("config.yaml")
@@ -279,7 +279,7 @@ loaded_config = bores.Config.from_file("config.yaml")
 
 ## Configuration as Code
 
-The `Config` class is a frozen attrs class that holds every parameter controlling a simulation run. Rather than scattering configuration across multiple files, environment variables, or global state, BORES puts everything in one place. This makes simulations reproducible: given the same `BlackOilFluid` and `Config`, you will get the same results every time.
+The `Config` class is a frozen attrs class that holds every parameter controlling a simulation run. Rather than scattering configuration across multiple files, environment variables, or global state, BORES puts everything in one place. This makes simulations reproducible: given the same `BlackOil` and `Config`, you will get the same results every time.
 
 The `Config` object includes the time stepping strategy (via `Timer`), well definitions, boundary conditions, rock-fluid tables, solver selection, preconditioner choice, convergence tolerances, evolution scheme, CFL thresholds, maximum saturation and pressure change limits, and many other parameters. Every parameter has a sensible default, so you only need to specify the ones you want to change.
 

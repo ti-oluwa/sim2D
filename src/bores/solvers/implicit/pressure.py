@@ -123,7 +123,7 @@ def solve_pressure(
     # then the conversion factor would be 12.0 / 32.174 = 0.373. Which would scale the gravity terms accordingly.
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-        / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
+        / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
 
     pressure_perturbation = np.maximum(1.0, np.abs(current_pressure_grid) * 1e-5)
@@ -356,7 +356,7 @@ def solve_nonlinear_pressure(
     )
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-        / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
+        / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
     time_step_size_in_days = time_step_size * c.DAYS_PER_SECOND

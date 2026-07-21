@@ -1,6 +1,7 @@
 import pyvista as pv
+import rich
 
-from bores.blackoil.fluid import BlackOilFluid
+from bores.blackoil.fluid import BlackOil
 from bores.blackoil.model import BlackOilModel
 from bores.blackoil.pvt import PVTRegions
 from bores.blackoil.saturation_functions import SaturationFunctionRegions
@@ -8,15 +9,18 @@ from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
 from bores.initialization import initialize_reservoir_state
-from bores.reservoir import Regions, ReservoirModel, Temperature
+from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import EquilibriumRegions
-from bores.wells import MechanisticWellboreModel, WellModel
+from bores.serde.stores import yaml
+from bores.typing import UnitSystem
+from bores.wells import WellSystem
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # Load reservoir model
 grid = Grid.from_deck(df)
+print(grid.get_cell_center_at(9, 9, 2))
 regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
 satfunc = SaturationFunctionRegions.from_deck(df, mixing_rule="eclipse_rule")
 rock = Rock.from_deck(
@@ -26,12 +30,12 @@ rock = Rock.from_deck(
     satfunc=satfunc,
     saturation_regions=regions.saturation_regions,
 )
-reservoir = ReservoirModel(grid=grid, rock=rock, regions=regions)
+reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 
 # Define fluid
 temperature = Temperature(200)
 pvt = PVTRegions.from_deck(df, temperature=temperature)
-blackoil = BlackOilFluid(pvt=pvt, satfunc=satfunc)
+blackoil = BlackOil(pvt=pvt, satfunc=satfunc)
 table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"
 print(table.viscosity([4700, 200, 3456, 10000, 4000], 400))
@@ -48,14 +52,8 @@ initial_state = initialize_reservoir_state(
 )
 
 # Load wells
-wells = WellModel.from_deck(
-    df,
-    grid=grid,
-    wellbore_model=MechanisticWellboreModel(),
-)
-# d = wells.dump()
-# w = WellModel.load(d)
-# print(w)
+wells = WellSystem.from_deck(df, grid=grid)
+# rich.print(wells.dump())
 
 # Construct the final model
 model = BlackOilModel(reservoir=reservoir, fluid=blackoil, wells=wells)

@@ -12,7 +12,14 @@ from bores.grids.factories.base import (
     VertexCoordinates,
     build_csr_face_arrays,
 )
-from bores.typing import IntArray, NumberArray, OneDimension, TwoDimensions, UnitSystem
+from bores.typing import (
+    IntArray,
+    Integer,
+    NumberArray,
+    OneDimension,
+    TwoDimensions,
+    UnitSystem,
+)
 
 __all__ = ["make_polyhedral_grid"]
 
@@ -132,7 +139,7 @@ def make_polyhedral_grid(
 
         for global_vert_indices in connectivity:
             cell_faces: typing.List[FaceVertexIndices] = [
-                [int(global_vert_indices[local_v]) for local_v in face_local]
+                [global_vert_indices[local_v] for local_v in face_local]
                 for face_local in face_table
             ]
             all_per_cell_faces.append(cell_faces)
@@ -164,7 +171,7 @@ def make_polyhedral_grid(
 def _resolve_cell_type_name(
     block: typing.Dict[str, typing.Any],
     combined_face_table: typing.Dict[str, ElementFaces],
-    block_idx: int,
+    block_idx: Integer,
 ) -> str:
     """
     Resolve a cell block's element type to a string name.

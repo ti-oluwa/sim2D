@@ -11,10 +11,10 @@ from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
 from bores.typing import UnitSystem
 
-__all__ = ["BlackOilFluid"]
+__all__ = ["BlackOil"]
 
 
-class BlackOilFluid(
+class BlackOil(
     StoreSerializable,
     fields={
         "pvt": PVTRegions,
@@ -93,11 +93,11 @@ class BlackOilFluid(
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `BlackOilFluid` with all region tables rescaled to *target*.
+        Return a new `BlackOil` with all region tables rescaled to *target*.
 
         :param target: Target `UnitSystem`.
         :param table: Optional custom conversion table.
-        :returns: New `BlackOilFluid` in *target* units.
+        :returns: New `BlackOil` in *target* units.
         """
         if target == self.unit_system:
             return self

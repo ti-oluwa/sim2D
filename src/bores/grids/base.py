@@ -24,6 +24,7 @@ from bores.errors import (
 from bores.serde.base import Serializable
 from bores.typing import (
     IntArray,
+    Integer,
     Number,
     NumberArray,
     NumberOrArray,
@@ -863,12 +864,12 @@ class Grid(
                 cell_max[no_face_mask] = self.cell_centroids[no_face_mask]
 
         bounding_box = (
-            float(cell_min[:, 0].min()),
-            float(cell_max[:, 0].max()),
-            float(cell_min[:, 1].min()),
-            float(cell_max[:, 1].max()),
-            float(cell_min[:, 2].min()),
-            float(cell_max[:, 2].max()),
+            cell_min[:, 0].min(),
+            cell_max[:, 0].max(),
+            cell_min[:, 1].min(),
+            cell_max[:, 1].max(),
+            cell_min[:, 2].min(),
+            cell_max[:, 2].max(),
         )
         object.__setattr__(self, "cell_min_xyz", cell_min)
         object.__setattr__(self, "cell_max_xyz", cell_max)
@@ -959,7 +960,43 @@ class Grid(
             return self.metadata.get("map_axes", None)
         return None
 
-    def is_cell_active(self, cell_index: int) -> bool:
+    def flat_index(self, i: Integer, j: Integer, k: Integer) -> Integer:
+        """
+        Convert 0-based `(i, j, k)` to a flat index (`i` fastest, `k` slowest):
+
+        `index = i + j*nx + k*nx*ny`.
+
+        :param i: 0-based x index.
+        :param j: 0-based y index.
+        :param k: 0-based z index.
+        :returns: Flat cell index.
+        """
+        dims = self.dimensions
+        if dims is None:
+            raise ValidationError(
+                "Cannot compute flat index. Grid dimensions cannot be determined."
+            )
+        return dims.flat_index(i, j, k)
+
+    def ijk_index(self, flat: Integer) -> typing.Tuple[int, int, int]:
+        """
+        Convert a flat index to  0-based `(i, j, k)`.
+
+        Given the flat index was generated as `i` fastest, `k` slowest:
+
+        `index = i + j*nx + k*nx*ny`.
+
+        :param flat: Flat cell index.
+        :returns: 0-based `(i, j, k)` cell index.
+        """
+        dims = self.dimensions
+        if dims is None:
+            raise ValidationError(
+                "Cannot compute IJK index. Grid dimensions cannot be determined."
+            )
+        return dims.ijk_index(flat)
+
+    def is_cell_active(self, cell_index: Integer) -> bool:
         """
         Return whether a given cell is active.
 
@@ -975,7 +1012,7 @@ class Grid(
         assert self.cell_statuses is not None
         return bool(self.cell_statuses[cell_index])
 
-    def get_nnc_type(self, nnc_index: int) -> ConnectionType:
+    def get_nnc_type(self, nnc_index: Integer) -> ConnectionType:
         """
         Return the `ConnectionType` for a given NNC.
 
@@ -990,7 +1027,7 @@ class Grid(
             )
         return ConnectionType(int(self.nnc_connection_types[nnc_index]))
 
-    def get_face_type(self, face_index: int) -> ConnectionType:
+    def get_face_type(self, face_index: Integer) -> ConnectionType:
         """
         Return the `ConnectionType` for a given face.
 
@@ -1005,7 +1042,7 @@ class Grid(
             )
         return ConnectionType(int(self.face_connection_types[face_index]))
 
-    def get_cell_face_indices(self, cell_index: int) -> IntArray[OneDimension]:
+    def get_cell_face_indices(self, cell_index: Integer) -> IntArray[OneDimension]:
         """
         Return the indices of all faces belonging to a given cell.
 
@@ -1022,7 +1059,7 @@ class Grid(
         end = self.cell_face_offsets[cell_index + 1]
         return typing.cast(IntArray[OneDimension], self.cell_face_indices[start:end])
 
-    def get_cell_neighbor_indices(self, cell_index: int) -> IntArray[OneDimension]:
+    def get_cell_neighbor_indices(self, cell_index: Integer) -> IntArray[OneDimension]:
         """
         Return the indices of all face-adjacent neighbours of a given cell.
 
@@ -1042,7 +1079,7 @@ class Grid(
         )
 
     def get_face_vertex_coordinates(
-        self, face_index: int
+        self, face_index: Integer
     ) -> NumberArray[TwoDimensions]:
         """
         Return the vertex coordinates of a given face.
@@ -1050,14 +1087,14 @@ class Grid(
         :param face_index: Zero-based face index.
         :returns: Shape `(n_verts_for_face, 3)` coordinate array.
         """
-        start = int(self.face_vertex_offsets[face_index])
-        end = int(self.face_vertex_offsets[face_index + 1])
+        start = self.face_vertex_offsets[face_index]
+        end = self.face_vertex_offsets[face_index + 1]
         return typing.cast(
             NumberArray[TwoDimensions],
             self.vertex_coordinates[self.face_vertex_indices[start:end]],
         )
 
-    def get_face_cell_indices(self, face_index: int) -> IntArray[OneDimension]:
+    def get_face_cell_indices(self, face_index: Integer) -> IntArray[OneDimension]:
         """
         Return the indices of all cells that share a given face.
 
@@ -1072,7 +1109,7 @@ class Grid(
         return typing.cast(IntArray[OneDimension], self.face_cell_indices[face_index])
 
     def get_face_normal_for_cell(
-        self, face_index: int, cell_index: int
+        self, face_index: Integer, cell_index: Integer
     ) -> NumberArray[OneDimension]:
         """
         Return the outward unit normal of a face relative to a specific cell.
@@ -1082,8 +1119,8 @@ class Grid(
         :returns: Shape `(3,)` unit normal pointing outward from `cell_index`.
         :raises ValidationError: If `cell_index` is not connected to `face_index`.
         """
-        owner = int(self.face_cell_indices[face_index, 0])
-        neighbour = int(self.face_cell_indices[face_index, 1])
+        owner = self.face_cell_indices[face_index, 0]
+        neighbour = self.face_cell_indices[face_index, 1]
         if cell_index == owner:
             return self.face_unit_normals[face_index]
         elif cell_index == neighbour:
@@ -1115,7 +1152,7 @@ class Grid(
             IntArray[OneDimension], np.setdiff1d(all_cells, boundary_cells)
         )
 
-    def is_boundary_cell(self, cell_index: int) -> bool:
+    def is_boundary_cell(self, cell_index: Integer) -> bool:
         """
         Return whether a given cell is adjacent to at least one boundary face.
 
@@ -1130,13 +1167,13 @@ class Grid(
         face_indices = self.get_cell_face_indices(cell_index)
         for face_idx in face_indices:
             if (
-                int(self.face_cell_indices[face_idx, 0]) < 0
-                or int(self.face_cell_indices[face_idx, 1]) < 0
+                self.face_cell_indices[face_idx, 0] < 0
+                or self.face_cell_indices[face_idx, 1] < 0
             ):
                 return True
         return False
 
-    def is_boundary_face(self, face_index: int) -> bool:
+    def is_boundary_face(self, face_index: Integer) -> bool:
         """
         Return whether a given face is adjacent to at least one boundary cell.
 
@@ -1149,7 +1186,7 @@ class Grid(
             ConnectionType.BOUNDARY_FAULT_FACE,
         )
 
-    def is_fault_face(self, face_index: int) -> bool:
+    def is_fault_face(self, face_index: Integer) -> bool:
         """
         Return whether a given face belongs to fault.
 
@@ -1172,7 +1209,7 @@ class Grid(
         """
         if self.fault_face_indices is None:
             raise ValidationError(
-                "No fault data available on this grid (fault_face_indices is None)."
+                "No fault data available on this grid (`fault_face_indices` is None)."
             )
 
         if fault_name not in self.fault_face_indices:
@@ -1197,12 +1234,51 @@ class Grid(
         if fault_name not in self.fault_transmissibility_multipliers:
             available = sorted(self.fault_transmissibility_multipliers.keys())
             raise KeyError(
-                f"Fault {fault_name!r} not found in MULTFLT data. "
+                f"Fault {fault_name!r} not found in `MULTFLT` data. "
                 f"Available: {available}."
             )
         return self.fault_transmissibility_multipliers[fault_name]
 
-    def find_nearest_cell(self, x: Number, y: Number, z: Number) -> int:
+    def get_cell_center_at(
+        self, i: Integer, j: Integer, k: Integer
+    ) -> typing.Tuple[Number, Number, Number]:
+        """Return the center coordinates `(x, y, z)`, of cell `(i, j, k)`."""
+        assert self.cell_centroids is not None
+        cell_index = self.flat_index(i, j, k)
+        return tuple(self.cell_centroids[cell_index])
+
+    def find_cell_at_position(
+        self,
+        x: Number,
+        y: Number,
+        z: Number,
+        *,
+        max_distance: typing.Optional[Number] = None,
+    ) -> typing.Tuple[Integer, Integer, Integer]:
+        """
+        Return the `(i, j, k)` indices of the cell whose center is nearest to
+        `(x, y, z)`.
+
+        :param x: Query x-coordinate.
+        :param y: Query y-coordinate.
+        :param z: Query z-coordinate (positive downward).
+        :param max_distance: Maximum allowed distance between the nearest cell
+            and the query coordinates.
+        :returns: Zero-based index of the cell nearest to that position.
+        """
+        cell_index = self.find_nearest_cell(x, y, z, max_distance=max_distance)
+        return self.ijk_index(cell_index)
+
+    find_cell_at_location = find_cell_at_position  # alias
+
+    def find_nearest_cell(
+        self,
+        x: Number,
+        y: Number,
+        z: Number,
+        *,
+        max_distance: typing.Optional[Number] = None,
+    ) -> int:
         """
         Find the cell whose centroid is nearest to `(x, y, z)`.
 
@@ -1211,9 +1287,15 @@ class Grid(
         :param x: Query x-coordinate.
         :param y: Query y-coordinate.
         :param z: Query z-coordinate (positive downward).
+        :param max_distance: Maximum allowed distance between the nearest cell
+            and the query coordinates.
         :returns: Zero-based index of the nearest cell.
         """
-        _, cell_index = self._spatial_index.query([x, y, z])  # type: ignore
+        distance, cell_index = self._spatial_index.query([x, y, z])  # type: ignore
+        if max_distance is not None and distance > max_distance:
+            raise ValidationError(
+                f"No cell center lies within the requested distance ({max_distance})."
+            )
         return int(cell_index)
 
     def find_cells_in_radius(

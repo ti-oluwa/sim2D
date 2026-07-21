@@ -18,7 +18,7 @@ from typing_extensions import TypedDict
 from bores.errors import ValidationError
 from bores.grids.utils import coarsen_grid
 from bores.precision import get_dtype
-from bores.reservoir import BlackOilFluid
+from bores.reservoir import BlackOil
 from bores.states import ModelState
 from bores.typing import (
     NDimension,
@@ -769,7 +769,7 @@ _missing = object()
 
 
 def get_data(
-    source: typing.Union[ModelState[ThreeDimensions], BlackOilFluid],
+    source: typing.Union[ModelState[ThreeDimensions], BlackOil],
     name: str,
 ) -> ThreeDimensionalGrid:
     """
@@ -794,7 +794,7 @@ def get_data(
     ```
     """
     source_type = "model state"
-    if isinstance(source, BlackOilFluid):
+    if isinstance(source, BlackOil):
         if not name.startswith("model."):
             raise ValidationError(
                 f"Property {name.split('.')[-1]} not available on model. "

@@ -182,7 +182,7 @@ def solve_transport(
     # then the conversion factor would be 12.0 / 32.174 = 0.373. Which would scale the gravity terms accordingly.
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-        / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
+        / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
     temperature_grid = fluid_properties.temperature_grid
     if (pool := config.task_pool) is not None:

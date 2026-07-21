@@ -16,7 +16,6 @@ from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
 from bores.errors import ValidationError
-from bores.serde.base import Serializable
 from bores.typing import (
     FluidPhase,
     Number,
@@ -28,15 +27,17 @@ from bores.typing import (
 from bores.wells.base import Well
 from bores.wells.hydraulics.base import (
     SurfaceFluidProperties,
+    Wellbore,
     compute_friction_factor,
     compute_mixture_velocity,
     compute_static_hydrostatic_drop,
     static_mixture_density,
+    wellbore_type,
 )
 from bores.wells.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
 
-__all__ = ["FlowPattern", "compute_beggs_brill_holdup", "BeggsBrillWellboreModel"]
+__all__ = ["FlowPattern", "compute_beggs_brill_holdup", "BeggsBrillWellbore"]
 
 
 class FlowPattern(typing.NamedTuple):
@@ -298,23 +299,26 @@ def _compute_two_phase_friction_factor(
     return no_slip_friction_factor * math.exp(s)
 
 
+@wellbore_type
 @attrs.frozen(kw_only=True, slots=True)
-class BeggsBrillWellboreModel(Serializable):
+class BeggsBrillWellbore(Wellbore):
     """
-    Beggs & Brill (1973) `WellboreModel`.
+    Beggs & Brill (1973) `Wellbore`.
 
     Implements flow-pattern-dependent liquid holdup (in-situ mixture
     density differs from the no-slip/rate-weighted density
-    `MechanisticWellboreModel` uses) and a corrected two-phase friction
+    `MechanisticWellbore` uses) and a corrected two-phase friction
     factor.
 
     One segment per (reference_depth -> connection) pair, same as
-    `MechanisticWellboreModel`. Inclination comes from
+    `MechanisticWellbore`. Inclination comes from
     `PerforationIndex.inclination_from_vertical` and is populated by
     `wells.perforations` from `Perforation.direction` (vertical/horizontal
     only) for a well with no trajectory, or from the trajectory's local
     tangent for one with a trajectory.
     """
+
+    __type__ = "beggs_brill"
 
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
 
@@ -493,7 +497,7 @@ class BeggsBrillWellboreModel(Serializable):
         )
         return hydrostatic_drop, friction_drop
 
-    def perforation_pressures(
+    def compute_perforation_pressures(
         self,
         well: Well,
         reference_pressure: Number,
@@ -525,6 +529,7 @@ class BeggsBrillWellboreModel(Serializable):
                     mixture_density=static_mixture_density(sample),
                     length=abs(dz),
                     gravitational_acceleration=self.gravitational_acceleration,
+                    unit_system=self.unit_system,
                 )
                 pressures[i] = reference_pressure + geometric_sign * drop.total
                 continue
@@ -552,7 +557,7 @@ class BeggsBrillWellboreModel(Serializable):
             )
         return pressures
 
-    def tubing_head_pressure(
+    def compute_tubing_head_pressure(
         self,
         well: Well,
         reference_pressure: Number,
@@ -580,6 +585,7 @@ class BeggsBrillWellboreModel(Serializable):
                 mixture_density=mixture_density,
                 length=abs(dz),
                 gravitational_acceleration=self.gravitational_acceleration,
+                unit_system=self.unit_system,
             )
             return reference_pressure - drop.total
 
@@ -648,7 +654,7 @@ class BeggsBrillWellboreModel(Serializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Returns a new `BeggsBrillWellboreModel` in the *target* unit system.
+        Returns a new `BeggsBrillWellbore` in the *target* unit system.
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.

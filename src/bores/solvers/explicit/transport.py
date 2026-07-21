@@ -152,7 +152,7 @@ def solve_transport(
     )
     gravitational_constant = (
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-        / c.GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2
+        / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
 
     (

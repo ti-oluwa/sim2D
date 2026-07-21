@@ -14,6 +14,7 @@ import typing
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 
 from bores.typing import UnitSystem
 
@@ -280,7 +281,7 @@ def _mesh_to_grid(
 
 
 def _grid_to_mesh(
-    grid: Grid, *, cell_data: typing.Optional[typing.Dict[str, np.ndarray]]
+    grid: Grid, *, cell_data: typing.Optional[typing.Dict[str, npt.NDArray]]
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `meshio.Mesh`.
@@ -346,7 +347,7 @@ def _dump(
     *,
     destination: typing.Union[_PathOrStr, None],
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]],
+    cell_data: typing.Optional[typing.Dict[str, npt.NDArray]],
 ) -> typing.Optional[bytes]:
     """
     Write a `bores.grids.base.Grid` using `meshio`.
