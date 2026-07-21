@@ -329,7 +329,11 @@ WCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
     "WCONINJE",
     fields=[
         Field("well", str),
-        Field("injector_type", str),
+        Field(
+            "injector_type",
+            lambda v: str(v).upper(),
+            options={"OIL", "WATER", "GAS"},
+        ),
         Field(
             "status",
             lambda v: str(v).upper(),
@@ -449,7 +453,8 @@ WPIMULT = RepeatedRecordKeyword[typing.Union[str, float]](
         Field("multiplier", np.float64),
         Field("i", int, required=False, default=0),
         Field("j", int, required=False, default=0),
-        Field("k", int, required=False, default=0),
+        Field("k1", int, required=False, default=0),
+        Field("k2", int, required=False, default=0),
     ],
 )
 """
@@ -460,7 +465,7 @@ Fields:
 
 - `well`       - well name.
 - `multiplier` - PI multiplier applied on top of the existing value.
-- `i` / `j` / `k` - optional connection location to restrict the
+- `i` / `j` / `k1` / `k2` - optional connection location to restrict the
   multiplier to a single connection; all default to `0`, meaning
   "every connection on this well".
 """
@@ -490,7 +495,20 @@ GCONPROD = RepeatedRecordKeyword[typing.Union[str, float]](
     "GCONPROD",
     fields=[
         Field("group", str),
-        Field("control_mode", str),
+        Field(
+            "control_mode",
+            lambda v: str(v).upper(),
+            options={
+                "ORAT",
+                "BHP",
+                "RESV",
+                "WRAT",
+                "LRAT",
+                "GRAT",
+                "FLD",
+                "NONE",
+            },
+        ),
         Field("orat", np.float64, required=False, default=0.0),
         Field("wrat", np.float64, required=False, default=0.0),
         Field("grat", np.float64, required=False, default=0.0),
@@ -523,8 +541,23 @@ GCONINJE = RepeatedRecordKeyword[typing.Union[str, float]](
     "GCONINJE",
     fields=[
         Field("group", str),
-        Field("injector_type", str),
-        Field("control_mode", str),
+        Field(
+            "injector_type",
+            lambda v: str(v).upper(),
+            options={"OIL", "WATER", "GAS"},
+        ),
+        Field(
+            "control_mode",
+            lambda v: str(v).upper(),
+            options={
+                "RATE",
+                "RESV",
+                "VREP",
+                "REIN",
+                "FLD",
+                "NONE",
+            },
+        ),
         Field("rate", np.float64, required=False, default=0.0),
         Field("resv", np.float64, required=False, default=0.0),
     ],
@@ -545,7 +578,7 @@ Fields:
   for the group.
 """
 
-WECON = RepeatedRecordKeyword[typing.Union[str, float]](
+WECON = RepeatedRecordKeyword[typing.Union[str, float, bool]](
     "WECON",
     fields=[
         Field("well", str),
@@ -562,10 +595,9 @@ WECON = RepeatedRecordKeyword[typing.Union[str, float]](
         ),
         Field(
             "end_run_flag",
-            lambda v: str(v).upper(),
+            lambda v: str(v).upper() == "YES",
             required=False,
-            default="NO",
-            options={"YES", "NO"},
+            default=False,
         ),
     ],
 )
@@ -624,10 +656,10 @@ WGRUPCON = RepeatedRecordKeyword[typing.Union[str, float]](
             required=False,
             default=True,
         ),
-        Field(name="guide_rate", type=float, required=False, default=None),
+        Field(name="guide_rate", type=np.float64, required=False, default=None),
         Field(
             name="guide_rate_phase",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default=None,
             options={"OIL", "WAT", "GAS", "LIQ", "RES", "COMB", "FORM"},
@@ -659,14 +691,16 @@ GECON = RepeatedRecordKeyword[typing.Union[str, float, bool]](
     "GECON",
     fields=[
         Field(name="group", type=str),
-        Field(name="min_oil_rate", type=float, required=False, default=None),
-        Field(name="min_gas_rate", type=float, required=False, default=None),
-        Field(name="max_water_cut", type=float, required=False, default=None),
-        Field(name="max_gor", type=float, required=False, default=None),
-        Field(name="max_water_gas_ratio", type=float, required=False, default=None),
+        Field(name="min_oil_rate", type=np.float64, required=False, default=None),
+        Field(name="min_gas_rate", type=np.float64, required=False, default=None),
+        Field(name="max_water_cut", type=np.float64, required=False, default=None),
+        Field(name="max_gor", type=np.float64, required=False, default=None),
+        Field(
+            name="max_water_gas_ratio", type=np.float64, required=False, default=None
+        ),
         Field(
             name="workover_procedure",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="NONE",
             options={"NONE", "CON", "+CON", "WELL", "PLUG", "RATE"},
@@ -703,7 +737,7 @@ Fields:
 
 WELPI = RepeatedRecordKeyword[typing.Union[str, float]](
     "WELPI",
-    fields=[Field(name="well", type=str), Field(name="target_pi", type=float)],
+    fields=[Field(name="well", type=str), Field(name="target_pi", type=np.float64)],
 )
 """
 `WELPI 'WELL' TARGET_PI / ... /`
@@ -722,25 +756,25 @@ Fields:
 WPAVE = RecordKeyword[typing.Union[str, float, bool]](
     "WPAVE",
     fields=[
-        Field(name="f1", type=float, required=False, default=1.0),
+        Field(name="f1", type=np.float64, required=False, default=1.0),
         Field(
             name="procedure",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="WBP4",
             options={"WBP", "WBP4", "WBP5", "WBP9", "PBHP"},
         ),
-        Field(name="f2", type=float, required=False, default=0.0),
+        Field(name="f2", type=np.float64, required=False, default=0.0),
         Field(
             name="depth_correction",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="WELL",
             options={"WELL", "RES"},
         ),
         Field(
             name="open_connections_only",
-            type=lambda s: s.upper() == "YES",
+            type=lambda v: str(v).upper() == "YES",
             required=False,
             default=True,
         ),
@@ -772,25 +806,25 @@ WCONHIST = RepeatedRecordKeyword[typing.Union[str, float]](
         Field(name="well", type=str),
         Field(
             name="status",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="OPEN",
             options={"OPEN", "SHUT"},
         ),
         Field(
             name="control_mode",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="RESV",
             options={"ORAT", "WRAT", "GRAT", "RESV", "BHP"},
         ),
-        Field(name="orat", type=float, required=False, default=0.0),
-        Field(name="wrat", type=float, required=False, default=0.0),
-        Field(name="grat", type=float, required=False, default=0.0),
+        Field(name="orat", type=np.float64, required=False, default=0.0),
+        Field(name="wrat", type=np.float64, required=False, default=0.0),
+        Field(name="grat", type=np.float64, required=False, default=0.0),
         Field(name="vfp_table", type=int, required=False, default=None),
-        Field(name="alq", type=float, required=False, default=None),
-        Field(name="thp", type=float, required=False, default=None),
-        Field(name="bhp", type=float, required=False, default=None),
+        Field(name="alq", type=np.float64, required=False, default=None),
+        Field(name="thp", type=np.float64, required=False, default=None),
+        Field(name="bhp", type=np.float64, required=False, default=None),
     ],
 )
 """
@@ -820,21 +854,25 @@ WCONINJH = RepeatedRecordKeyword[typing.Union[str, float]](
     "WCONINJH",
     fields=[
         Field(name="well", type=str),
-        Field(name="phase", type=str, options={"OIL", "WAT", "GAS"}),
+        Field(
+            name="phase",
+            type=lambda v: str(v).upper(),
+            options={"OIL", "WAT", "GAS"},
+        ),
         Field(
             name="status",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="OPEN",
             options={"OPEN", "SHUT"},
         ),
-        Field(name="rate", type=float, required=False, default=0.0),
-        Field(name="bhp", type=float, required=False, default=None),
-        Field(name="thp", type=float, required=False, default=None),
+        Field(name="rate", type=np.float64, required=False, default=0.0),
+        Field(name="bhp", type=np.float64, required=False, default=None),
+        Field(name="thp", type=np.float64, required=False, default=None),
         Field(name="vfp_table", type=int, required=False, default=None),
         Field(
             name="control_mode",
-            type=str,
+            type=lambda v: str(v).upper(),
             required=False,
             default="RATE",
             options={"RATE", "BHP"},
@@ -863,7 +901,10 @@ Fields:
 
 WDFAC = RepeatedRecordKeyword[typing.Union[str, float]](
     "WDFAC",
-    fields=[Field(name="well", type=str), Field(name="d_factor", type=float)],
+    fields=[
+        Field(name="well", type=str),
+        Field(name="d_factor", type=np.float64),
+    ],
 )
 """
 `WDFAC 'WELL' D_FACTOR / ... /`

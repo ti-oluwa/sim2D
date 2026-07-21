@@ -486,11 +486,7 @@ def build_wells_indices(
         for perforation_idx in perforation_indices:
             perforation = perforation_idx.perforation
             cell_idx = perforation_idx.cell_index
-            wellbore_radius = (
-                perforation.wellbore_radius
-                if perforation.wellbore_radius is not None
-                else well.wellbore_radius
-            )
+            wellbore_radius = perforation.wellbore_radius
             cell_permeabilities = {
                 axis: array[cell_idx] for axis, array in permeabilities.items()
             }

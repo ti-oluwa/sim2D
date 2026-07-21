@@ -84,6 +84,7 @@ class ProducerControlMode(enum.Enum):
     BHP = "bhp"
     THP = "thp"
     GRUP = "grup"
+    UNSET = "none"
 
     def __str__(self) -> str:
         return self.value
@@ -104,6 +105,7 @@ class InjectorControlMode(enum.Enum):
     BHP = "bhp"
     THP = "thp"
     GRUP = "grup"
+    UNSET = "none"
 
     def __str__(self) -> str:
         return self.value
@@ -436,10 +438,8 @@ class ProducerControl(WellControl):
     efficiency_factor: Number = 1.0
     guide_rate: typing.Optional[Number] = None
     """
-    Weight used by group-target allocation (deck WGRUPCON item 3).
+    Weight used by group-target allocation (deck `WGRUPCON` item 3).
     `None` falls back to equal-weight allocation among eligible wells.
-
-    See `wells.resolution.allocation`.
     """
     unit_system: UnitSystem = UnitSystem.FIELD
 
@@ -450,11 +450,11 @@ class ProducerControl(WellControl):
             )
         if self.mode is ProducerControlMode.BHP and self.target_bhp is None:
             raise ValidationError(
-                "`target_bhp` is required when `mode` is ProducerControlMode.BHP."
+                "`target_bhp` is required when `mode` is `ProducerControlMode.BHP`."
             )
         if self.mode is ProducerControlMode.THP and self.target_thp is None:
             raise ValidationError(
-                "`target_thp` is required when `mode` is ProducerControlMode.THP."
+                "`target_thp` is required when `mode` is `ProducerControlMode.THP`."
             )
         if not (0 < self.efficiency_factor <= 1):
             raise ValidationError(
@@ -466,7 +466,7 @@ class ProducerControl(WellControl):
         ]
         if mismatched:
             raise ValidationError(
-                f"All `limits` must share this control's unit_system "
+                f"All `limits` must share this control's `unit_system` "
                 f"({self.unit_system.value}); found {mismatched[0].unit_system.value}."
             )
 

@@ -100,14 +100,13 @@ class Perforation(Serializable):
     workflows; harmless default.
     """
 
-    wellbore_radius: typing.Optional[Number] = None
-    """
-    Overrides `Well.wellbore_radius` for this completion only. `None`
-    inherits from `Well`.
-    """
+    wellbore_radius: Number = 0.25
+    """Perforation radius."""
 
     status: CompletionStatus = CompletionStatus.OPEN
     """See `CompletionStatus`."""
+
+    saturation_region: typing.Optional[int] = None
 
     connection_factor_override: typing.Optional[Number] = None
     """
@@ -143,7 +142,7 @@ class Perforation(Serializable):
                 f"`bottom_depth` ({self.bottom_depth}) must be >= "
                 f"`top_depth` ({self.top_depth})."
             )
-        if self.wellbore_radius is not None and self.wellbore_radius <= 0:
+        if self.wellbore_radius <= 0:
             raise ValidationError("`wellbore_radius` must be positive.")
         if self.connection_factor_override is not None and (
             self.connection_factor_override <= 0
@@ -199,12 +198,13 @@ class MDPerforation(Serializable):
     skin: Number = 0.0
     """Dimensionless skin factor."""
 
-    wellbore_radius: typing.Optional[Number] = None
-    """
-    Overrides `Well.wellbore_radius` for this completion only. `None` inherits from `Well`."""
+    wellbore_radius: Number = 0.25
+    """Perforation radius."""
 
     status: CompletionStatus = CompletionStatus.OPEN
     """See `CompletionStatus`."""
+
+    saturation_region: typing.Optional[int] = None
 
     connection_factor_override: typing.Optional[Number] = None
     """
@@ -232,7 +232,7 @@ class MDPerforation(Serializable):
             raise ValidationError(
                 f"`bottom_md` ({self.bottom_md}) must be >= `top_md` ({self.top_md})."
             )
-        if self.wellbore_radius is not None and self.wellbore_radius <= 0:
+        if self.wellbore_radius <= 0:
             raise ValidationError("`wellbore_radius` must be positive.")
         if self.connection_factor_override is not None and (
             self.connection_factor_override <= 0
@@ -312,24 +312,7 @@ class Well(Serializable):
     Deck `WELSPECS` item 2. `None` if ungrouped.
     """
 
-    wellbore_radius: Number = 0.25
-    """
-    Default matches SPE1's `COMPDAT` example (0.5 ft diameter => 0.25 ft
-    radius); overridable per perforation.
-    """
-
-    tubing_inner_diameter: typing.Optional[Number] = None
-    """
-    Required by `wells.hydraulics` if flowing pressure-drop is ever
-    requested for this well; `None` is valid for a well that will only ever
-    be queried for static/no-flow hydrostatic profiles.
-    """
-
-    tubing_roughness: typing.Optional[Number] = None
-    """
-    Absolute roughness, same length unit as `unit_system`. `None` means
-    `wells.hydraulics` would use a smooth-pipe assumption.
-    """
+    pvt_region: typing.Optional[int] = None
 
     unit_system: UnitSystem = UnitSystem.FIELD
 
@@ -343,10 +326,6 @@ class Well(Serializable):
             raise ValidationError(
                 f"Well {self.name!r} must have at least one perforation."
             )
-        if self.wellbore_radius <= 0:
-            raise ValidationError("`wellbore_radius` must be positive.")
-        if self.tubing_inner_diameter is not None and self.tubing_inner_diameter <= 0:
-            raise ValidationError("`tubing_inner_diameter` must be positive.")
 
         if self.trajectory is not None:
             if not all(
@@ -460,11 +439,7 @@ class Well(Serializable):
                     perforation,
                     top_md=perforation.top_md * length_factor,  # type: ignore[union-attr]
                     bottom_md=perforation.bottom_md * length_factor,  # type: ignore[union-attr]
-                    wellbore_radius=(
-                        perforation.wellbore_radius * length_factor
-                        if perforation.wellbore_radius is not None
-                        else None
-                    ),
+                    wellbore_radius=perforation.wellbore_radius * length_factor,
                 )
                 for perforation in self.perforations
             )
@@ -475,11 +450,7 @@ class Well(Serializable):
                     perforation,
                     top_depth=perforation.top_depth * length_factor,  # type: ignore[union-attr]
                     bottom_depth=perforation.bottom_depth * length_factor,  # type: ignore[union-attr]
-                    wellbore_radius=(
-                        perforation.wellbore_radius * length_factor
-                        if perforation.wellbore_radius is not None
-                        else None
-                    ),
+                    wellbore_radius=perforation.wellbore_radius * length_factor,
                 )
                 for perforation in self.perforations
             )
@@ -492,17 +463,6 @@ class Well(Serializable):
             reference_depth=self.reference_depth * length_factor,
             perforations=perforations,
             trajectory=trajectory,
-            wellbore_radius=self.wellbore_radius * length_factor,
-            tubing_inner_diameter=(
-                self.tubing_inner_diameter * length_factor
-                if self.tubing_inner_diameter is not None
-                else None
-            ),
-            tubing_roughness=(
-                self.tubing_roughness * length_factor
-                if self.tubing_roughness is not None
-                else None
-            ),
             unit_system=target,
         )
 
@@ -516,7 +476,6 @@ class Wells(
 ):
     """Name-keyed container of `Well` objects"""
 
-    __abstract_serializable__ = True
     __slots__ = ("wells", "unit_system")
 
     def __init__(
@@ -596,13 +555,11 @@ class Wells(
         )
 
     @classmethod
-    def from_deck(
-        cls, deck_file: DeckFile, *, grid: Grid, **well_kwargs: typing.Any
-    ) -> Self:
+    def from_deck(cls, deck_file: DeckFile, *, grid: Grid) -> Self:
         """
         Load the `Wells` object from a parsed `DeckFile`.
 
-        :param deck_file: Parsed deck containing WELSPECS/COMPDAT/WCONINJE.
+        :param deck_file: Parsed deck containing `WELSPECS`/`COMPDAT`/`WCONINJE`.
         :param grid: Grid built from the same deck.
         :param well_kwargs: Forwarded to `wells_from_records` and passed
             to the loaded `Well` instance.
@@ -610,7 +567,7 @@ class Wells(
         """
         from bores.wells._deck import load_wells_from_deck
 
-        return typing.cast(Self, load_wells_from_deck(deck_file, grid, **well_kwargs))
+        return typing.cast(Self, load_wells_from_deck(deck_file, grid))
 
     def __getitem__(self, name: str) -> Well:
         return self.well(name)

@@ -70,7 +70,7 @@ def make_producer(
     :param min_bhp: If given, adds a `BHPLimit(min_value=min_bhp)`.
     :param max_rate: If given, adds a `RateLimit` on `rate_quantity` capped
         at `max_rate`.
-    :param wellbore_radius: `Well.wellbore_radius`.
+    :param wellbore_radius: `Perforation.wellbore_radius`.
     :param tubing_inner_diameter: `Well.tubing_inner_diameter`.
     :param skin: Skin factor on the single perforation.
     :param group: `Well.group`.
@@ -92,10 +92,10 @@ def make_producer(
             Perforation(
                 top_depth=top_depth,
                 bottom_depth=bottom_depth,
+                wellbore_radius=wellbore_radius,
                 skin=skin,
             ),
         ),
-        wellbore_radius=wellbore_radius,
         tubing_inner_diameter=tubing_inner_diameter,
         group=group,
     )
@@ -151,7 +151,7 @@ def make_injector(
     :param target_bhp: BHP target. Takes priority over `target_rate` if
         both are given.
     :param max_bhp: If given, adds a `BHPLimit(max_value=max_bhp)`.
-    :param wellbore_radius: `Well.wellbore_radius`.
+    :param wellbore_radius: `Perforation.wellbore_radius`.
     :param tubing_inner_diameter: `Well.tubing_inner_diameter`.
     :param skin: Skin factor on the single perforation.
     :param group: `Well.group`.
@@ -170,9 +170,13 @@ def make_injector(
         if reference_depth is not None
         else bottom_depth,
         perforations=(
-            Perforation(top_depth=top_depth, bottom_depth=bottom_depth, skin=skin),
+            Perforation(
+                top_depth=top_depth,
+                bottom_depth=bottom_depth,
+                wellbore_radius=wellbore_radius,
+                skin=skin,
+            ),
         ),
-        wellbore_radius=wellbore_radius,
         tubing_inner_diameter=tubing_inner_diameter,
         group=group,
     )

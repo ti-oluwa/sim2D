@@ -10,7 +10,7 @@ from bores.constants import c
 from bores.datastructures import GridDimensions
 from bores.deck.core import DeckParseError
 from bores.deck.file import DeckFile
-from bores.errors import ValidationError
+from bores.errors import NotSupportedError, ValidationError
 from bores.grids.base import Grid
 from bores.typing import FluidPhase, Orientation, UnitSystem
 from bores.wells.base import CompletionStatus, Perforation, Well, Wells, WellType
@@ -62,9 +62,6 @@ def make_well_from_records(
     ] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     well_type: WellType = WellType.PRODUCER,
-    wellbore_radius: float = 0.25,
-    tubing_inner_diameter: typing.Optional[float] = None,
-    tubing_roughness: typing.Optional[float] = None,
 ) -> Well:
     """
     Build one `Well` from its `WELSPECS` record and its `COMPDAT` records.
@@ -78,11 +75,6 @@ def make_well_from_records(
     :param well_type: `Well.well_type`. Not derivable from WELSPECS/COMPDAT
         alone; the caller determines this from which of WCONPROD/WCONINJE
         the well appears in.
-    :param wellbore_radius: Default `Well.wellbore_radius` if `COMPDAT`
-        item 7 is absent on every record.
-    :param tubing_inner_diameter: `Well.tubing_inner_diameter`. `COMPDAT`
-        has no tubing-diameter item, so this must be supplied separately.
-    :param tubing_roughness: `Well.tubing_roughness`.
     :param unit_system: `Well.unit_system`.
     :returns: Constructed `Well`.
     :raises ValidationError: If `compdat_records` is empty.
@@ -99,6 +91,11 @@ def make_well_from_records(
             "Cannot ascertain grid dimensions. Ensure that the provided `Grid` has `dimensions`."
         )
 
+    if welspecs_record["inflow_eq"] != "STD":
+        raise NotSupportedError(
+            "Only the standard inflow equation (STD) is currently supported."
+        )
+
     if wpimult_records:
         multiplier_by_ijk = {
             (record["i"], record["j"], record["k1"], record["k2"]): record["multiplier"]
@@ -110,48 +107,56 @@ def make_well_from_records(
     for record in compdat_records:
         i, j = record["i"], record["j"]
         k1, k2 = record["k1"], record["k2"]
-        top_cell = _cell_index(dims, i, j, k1)
-        bottom_cell = _cell_index(dims, i, j, k2)
+        top_cell = dims.flat_index(i, j, k1)
+        bottom_cell = dims.flat_index(i, j, k2)
         top_depth = grid.cell_min_xyz[top_cell, 2]
         bottom_depth = grid.cell_max_xyz[bottom_cell, 2]
         multiplier_key = (record["i"], record["j"], record["k1"], record["k2"])
         direction = record.get("direction")
+        saturation_region = record.get("sat_table") or None  # 0 should map to None too
+        radius = (record.get("diameter") or 0) * 0.5
+        skin = record.get("skin", 0.0) or 0.0
+        status = (
+            CompletionStatus.OPEN
+            if record.get("status", "OPEN") == "OPEN"
+            else CompletionStatus.SHUT
+        )
         perforations.append(
             Perforation(
                 top_depth=top_depth,
                 bottom_depth=bottom_depth,
-                skin=record.get("skin", 0.0) or 0.0,
-                wellbore_radius=record.get("wellbore_radius"),
-                status=(
-                    CompletionStatus.OPEN
-                    if record.get("status", "OPEN") == "OPEN"
-                    else CompletionStatus.SHUT
-                ),
+                skin=skin,
+                wellbore_radius=radius,
+                status=status,
+                saturation_region=saturation_region,
                 connection_factor_override=record.get("connection_factor"),
                 connection_factor_multiplier=multiplier_by_ijk.get(multiplier_key),
                 direction=DIRECTION_MAP.get(direction) if direction else None,
             )
         )
 
+    reference_depth = welspecs_record.get("ref_depth")
     deepest_bottom_depth = max(perforation.bottom_depth for perforation in perforations)
     surface_location = grid.get_cell_center_at(
         welspecs_record["i"], welspecs_record["j"], 0
     )[:2]
+    pvt_region = welspecs_record.get("pvt_table") or None  # 0 should map to None too
+    preferred_phase = (
+        FluidPhase(welspecs_record["phase"].lower())
+        if welspecs_record.get("phase")
+        else None
+    )
     return Well(
         name=welspecs_record["well"],
         well_type=well_type,
         surface_location=surface_location,
-        reference_depth=welspecs_record.get("ref_depth") or deepest_bottom_depth,
+        reference_depth=reference_depth
+        if reference_depth is not None
+        else deepest_bottom_depth,
         perforations=tuple(perforations),
-        preferred_phase=(
-            FluidPhase(welspecs_record["phase"].lower())
-            if welspecs_record.get("phase")
-            else None
-        ),
+        preferred_phase=preferred_phase,
         group=welspecs_record.get("group"),
-        wellbore_radius=wellbore_radius,
-        tubing_inner_diameter=tubing_inner_diameter,
-        tubing_roughness=tubing_roughness,
+        pvt_region=pvt_region,
         unit_system=unit_system,
     )
 
@@ -166,7 +171,6 @@ def make_wells_from_records(
     ] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     injector_names: typing.Container[str] = (),
-    **well_kwargs: typing.Any,
 ) -> Wells:
     """
     Build a `Wells` container from every `WELSPECS`/`COMPDAT` record in a
@@ -196,8 +200,8 @@ def make_wells_from_records(
     wells = {
         record["well"]: make_well_from_records(
             grid,
-            record,
-            compdat_by_well.get(record["well"], []),
+            welspecs_record=record,
+            compdat_records=compdat_by_well.get(record["well"], []),
             wpimult_records=wpimult_by_well.get(record["well"]),
             well_type=(
                 WellType.INJECTOR
@@ -205,14 +209,13 @@ def make_wells_from_records(
                 else WellType.PRODUCER
             ),
             unit_system=unit_system,
-            **well_kwargs,
         )
         for record in welspecs_records
     }
     return Wells(wells=wells)
 
 
-def _deck_gas_rate(
+def from_deck_gas_rate(
     value: typing.Optional[float], unit_system: UnitSystem
 ) -> typing.Optional[float]:
     """
@@ -251,7 +254,9 @@ def make_producer_control_from_record(
         target_rate={
             ProducerControlMode.ORAT: record.get("orat"),
             ProducerControlMode.WRAT: record.get("wrat"),
-            ProducerControlMode.GRAT: _deck_gas_rate(record.get("grat"), unit_system),
+            ProducerControlMode.GRAT: from_deck_gas_rate(
+                record.get("grat"), unit_system
+            ),
             ProducerControlMode.LRAT: record.get("lrat"),
             ProducerControlMode.RESV: record.get("resv"),
         }.get(mode),
@@ -282,7 +287,7 @@ def make_injector_control_from_record(
 
     rate = record.get("rate")
     if phase is FluidPhase.GAS:
-        rate = _deck_gas_rate(rate, unit_system)
+        rate = from_deck_gas_rate(rate, unit_system)
 
     return InjectorControl(
         injected_phase=phase,
@@ -326,7 +331,7 @@ def make_economic_limits_from_record(
         # term. The Mscf/scf deck convention applies to that term the
         # same way it does to a standalone gas rate.
         if quantity == EconomicQuantity.GOR:
-            value = _deck_gas_rate(value, unit_system)
+            value = from_deck_gas_rate(value, unit_system)
         elif (
             quantity is EconomicQuantity.WATER_GAS_RATIO
             and unit_system is UnitSystem.FIELD
@@ -486,9 +491,7 @@ def apply_guide_rates(
         controls.set(well_name, attrs.evolve(current, guide_rate=guide_rate))
 
 
-def load_wells_from_deck(
-    deck_file: DeckFile, grid: Grid, **well_kwargs: typing.Any
-) -> Wells:
+def load_wells_from_deck(deck_file: DeckFile, grid: Grid) -> Wells:
     """
     :param deck_file: Parsed deck containing `WELSPECS`/`COMPDAT`/`WCONINJE`.
     :param grid: Grid built from the same deck, for completion depth lookups.
@@ -513,7 +516,6 @@ def load_wells_from_deck(
         wpimult_records=wpimult,
         unit_system=deck_file.unit_system,
         injector_names=injector_names,
-        **well_kwargs,
     )
 
 

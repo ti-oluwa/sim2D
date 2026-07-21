@@ -14,7 +14,6 @@ from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
 from bores.wells.hydraulics.base import Wellbore
-from bores.wells.hydraulics.mechanistic import MechanisticWellbore
 from bores.wells.resolution.base import ControlResolverSpec
 
 __all__ = ["WellSystem"]
@@ -85,12 +84,7 @@ class WellSystem(StoreSerializable):
 
     @classmethod
     def from_deck(
-        cls,
-        deck_file: DeckFile,
-        *,
-        grid: Grid,
-        default_wellbore: typing.Optional[Wellbore] = None,
-        **well_kwargs: typing.Any,
+        cls, deck_file: DeckFile, *, grid: Grid, default_wellbore: Wellbore
     ) -> Self:
         """
         Load a `WellSystem` from a parsed `DeckFile`.
@@ -111,11 +105,9 @@ class WellSystem(StoreSerializable):
             else None
         )
         return cls(
-            wells=Wells.from_deck(deck_file, grid=grid, **well_kwargs),
+            wells=Wells.from_deck(deck_file, grid=grid),
             well_controls=WellControls.from_deck(deck_file),
-            default_wellbore=default_wellbore
-            if default_wellbore is not None
-            else MechanisticWellbore(),
+            default_wellbore=default_wellbore,
             groups=groups,
             group_controls=group_controls,
         )

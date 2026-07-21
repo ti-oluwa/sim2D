@@ -57,7 +57,6 @@ class Field(typing.Generic[T]):
     required: bool = True
     default: typing.Optional[T] = None
     options: typing.Optional[Collection[T]] = None
-    on_error: typing.Literal["raise", "default"] = "raise"
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
@@ -570,9 +569,11 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         # Insert size-1 dims for missing axes, then broadcast
         target_shape = [1, 1, 1]
         for local_i, ax in enumerate(self.column_shape):
-            target_shape[axis_indices[ax]] = dim_map[ax]
+            target_shape[axis_indices[ax]] = int(dim_map[ax])
         arr_expanded = arr.reshape(target_shape)
-        full[:] = np.broadcast_to(arr_expanded, (dims.nx, dims.ny, dims.nz))
+        full[:] = np.broadcast_to(
+            arr_expanded, (int(dims.nx), int(dims.ny), int(dims.nz))
+        )
         return full.ravel(order="F")  # Eclipse flat order: i fastest
 
     def _timeline(

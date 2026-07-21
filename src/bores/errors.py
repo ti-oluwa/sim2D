@@ -29,6 +29,12 @@ class ValidationError(BORESError, ValueError):
     pass
 
 
+class NotSupportedError(BORESError, NotImplementedError):
+    """Raised when a specific feature is currently unsupported"""
+
+    pass
+
+
 # Solver Errors
 class PreconditionerError(BORESError):
     """Raised when there is an error related to preconditioners."""

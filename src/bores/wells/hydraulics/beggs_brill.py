@@ -320,6 +320,13 @@ class BeggsBrillWellbore(Wellbore):
 
     __type__ = "beggs_brill"
 
+    tubing_inner_diameter: Number
+
+    tubing_roughness: typing.Optional[Number] = None
+    """
+    Absolute roughness, same length unit as `unit_system`. `None` means
+    use a smooth-pipe assumption.
+    """
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -353,6 +360,9 @@ class BeggsBrillWellbore(Wellbore):
     tolerance, not unit-system-dependent."""
 
     def __attrs_post_init__(self) -> None:
+        if self.tubing_inner_diameter <= 0:
+            raise ValidationError("`tubing_inner_diameter` must be positive.")
+
         if self.gravitational_acceleration is None:
             field_gravitational_acceleration = (
                 c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
@@ -534,11 +544,6 @@ class BeggsBrillWellbore(Wellbore):
                 pressures[i] = reference_pressure + geometric_sign * drop.total
                 continue
 
-            if well.tubing_inner_diameter is None:
-                raise ValidationError(
-                    "`well.tubing_inner_diameter` is required for non-static flow"
-                )
-
             hydrostatic_drop, friction_drop = self._get_segment_drop(
                 length=abs(dz),
                 inclination_from_vertical=pidx.inclination_from_vertical,
@@ -546,8 +551,8 @@ class BeggsBrillWellbore(Wellbore):
                 phase_densities=sample.phase_densities,
                 phase_viscosities=sample.phase_viscosities,
                 gas_liquid_surface_tension=sample.gas_liquid_surface_tension,
-                tubing_inner_diameter=well.tubing_inner_diameter,
-                tubing_roughness=well.tubing_roughness,
+                tubing_inner_diameter=self.tubing_inner_diameter,
+                tubing_roughness=self.tubing_roughness,
                 is_injector=is_injector,
             )
             pressures[i] = (
@@ -589,17 +594,12 @@ class BeggsBrillWellbore(Wellbore):
             )
             return reference_pressure - drop.total
 
-        if well.tubing_inner_diameter is None:
-            raise ValidationError(
-                "`well.tubing_inner_diameter` is required for non-static flow"
-            )
-
         has_full_surface_properties = (
             surface_fluid_properties.phase_densities is not None
             and surface_fluid_properties.phase_viscosities is not None
             and surface_fluid_properties.gas_liquid_surface_tension is not None
         )
-
+        tubing_inner_diameter = self.tubing_inner_diameter
         if has_full_surface_properties:
             assert surface_fluid_properties.phase_densities is not None
             assert surface_fluid_properties.phase_viscosities is not None
@@ -611,8 +611,8 @@ class BeggsBrillWellbore(Wellbore):
                 phase_densities=surface_fluid_properties.phase_densities,
                 phase_viscosities=surface_fluid_properties.phase_viscosities,
                 gas_liquid_surface_tension=surface_fluid_properties.gas_liquid_surface_tension,
-                tubing_inner_diameter=well.tubing_inner_diameter,
-                tubing_roughness=well.tubing_roughness,
+                tubing_inner_diameter=tubing_inner_diameter,
+                tubing_roughness=self.tubing_roughness,
                 is_injector=is_injector,
             )
             return (
@@ -620,14 +620,14 @@ class BeggsBrillWellbore(Wellbore):
             )
 
         mixture_viscosity = surface_fluid_properties.get_mixture_viscosity(phase_rates)
-        velocity = compute_mixture_velocity(phase_rates, well.tubing_inner_diameter)
+        velocity = compute_mixture_velocity(phase_rates, tubing_inner_diameter)
         relative_roughness = (
-            well.tubing_roughness / well.tubing_inner_diameter
-            if well.tubing_roughness is not None
+            self.tubing_roughness / tubing_inner_diameter
+            if self.tubing_roughness is not None
             else 0.0
         )
         reynolds_number = (
-            mixture_density * velocity * well.tubing_inner_diameter / mixture_viscosity
+            mixture_density * velocity * tubing_inner_diameter / mixture_viscosity
         )
         friction_factor = compute_friction_factor(
             reynolds_number=reynolds_number,
@@ -641,7 +641,7 @@ class BeggsBrillWellbore(Wellbore):
         hydrostatic_drop = mixture_density * self.gravitational_acceleration * abs(dz)
         friction_drop = (
             friction_factor
-            * (abs(dz) / well.tubing_inner_diameter)
+            * (abs(dz) / tubing_inner_diameter)
             * (mixture_density * velocity**2 / 2.0)
         )
         return reference_pressure - hydrostatic_drop - (friction_sign * friction_drop)
@@ -672,6 +672,10 @@ class BeggsBrillWellbore(Wellbore):
         ]
         return attrs.evolve(
             self,
+            tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
+            tubing_roughness=self.tubing_roughness * length_factor
+            if self.tubing_roughness is not None
+            else None,
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
             unit_system=target,
         )

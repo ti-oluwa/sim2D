@@ -15,6 +15,7 @@ from bores.reservoir.state import EquilibriumRegions
 from bores.serde.stores import yaml
 from bores.typing import UnitSystem
 from bores.wells import WellSystem
+from bores.wells.hydraulics.mechanistic import MechanisticWellbore
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
@@ -52,7 +53,11 @@ initial_state = initialize_reservoir_state(
 )
 
 # Load wells
-wells = WellSystem.from_deck(df, grid=grid)
+wells = WellSystem.from_deck(
+    df,
+    grid=grid,
+    default_wellbore=MechanisticWellbore(tubing_inner_diameter=0.5),
+)
 # rich.print(wells.dump())
 
 # Construct the final model

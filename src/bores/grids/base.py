@@ -23,6 +23,7 @@ from bores.errors import (
 )
 from bores.serde.base import Serializable
 from bores.typing import (
+    Float,
     IntArray,
     Integer,
     Number,
@@ -608,7 +609,7 @@ class Grid(
     cell_max_xyz: NumberArray[TwoDimensions] = attrs.field(init=False)
     """Shape `(n_cells, 3)` - AABB maximum corner per cell."""
 
-    bounding_box: tuple[float, float, float, float, float, float] = attrs.field(
+    bounding_box: tuple[Float, Float, Float, Float, Float, Float] = attrs.field(
         init=False
     )
     """Global AABB: `(x_min, x_max, y_min, y_max, z_min, z_max)`."""
@@ -1134,12 +1135,10 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate(
-            [
-                owners[owners >= 0],
-                neighbours[neighbours >= 0],
-            ]
-        )
+        all_boundary = np.concatenate([
+            owners[owners >= 0],
+            neighbours[neighbours >= 0],
+        ])
         return typing.cast(
             IntArray[OneDimension], np.unique(all_boundary).astype(np.int32)
         )

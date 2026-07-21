@@ -269,6 +269,8 @@ def apply_limits(
     candidates: typing.List[typing.Tuple[Number, Limit]] = []
 
     for limit in control.limits:
+        if isinstance(limit, EconomicLimit):
+            continue
         if isinstance(limit, BHPLimit):
             bound = _bhp_bound(limit, resolution, is_injector=is_injector)
         elif isinstance(limit, RateLimit):

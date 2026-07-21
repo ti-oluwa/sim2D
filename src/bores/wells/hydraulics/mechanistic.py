@@ -46,6 +46,14 @@ class MechanisticWellbore(Wellbore):
 
     __type__ = "mechanistic"
 
+    tubing_inner_diameter: Number
+
+    tubing_roughness: typing.Optional[Number] = None
+    """
+    Absolute roughness, same length unit as `unit_system`. `None` means
+    use a smooth-pipe assumption.
+    """
+
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -58,23 +66,33 @@ class MechanisticWellbore(Wellbore):
     """
 
     laminar_reynolds_limit: typing.Optional[Number] = None
-    """`c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None` - dimensionless
-    (a Reynolds number), so no unit conversion applies regardless of
-    `unit_system`."""
+    """
+    `c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None` - dimensionless
+    (a Reynolds number).
+    """
 
     turbulent_reynolds_limit: typing.Optional[Number] = None
-    """`c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`. Dimensionless,
-    same as `laminar_reynolds_limit`."""
+    """
+    `c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`. Dimensionless,
+    same as `laminar_reynolds_limit`.
+    """
 
     friction_max_iterations: typing.Optional[int] = None
-    """`c.COLEBROOK_MAX_ITERATIONS` if `None`. An iteration count, not
-    unit-system-dependent."""
+    """
+    `c.COLEBROOK_MAX_ITERATIONS` if `None`. An iteration count, not
+    unit-system-dependent.
+    """
 
     friction_tolerance: typing.Optional[Number] = None
-    """`c.COLEBROOK_TOLERANCE` if `None`. A dimensionless convergence
-    tolerance, not unit-system-dependent."""
+    """
+    `c.COLEBROOK_TOLERANCE` if `None`. A dimensionless convergence
+    tolerance, not unit-system-dependent.
+    """
 
     def __attrs_post_init__(self) -> None:
+        if self.tubing_inner_diameter <= 0:
+            raise ValidationError("`tubing_inner_diameter` must be positive.")
+
         if self.gravitational_acceleration is None:
             field_gravitational_acceleration = (
                 c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
@@ -124,7 +142,6 @@ class MechanisticWellbore(Wellbore):
                 f"len(perforation_indices)={len(perforation_indices)} for "
                 f"well {well.name!r}."
             )
-        assert well.tubing_inner_diameter is not None
         assert self.gravitational_acceleration is not None
         total_rate = sum(phase_rates.values())
         pressures = np.empty(len(perforation_indices), dtype=float)
@@ -152,12 +169,12 @@ class MechanisticWellbore(Wellbore):
             mixture_viscosity = compute_mixture_viscosity(
                 phase_rates, sample.phase_viscosities
             )
-            velocity = compute_mixture_velocity(phase_rates, well.tubing_inner_diameter)
+            velocity = compute_mixture_velocity(phase_rates, self.tubing_inner_diameter)
             drop = compute_segment_pressure_drop(
                 length=abs(dz),
                 inclination_from_vertical=pidx.inclination_from_vertical,
-                tubing_inner_diameter=well.tubing_inner_diameter,
-                tubing_roughness=well.tubing_roughness,
+                tubing_inner_diameter=self.tubing_inner_diameter,
+                tubing_roughness=self.tubing_roughness,
                 mixture_density=mixture_density,
                 mixture_viscosity=mixture_viscosity,
                 mixture_velocity_in=velocity,
@@ -185,7 +202,6 @@ class MechanisticWellbore(Wellbore):
         surface_fluid_properties: SurfaceFluidProperties,
         is_injector: bool,
     ) -> Number:
-        assert well.tubing_inner_diameter is not None
         assert self.gravitational_acceleration is not None
         dz = 0.0 - well.reference_depth
         total_rate = sum(phase_rates.values())
@@ -202,12 +218,12 @@ class MechanisticWellbore(Wellbore):
             return reference_pressure - drop.total
 
         mixture_viscosity = surface_fluid_properties.get_mixture_viscosity(phase_rates)
-        velocity = compute_mixture_velocity(phase_rates, well.tubing_inner_diameter)
+        velocity = compute_mixture_velocity(phase_rates, self.tubing_inner_diameter)
         drop = compute_segment_pressure_drop(
             length=abs(dz),
             inclination_from_vertical=0.0,  # Surface tubing is always vertical
-            tubing_inner_diameter=well.tubing_inner_diameter,
-            tubing_roughness=well.tubing_roughness,
+            tubing_inner_diameter=self.tubing_inner_diameter,
+            tubing_roughness=self.tubing_roughness,
             mixture_density=mixture_density,
             mixture_viscosity=mixture_viscosity,
             mixture_velocity_in=velocity,
@@ -252,6 +268,10 @@ class MechanisticWellbore(Wellbore):
         ]
         return attrs.evolve(
             self,
+            tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
+            tubing_roughness=self.tubing_roughness * length_factor
+            if self.tubing_roughness is not None
+            else None,
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
             unit_system=target,
         )
