@@ -268,7 +268,7 @@ def _resolve_vector_spacing(
     # Prefer the vector form (DXV / DYV / DZV).
     vec = deck_file.get(vector_key)
     if vec is not None:
-        arr = np.asarray(vec, dtype=np.float64).ravel()
+        arr = np.asarray(vec, dtype=np.float64, copy=False).ravel()
         if len(arr) != count:
             raise GridImportError(
                 f"{vector_key} has {len(arr)} values but expected {count} "
@@ -281,7 +281,7 @@ def _resolve_vector_spacing(
     if per_cell is None:
         return None
 
-    flat = np.asarray(per_cell, dtype=np.float64).ravel()
+    flat = np.asarray(per_cell, dtype=np.float64, copy=False).ravel()
     reshaped = flat.reshape(nz, ny, nx)
     if axis == "x":
         return reshaped[0, 0, :]  # varies in x; take first y-row, first z-layer
@@ -408,7 +408,7 @@ def _assemble_grid(
         has no grid-dimension keyword.
     """
     if deck_file.dimensions is None:
-        raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
+        raise GridImportError("GRDECL file is missing the required `SPECGRID` keyword.")
 
     dims = deck_file.dimensions
     nx, ny, nz = dims.nx, dims.ny, dims.nz
@@ -447,7 +447,7 @@ def _assemble_grid(
         ) from exc
 
     raise GridImportError(
-        "GRDECL file contains neither COORD (corner-point) nor TOPS / DX / DXV "
+        "GRDECL file contains neither `COORD` (corner-point) nor `TOPS` / `DX` / `DXV` "
         "(Cartesian) geometry keywords."
     )
 
@@ -475,11 +475,11 @@ def _assemble_corner_point(
     """
     coord = deck_file.get("COORD")
     if coord is None:
-        raise GridImportError("GRDECL file is missing the required COORD keyword.")
+        raise GridImportError("GRDECL file is missing the required `COORD` keyword.")
 
     zcorn = deck_file.get("ZCORN")
     if zcorn is None:
-        raise GridImportError("GRDECL file is missing the required ZCORN keyword.")
+        raise GridImportError("GRDECL file is missing the required `ZCORN` keyword.")
 
     actnum_flat = deck_file.get("ACTNUM")
     if actnum_flat is not None:
@@ -545,14 +545,14 @@ def _assemble_cartesian(
     # Z origin from TOPS
     tops_flat = deck_file.get("TOPS")
     if tops_flat is not None:
-        tops_flat = np.asarray(tops_flat, dtype=np.float64)
+        tops_flat = np.asarray(tops_flat, dtype=np.float64, copy=False)
         n_columns = nx * ny
         tops_col = tops_flat[:n_columns]
         z_top = float(tops_col.min())
         if tops_col.max() - tops_col.min() > 1.0:
             warnings.warn(
-                "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
-                "uses a flat top surface at the minimum TOPS value. Geometry may be "
+                "GRDECL `TOPS` values vary by more than 1 unit; the Cartesian factory "
+                "uses a flat top surface at the minimum `TOPS` value. Geometry may be "
                 "approximate for dipping grids.",
                 stacklevel=6,
             )
@@ -580,7 +580,7 @@ def _assemble_cartesian(
     actnum_flat = deck_file.get("ACTNUM")
     meta["source_format"] = "grdecl_cartesian"
     if actnum_flat is not None:
-        meta["actnum"] = actnum_flat.astype(np.int32).reshape(nz, ny, nx)
+        meta["actnum"] = actnum_flat.astype(np.int32, copy=False).reshape(nz, ny, nx)
 
     nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
     fault_records = _build_fault_records(deck_file)
@@ -613,12 +613,10 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
-    {
-        "grdecl_corner_point",
-        "grdecl_cartesian",
-    }
-)
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
+    "grdecl_corner_point",
+    "grdecl_cartesian",
+})
 
 
 def _build_grdecl_text(
@@ -630,7 +628,7 @@ def _build_grdecl_text(
     source_format: str = meta.get("source_format", "")
     if source_format not in _GRDECL_SOURCES:
         raise GridExportError(
-            f"Cannot export a Grid with source_format={source_format!r} to GRDECL. "
+            f"Cannot export a `Grid` with source_format={source_format!r} to GRDECL. "
             "Only grids originally loaded by load_grdecl() support GRDECL export.  "
             f"Supported source formats: {sorted(_GRDECL_SOURCES)}."
         )
@@ -686,7 +684,7 @@ def _emit_actnum(
     nz: Integer,
 ) -> None:
     """Append an `ACTNUM` block in Eclipse Fortran order (i fastest)."""
-    actnum_arr = np.asarray(actnum, dtype=np.int32)
+    actnum_arr = np.asarray(actnum, dtype=np.int32, copy=False)
     if len(actnum_arr) != n_cells:
         raise GridExportError(
             f"actnum length {len(actnum_arr)} does not match n_cells {n_cells}."
@@ -712,7 +710,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64)
+        np
+        .asarray(arr, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -782,12 +781,6 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     if not has_face_faults and not has_nnc_faults:
         return
 
-    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
-        i = flat % nx
-        j = (flat // nx) % ny
-        k = flat // (nx * ny)
-        return i + 1, j + 1, k + 1
-
     lines.append("")
     lines.append("FAULTS")
 
@@ -795,13 +788,13 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     if has_face_faults:
         for fault_name, face_indices in sorted(grid.fault_face_indices.items()):  # type: ignore
             for face_idx in face_indices:
-                owner = int(grid.face_cell_indices[face_idx, 0])
-                neighbour = int(grid.face_cell_indices[face_idx, 1])
+                owner = grid.face_cell_indices[face_idx, 0]
+                neighbour = grid.face_cell_indices[face_idx, 1]
                 if owner < 0 or neighbour < 0:
                     continue
 
-                oi, oj, ok = _flat_to_ijk(owner)
-                ni, nj, nk = _flat_to_ijk(neighbour)
+                oi, oj, ok = grid.ijk_index(owner)
+                ni, nj, nk = grid.ijk_index(neighbour)
 
                 if ni != oi:
                     face_dir = "I" if ni > oi else "I-"
@@ -833,10 +826,10 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
         assert grid.nnc_cell_indices is not None
         for fault_name, nnc_indices in sorted(grid.nnc_fault_indices.items()):  # type: ignore
             for nnc_idx in nnc_indices:
-                c1 = int(grid.nnc_cell_indices[nnc_idx, 0])
-                c2 = int(grid.nnc_cell_indices[nnc_idx, 1])
-                oi, oj, ok = _flat_to_ijk(c1)
-                ni, nj, nk = _flat_to_ijk(c2)
+                c1 = grid.nnc_cell_indices[nnc_idx, 0]
+                c2 = grid.nnc_cell_indices[nnc_idx, 1]
+                oi, oj, ok = grid.ijk_index(c1)
+                ni, nj, nk = grid.ijk_index(c2)
 
                 if ni != oi:
                     face_dir = "I" if ni > oi else "I-"
@@ -900,20 +893,14 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> 
         grid.nnc_transmissibilities
     ) == len(grid.nnc_cell_indices)
 
-    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
-        i = flat % nx + 1
-        j = (flat // nx) % ny + 1
-        k = flat // (nx * ny) + 1
-        return i, j, k
-
     user_nnc_lines: typing.List[str] = []
     for idx, (c1, c2) in enumerate(grid.nnc_cell_indices):
         if int(grid.nnc_connection_types[idx]) != user_type:
             continue
-        i1, j1, k1 = _flat_to_ijk(int(c1))
-        i2, j2, k2 = _flat_to_ijk(int(c2))
+        i1, j1, k1 = grid.ijk_index(c1)
+        i2, j2, k2 = grid.ijk_index(c2)
         if has_transmissibility:
-            transmissibility = float(grid.nnc_transmissibilities[idx])  # type: ignore
+            transmissibility = grid.nnc_transmissibilities[idx]  # type: ignore
             transmissibility_str = (
                 f"{transmissibility:.6e}"
                 if not np.isnan(transmissibility)
@@ -1042,7 +1029,6 @@ def _build_grdecl_cartesian_text(
     _emit_multflt(lines, grid)
     _emit_nnc(lines, grid, nx, ny)
     _emit_pinch(lines, meta)
-
     return "\n".join(lines)
 
 
@@ -1106,5 +1092,4 @@ def _build_grdecl_corner_point_text(
     _emit_multflt(lines, grid)
     _emit_nnc(lines, grid, nx, ny)
     _emit_pinch(lines, meta)
-
     return "\n".join(lines)
