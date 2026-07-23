@@ -40,13 +40,13 @@ DIRECTION_MAP = {"X": Orientation.X, "Y": Orientation.Y, "Z": Orientation.Z}
 
 def _cell_index(dims: GridDimensions, i: int, j: int, k: int) -> int:
     """
-    Zero-based flat cell index for one-based Eclipse (I, J, K).
+    0-based flat cell index for one-based Eclipse (I, J, K).
 
     :param dims: Resolved grid dimensions (deck_file.dimensions).
     :param i: One-based I index.
     :param j: One-based J index.
     :param k: One-based K index.
-    :returns: Zero-based flat cell index, Eclipse i-fastest order - matches
+    :returns: 0-based flat cell index, Eclipse i-fastest order - matches
         how `ArrayKeyword` (PORO/PERMX/etc.) and `Grid` both index cells.
     """
     return (i - 1) + (j - 1) * dims.nx + (k - 1) * dims.nx * dims.ny
@@ -105,13 +105,14 @@ def make_well_from_records(
         multiplier_by_ijk = {}
 
     for record in compdat_records:
+        # Minus 1, to move from 1-based to 0-based indexing used internally
         i, j = record["i"], record["j"]
         k1, k2 = record["k1"], record["k2"]
-        top_cell = dims.flat_index(i, j, k1)
-        bottom_cell = dims.flat_index(i, j, k2)
+        top_cell = dims.flat_index(i - 1, j - 1, k1 - 1)
+        bottom_cell = dims.flat_index(i - 1, j - 1, k2 - 1)
         top_depth = grid.cell_min_xyz[top_cell, 2]
         bottom_depth = grid.cell_max_xyz[bottom_cell, 2]
-        multiplier_key = (record["i"], record["j"], record["k1"], record["k2"])
+        multiplier_key = (i, j, k1, k2)
         direction = record.get("direction")
         saturation_region = record.get("sat_table") or None  # 0 should map to None too
         radius = (record.get("diameter") or 0) * 0.5
@@ -138,7 +139,9 @@ def make_well_from_records(
     reference_depth = welspecs_record.get("ref_depth")
     deepest_bottom_depth = max(perforation.bottom_depth for perforation in perforations)
     surface_location = grid.get_cell_center_at(
-        welspecs_record["i"], welspecs_record["j"], 0
+        welspecs_record["i"] - 1,
+        welspecs_record["j"] - 1,
+        0,  # At surface
     )[:2]
     pvt_region = welspecs_record.get("pvt_table") or None  # 0 should map to None too
     preferred_phase = (

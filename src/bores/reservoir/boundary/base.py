@@ -7,18 +7,14 @@ import typing
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.constants import c, get_conversion_factors
 from bores.errors import DeserializationError, SerializationError, ValidationError
-from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
 from bores.reservoir.state import ReservoirState
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores import StoreSerializable
 from bores.typing import (
-    BooleanArray,
     IntArray,
-    NDimension,
     Number,
     NumberArray,
     OneDimension,
@@ -75,15 +71,17 @@ def boundary_function(
     `ParameterizedBoundaryFunction` instances that hold a reference to it to
     survive serialisation / deserialisation round-trips.
 
-    Can be used as a bare decorator or with keyword arguments::
+    Can be used as a bare decorator or with keyword arguments:
 
-        @boundary_function
-        def constant_flux(face_indices, state, rock, pvt, grid, time, *, value):
-            return np.full(len(face_indices), value)
+    ```python
+    @boundary_function
+    def constant_flux(face_positions, state, reservoir, time, *, value):
+        return np.full(len(face_positions), value)
 
-        @boundary_function(name="my_flux", override=True)
-        def my_flux(face_indices, state, rock, pvt, grid, time, *, rate):
-            return np.full(len(face_indices), rate / len(face_indices))
+    @boundary_function(name="my_flux", override=True)
+    def my_flux(face_positions, state, reservoir, time, *, rate):
+        return np.full(len(face_positions), rate / len(face_positions))
+    ```
 
     :param func: The callable to register (supplied automatically by Python
         when the decorator is used without arguments).
@@ -244,14 +242,14 @@ class ParameterizedBoundaryFunction(
     ```python
     @boundary_function
     def depth_weighted_flux(
-        face_indices, state, rock, pvt, grid, time,
+        face_positions, state, reservoir, time,
         *, rate_per_unit_depth, datum_depth
     ):
-        depths = grid.cell_center_depths[
-            grid.face_cell_indices[
-                grid.boundary_face_indices[face_indices], 0
-            ]
+        grid = reservoir.grid
+        owner_cells = grid.face_cell_indices[
+            grid.boundary_face_indices[face_positions], 0
         ]
+        depths = grid.cell_center_depths[owner_cells]
         weights = np.abs(depths - datum_depth)
         weights /= weights.sum() or 1.0
         return weights * rate_per_unit_depth
@@ -400,6 +398,14 @@ class BoundaryCondition(StoreSerializable):
         volumetric flow rates (positive = into reservoir) in the equivalent
         volume-per-time unit.
 
+        Must be safe to call more than once for the same `time` (e.g. from
+        successive Newton/Picard iterations within one timestep, before it's
+        accepted) without changing what a later call at an *earlier* or
+        equal `time` would return. Stateless conditions get this for free.
+        Stateful ones (see `commit`) must compute from their last
+        *committed* state every call, not from whatever the most recent
+        `evaluate` call happened to see.
+
         :param face_positions: Shape `(n_faces,)` int32 - positions into
             `Grid.boundary_face_indices` for this region.
         :param state: Current `ReservoirState`.
@@ -408,6 +414,42 @@ class BoundaryCondition(StoreSerializable):
         :returns: Shape `(n_faces,)` array of pressures or fluxes.
         """
         raise NotImplementedError
+
+    def commit(
+        self,
+        face_positions: IntArray[OneDimension],
+        state: ReservoirState,
+        reservoir: Reservoir,
+        time: Number,
+    ) -> Self:
+        """
+        Advance any internal recursive state to `time`, given the accepted `state`.
+
+        Call this exactly once per *accepted* timestep - never from inside a
+        Newton/Picard iteration, and never more than once for the same
+        `time`. `evaluate` must stay safe to call any number of times
+        without this; `commit` is the only place recursive state is allowed
+        to move forward, and it does so by returning a new instance rather
+        than mutating `self` - this class (like the rest of BORES) is
+        otherwise immutable.
+
+        The default implementation is a no-op returning `self` unchanged,
+        correct for any condition with no memory between calls (e.g.
+        `ConstantFluxBoundary`, `ConstantPressureBoundary`). Override this
+        only if `evaluate`'s result depends on more than `(face_positions,
+        state, reservoir, time)` alone - i.e. on some history the condition
+        keeps internally (see `bores.reservoir.boundary.aquifers.CarterTracyAquifer`).
+
+        :param face_positions: Shape `(n_faces,)` int32 - positions into
+            `Grid.boundary_face_indices` for this region. Same value passed
+            to the `evaluate` call being committed.
+        :param state: The accepted `ReservoirState` for `time`.
+        :param reservoir: The simulation `Reservoir`.
+        :param time: Time being committed to, in `unit_system` time units.
+        :returns: `self` (default), or a new instance with advanced internal
+            state (stateful overrides).
+        """
+        return self
 
     def __call__(
         self,

@@ -505,7 +505,7 @@ class TimeDependentFluxBoundary(BoundaryCondition):
     schedule_function(
         face_positions: IntArray[OneDimension],
         state: ReservoirState,
-        rreservoir: Reservoir,
+        reservoir: Reservoir,
         time: Number,
     ) -> NumberArray[OneDimension]: ... # shape (n_faces,), volume/time in `unit_system`
     ```

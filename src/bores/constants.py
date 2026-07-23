@@ -928,6 +928,13 @@ DEFAULT_CONSTANTS: typing.Dict[
         ),
         unit="dimensionless",
     ),
+    "AQUIFER_BESSEL_SERIES_TERMS": Constant(
+        value=30,
+        description=(
+            "Empirically validated safety margin for the Klins finite-aquifer series"
+        ),
+        unit="dimensionless",
+    ),
 }
 
 

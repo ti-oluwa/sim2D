@@ -6,10 +6,180 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
+from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.typing import CellArray
+from bores.typing import CellArray, IntArray, OneDimension, Side
 
 __all__ = ["as_pyvista_grid"]
+
+
+SIDE_ALIASES: typing.Dict[str, Side] = {
+    "left": Side.WEST,
+    "right": Side.EAST,
+    "front": Side.SOUTH,
+    "back": Side.NORTH,
+    "up": Side.TOP,
+    "down": Side.BOTTOM,
+}
+
+AXIS_SIDES: typing.Dict[int, typing.Tuple[Side, Side]] = {
+    0: (Side.WEST, Side.EAST),
+    1: (Side.SOUTH, Side.NORTH),
+    2: (Side.TOP, Side.BOTTOM),
+}
+
+
+def resolve_side(side: typing.Union[Side, str]) -> Side:
+    """
+    Resolve a `Side`, its `.value` string, or a common alias
+    ('left'/'right'/'front'/'back'/'up'/'down') to a `Side` member.
+
+    :param side: `Side` member, value string, or alias.
+    :returns: Resolved `Side`.
+    :raises ValidationError: If `side` doesn't resolve to a known `Side`.
+    """
+    if isinstance(side, Side):
+        return side
+
+    key = side.strip().lower()
+    if key in SIDE_ALIASES:
+        return SIDE_ALIASES[key]
+    try:
+        return Side(key)
+    except ValueError as exc:
+        valid = sorted({member.value for member in Side} | set(SIDE_ALIASES))
+        raise ValidationError(f"Unknown side {side!r}. Valid values: {valid}.") from exc
+
+
+def classify_boundary_faces(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+    """
+    Classify every boundary face of `grid` into one of the six `Side`s.
+
+    For each boundary face, its outward normal is re-derived defensively as
+    `sign(dot(face_unit_normals[face], face_centroid - owner_cell_centroid))`
+    rather than trusting `Grid.face_unit_normals`'s stored sign directly.
+    The axis with the largest-magnitude (re-oriented) normal component
+    decides X/Y/Z; its sign decides which of the two `Side`s on that axis.
+
+    Every boundary face is genuinely exterior by definition (its
+    `face_cell_indices` neighbour is `-1`), so classification is purely by
+    outward-normal direction - no bounding-box-extremity check. A face on
+    an irregular flank (partway along a fault-bounded edge, or the inner
+    corner of an L-shaped field) is still genuinely facing one direction
+    and belongs on that side; requiring proximity to the domain's
+    bounding-box corner would drop real boundary faces on any non-box-shaped
+    field. Every boundary face is assigned to exactly one `Side` - nothing
+    is dropped.
+
+    Classification happens in whatever frame `grid`'s stored coordinates
+    are actually in. For a grid built with the default
+    `apply_map_axes=True` (corner-point/Cartesian factories), that's true
+    map/geographic space, so `Side.WEST` means true west. For a grid built
+    with `apply_map_axes=False`, it means the grid's own local axes -
+    consistent with every other computation on such a grid.
+
+    :param grid: Grid to classify. Must have resolved face geometry
+        (`face_unit_normals`, `face_centroids`, `cell_centroids`) - true
+        for any `Grid` built through a grid factory.
+    :returns: Mapping from every `Side` to the *positions* (0-based, into
+        `Grid.boundary_face_indices` - not global face indices) of the
+        faces assigned to that side, as an `int32` array. A `Side` with no
+        matching faces maps to an empty array rather than being omitted.
+    :raises ValidationError: If `grid`'s face geometry hasn't been resolved.
+    """
+    if grid.cell_centroids is None:
+        raise ValidationError(
+            "`grid` has no `cell_centroids`; cannot re-derive outward face orientation."
+        )
+
+    boundary = grid.boundary_face_indices
+    if len(boundary) == 0:
+        return {side: np.empty(0, dtype=np.int32) for side in Side}
+
+    owners = grid.face_cell_indices[boundary, 0]
+    face_centroids = grid.face_centroids[boundary]
+    cell_centroids = grid.cell_centroids[owners]
+
+    raw_normals = grid.face_unit_normals[boundary]
+    outward_ref = face_centroids - cell_centroids
+    flip = np.sign(np.einsum("ij,ij->i", raw_normals, outward_ref))
+    flip[flip == 0.0] = 1.0
+    normals = raw_normals * flip[:, None]
+
+    dominant_axis = np.argmax(np.abs(normals), axis=1)
+    dominant_sign = np.sign(normals[np.arange(len(boundary)), dominant_axis])
+    # A stored/rederived unit normal should never be exactly zero on its own
+    # dominant axis. We guard against it anyway rather than silently dropping.
+    dominant_sign[dominant_sign == 0.0] = 1.0
+
+    positions = np.arange(len(boundary))
+    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    for axis, (negative_side, positive_side) in AXIS_SIDES.items():
+        on_axis = dominant_axis == axis
+        result[negative_side] = positions[on_axis & (dominant_sign < 0.0)].astype(  # type: ignore[assignment]
+            np.int32
+        )
+        result[positive_side] = positions[on_axis & (dominant_sign > 0.0)].astype(  # type: ignore[assignment]
+            np.int32
+        )
+    return result
+
+
+def classify_boundary_cells(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+    """
+    Classify every boundary-adjacent cell of `grid` into one of the six
+    `Side`s, derived from `classify_boundary_faces`.
+
+    A cell is included on a `Side` if it owns at least one boundary face
+    classified there. A corner cell genuinely touching two flanks (e.g.
+    both the west and south edges) appears in both `Side`s' arrays - that's
+    correct, not a bug: it really is exposed on both.
+
+    :param grid: Grid to classify.
+    :returns: Mapping from every `Side` to the *global cell indices*
+        (into `grid`'s own cell numbering) of cells with at least one
+        boundary face on that side, deduplicated and sorted (`np.unique`).
+        A `Side` with no matching cells maps to an empty array.
+    """
+    faces_by_side = classify_boundary_faces(grid)
+    boundary = grid.boundary_face_indices
+    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    for side, face_positions in faces_by_side.items():
+        if len(face_positions) == 0:
+            result[side] = np.empty(0, dtype=np.int32)
+            continue
+        global_face_indices = boundary[face_positions]
+        owners = grid.face_cell_indices[global_face_indices, 0]
+        result[side] = np.unique(owners).astype(np.int32)
+    return result
+
+
+def cells_on_side(
+    grid: Grid,
+    side: typing.Union[Side, str],
+    *,
+    classified: typing.Optional[typing.Mapping[Side, IntArray[OneDimension]]] = None,
+) -> IntArray[OneDimension]:
+    """
+    Global cell indices of every boundary-adjacent cell on one flank of `grid`.
+
+    ```python
+    west_cells = cells_on_side(grid, "west")
+    ```
+
+    :param grid: Grid to classify. Ignored if `classified` is supplied.
+    :param side: Which flank - a `Side` member, its `.value` string, or a
+        common alias ('left'/'right'/'front'/'back'/'up'/'down').
+    :param classified: Pre-computed `classify_boundary_cells(grid)` result.
+        Pass this when calling for several sides on the same grid, to avoid
+        re-classifying every boundary face once per side.
+    :returns: Sorted, deduplicated global cell indices on that side. Empty
+        array if the grid has no boundary cells on that flank.
+    :raises ValidationError: If `side` doesn't resolve to a known `Side`.
+    """
+    resolved = resolve_side(side)
+    cells = classified if classified is not None else classify_boundary_cells(grid)
+    return cells[resolved]
 
 
 @numba.njit(parallel=True, cache=True)
@@ -60,7 +230,6 @@ def _count_cell_entries(
             )
         # 1 (total_count) + 1 (n_faces) + n_faces (per-face counts) + n_verts_total
         counts[cell_idx] = np.int64(2) + np.int64(n_faces) + n_verts_total
-
     return counts
 
 
@@ -119,8 +288,8 @@ def _fill_cell_entries(
             n_verts = vertex_end - vertex_start
             out[position] = n_verts
             position += 1
-            for vi in range(vertex_start, vertex_end):
-                out[position] = face_vertex_indices[vi]
+            for vertex_idx in range(vertex_start, vertex_end):
+                out[position] = face_vertex_indices[vertex_idx]
                 position += 1
 
         # total_count = everything written after the leading integer
@@ -150,10 +319,12 @@ def as_pyvista_grid(
 
     **`MapAxes`**:
 
-    When `grid.metadata["map_axes"]` is present, the grid's vertex
-    coordinates are rotated into map space before being passed to PyVista.
-    The rotation is applied to the shared `vertex_coordinates` array (a
-    copy), so the source `Grid` is not mutated.
+    No rotation happens here. `grid.vertex_coordinates` is already in map
+    space by the time it reaches this function as the corner-point and
+    Cartesian grid factories apply `MAPAXES` when `grid.metadata["map_axes"]`
+    is present, unless they were explicitly built with `apply_map_axes=False`,
+    in which case this renders the same local-space geometry every other
+    computation on the grid uses.
 
     :param grid: Source `Grid`.
     :param cell_data: Optional mapping of scalar field name to a shape
@@ -191,18 +362,9 @@ def as_pyvista_grid(
 
     n_cells = grid.n_cells
 
-    # Vertex coordinates (copy so we can rotate in-place)
+    # Copy as this function flips Z in-place below for PyVista's up
+    # convention, which must not mutate `grid.vertex_coordinates` itself.
     all_points = grid.vertex_coordinates.copy()
-
-    # Apply MapAxes rotation when present.
-    # Rotates only XY; Z (depth) is unchanged.
-    map_axes = grid.map_axes
-    if map_axes is not None:
-        if map_axes.unit_system != grid.unit_system:
-            map_axes = map_axes.convert(grid.unit_system)
-        rotation_matrix = map_axes.rotation_matrix
-        if np.all(np.isfinite(rotation_matrix)):
-            all_points[:, :2] = all_points[:, :2] @ rotation_matrix.T
 
     # Build VTK polyhedron face stream
     # First, count entries per cell

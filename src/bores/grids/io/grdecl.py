@@ -2,7 +2,7 @@
 GRDECL text-format reader and writer.
 
 GRDECL is the ASCII keyword-based format used by Eclipse, ResInsight, and
-most other reservoir simulators to describe corner-point pillar grids.
+most other reservoir simulators to describe/declare corner-point pillar grids.
 
 **Supported keywords (read)**:
 
@@ -28,6 +28,7 @@ import typing
 import warnings
 from pathlib import Path
 
+import numba
 import numpy as np
 import numpy.typing as npt
 
@@ -40,6 +41,7 @@ from bores.grids.factories.cartesian import make_cartesian_grid
 from bores.grids.factories.corner_point import (
     ActNumArray,
     FaultRecord,
+    _map_axes_xy_inverse,
     make_corner_point_grid,
     rederive_corner_point_arrays,
 )
@@ -69,12 +71,6 @@ _UNITS_MAP: typing.Dict[str, UnitSystem] = {
     "CENTIMETERS": UnitSystem.LAB,
 }
 
-_BARE_UNIT_KEYWORDS: typing.Dict[str, UnitSystem] = {
-    "FIELD": UnitSystem.FIELD,
-    "METRIC": UnitSystem.METRIC,
-    "LAB": UnitSystem.LAB,
-    "SI": UnitSystem.SI,
-}
 
 _US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
     UnitSystem.FIELD: "FEET",
@@ -169,7 +165,7 @@ def _build_nnc_arrays(
     for idx, record in enumerate(nnc_records):
         i1, j1, k1 = record["i1"], record["j1"], record["k1"]
         i2, j2, k2 = record["i2"], record["j2"], record["k2"]
-        t = record["transmissibility"]
+        transmissibility = record["transmissibility"]
 
         for label, i, j, k in [("first", i1, j1, k1), ("second", i2, j2, k2)]:
             if not (1 <= i <= nx and 1 <= j <= ny and 1 <= k <= nz):
@@ -182,7 +178,7 @@ def _build_nnc_arrays(
         c1 = (i1 - 1) + (j1 - 1) * nx + (k1 - 1) * nx * ny
         c2 = (i2 - 1) + (j2 - 1) * nx + (k2 - 1) * nx * ny
         pairs.append((c1, c2))
-        transmissibilities.append(t)
+        transmissibilities.append(transmissibility)
 
     if not pairs:
         return None, None
@@ -408,10 +404,10 @@ def _assemble_grid(
         has no grid-dimension keyword.
     """
     if deck_file.dimensions is None:
-        raise GridImportError("GRDECL file is missing the required `SPECGRID` keyword.")
+        raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
 
     dims = deck_file.dimensions
-    nx, ny, nz = dims.nx, dims.ny, dims.nz
+    nx, ny, nz = dims
 
     unit_system = _detect_unit_system(deck_file)
     map_axes = _build_map_axes(deck_file)
@@ -447,7 +443,7 @@ def _assemble_grid(
         ) from exc
 
     raise GridImportError(
-        "GRDECL file contains neither `COORD` (corner-point) nor `TOPS` / `DX` / `DXV` "
+        "GRDECL file contains neither COORD (corner-point) nor TOPS / DX / DXV "
         "(Cartesian) geometry keywords."
     )
 
@@ -475,11 +471,11 @@ def _assemble_corner_point(
     """
     coord = deck_file.get("COORD")
     if coord is None:
-        raise GridImportError("GRDECL file is missing the required `COORD` keyword.")
+        raise GridImportError("GRDECL file is missing the required COORD keyword.")
 
     zcorn = deck_file.get("ZCORN")
     if zcorn is None:
-        raise GridImportError("GRDECL file is missing the required `ZCORN` keyword.")
+        raise GridImportError("GRDECL file is missing the required ZCORN keyword.")
 
     actnum_flat = deck_file.get("ACTNUM")
     if actnum_flat is not None:
@@ -548,11 +544,11 @@ def _assemble_cartesian(
         tops_flat = np.asarray(tops_flat, dtype=np.float64, copy=False)
         n_columns = nx * ny
         tops_col = tops_flat[:n_columns]
-        z_top = float(tops_col.min())
+        z_top = tops_col.min()
         if tops_col.max() - tops_col.min() > 1.0:
             warnings.warn(
-                "GRDECL `TOPS` values vary by more than 1 unit; the Cartesian factory "
-                "uses a flat top surface at the minimum `TOPS` value. Geometry may be "
+                "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
+                "uses a flat top surface at the minimum TOPS value. Geometry may be "
                 "approximate for dipping grids.",
                 stacklevel=6,
             )
@@ -580,7 +576,7 @@ def _assemble_cartesian(
     actnum_flat = deck_file.get("ACTNUM")
     meta["source_format"] = "grdecl_cartesian"
     if actnum_flat is not None:
-        meta["actnum"] = actnum_flat.astype(np.int32, copy=False).reshape(nz, ny, nx)
+        meta["actnum"] = actnum_flat.astype(np.int32).reshape(nz, ny, nx)
 
     nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
     fault_records = _build_fault_records(deck_file)
@@ -613,10 +609,12 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset({
-    "grdecl_corner_point",
-    "grdecl_cartesian",
-})
+_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
+    {
+        "grdecl_corner_point",
+        "grdecl_cartesian",
+    }
+)
 
 
 def _build_grdecl_text(
@@ -628,8 +626,8 @@ def _build_grdecl_text(
     source_format: str = meta.get("source_format", "")
     if source_format not in _GRDECL_SOURCES:
         raise GridExportError(
-            f"Cannot export a `Grid` with source_format={source_format!r} to GRDECL. "
-            "Only grids originally loaded by load_grdecl() support GRDECL export.  "
+            f"Cannot export a `Grid` with `source_format={source_format!r}` to GRDECL. "
+            "Only grids originally loaded by `load_grdecl()` support GRDECL export.  "
             f"Supported source formats: {sorted(_GRDECL_SOURCES)}."
         )
     if source_format == "grdecl_cartesian":
@@ -687,7 +685,7 @@ def _emit_actnum(
     actnum_arr = np.asarray(actnum, dtype=np.int32, copy=False)
     if len(actnum_arr) != n_cells:
         raise GridExportError(
-            f"actnum length {len(actnum_arr)} does not match n_cells {n_cells}."
+            f"`actnum` length {len(actnum_arr)} does not match `n_cells` {n_cells}."
         )
     lines.append("")
     lines.append("ACTNUM")
@@ -710,8 +708,7 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np
-        .asarray(arr, dtype=np.float64, copy=False)
+        np.asarray(arr, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -781,10 +778,17 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     if not has_face_faults and not has_nnc_faults:
         return
 
+    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+        i = flat % nx
+        j = (flat // nx) % ny
+        k = flat // (nx * ny)
+        # Add 1, to move from 0-based to 1-based indexing which Eclipse uses
+        return (i + 1, j + 1, k + 1)
+
     lines.append("")
     lines.append("FAULTS")
 
-    # Face-based faults (unchanged from before)
+    # Face-based faults
     if has_face_faults:
         for fault_name, face_indices in sorted(grid.fault_face_indices.items()):  # type: ignore
             for face_idx in face_indices:
@@ -793,8 +797,8 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
                 if owner < 0 or neighbour < 0:
                     continue
 
-                oi, oj, ok = grid.ijk_index(owner)
-                ni, nj, nk = grid.ijk_index(neighbour)
+                oi, oj, ok = _flat_to_ijk(owner)
+                ni, nj, nk = _flat_to_ijk(neighbour)
 
                 if ni != oi:
                     face_dir = "I" if ni > oi else "I-"
@@ -828,8 +832,8 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
             for nnc_idx in nnc_indices:
                 c1 = grid.nnc_cell_indices[nnc_idx, 0]
                 c2 = grid.nnc_cell_indices[nnc_idx, 1]
-                oi, oj, ok = grid.ijk_index(c1)
-                ni, nj, nk = grid.ijk_index(c2)
+                oi, oj, ok = _flat_to_ijk(c1)
+                ni, nj, nk = _flat_to_ijk(c2)
 
                 if ni != oi:
                     face_dir = "I" if ni > oi else "I-"
@@ -860,10 +864,7 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     lines.append("")
 
 
-def _emit_multflt(
-    lines: typing.List[str],
-    grid: Grid,
-) -> None:
+def _emit_multflt(lines: typing.List[str], grid: Grid) -> None:
     """Append a `MULTFLT` block from `grid.fault_transmissibility_multipliers`."""
     if not grid.fault_transmissibility_multipliers:
         return
@@ -893,12 +894,19 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> 
         grid.nnc_transmissibilities
     ) == len(grid.nnc_cell_indices)
 
+    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+        i = flat % nx
+        j = (flat // nx) % ny
+        k = flat // (nx * ny)
+        return i + 1, j + 1, k + 1
+
     user_nnc_lines: typing.List[str] = []
     for idx, (c1, c2) in enumerate(grid.nnc_cell_indices):
         if int(grid.nnc_connection_types[idx]) != user_type:
             continue
-        i1, j1, k1 = grid.ijk_index(c1)
-        i2, j2, k2 = grid.ijk_index(c2)
+
+        i1, j1, k1 = _flat_to_ijk(int(c1))
+        i2, j2, k2 = _flat_to_ijk(int(c2))
         if has_transmissibility:
             transmissibility = grid.nnc_transmissibilities[idx]  # type: ignore
             transmissibility_str = (
@@ -941,6 +949,114 @@ def _emit_pinch(
     lines.append("")
 
 
+@numba.njit(cache=True, parallel=True)
+def _cell_bounds_from_vertices(
+    local_vertices: NumberArray[TwoDimensions],
+    cell_face_offsets: IntArray[OneDimension],
+    cell_face_indices: IntArray[OneDimension],
+    face_vertex_offsets: IntArray[OneDimension],
+    face_vertex_indices: IntArray[OneDimension],
+    n_cells: int,
+) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
+    """
+    Per-cell (min, max) over each cell's own vertices, walked via
+    cell -> face -> vertex CSR connectivity.
+
+    :param local_vertices: Shape `(n_vertices, 3)`.
+    :param cell_face_offsets: Shape `(n_cells + 1,)` CSR offsets.
+    :param cell_face_indices: Shape `(n_cell_face,)` face index per
+        (cell, face) occurrence.
+    :param face_vertex_offsets: Shape `(n_faces + 1,)` CSR offsets.
+    :param face_vertex_indices: Shape `(n_face_vertex,)` vertex index per
+        (face, vertex) occurrence.
+    :param n_cells: Number of cells.
+    :returns: `(cell_min, cell_max)`, each shape `(n_cells, 3)`.
+    """
+    cell_min = np.empty((n_cells, 3), dtype=local_vertices.dtype)
+    cell_max = np.empty((n_cells, 3), dtype=local_vertices.dtype)
+
+    for cell_idx in numba.prange(n_cells):
+        xmin = ymin = zmin = np.inf
+        xmax = ymax = zmax = -np.inf
+        face_start = cell_face_offsets[cell_idx]
+        face_end = cell_face_offsets[cell_idx + 1]
+
+        for f in range(face_start, face_end):
+            face_idx = cell_face_indices[f]
+            vertex_start = face_vertex_offsets[face_idx]
+            vertex_end = face_vertex_offsets[face_idx + 1]
+
+            for v in range(vertex_start, vertex_end):
+                vertex_idx = face_vertex_indices[v]
+                x = local_vertices[vertex_idx, 0]
+                y = local_vertices[vertex_idx, 1]
+                z = local_vertices[vertex_idx, 2]
+
+                if x < xmin:
+                    xmin = x
+                if x > xmax:
+                    xmax = x
+
+                if y < ymin:
+                    ymin = y
+                if y > ymax:
+                    ymax = y
+
+                if z < zmin:
+                    zmin = z
+                if z > zmax:
+                    zmax = z
+
+        cell_min[cell_idx, 0] = xmin
+        cell_min[cell_idx, 1] = ymin
+        cell_min[cell_idx, 2] = zmin
+        cell_max[cell_idx, 0] = xmax
+        cell_max[cell_idx, 1] = ymax
+        cell_max[cell_idx, 2] = zmax
+
+    return cell_min, cell_max  # type: ignore[return-value]
+
+
+def _local_cartesian_cell_bounds(
+    grid: Grid, map_axes: MapAxes
+) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
+    """
+    Recompute each cell's axis-aligned bounding box in local (pre-`MAPAXES`)
+    space, from the grid's (map-space) vertex positions.
+
+    `grid.cell_min_xyz`/`grid.cell_max_xyz` can't be inverse-rotated
+    directly to get this: an axis-aligned bounding box computed in map
+    space doesn't correspond to the local-space bounding box of the same
+    cell once you rotate it back - a rotated box's AABB is, in general,
+    larger than the box itself along the new axes. Unlike the corner-point
+    writer (`rederive_corner_point_arrays`), Cartesian cells have no "z is
+    a free axis" shortcut to fall back on, since `MAPAXES` generally
+    rotates their edges away from the map-space X/Y axes entirely. So this
+    re-derives the bound from each cell's actual vertices, individually
+    inverse-transformed, rather than from the already-computed (map-space)
+    per-cell AABB.
+
+    :param grid: A Cartesian `Grid` whose `vertex_coordinates` are in map
+        space (i.e. built with `apply_map_axes=True`, the default).
+    :param map_axes: The `MAPAXES` that was applied when building `grid`.
+    :returns: `(cell_min_xyz, cell_max_xyz)`, each shape `(n_cells, 3)`, in
+        local space.
+    """
+    local_xy = _map_axes_xy_inverse(
+        xy=grid.vertex_coordinates[:, :2],  # type: ignore[arg-type]
+        map_axes=map_axes,
+    )
+    local_vertices = np.column_stack([local_xy, grid.vertex_coordinates[:, 2]])
+    return _cell_bounds_from_vertices(
+        local_vertices=local_vertices,  # type: ignore[arg-type]
+        cell_face_offsets=grid.cell_face_offsets,
+        cell_face_indices=grid.cell_face_indices,
+        face_vertex_offsets=grid.face_vertex_offsets,
+        face_vertex_indices=grid.face_vertex_indices,
+        n_cells=grid.n_cells,
+    )
+
+
 def _build_grdecl_cartesian_text(
     grid: Grid,
     *,
@@ -962,18 +1078,21 @@ def _build_grdecl_cartesian_text(
     :returns: GRDECL text string.
     """
     meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
-    nx = meta.get("nx")
-    ny = meta.get("ny")
-    nz = meta.get("nz")
 
-    if nx is None or ny is None or nz is None:
-        nx, ny, nz = 1, 1, grid.n_cells
+    if grid.dimensions is not None:
+        nx, ny, nz = grid.dimensions
+    else:
+        nx = meta.get("nx")
+        ny = meta.get("ny")
+        nz = meta.get("nz")
+        if nx is None or ny is None or nz is None:
+            nx, ny, nz = 1, 1, grid.n_cells
 
     n_cells = nx * ny * nz
     if n_cells != grid.n_cells:
         raise GridExportError(
             f"Stored dimensions ({nx}x{ny}x{nz}={n_cells}) do not match "
-            f"grid.n_cells={grid.n_cells}."
+            f"`grid.n_cells={grid.n_cells}`."
         )
 
     lines: typing.List[str] = []
@@ -984,11 +1103,17 @@ def _build_grdecl_cartesian_text(
     map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
+        # grid.cell_min_xyz/cell_max_xyz are in map space; TOPS/DXV/DYV/DZV
+        # need local-space bounds so they stay consistent with the `MAPAXES`
+        # card just emitted above (see `_local_cartesian_cell_bounds`).
+        cell_min_xyz, cell_max_xyz = _local_cartesian_cell_bounds(grid, map_axes)
+    else:
+        cell_min_xyz, cell_max_xyz = grid.cell_min_xyz, grid.cell_max_xyz
 
     # TOPS - use the top-layer cell minimum z values.
     # Order: i fastest (Eclipse Fortran / C with transposed axes).
     top_layer_indices = [i + j * nx for j in range(ny) for i in range(nx)]
-    tops_vals = grid.cell_min_xyz[top_layer_indices, 2]
+    tops_vals = cell_min_xyz[top_layer_indices, 2]
     lines.append("TOPS")
     for i in range(0, len(tops_vals), 6):
         chunk = tops_vals[i : i + 6]
@@ -998,7 +1123,7 @@ def _build_grdecl_cartesian_text(
 
     # DXV / DYV / DZV - one representative value per cell count.
     # We extract from cell bounding boxes: first j=0, k=0 row for DXV; etc.
-    dx_vals = grid.cell_max_xyz[:nx, 0] - grid.cell_min_xyz[:nx, 0]
+    dx_vals = cell_max_xyz[:nx, 0] - cell_min_xyz[:nx, 0]
     lines.append("DXV")
     lines.append("  " + "  ".join(f"{v:.6f}" for v in dx_vals))
     lines.append("/")
@@ -1006,7 +1131,7 @@ def _build_grdecl_cartesian_text(
 
     # DYV: cells at i=0, k=0 -> indices 0, nx, 2*nx, …
     dy_indices = np.arange(ny) * nx
-    dy_vals = grid.cell_max_xyz[dy_indices, 1] - grid.cell_min_xyz[dy_indices, 1]
+    dy_vals = cell_max_xyz[dy_indices, 1] - cell_min_xyz[dy_indices, 1]
     lines.append("DYV")
     lines.append("  " + "  ".join(f"{v:.6f}" for v in dy_vals))
     lines.append("/")
@@ -1014,7 +1139,7 @@ def _build_grdecl_cartesian_text(
 
     # DZV: cells at i=0, j=0, k=0..nz-1 -> indices 0, nx*ny, 2*nx*ny, …
     dz_indices = np.arange(nz) * nx * ny
-    dz_vals = grid.cell_max_xyz[dz_indices, 2] - grid.cell_min_xyz[dz_indices, 2]
+    dz_vals = cell_max_xyz[dz_indices, 2] - cell_min_xyz[dz_indices, 2]
     lines.append("DZV")
     lines.append("  " + "  ".join(f"{v:.6f}" for v in dz_vals))
     lines.append("/")

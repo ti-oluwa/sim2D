@@ -30,7 +30,7 @@ class EntryMeta(typing.NamedTuple):
     """
 
     idx: int
-    """Zero-based position in insertion order."""
+    """0-based position in insertion order."""
 
     group_name: str
     """Internal storage key (opaque to callers)."""

@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import numpy.typing as npt
 
+from bores.datastructures import MapAxes
 from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.base import (
@@ -37,6 +38,8 @@ def make_cartesian_grid(
     origin: typing.Tuple[Number, Number, Number] = (0.0, 0.0, 0.0),
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    map_axes: typing.Optional[MapAxes] = None,
+    apply_map_axes: bool = True,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
     fault_transmissibility_multipliers: typing.Optional[
         typing.Mapping[str, Number]
@@ -78,9 +81,25 @@ def make_cartesian_grid(
     :param dx: Cell width(s) in x. Scalar = uniform; 1-D array = variable.
     :param dy: Cell width(s) in y.
     :param dz: Cell thickness(es) in z.
-    :param origin: `(x0, y0, z0)` coordinate of the grid origin.
+    :param origin: `(x0, y0, z0)` coordinate of the grid origin, in local
+        (pre-`MAPAXES`) space.
     :param unit_system: Declared unit system.
     :param metadata: Optional metadata dictionary.
+    :param map_axes: `MAPAXES` to apply to the generated vertices before
+        returning the `Grid`. Falls back to `metadata['map_axes']` when
+        `None`. Unlike the corner-point factory, this rotates the *entire*
+        `(nx+1)*(ny+1)*(nz+1)` vertex array, not just an origin - a
+        non-axis-aligned rotation means the cells are no longer axis-
+        aligned boxes in map space, so there's no cheaper equivalent here.
+        `Grid`'s own geometry computation (face areas, normals, volumes)
+        doesn't assume axis alignment, so this is still safe; only GRDECL
+        re-export (`dump_grdecl`) needs to know to undo it - see
+        `bores.grids.io.grdecl._local_cartesian_cell_bounds`.
+    :param apply_map_axes: When `True` (the default) and a `map_axes` is
+        resolved (from this parameter or `metadata`), vertices are rotated/
+        translated into map space before the `Grid` is returned. Set
+        `False` to keep the grid in local space - the resolved `map_axes`
+        is still stored on `grid.metadata` either way.
     :param fault_records: `FaultRecord` objects from `FAULTS` keyword.
     :param fault_transmissibility_multipliers: `{name: multiplier}` from `MULTFLT`.
     :param positive_x_transmissibility_multipliers: Per-cell MULTX.
@@ -107,6 +126,29 @@ def make_cartesian_grid(
     nz = len(dz)
 
     vertex_coordinates = _build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
+
+    resolved_map_axes = (
+        map_axes if map_axes is not None else (metadata or {}).get("map_axes")
+    )
+    if resolved_map_axes is not None:
+        # `MAPUNITS` (map_axes' own unit_system) can differ from GRIDUNIT
+        # (this grid's unit_system) so we normalise once, upfront, so both the
+        # applied transform and the stored metadata are self-consistent.
+        resolved_map_axes = resolved_map_axes.convert(unit_system)
+
+    if resolved_map_axes is not None and apply_map_axes:
+        vertex_coordinates = vertex_coordinates.copy()
+        vertex_coordinates[:, :2] = _map_axes_xy_forward(
+            xy=vertex_coordinates[:, :2],  # type: ignore[arg-type]
+            map_axes=resolved_map_axes,
+        )
+
+    if resolved_map_axes is not None:
+        # Keep grid.metadata['map_axes'] consistent with whatever was
+        # actually resolved above, even if an explicit `map_axes` argument
+        # differed from (or `metadata` didn't yet have) one.
+        metadata = {**(metadata or {}), "map_axes": resolved_map_axes}
+
     face_vertex_indices, face_vertex_offsets, face_cell_indices = _build_face_arrays(
         nx=nx, ny=ny, nz=nz
     )
@@ -245,6 +287,21 @@ def make_cartesian_grid(
         negative_y_transmissibility_multipliers=negative_y_transmissibility_multipliers,
         positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
         negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
+    )
+
+
+def _map_axes_xy_forward(
+    xy: NumberArray[TwoDimensions], map_axes: MapAxes
+) -> NumberArray[TwoDimensions]:
+    """
+    Map local `(x, y)` pairs into map space: `origin + rotation_matrix @ xy`.
+
+    :param xy: Shape `(n, 2)` local-space points.
+    :param map_axes: Map axes to apply.
+    :returns: Shape `(n, 2)` map-space points.
+    """
+    return typing.cast(
+        NumberArray[TwoDimensions], map_axes.origin + xy @ map_axes.rotation_matrix.T
     )
 
 

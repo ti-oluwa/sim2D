@@ -260,7 +260,6 @@ class BoundaryConditions(StoreSerializable):
 
     def evaluate(
         self,
-        n_boundary_faces: int,
         state: ReservoirState,
         reservoir: Reservoir,
         time: Number,
@@ -279,11 +278,10 @@ class BoundaryConditions(StoreSerializable):
         Unregistered boundary faces (not covered by any region) default to
         zero flux (no-flow).
 
-        :param n_boundary_faces: Total number of boundary faces in the grid
-            (`len(Grid.boundary_face_indices)`). Determines the length of
-            the output arrays.
         :param state: Current `ReservoirState`.
-        :param time: Current simulation time (days).
+        :param time: Current simulation
+        :param state: Current `ReservoirState`.
+        :param time: Current stime (days).
         :param dtype: Output array dtype. When `None`, `get_dtype()` is used.
         :returns: 3-tuple `(pressure_values, flux_values, is_dirichlet)`
             where each array has shape `(n_boundary_faces,)`:
@@ -293,7 +291,7 @@ class BoundaryConditions(StoreSerializable):
                 is_dirichlet[i]     - True if face i has a Dirichlet BC
         """
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-
+        n_boundary_faces = len(reservoir.grid.boundary_face_indices)
         pressure_values = np.zeros(n_boundary_faces, dtype=dtype)
         flux_values = np.zeros(n_boundary_faces, dtype=dtype)
         is_dirichlet = np.zeros(n_boundary_faces, dtype=np.bool_)
@@ -322,6 +320,60 @@ class BoundaryConditions(StoreSerializable):
 
         return pressure_values, flux_values, is_dirichlet
 
+    def commit(self, state: ReservoirState, reservoir: Reservoir, time: Number) -> Self:
+        """
+        Advance every region's condition to `time`, given the accepted `state`.
+
+        Mirrors `evaluate`'s loop structure: calls
+        `region.condition.commit(region.face_positions, state, reservoir, time)`
+        for every region. Most conditions are stateless and return themselves
+        unchanged (`BoundaryCondition.commit`'s default); regions whose
+        condition doesn't change identity are passed through as-is rather
+        than rebuilt, so a `BoundaryConditions` with no stateful regions at
+        all returns `self` unchanged.
+
+        This should be called exactly once per accepted timestep, after the solver has
+        converged, not from inside a Newton/Picard iteration, and not more
+        than once for the same `time`. `self` is unchanged; like the rest of
+        this class, state only ever moves forward via a new instance.
+
+        :param state: The accepted `ReservoirState` for `time`.
+        :param reservoir: The simulation `Reservoir`.
+        :param time: Time being committed to, in `unit_system` time units.
+        :returns: `self` if every region's condition was unchanged by
+            committing, otherwise a new `BoundaryConditions` with the
+            advanced regions swapped in.
+        """
+        changed = False
+        new_regions: typing.List[BoundaryRegion] = []
+        for region in self.regions:
+            if len(region.face_positions) == 0:
+                new_regions.append(region)
+                continue
+
+            committed_condition = region.condition.commit(
+                face_positions=region.face_positions,
+                state=state,
+                reservoir=reservoir,
+                time=time,
+            )
+            if committed_condition is region.condition:
+                new_regions.append(region)
+                continue
+
+            changed = True
+            new_regions.append(
+                BoundaryRegion(
+                    name=region.name,
+                    face_positions=region.face_positions,
+                    condition=committed_condition,
+                )
+            )
+
+        if not changed:
+            return self
+        return attrs.evolve(self, regions=new_regions)  # type: ignore[return-value]
+
     def convert(
         self,
         target: UnitSystem,
@@ -335,7 +387,7 @@ class BoundaryConditions(StoreSerializable):
 
         Useful when the model unit system changes after the boundary conditions
         have been defined (e.g. loading a FIELD-unit deck and converting the
-        entire model to METRIC for a METRIC-unit solver).
+        entire model to `METRIC` for a METRIC-unit solver).
 
         :param target: Target `UnitSystem`.
         :returns: New `BoundaryConditions` in *target* units.

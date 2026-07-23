@@ -12,7 +12,6 @@ from bores.initialization import initialize_reservoir_state
 from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import EquilibriumRegions
-from bores.serde.stores import yaml
 from bores.typing import UnitSystem
 from bores.wells import WellSystem
 from bores.wells.hydraulics.mechanistic import MechanisticWellbore
@@ -21,7 +20,6 @@ df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # Load reservoir model
 grid = Grid.from_deck(df)
-print(grid.get_cell_center_at(9, 9, 2))
 regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
 satfunc = SaturationFunctionRegions.from_deck(df, mixing_rule="eclipse_rule")
 rock = Rock.from_deck(
@@ -73,6 +71,3 @@ pl = pv.Plotter()
 pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
 pl.set_scale(zscale=15, xscale=2, yscale=2)  # type:ignore
 pl.show()
-
-
-# TODO: Support region in well keywords

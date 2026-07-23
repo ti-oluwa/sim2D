@@ -1001,7 +1001,7 @@ class Grid(
         """
         Return whether a given cell is active.
 
-        :param cell_index: Zero-based cell index.
+        :param cell_index: 0-based cell index.
         :returns: `True` if the cell has `CellStatus.ACTIVE`.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
@@ -1017,7 +1017,7 @@ class Grid(
         """
         Return the `ConnectionType` for a given NNC.
 
-        :param nnc_index: Zero-based NNC index.
+        :param nnc_index: 0-based NNC index.
         :returns: `ConnectionType` enum value.
         :raises IndexError: If `nnc_index` is out of range.
         """
@@ -1032,7 +1032,7 @@ class Grid(
         """
         Return the `ConnectionType` for a given face.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :returns: `ConnectionType` enum value.
         :raises IndexError: If `face_index` is out of range.
         """
@@ -1047,7 +1047,7 @@ class Grid(
         """
         Return the indices of all faces belonging to a given cell.
 
-        :param cell_index: Zero-based cell index.
+        :param cell_index: 0-based cell index.
         :returns: 1-D array of face indices.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
@@ -1064,7 +1064,7 @@ class Grid(
         """
         Return the indices of all face-adjacent neighbours of a given cell.
 
-        :param cell_index: Zero-based cell index.
+        :param cell_index: 0-based cell index.
         :returns: 1-D array of neighbouring cell indices.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
@@ -1085,7 +1085,7 @@ class Grid(
         """
         Return the vertex coordinates of a given face.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :returns: Shape `(n_verts_for_face, 3)` coordinate array.
         """
         start = self.face_vertex_offsets[face_index]
@@ -1099,7 +1099,7 @@ class Grid(
         """
         Return the indices of all cells that share a given face.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :returns: 1-D array of cell indices (usually of length=2).
         :raises IndexError: If `face_index` is out of range.
         """
@@ -1115,7 +1115,7 @@ class Grid(
         """
         Return the outward unit normal of a face relative to a specific cell.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :param cell_index: Must be owner or neighbour of `face_index`.
         :returns: Shape `(3,)` unit normal pointing outward from `cell_index`.
         :raises ValidationError: If `cell_index` is not connected to `face_index`.
@@ -1135,10 +1135,12 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate([
-            owners[owners >= 0],
-            neighbours[neighbours >= 0],
-        ])
+        all_boundary = np.concatenate(
+            [
+                owners[owners >= 0],
+                neighbours[neighbours >= 0],
+            ]
+        )
         return typing.cast(
             IntArray[OneDimension], np.unique(all_boundary).astype(np.int32)
         )
@@ -1155,7 +1157,7 @@ class Grid(
         """
         Return whether a given cell is adjacent to at least one boundary face.
 
-        :param cell_index: Zero-based cell index.
+        :param cell_index: 0-based cell index.
         :raises CellNotFoundError: If `cell_index` is out of range.
         """
         if cell_index < 0 or cell_index >= self.n_cells:
@@ -1176,7 +1178,7 @@ class Grid(
         """
         Return whether a given face is adjacent to at least one boundary cell.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :raises IndexError: If `face_index` is out of range.
         """
         face_type = self.get_face_type(face_index)
@@ -1189,7 +1191,7 @@ class Grid(
         """
         Return whether a given face belongs to fault.
 
-        :param face_index: Zero-based face index.
+        :param face_index: 0-based face index.
         :raises IndexError: If `face_index` is out of range.
         """
         face_type = self.get_face_type(face_index)
@@ -1241,7 +1243,7 @@ class Grid(
     def get_cell_center_at(
         self, i: Integer, j: Integer, k: Integer
     ) -> typing.Tuple[Number, Number, Number]:
-        """Return the center coordinates `(x, y, z)`, of cell `(i, j, k)`."""
+        """Return the center coordinates `(x, y, z)`, of cell 0-based index `(i, j, k)`."""
         assert self.cell_centroids is not None
         cell_index = self.flat_index(i, j, k)
         return tuple(self.cell_centroids[cell_index])
@@ -1263,7 +1265,7 @@ class Grid(
         :param z: Query z-coordinate (positive downward).
         :param max_distance: Maximum allowed distance between the nearest cell
             and the query coordinates.
-        :returns: Zero-based index of the cell nearest to that position.
+        :returns: 0-based index of the cell nearest to that position.
         """
         cell_index = self.find_nearest_cell(x, y, z, max_distance=max_distance)
         return self.ijk_index(cell_index)
@@ -1288,7 +1290,7 @@ class Grid(
         :param z: Query z-coordinate (positive downward).
         :param max_distance: Maximum allowed distance between the nearest cell
             and the query coordinates.
-        :returns: Zero-based index of the nearest cell.
+        :returns: 0-based index of the nearest cell.
         """
         distance, cell_index = self._spatial_index.query([x, y, z])  # type: ignore
         if max_distance is not None and distance > max_distance:

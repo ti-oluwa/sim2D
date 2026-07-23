@@ -455,7 +455,7 @@ The parameters can be combined. `indices` takes priority and bypasses `steps` an
 
 | Parameter | Type | Description |
 |---|---|---|
-| `indices` | `Sequence[int]` | Zero-based insertion-order positions to load |
+| `indices` | `Sequence[int]` | 0-based insertion-order positions to load |
 | `steps` | `Sequence[int]` or `Callable[[int], bool]` | Filter by simulation step number |
 | `predicate` | `Callable[[EntryMeta], bool]` | Filter on stored entry metadata |
 | `validator` | `Callable[[ModelState], ModelState]` | Post-load validation/transformation |

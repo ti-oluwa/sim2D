@@ -72,7 +72,7 @@ class Operation(typing.NamedTuple):
     """Upper-cased source keyword name for `COPY`; `None` otherwise."""
 
     box: typing.Tuple[int, int, int, int, int, int]
-    """0-based inclusive `(i1, i2, j1, j2, k1, k2)` sub-grid box."""
+    """**0-based** inclusive `(i1, i2, j1, j2, k1, k2)` sub-grid box."""
 
     order: typing.Tuple[int, int]
     """
@@ -85,9 +85,7 @@ class Operation(typing.NamedTuple):
     """
 
 
-def _default_box(
-    dims: GridDimensions,
-) -> typing.Tuple[int, int, int, int, int, int]:
+def _default_box(dims: GridDimensions) -> typing.Tuple[int, int, int, int, int, int]:
     return (0, dims.nx - 1, 0, dims.ny - 1, 0, dims.nz - 1)
 
 
@@ -131,16 +129,18 @@ def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operatio
             tokens = tokenize(record.body)
             if len(tokens) < 6:
                 warnings.warn(
-                    f"BOX record has {len(tokens)} token(s); expected 6 "
+                    f"`BOX` record has {len(tokens)} token(s); expected 6 "
                     "(I1 I2 J1 J2 K1 K2). Ignoring.",
                     stacklevel=4,
                 )
                 continue
+
             try:
+                # Minus 1, to move from 1-based to 0-based indexing used internally
                 i1, i2, j1, j2, k1, k2 = (int(t) - 1 for t in tokens[:6])
             except ValueError:
                 warnings.warn(
-                    f"BOX record has non-integer tokens {tokens[:6]!r}; ignoring.",
+                    f"`BOX` record has non-integer tokens {tokens[:6]!r}; ignoring.",
                     stacklevel=4,
                 )
                 continue
@@ -222,6 +222,7 @@ def _parse_operator_records(
 
         if len(extra) >= 6:
             try:
+                # Minus 1, to move from 1-based to 0-based indexing used internally
                 ri1, ri2, rj1, rj2, rk1, rk2 = (int(t) - 1 for t in extra[:6])
                 record_box = _clamp_box(ri1, ri2, rj1, rj2, rk1, rk2, dims)
             except ValueError:
@@ -301,8 +302,8 @@ def apply_operation(
         source_array = resolve_source(operation.source)
         if source_array is None:
             warnings.warn(
-                f"COPY source {operation.source!r} has no data; skipping "
-                f"COPY into {operation.target!r}.",
+                f"`COPY` source {operation.source!r} has no data; skipping "
+                f"`COPY` into {operation.target!r}.",
                 stacklevel=2,
             )
             return

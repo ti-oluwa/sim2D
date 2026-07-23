@@ -138,7 +138,7 @@ class WellState(StoreSerializable):
         """
         Look up the `PerforationState` connected to a given cell.
 
-        :param cell_index: Zero-based `Grid` cell index.
+        :param cell_index: 0-based `Grid` cell index.
         :returns: Matching `PerforationState`.
         :raises KeyError: If no open perforation is connected to `cell_index`.
         """

@@ -22,6 +22,7 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
+from bores.datastructures import MapAxes
 from bores.errors import GridExportError, InvalidGridError, ValidationError
 from bores.grids.base import CellStatus, ConnectionType, Grid
 from bores.grids.factories.base import (
@@ -42,8 +43,7 @@ from bores.typing import (
     UnitSystem,
 )
 
-__all__ = ["make_corner_point_grid"]
-
+__all__ = ["make_corner_point_grid", "rederive_corner_point_arrays"]
 
 CoordArray: typing.TypeAlias = NumberArray[ThreeDimensions]
 """Corner-point COORD array, shape `(NY+1, NX+1, 6)`."""
@@ -86,6 +86,8 @@ def make_corner_point_grid(
     pinch_tolerance: typing.Optional[Number] = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    map_axes: typing.Optional[MapAxes] = None,
+    apply_map_axes: bool = True,
     nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
     nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
     fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
@@ -122,6 +124,16 @@ def make_corner_point_grid(
         Defaults to `metadata['pinch']` or 0.0 (no detection).
     :param unit_system: Declared unit system for coordinate arrays.
     :param metadata: Optional free-form metadata attached to the returned `Grid`.
+    :param map_axes: `MAPAXES` to apply to `coord` before deriving geometry.
+        Falls back to `metadata['map_axes']` when `None` - a `load_grdecl`
+        deck's parsed `MAPAXES` already ends up there, so callers that only
+        set it via `metadata` don't need to also pass it here explicitly.
+    :param apply_map_axes: When `True` (the default) and a `map_axes` is
+        resolved (from this parameter or `metadata`), `coord` is rotated/
+        translated into map space before any geometry is derived, so the
+        returned `Grid`'s coordinates are already correctly positioned.
+        Set `False` to keep the grid in local (pre-`MAPAXES`) space - the
+        resolved `map_axes` is still stored on `grid.metadata` either way.
     :param nnc_cell_indices: Shape `(n_nnc, 2)` user-declared NNC cell pairs.
     :param nnc_transmissibilities: Shape `(n_nnc,)` user-declared NNC transmissibilities.
     :param fault_records: `FaultRecord` objects from the GRDECL `FAULTS` keyword.
@@ -145,6 +157,24 @@ def make_corner_point_grid(
 
     coord_arr = np.asarray(coord, dtype=np.float64, copy=False)
     zcorn_arr = np.asarray(zcorn, dtype=np.float64, copy=False)
+
+    resolved_map_axes = (
+        map_axes if map_axes is not None else (metadata or {}).get("map_axes")
+    )
+    if resolved_map_axes is not None:
+        # `MAPUNITS` (map_axes' own unit_system) can differ from GRIDUNIT
+        # (this grid's unit_system) so we normalise once, upfront, so both the
+        # applied transform and the stored metadata are self-consistent.
+        resolved_map_axes = resolved_map_axes.convert(unit_system)
+
+    if resolved_map_axes is not None and apply_map_axes:
+        coord_arr = _apply_map_axes_to_coord(coord_arr, map_axes=resolved_map_axes)  # type: ignore[arg-type]
+
+    if resolved_map_axes is not None:
+        # Keep grid.metadata['map_axes'] consistent with whatever was
+        # actually resolved above, even if an explicit `map_axes` argument
+        # differed from (or `metadata` didn't yet have) one.
+        metadata = {**(metadata or {}), "map_axes": resolved_map_axes}
 
     if coord_arr.ndim != 3 or coord_arr.shape[2] != 6:
         raise ValidationError(
@@ -342,6 +372,70 @@ def make_corner_point_grid(
         positive_z_transmissibility_multipliers=positive_z_transmissibility_multipliers,
         negative_z_transmissibility_multipliers=negative_z_transmissibility_multipliers,
     )
+
+
+def _map_axes_xy_forward(
+    xy: NumberArray[TwoDimensions], map_axes: MapAxes
+) -> NumberArray[TwoDimensions]:
+    """
+    Map local `(x, y)` pairs into map space: `origin + rotation_matrix @ xy`.
+
+    :param xy: Shape `(n, 2)` local-space points.
+    :param map_axes: Map axes to apply.
+    :returns: Shape `(n, 2)` map-space points.
+    """
+    return typing.cast(
+        NumberArray[TwoDimensions], map_axes.origin + xy @ map_axes.rotation_matrix.T
+    )
+
+
+def _map_axes_xy_inverse(
+    xy: NumberArray[TwoDimensions], map_axes: MapAxes
+) -> NumberArray[TwoDimensions]:
+    """
+    Map `(x, y)` pairs from map space back to local (pre-`MAPAXES`) space.
+
+    Uses `numpy.linalg.inv` rather than assuming `rotation_matrix` is
+    orthonormal (it's built from two independently-normalised axis
+    direction vectors, so a deck with non-perpendicular `MAPAXES` axes -
+    unusual, but not rejected at parse time - would make the transpose an
+    incorrect inverse).
+
+    :param xy: Shape `(n, 2)` map-space points.
+    :param map_axes: Map axes to invert.
+    :returns: Shape `(n, 2)` local-space points.
+    """
+    inverse_rotation = np.linalg.inv(map_axes.rotation_matrix)
+    return typing.cast(
+        NumberArray[TwoDimensions], (xy - map_axes.origin) @ inverse_rotation.T
+    )
+
+
+def _apply_map_axes_to_coord(coord: CoordArray, map_axes: MapAxes) -> CoordArray:
+    """
+    Rotate and translate a COORD pillar array's `(x, y)` pairs into map space.
+
+    Applied once, upstream of pillar interpolation (`coord` is the only
+    array `_compute_active_cell_corner_coordinates` reads for areal
+    position), so every derived quantity - `vertex_coordinates`,
+    `cell_centroids`, face geometry, comes out already correctly
+    positioned; `cell_volumes` are unaffected, being invariant under
+    rotation/translation. `z` (pillar depth, columns 2 and 5) is untouched,
+    since `MAPAXES` is a purely areal transform.
+
+    :param coord: Shape `(NY+1, NX+1, 6)` - `[x_top, y_top, z_top,
+        x_bottom, y_bottom, z_bottom]` per pillar, in local (pre-`MAPAXES`)
+        space.
+    :param map_axes: Map axes to apply.
+    :returns: New array of the same shape, with `x`/`y` columns mapped.
+    """
+    rotated = coord.copy()
+    shape_xy = coord.shape[:-1] + (2,)
+    top_xy = coord[..., 0:2].reshape(-1, 2)
+    bottom_xy = coord[..., 3:5].reshape(-1, 2)
+    rotated[..., 0:2] = _map_axes_xy_forward(top_xy, map_axes).reshape(shape_xy)
+    rotated[..., 3:5] = _map_axes_xy_forward(bottom_xy, map_axes).reshape(shape_xy)
+    return rotated
 
 
 @numba.njit(cache=True)
@@ -922,15 +1016,28 @@ def rederive_corner_point_arrays(
     The reconstruction uses each cell's AABB. Pillars are assumed straight
     and vertical, so this is lossy for grids with lateral pillar displacement.
 
+    `(nx, ny, nz)` are taken from `grid.dimensions` when set, falling back
+    to `grid.metadata['nx'/'ny'/'nz']`, and finally to factorising
+    `grid.n_cells` if neither is available.
+
+    If `grid.metadata['map_axes']` is set, the reconstructed pillars are
+    transformed back to local (pre-`MAPAXES`) space before being packed
+    into `coord`, so the result stays consistent with that same
+    `MAPAXES` card being re-emitted alongside it (see `_map_axes_xy_inverse`).
+
     :param grid: A `Grid` whose cells are stored in k-major, j-middle, i-minor order.
     :returns: Tuple `(coord_arr, zcorn_arr, nx, ny, nz)`.
     :raises GridExportError: If the cell count cannot be factored.
     """
     n_cells = grid.n_cells
     meta = getattr(grid, "metadata", {}) or {}
-    nx = meta.get("nx")
-    ny = meta.get("ny")
-    nz = meta.get("nz")
+
+    if grid.dimensions is not None:
+        nx, ny, nz = grid.dimensions
+    else:
+        nx = meta.get("nx")
+        ny = meta.get("ny")
+        nz = meta.get("nz")
 
     if nx is None or ny is None or nz is None:
         found = False
@@ -982,6 +1089,26 @@ def rederive_corner_point_arrays(
     nonzero = pillar_count > 0
     pillar_x[nonzero] /= pillar_count[nonzero]
     pillar_y[nonzero] /= pillar_count[nonzero]
+
+    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    if map_axes is not None:
+        # grid.cell_min_xyz/cell_max_xyz (and so pillar_x/pillar_y above)
+        # are in map space whenever this grid was built with `MAPAXES`
+        # applied - GRDECL's COORD is defined in local (pre-MAPAXES) space,
+        # with the MAPAXES card re-emitted separately, so undo the areal
+        # transform here before packing into `coord`. This is exact for
+        # vertical pillars (the case this whole reconstruction already
+        # assumes): MAPAXES doesn't depend on z, so a pillar that was
+        # vertical - constant (x, y) across z - in local space is still
+        # vertical, at a rotated/translated (x, y), in map space; nothing
+        # extra is lost by inverting on the already-reduced pillar_x/
+        # pillar_y rather than on the full per-cell vertex set.
+        pillar_xy_local = _map_axes_xy_inverse(
+            xy=np.column_stack([pillar_x.ravel(), pillar_y.ravel()]),  # type: ignore[arg-type]
+            map_axes=map_axes,
+        )
+        pillar_x = pillar_xy_local[:, 0].reshape(pillar_x.shape)
+        pillar_y = pillar_xy_local[:, 1].reshape(pillar_y.shape)
 
     coord = np.empty((ny + 1, nx + 1, 6), dtype=np.float64)
     coord[:, :, 0] = pillar_x

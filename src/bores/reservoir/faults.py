@@ -12,7 +12,7 @@ from bores.errors import ValidationError
 from bores.grids.base import ConnectionType, Grid
 from bores.grids.factories.base import VALID_FAULT_FACE_DIRECTIONS
 from bores.serde.base import Serializable
-from bores.typing import Number
+from bores.typing import Integer, Number
 
 __all__ = ["Fault", "apply_faults", "remove_faults"]
 
@@ -80,6 +80,16 @@ class Fault(Serializable):
                 f"got {self.transmissibility_multiplier}."
             )
 
+    @typing.overload
+    @classmethod
+    def from_deck(cls, deck_file: DeckFile, *, name: str) -> Self: ...
+    @typing.overload
+    @classmethod
+    def from_deck(cls, deck_file: DeckFile, *, name: None) -> typing.List[Self]: ...
+    @typing.overload
+    @classmethod
+    def from_deck(cls, deck_file: DeckFile) -> typing.List[Self]: ...
+
     @classmethod
     def from_deck(
         cls,
@@ -109,7 +119,6 @@ class Fault(Serializable):
         multflt_map: typing.Dict[str, Number] = {
             record["name"]: record["multiplier"] for record in multflt_records
         }
-
         if name is not None:
             matching = [record for record in fault_records if record["name"] == name]
             if not matching:
@@ -200,10 +209,14 @@ def apply_faults(grid: Grid, *faults: Fault) -> Grid:
             "At least one `Fault` must be supplied to `apply_faults`."
         )
 
-    regions: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
-    nx: int = regions.get("nx", 0)
-    ny: int = regions.get("ny", 0)
-    nz: int = regions.get("nz", 0)
+    if grid.dimensions is not None:
+        nx, ny, nz = grid.dimensions
+    else:
+        meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
+        nx = meta.get("nx", 0)
+        ny = meta.get("ny", 0)
+        nz = meta.get("nz", 0)
+
     if nx == 0 or ny == 0 or nz == 0:
         raise ValidationError(
             "Grid metadata does not contain `nx`, `ny`, `nz`. "
@@ -252,7 +265,7 @@ def remove_faults(grid: Grid, *names: str) -> Grid:
 
 
 def _validate_fault_bounds(
-    faults: typing.Tuple[Fault, ...], nx: int, ny: int, nz: int
+    faults: typing.Tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
 ) -> None:
     """
     Validate that all fault IJK ranges are within the grid bounds.
@@ -278,7 +291,7 @@ def _validate_fault_bounds(
             )
 
 
-def _ijk_to_flat(i: int, j: int, k: int, nx: int, ny: int) -> int:
+def _ijk_to_flat(i: Integer, j: Integer, k: Integer, nx: Integer, ny: Integer) -> int:
     """
     Convert 1-based IJK to a 0-based flat cell index.
 
@@ -296,10 +309,7 @@ def _ijk_to_flat(i: int, j: int, k: int, nx: int, ny: int) -> int:
 
 
 def _resolve_fault_cell_pairs(
-    fault: Fault,
-    nx: int,
-    ny: int,
-    nz: int,
+    fault: Fault, nx: Integer, ny: Integer, nz: Integer
 ) -> typing.List[typing.Tuple[int, int]]:
     """
     Enumerate all cell pairs across a fault interface.
@@ -367,11 +377,7 @@ def _build_face_lookup(grid: Grid) -> typing.Dict[typing.Tuple[int, int], int]:
 
 
 def _apply_faults_to_grid(
-    grid: Grid,
-    faults: typing.Tuple[Fault, ...],
-    nx: int,
-    ny: int,
-    nz: int,
+    grid: Grid, faults: typing.Tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
 ) -> Grid:
     """
     Produce a new `Grid` with the given faults applied.

@@ -149,6 +149,34 @@ class FluidPhase(enum.Enum):
         return cls(str(value).lower())
 
 
+class Side(enum.Enum):
+    """
+    One of the six axis-aligned flanks of a grid's bounding box/domain
+    boundary, classified by dominant outward-normal axis and sign.
+
+    `WEST`/`EAST` - the X axis (negative / positive outward normal).
+    `SOUTH`/`NORTH` - the Y axis (negative / positive).
+    `TOP`/`BOTTOM` - the Z axis. Depth increases downward throughout BORES
+    (positive-down convention), so `TOP` is the shallowest (min-Z, negative
+    outward normal) flank and `BOTTOM` is the deepest (max-Z, positive
+    outward normal) flank.
+    """
+
+    WEST = "west"
+    EAST = "east"
+    SOUTH = "south"
+    NORTH = "north"
+    TOP = "top"
+    BOTTOM = "bottom"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
+
 WellFluidType = typing.Literal["water", "oil", "gas"]
 """Types of fluids that can be injected in the simulation"""
 
