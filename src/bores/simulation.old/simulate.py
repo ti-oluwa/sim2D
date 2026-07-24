@@ -127,7 +127,7 @@ class StepResult(typing.Generic[NDimension]):
 @attrs.frozen(slots=True)
 class SaturationChangeCheckResult:
     violated: bool
-    max_phase_saturation_change: typing.Optional[float]
+    max_pressurehase_saturation_change: typing.Optional[float]
     max_allowed_phase_saturation_change: typing.Optional[float]
     message: typing.Optional[str] = None
 
@@ -161,20 +161,20 @@ def _validate_pressure_range(
     out_of_range_indices = np.argwhere(out_of_range_mask)
 
     if out_of_range_indices.size > 0:
-        min_p = float(np.min(pressure_grid))
-        max_p = float(np.max(pressure_grid))
+        min_pressure = float(np.min(pressure_grid))
+        max_pressure = float(np.max(pressure_grid))
         logger.warning(
             f"Unphysical pressure detected at {out_of_range_indices.size} cells. "
-            f"Range: [{min_p:.4f}, {max_p:.4f}] psi. "
+            f"Range: [{min_pressure:.4f}, {max_pressure:.4f}] psi. "
             f"Allowed: [{min_allowable}, {max_allowable}]."
         )
         message = ""
-        if min_p < min_allowable:
+        if min_pressure < min_allowable:
+            message += f"Pressure dropped below {min_allowable} psi (Min: {min_pressure:.4f}).\n"
+        if max_pressure > max_allowable:
             message += (
-                f"Pressure dropped below {min_allowable} psi (Min: {min_p:.4f}).\n"
+                f"Pressure exceeded {max_allowable} psi (Max: {max_pressure:.4f}).\n"
             )
-        if max_p > max_allowable:
-            message += f"Pressure exceeded {max_allowable} psi (Max: {max_p:.4f}).\n"
         message += (
             PRESSURE_ERROR_MSG.format(indices=out_of_range_indices.tolist())
             + f"\nAt Time Step {time_step}."
@@ -218,7 +218,7 @@ def _check_saturation_changes(
     """
     violated = False
     messages = []
-    max_phase_saturation_change = None
+    max_pressurehase_saturation_change = None
     max_allowed_phase_saturation_change = None
 
     oil_tol = max(tolerance, 0.005 * max_allowed_oil_saturation_change)
@@ -226,23 +226,23 @@ def _check_saturation_changes(
 
     if maximum_oil_saturation_change > effective_allowed_oil:
         violated = True
-        max_phase_saturation_change = maximum_oil_saturation_change
+        max_pressurehase_saturation_change = maximum_oil_saturation_change
         max_allowed_phase_saturation_change = max_allowed_oil_saturation_change
         messages.append(
             f"Oil saturation change {maximum_oil_saturation_change:.9f} exceeded "
             f"maximum allowed {max_allowed_oil_saturation_change:.9f}."
         )
 
-    water_tol = max(tolerance, 0.005 * max_allowed_water_saturation_change)
-    effective_allowed_water = max_allowed_water_saturation_change + water_tol
+    water_tolerance = max(tolerance, 0.005 * max_allowed_water_saturation_change)
+    effective_allowed_water = max_allowed_water_saturation_change + water_tolerance
 
     if maximum_water_saturation_change > effective_allowed_water:
         violated = True
         if (
-            max_phase_saturation_change is None
-            or maximum_water_saturation_change > max_phase_saturation_change
+            max_pressurehase_saturation_change is None
+            or maximum_water_saturation_change > max_pressurehase_saturation_change
         ):
-            max_phase_saturation_change = maximum_water_saturation_change
+            max_pressurehase_saturation_change = maximum_water_saturation_change
             max_allowed_phase_saturation_change = max_allowed_water_saturation_change
 
         messages.append(
@@ -250,16 +250,15 @@ def _check_saturation_changes(
             f"maximum allowed {max_allowed_water_saturation_change:.9f}."
         )
 
-    gas_tol = max(tolerance, 0.005 * max_allowed_gas_saturation_change)
-    effective_allowed_gas = max_allowed_gas_saturation_change + gas_tol
-
+    gas_tolerance = max(tolerance, 0.005 * max_allowed_gas_saturation_change)
+    effective_allowed_gas = max_allowed_gas_saturation_change + gas_tolerance
     if maximum_gas_saturation_change > effective_allowed_gas:
         violated = True
         if (
-            max_phase_saturation_change is None
-            or maximum_gas_saturation_change > max_phase_saturation_change
+            max_pressurehase_saturation_change is None
+            or maximum_gas_saturation_change > max_pressurehase_saturation_change
         ):
-            max_phase_saturation_change = maximum_gas_saturation_change
+            max_pressurehase_saturation_change = maximum_gas_saturation_change
             max_allowed_phase_saturation_change = max_allowed_gas_saturation_change
 
         messages.append(
@@ -269,7 +268,7 @@ def _check_saturation_changes(
 
     return SaturationChangeCheckResult(
         violated=violated,
-        max_phase_saturation_change=max_phase_saturation_change,
+        max_pressurehase_saturation_change=max_pressurehase_saturation_change,
         max_allowed_phase_saturation_change=max_allowed_phase_saturation_change,
         message="\n".join(messages) if messages else None,
     )
@@ -635,7 +634,7 @@ def _run_impes_step(
         "cfl_threshold": transport_solution.cfl_threshold,
         "maximum_pressure_change": maximum_pressure_change,
         "maximum_allowed_pressure_change": maximum_allowed_pressure_change,
-        "maximum_saturation_change": saturation_check.max_phase_saturation_change,
+        "maximum_saturation_change": saturation_check.max_pressurehase_saturation_change,
         "maximum_allowed_saturation_change": saturation_check.max_allowed_phase_saturation_change,
     }
     if not transport_result.success:
@@ -759,18 +758,16 @@ def _run_impes_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Transport solve completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1083,7 +1080,7 @@ def _run_sequential_implicit_step(
     timer_context = {
         "maximum_pressure_change": maximum_pressure_change,
         "maximum_allowed_pressure_change": maximum_allowed_pressure_change,
-        "maximum_saturation_change": saturation_check.max_phase_saturation_change,
+        "maximum_saturation_change": saturation_check.max_pressurehase_saturation_change,
         "maximum_allowed_saturation_change": saturation_check.max_allowed_phase_saturation_change,
         "newton_iterations": transport_solution.newton_iterations,
     }
@@ -1110,13 +1107,13 @@ def _run_sequential_implicit_step(
 
     if saturation_check.violated:
         if (
-            saturation_check.max_phase_saturation_change
+            saturation_check.max_pressurehase_saturation_change
             and saturation_check.max_allowed_phase_saturation_change
         ):
             relative_change = (
                 abs(
                     saturation_check.max_allowed_phase_saturation_change
-                    - saturation_check.max_phase_saturation_change
+                    - saturation_check.max_pressurehase_saturation_change
                 )
                 / saturation_check.max_allowed_phase_saturation_change
             )
@@ -1191,18 +1188,16 @@ def _run_sequential_implicit_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Sequential implicit step completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1550,13 +1545,13 @@ def _run_full_sequential_implicit_step(
         )
         if saturation_check.violated:
             if (
-                saturation_check.max_phase_saturation_change
+                saturation_check.max_pressurehase_saturation_change
                 and saturation_check.max_allowed_phase_saturation_change
             ):
                 relative_change = (
                     abs(
                         saturation_check.max_allowed_phase_saturation_change
-                        - saturation_check.max_phase_saturation_change
+                        - saturation_check.max_pressurehase_saturation_change
                     )
                     / saturation_check.max_allowed_phase_saturation_change
                 )
@@ -1586,7 +1581,7 @@ def _run_full_sequential_implicit_step(
                     maximum_water_saturation_change=maximum_water_saturation_change,
                     maximum_gas_saturation_change=maximum_gas_saturation_change,
                     timer_context={
-                        "maximum_saturation_change": saturation_check.max_phase_saturation_change,
+                        "maximum_saturation_change": saturation_check.max_pressurehase_saturation_change,
                         "maximum_allowed_saturation_change": saturation_check.max_allowed_phase_saturation_change,
                     },
                 )
@@ -1615,7 +1610,7 @@ def _run_full_sequential_implicit_step(
         timer_context = {
             "maximum_pressure_change": maximum_pressure_change,
             "maximum_allowed_pressure_change": maximum_allowed_pressure_change,
-            "maximum_saturation_change": saturation_check.max_phase_saturation_change,
+            "maximum_saturation_change": saturation_check.max_pressurehase_saturation_change,
             "maximum_allowed_saturation_change": saturation_check.max_allowed_phase_saturation_change,
             "newton_iterations": newton_iterations,
         }
@@ -1737,18 +1732,16 @@ def _run_full_sequential_implicit_step(
         current_fluid_properties=iter_fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Full sequential implicit step completed.")
     return StepResult(
         fluid_properties=iter_fluid_properties,
