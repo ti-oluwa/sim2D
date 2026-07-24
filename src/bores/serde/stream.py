@@ -13,12 +13,13 @@ import numpy as np
 from typing_extensions import Self
 
 from bores.errors import StorageError, StreamError
-from bores.serde.stores import DataStore, EntryMeta
-from bores.blackoil.state import ModelState, validate_state
+from bores.serde.base import SerializableT
+from bores.serde.stores.base import DataStore, EntryMeta
+from bores.blackoil.state import ModelState, self.validator
 from bores.typing import NDimension
 from bores.utils import _close_iter
 
-__all__ = ["StateStream", "StreamProgress"]
+__all__ = ["DataStream", "StreamProgress"]
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class StreamProgress(typing.TypedDict):
 _stop_io = 0  # Signal for stopping I/O thread
 
 
-class StateStream(typing.Generic[NDimension]):
+class DataStream(typing.Generic[SerializableT]):
     """
     Memory-efficient stream for model state iteration with optional persistence.
 
@@ -83,37 +84,37 @@ class StateStream(typing.Generic[NDimension]):
 
     ```python
     store = HDF5Store("run01.h5")
-    with StateStream(states=run(), store=store, background_io=True) as stream:
-        for state in stream.until(some_condition):
-            analyse(state)          # background thread writes while we analyse
+    with DataStream(source=run(), store=store, background_io=True) as stream:
+        for data in stream.until(some_condition):
+            analyse(data)          # background thread writes while we analyse
 
     # Replay the whole run later
-    for state in stream.replay():
-        plot(state)
+    for data in stream.replay():
+        plot(data)
 
     # Load only specific entries
-    for state in stream.replay(indices=[0, 50, 99]):
+    for data in stream.replay(indices=[0, 50, 99]):
         ...
 
     # Load entries matching a predicate on EntryMeta
-    for state in stream.replay(predicate=lambda e: e.index % 10 == 0):
+    for data in stream.replay(predicate=lambda e: e.index % 10 == 0):
         ...
     ```
     """
 
     def __init__(
         self,
-        states: typing.Optional[typing.Iterable[ModelState[NDimension]]] = None,
-        store: typing.Optional[DataStore[ModelState[NDimension], typing.Any]] = None,
+        source: typing.Optional[typing.Iterable[SerializableT]] = None,
+        store: typing.Optional[DataStore[SerializableT, typing.Any]] = None,
         batch_size: int = 50,
-        validate: bool = False,
+        validator: bool = False,
         auto_save: bool = True,
         auto_replay: bool = True,
         save: typing.Union[
-            typing.Callable[[ModelState[NDimension]], bool], bool
+            typing.Callable[[SerializableT], bool], bool
         ] = True,
         checkpoint_store: typing.Optional[
-            DataStore[ModelState[NDimension], typing.Any]
+            DataStore[SerializableT, typing.Any]
         ] = None,
         checkpoint_interval: typing.Optional[int] = None,
         max_batch_memory_usage: typing.Optional[float] = None,
@@ -129,7 +130,7 @@ class StateStream(typing.Generic[NDimension]):
         :param store: Optional `DataStore` for persistence. If None, states only yielded (no persistence).
             The data store must support appending new states. that is, `store.can_append` must be True.
         :param batch_size: Number of states to accumulate before flushing to disk (default: 50)
-        :param validate: Validate states before persisting (default: False)
+        :param validator: Validate states before persisting (default: False)
         :param auto_save: Automatically flush remaining states on context exit (default: True)
         :param auto_replay: If True, automatically replay from store when iterating after consumption.
             If False, raises `StreamError` instead (default: True)
@@ -154,10 +155,10 @@ class StateStream(typing.Generic[NDimension]):
         :param queue_timeout: Timeout in seconds for queue operations (default: 1.0).
             Used for responsive shutdown and error checking.
         """
-        self.states = iter(states) if states is not None else None
+        self.source = iter(source) if source is not None else None
         self.store = store
         self.batch_size = batch_size
-        self.validate = validate
+        self.validator = validator
         self.auto_save = auto_save
         self.auto_replay = auto_replay
         self.save = save
@@ -172,7 +173,7 @@ class StateStream(typing.Generic[NDimension]):
 
         # Incompatible option warnings
         if self.store is None:
-            if self.validate:
+            if self.validator:
                 logger.warning(
                     "Validation is enabled but no store provided. States will be validated "
                     "but not persisted."
@@ -212,7 +213,7 @@ class StateStream(typing.Generic[NDimension]):
             )
 
         # Internal state
-        self._batch: typing.List[ModelState[NDimension]] = []
+        self._batch: typing.List[SerializableT] = []
         self._yield_count: int = 0
         self._saved_count: int = 0
         self._checkpoints_count: int = 0
@@ -229,10 +230,10 @@ class StateStream(typing.Generic[NDimension]):
         self._saved_count_lock = threading.Lock()  # Protects _saved_count in async mode
 
         # Store-only (replay) mode
-        if self.states is None and self.store is None:
+        if self.source is None and self.store is None:
             raise StreamError("Either `states` or `store` must be provided.")
 
-        if self.states is None and self.store is not None:
+        if self.source is None and self.store is not None:
             # Store-only mode is intended for replay
             if not self.auto_replay:
                 logger.warning(
@@ -291,7 +292,7 @@ class StateStream(typing.Generic[NDimension]):
                             break
 
                         # Process batch
-                        batch: typing.List[ModelState[NDimension]] = item
+                        batch: typing.List[SerializableT] = item
                         logger.debug(f"I/O worker writing batch of {len(batch)} states")
 
                         try:
@@ -299,7 +300,7 @@ class StateStream(typing.Generic[NDimension]):
                             for state in batch:
                                 store.append(
                                     state,
-                                    validator=validate_state if self.validate else None,
+                                    validator=self.validator if self.validator else None,
                                     meta=lambda s: {"step": s.step},
                                 )
                                 count += 1
@@ -378,7 +379,7 @@ class StateStream(typing.Generic[NDimension]):
         # Final error check
         self._check_io_error()
 
-    def __iter__(self) -> typing.Iterator[ModelState[NDimension]]:
+    def __iter__(self) -> typing.Iterator[SerializableT]:
         """
         Iterate over states, optionally persisting as we go.
 
@@ -422,17 +423,17 @@ class StateStream(typing.Generic[NDimension]):
 
         # No states provided, this shouldn't happen as `_consumed` should already be set to false
         # but still handle it
-        if self.states is None:
+        if self.source is None:
             raise StreamError("No states provided and stream not consumed.")
 
         if self.store is None:
             logger.info("No store provided, streaming without persistence")
             try:
-                for state in self.states:
+                for state in self.source:
                     self._yield_count += 1
                     yield state
             finally:
-                _close_iter(self.states)
+                _close_iter(self.source)
             self._consumed = True
             return
 
@@ -442,7 +443,7 @@ class StateStream(typing.Generic[NDimension]):
         )
 
         try:
-            for state in self.states:
+            for state in self.source:
                 self._yield_count += 1
 
                 # Surface any background I/O errors before continuing/yielding
@@ -460,7 +461,7 @@ class StateStream(typing.Generic[NDimension]):
                     if self._should_checkpoint(state=state):
                         self._save_checkpoint(state=state)
         finally:
-            _close_iter(self.states)
+            _close_iter(self.source)
 
         # Flush whatever is left
         if self._batch and self.auto_save:
@@ -522,8 +523,8 @@ class StateStream(typing.Generic[NDimension]):
                     raise
 
         # Close the underlying states iterable if it has not already been closed
-        if not self._consumed and self.states is not None:
-            _close_iter(self.states)
+        if not self._consumed and self.source is not None:
+            _close_iter(self.source)
 
         if exc_type is None:
             logger.info(
@@ -549,7 +550,7 @@ class StateStream(typing.Generic[NDimension]):
         logger.debug("Manually closing stream...")
         self.__exit__(None, None, None)
 
-    def last(self) -> typing.Optional[ModelState[NDimension]]:
+    def last(self) -> typing.Optional[SerializableT]:
         """
         Get the last state from the stream.
 
@@ -566,7 +567,7 @@ class StateStream(typing.Generic[NDimension]):
             results = list(self.store.load(ModelState, indices=[max_idx]))
             return results[0] if results else None
 
-        last_state: typing.Optional[ModelState[NDimension]] = None
+        last_state: typing.Optional[SerializableT] = None
         for state in self:
             last_state = state
 
@@ -591,11 +592,11 @@ class StateStream(typing.Generic[NDimension]):
         Example:
         ```python
         # Just save all states to disk without processing them
-        stream = StateStream(states=simulation(), store=store)
+        stream = DataStream(states=simulation(), store=store)
         stream.consume()  # States saved, nothing returned
 
         # Create checkpoints without holding states in memory
-        stream = StateStream(
+        stream = DataStream(
             states=simulation(),
             checkpoint_interval=100,
             checkpoint_store=HDF5Store("./checkpoints.h5")
@@ -622,9 +623,9 @@ class StateStream(typing.Generic[NDimension]):
             typing.Union[typing.Sequence[int], typing.Callable[[int], bool]]
         ] = None,
         validator: typing.Optional[
-            typing.Callable[[ModelState[NDimension]], ModelState[NDimension]]
+            typing.Callable[[SerializableT], SerializableT]
         ] = None,
-    ) -> typing.Iterator[ModelState[NDimension]]:
+    ) -> typing.Iterator[SerializableT]:
         """
         Load and iterate over previously saved states from the store.
 
@@ -649,7 +650,7 @@ class StateStream(typing.Generic[NDimension]):
             `predicate=lambda e: e.meta.get("converged")`.  Composed with
             `steps` when both are provided.
         :param validator: Optional post-load callable applied to each deserialised
-            state before it is yielded.  Defaults to `validate_state` when the
+            state before it is yielded.  Defaults to `self.validator` when the
             stream was constructed with `validate=True`.
         :return: Iterator over `ModelState` instances matching the filter criteria,
             in insertion order.
@@ -689,7 +690,7 @@ class StateStream(typing.Generic[NDimension]):
                 ModelState,
                 indices=indices,
                 predicate=pred,
-                validator=validator or (validate_state if self.validate else None),
+                validator=validator or (self.validator if self.validator else None),
             )
             for state in states:
                 self._yield_count += 1
@@ -705,8 +706,8 @@ class StateStream(typing.Generic[NDimension]):
         logger.debug(f"Replay complete: {self._yield_count} total yielded")
 
     def until(
-        self, condition: typing.Callable[[ModelState[NDimension]], bool]
-    ) -> typing.Iterator[ModelState[NDimension]]:
+        self, condition: typing.Callable[[SerializableT], bool]
+    ) -> typing.Iterator[SerializableT]:
         """
         Iterate over states, optionally persisting as we go, until `condition` evaluates to True.
 
@@ -723,8 +724,8 @@ class StateStream(typing.Generic[NDimension]):
             yield state
 
     def while_(
-        self, condition: typing.Callable[[ModelState[NDimension]], bool]
-    ) -> typing.Iterator[ModelState[NDimension]]:
+        self, condition: typing.Callable[[SerializableT], bool]
+    ) -> typing.Iterator[SerializableT]:
         """
         Iterate over states, optionally persisting as we go, as long `condition` evaluates to True.
         Stop when `condition` evaluates to False.
@@ -816,7 +817,7 @@ class StateStream(typing.Generic[NDimension]):
                     for state in self._batch:
                         store.append(
                             state,
-                            validator=validate_state if self.validate else None,
+                            validator=self.validator if self.validator else None,
                             meta=lambda s: {"step": s.step},
                         )
 
@@ -831,7 +832,7 @@ class StateStream(typing.Generic[NDimension]):
                 # Reassign to new list to free memory immediately
                 self._batch = []
 
-    def get_pending_batch(self) -> typing.List[ModelState[NDimension]]:
+    def get_pending_batch(self) -> typing.List[SerializableT]:
         """
         Get a copy of states in the current batch (not yet flushed to store).
 
@@ -844,7 +845,7 @@ class StateStream(typing.Generic[NDimension]):
         """
         return self._batch.copy()
 
-    def _estimate_state_size(self, state: ModelState[NDimension]) -> float:
+    def _estimate_state_size(self, state: SerializableT) -> float:
         """
         Estimate memory footprint of a single state in MB.
 
@@ -882,7 +883,7 @@ class StateStream(typing.Generic[NDimension]):
         logger.debug(f"Estimated state size: {self._state_size_mb:.2f} MB")
         return self._state_size_mb
 
-    def _should_save(self, state: ModelState[NDimension]) -> bool:
+    def _should_save(self, state: SerializableT) -> bool:
         """
         Determine if state should be saved based on `save`.
 
@@ -916,7 +917,7 @@ class StateStream(typing.Generic[NDimension]):
 
         return False
 
-    def _should_checkpoint(self, state: ModelState[NDimension]) -> bool:
+    def _should_checkpoint(self, state: SerializableT) -> bool:
         """
         Determine if a checkpoint should be created for this state.
 
@@ -930,7 +931,7 @@ class StateStream(typing.Generic[NDimension]):
             and state.step % self.checkpoint_interval == 0
         )
 
-    def _save_checkpoint(self, state: ModelState[NDimension]) -> None:
+    def _save_checkpoint(self, state: SerializableT) -> None:
         """
         Save a checkpoint for crash recovery.
 
@@ -944,7 +945,7 @@ class StateStream(typing.Generic[NDimension]):
         try:
             self.checkpoint_store.append(
                 state,
-                validator=validate_state if self.validate else None,
+                validator=self.validator if self.validator else None,
                 meta=lambda s: {"step": s.step},
             )
             self._checkpoints_count += 1
@@ -954,7 +955,7 @@ class StateStream(typing.Generic[NDimension]):
                 f"Failed to save checkpoint at step {state.step}: {exc}", exc_info=True
             )
 
-    def checkpoint(self, step: int) -> ModelState[NDimension]:
+    def checkpoint(self, step: int) -> SerializableT:
         """
         Load a specific checkpoint by step number.
 
@@ -978,7 +979,7 @@ class StateStream(typing.Generic[NDimension]):
             raise StreamError(f"No checkpoint found for step {step}.")
         return results[0]
 
-    def checkpoints(self) -> typing.Generator[ModelState[NDimension], None, None]:
+    def checkpoints(self) -> typing.Generator[SerializableT, None, None]:
         """
         Yield all checkpointed states in insertion order.
 
