@@ -75,9 +75,9 @@ CACHE_FIELDS: typing.Tuple[str, ...] = MobilityCache._fields
 
 
 def make_new_cache(n_cells: int, dtype: npt.DTypeLike) -> MobilityCache:
-    return MobilityCache(
-        **{name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS}
-    )
+    return MobilityCache(**{
+        name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS
+    })
 
 
 @numba.njit(cache=True, parallel=True)
@@ -86,20 +86,8 @@ def _update_mobility_cache(
 ) -> None:
     """
     Fill `out` in place from `pvt_cache`/`satfunc_cache`. Pure arithmetic,
-    one cell at a time, no allocation - every `out` array is written to by
-    index, nothing is created here. Not part of the public API - called only
-    by `compute_mobility_cache`, which guarantees `out` is already correctly
-    sized.
-
-    Every array used in the loop below is bound to a local variable *before*
-    `numba.prange` starts, never accessed via `pvt_cache.<field>`/`out.<field>`
-    attribute lookup inside the loop body itself. This isn't just style: with
-    `parallel=True`, resolving a `NamedTuple` field *inside* the `prange`
-    loop silently produced wrong results when checked against the
-    non-parallel version (numba's auto-parallelisation array-analysis pass
-    doesn't see through the attribute access correctly) - hoisting every
-    field to a local array reference first, so the loop body only ever
-    indexes plain local arrays, is the fix, verified the same way.
+    one cell at a time, no allocation. Every `out` array is written to by
+    index and nothing is created here.
     """
     water_viscosity = pvt_cache.water_viscosity
     oil_viscosity = pvt_cache.oil_viscosity
@@ -147,17 +135,17 @@ def _update_mobility_cache(
 
     n_cells = water_viscosity.shape[0]
     for i in numba.prange(n_cells):
-        mu_w = water_viscosity[i]
-        mu_o = oil_viscosity[i]
-        mu_g = gas_viscosity[i]
+        μw = water_viscosity[i]
+        μo = oil_viscosity[i]
+        μg = gas_viscosity[i]
         water_relative_permeability = water_relative_permeability[i]
         oil_relative_permeability = oil_relative_permeability[i]
         gas_relative_permeability = gas_relative_permeability[i]
 
-        # Values: ʎphase = kr_phase / mu_phase
-        ʎw = water_relative_permeability / mu_w
-        ʎo = oil_relative_permeability / mu_o
-        ʎg = gas_relative_permeability / mu_g
+        # Values: ʎ_phase = kr_phase / μ_phase
+        ʎw = water_relative_permeability / μw
+        ʎo = oil_relative_permeability / μo
+        ʎg = gas_relative_permeability / μg
         ʎt = ʎw + ʎo + ʎg
 
         out_water_mobility[i] = ʎw
@@ -176,36 +164,36 @@ def _update_mobility_cache(
 
         # Pressure derivatives: kr doesn't depend on P, so this is a plain
         # quotient rule with kr held constant:
-        # d(ʎphase)/dP = -kr_phase * d(mu_phase)/dP / mu_phase**2
-        dʎw_dp = -water_relative_permeability * dμw_dp[i] / mu_w**2
-        dʎo_dp = -oil_relative_permeability * dμo_dp[i] / mu_o**2
-        dʎg_dp = -gas_relative_permeability * dμg_dp[i] / mu_g**2
+        # d(ʎ_phase)/dP = -kr_phase * d(μ_phase)/dP / μ_phase**2
+        dʎw_dp = -water_relative_permeability * dμw_dp[i] / μw**2
+        dʎo_dp = -oil_relative_permeability * dμo_dp[i] / μo**2
+        dʎg_dp = -gas_relative_permeability * dμg_dp[i] / μg**2
         out_dʎw_dP[i] = dʎw_dp
         out_dʎo_dP[i] = dʎo_dp
         out_dʎg_dP[i] = dʎg_dp
         out_dʎT_dP[i] = dʎw_dp + dʎo_dp + dʎg_dp
 
-        # Saturation derivatives: mu doesn't depend on saturation, so this is
-        # a plain chain rule: d(ʎphase)/dS_j = d(kr_phase)/dS_j / mu_phase
-        dʎw_dsw = dkrw_dsw[i] / mu_w
-        dʎo_dsw = dkro_dsw[i] / mu_o
-        dʎg_dsw = dkrg_dsw[i] / mu_g
+        # Saturation derivatives: viscosity doesn't depend on saturation, so this is
+        # a plain chain rule: d(ʎ_phase)/dS_j = d(kr_phase)/dS_j / μ_phase
+        dʎw_dsw = dkrw_dsw[i] / μw
+        dʎo_dsw = dkro_dsw[i] / μo
+        dʎg_dsw = dkrg_dsw[i] / μg
         out_dʎw_dsw[i] = dʎw_dsw
         out_dʎo_dsw[i] = dʎo_dsw
         out_dʎg_dsw[i] = dʎg_dsw
         out_dʎT_dsw[i] = dʎw_dsw + dʎo_dsw + dʎg_dsw
 
-        dʎw_dso = dkrw_dso[i] / mu_w
-        dʎo_dso = dkro_dso[i] / mu_o
-        dʎg_dso = dkrg_dso[i] / mu_g
+        dʎw_dso = dkrw_dso[i] / μw
+        dʎo_dso = dkro_dso[i] / μo
+        dʎg_dso = dkrg_dso[i] / μg
         out_dʎw_dso[i] = dʎw_dso
         out_dʎo_dso[i] = dʎo_dso
         out_dʎg_dso[i] = dʎg_dso
         out_dʎT_dso[i] = dʎw_dso + dʎo_dso + dʎg_dso
 
-        dʎw_dsg = dkrw_dsg[i] / mu_w
-        dʎo_dsg = dkro_dsg[i] / mu_o
-        dʎg_dsg = dkrg_dsg[i] / mu_g
+        dʎw_dsg = dkrw_dsg[i] / μw
+        dʎo_dsg = dkro_dsg[i] / μo
+        dʎg_dsg = dkrg_dsg[i] / μg
         out_dʎw_dsg[i] = dʎw_dsg
         out_dʎo_dsg[i] = dʎo_dsg
         out_dʎg_dsg[i] = dʎg_dsg

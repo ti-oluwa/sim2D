@@ -112,7 +112,7 @@ class PVTRegions(StoreSerializable):
     """
 
     __abstract_serializable__ = True
-    __slots__ = ("_regions", "unit_system")
+    __slots__ = ("regions", "unit_system")
 
     def __init__(
         self,
@@ -147,7 +147,7 @@ class PVTRegions(StoreSerializable):
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
 
-        self._regions = regions
+        self.regions = regions
         self.unit_system = expected_unit_system
 
     def region(self, pvtnum: int) -> PVTRegion:
@@ -158,9 +158,9 @@ class PVTRegions(StoreSerializable):
         :returns: `PVTRegion` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        regions = self._regions.get(pvtnum)
+        regions = self.regions.get(pvtnum)
         if regions is None:
-            available = sorted(self._regions.keys())
+            available = sorted(self.regions.keys())
             raise KeyError(
                 f"PVT region {pvtnum} not found. Available regions: {available}."
             )
@@ -169,10 +169,10 @@ class PVTRegions(StoreSerializable):
     @property
     def n_regions(self) -> int:
         """Number of PVT regions."""
-        return len(self._regions)
+        return len(self.regions)
 
     @classmethod
-    def single_region(cls, region: PVTRegion) -> Self:
+    def from_one(cls, region: PVTRegion) -> Self:
         """
         Wrap a single `PVTRegion` as region 1.
 
@@ -236,7 +236,7 @@ class PVTRegions(StoreSerializable):
         return self.__class__(
             regions={
                 pvtnum: region.convert(target, table=table)
-                for pvtnum, region in self._regions.items()
+                for pvtnum, region in self.regions.items()
             }
         )
 
@@ -244,18 +244,18 @@ class PVTRegions(StoreSerializable):
         return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self._regions)
+        return iter(self.regions)
 
     def __len__(self) -> int:
-        return len(self._regions)
+        return len(self.regions)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._regions
+        return key in self.regions
 
     def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "regions": {
-                str(pvtnum): region.dump() for pvtnum, region in self._regions.items()
+                str(pvtnum): region.dump() for pvtnum, region in self.regions.items()
             }
         }
 

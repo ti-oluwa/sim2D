@@ -66,12 +66,12 @@ class SatFuncCache(typing.NamedTuple):
     dpcgo_dso: CellArray
     dpcgo_dsg: CellArray
 
-    saturation_region_index: IntCellArray
+    saturation_region: IntCellArray
     """The 1-based SATNUM each cell was evaluated against."""
 
 
 CACHE_NAN_FIELDS: typing.Tuple[str, ...] = tuple(
-    name for name in SatFuncCache._fields if name != "saturation_region_index"
+    name for name in SatFuncCache._fields if name != "saturation_region"
 )
 
 
@@ -79,7 +79,7 @@ def make_new_cache(n_cells: int, dtype: npt.DTypeLike) -> SatFuncCache:
     fields = {name: np.full(n_cells, np.nan, dtype=dtype) for name in CACHE_NAN_FIELDS}
     return SatFuncCache(
         **fields,
-        saturation_region_index=np.zeros(n_cells, dtype=np.int32),
+        saturation_region=np.zeros(n_cells, dtype=np.int32),
     )
 
 
@@ -87,7 +87,7 @@ def compute_satfunc_cache(
     water_saturation: CellArray,
     oil_saturation: CellArray,
     gas_saturation: CellArray,
-    saturation_region_index: IntCellArray,
+    saturation_region: IntCellArray,
     satfunc: SatFuncRegions,
     irreducible_water_saturation: typing.Optional[CellArray] = None,
     residual_oil_saturation_water: typing.Optional[CellArray] = None,
@@ -100,7 +100,7 @@ def compute_satfunc_cache(
     Build (or refresh, in place) a `SatFuncCache` from current
     cell saturations.
 
-    Groups cells by `saturation_region_index` and evaluates each region's
+    Groups cells by `saturation_region` and evaluates each region's
     `SatFuncTables` once per property, vectorised over that
     region's cells.
 
@@ -112,11 +112,11 @@ def compute_satfunc_cache(
     :param water_saturation: Shape `(n_cells,)` current `Sw`.
     :param oil_saturation: Shape `(n_cells,)` current `So`.
     :param gas_saturation: Shape `(n_cells,)` current `Sg`.
-    :param saturation_region_index: Shape `(n_cells,)` 1-based SATNUM per
-        cell, e.g. `reservoir.regions.saturation_region_index` (falls back to
+    :param saturation_region: Shape `(n_cells,)` 1-based SATNUM per
+        cell, e.g. `reservoir.regions.saturation_region` (falls back to
         all-ones there when the deck had no `SATNUM` keyword - pass that
         fallback through yourself if calling this directly without going
-        through `Regions`).
+        through `ReservoirRegions`).
     :param satfunc: `SatFuncRegions` to
         evaluate against usually `BlackOil.satfunc`.
     :param irreducible_water_saturation: Shape `(n_cells,)` current `swc` -
@@ -151,9 +151,9 @@ def compute_satfunc_cache(
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         cache = make_new_cache(n_cells, dtype=dtype)
 
-    cache.saturation_region_index[:] = saturation_region_index
-    for region in np.unique(saturation_region_index):
-        mask = saturation_region_index == region
+    cache.saturation_region[:] = saturation_region
+    for region in np.unique(saturation_region):
+        mask = saturation_region == region
         tables = satfunc[region]
 
         sw = water_saturation[mask]

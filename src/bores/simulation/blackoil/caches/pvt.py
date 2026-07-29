@@ -24,7 +24,7 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVTRegions
 from bores.precision import get_dtype
-from bores.typing import BooleanArray, CellArray, IntArray
+from bores.typing import BooleanArray, CellArray, IntCellArray
 
 __all__ = ["PVTCache", "compute_pvt_cache"]
 
@@ -130,14 +130,12 @@ class PVTCache(typing.NamedTuple):
     primary-variable-switching indicator - computed from
     `PVTTable.is_saturated`, not supplied by the caller.
     """
-    pvt_region_index: IntArray
+    pvt_region: IntCellArray
     """The 1-based PVTNUM each cell was evaluated against."""
 
 
 CACHE_NAN_FIELDS: typing.Tuple[str, ...] = tuple(
-    name
-    for name in PVTCache._fields
-    if name not in ("is_saturated", "pvt_region_index")
+    name for name in PVTCache._fields if name not in ("is_saturated", "pvt_region")
 )
 
 
@@ -146,7 +144,7 @@ def make_new_cache(n_cells: int, dtype: npt.DTypeLike) -> PVTCache:
     return PVTCache(
         **fields,
         is_saturated=np.zeros(n_cells, dtype=np.bool_),
-        pvt_region_index=np.zeros(n_cells, dtype=np.int32),
+        pvt_region=np.zeros(n_cells, dtype=np.int32),
     )
 
 
@@ -154,8 +152,8 @@ def compute_pvt_cache(
     pressure: CellArray,
     temperature: CellArray,
     solution_gas_oil_ratio: CellArray,
-    pvt_region_index: IntArray,
-    pvt_regions: PVTRegions,
+    pvt_region: IntCellArray,
+    pvt: PVTRegions,
     salinity: typing.Optional[CellArray] = None,
     out: typing.Optional[PVTCache] = None,
     dtype: npt.DTypeLike = None,
@@ -163,7 +161,7 @@ def compute_pvt_cache(
     """
     Build (or refresh, in place) a `PVTCache` from the current cell state.
 
-    Groups cells by `pvt_region_index` (typically a handful of regions, not
+    Groups cells by `pvt_region` (typically a handful of regions, not
     `n_cells` of them) and evaluates each region's `PVTTable`s once per
     property, vectorised over that region's cells - never a per-cell Python
     loop. This function itself is not, and can't be, `@njit`-compiled: the
@@ -189,11 +187,11 @@ def compute_pvt_cache(
         that field's docstring). Pass whatever the solver currently tracks
         for every cell regardless of regime; regime is determined here, not
         by the caller.
-    :param pvt_region_index: Shape `(n_cells,)` 1-based PVTNUM per cell, e.g.
-        `reservoir.regions.pvt_regions` (falls back to all-ones there when
+    :param pvt_region: Shape `(n_cells,)` 1-based PVTNUM per cell, e.g.
+        `reservoir.regions.pvt_region` (falls back to all-ones there when
         the deck had no `PVTNUM` keyword - pass that fallback through
-        yourself if calling this directly without going through `Regions`).
-    :param pvt_regions: `PVTRegions` to evaluate against - `bores.blackoil.
+        yourself if calling this directly without going through `ReservoirRegions`).
+    :param pvt: `PVTRegions` to evaluate against - `bores.blackoil.
         fluid.BlackOil.pvt`.
     :param salinity: Optional shape `(n_cells,)` water salinity (ppm NaCl).
         `None` uses each table's own default salinity throughout.
@@ -220,10 +218,10 @@ def compute_pvt_cache(
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         cache = make_new_cache(n_cells, dtype=dtype)
 
-    cache.pvt_region_index[:] = pvt_region_index
-    for region in np.unique(pvt_region_index):
-        mask = pvt_region_index == region
-        tables = pvt_regions[int(region)].tables
+    cache.pvt_region[:] = pvt_region
+    for region in np.unique(pvt_region):
+        mask = pvt_region == region
+        tables = pvt[int(region)].tables
 
         p = pressure[mask]
         t = temperature[mask]

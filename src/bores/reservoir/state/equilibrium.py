@@ -369,7 +369,6 @@ class EquilibriumRegions(StoreSerializable):
     """
 
     __abstract_serializable__ = True
-
     __slots__ = ("_regions", "rsvd_tables", "rvvd_tables", "unit_system")
 
     def __init__(
@@ -660,7 +659,7 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumR
     records = deck_file.get("EQUIL")
     if not records:
         raise ValidationError(
-            "No EQUIL keyword found in the DeckFile. Supply equilibration "
+            "No `EQUIL` keyword found in the DeckFile. Supply equilibration "
             "data explicitly via `EquilibriumRegion(...)` / "
             "`EquilibriumRegions(regions={...})`, or add an `EQUIL` block "
             "to the deck."

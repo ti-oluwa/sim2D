@@ -101,7 +101,7 @@ class SatFuncRegions(StoreSerializable):
         return tables
 
     @classmethod
-    def single_region(cls, tables: SatFuncTables) -> Self:
+    def from_one(cls, tables: SatFuncTables) -> Self:
         """
         Wrap a single `SatFuncTables` as region 1.
 

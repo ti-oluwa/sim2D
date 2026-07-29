@@ -5,20 +5,16 @@ Reservoir
 ├── Grid
 ├── Rock
 ├── Faults
-├── Regions
+├── ReservoirRegions
 └── Geometry
 
 BlackOil
 ├── PVT
-└── Saturation
+└── SaturationFunction
 
 Simulation
-├── reservoir
-├── fluid
-├── state
-├── wells
+├── model
 ├── schedule
-├── boundary_conditions
 └── summary
 ```
 
@@ -34,4 +30,10 @@ SolverWorkspace -for reducing allocations for every iteration
     rowptr
     colind
 
-Finite volume and TPFA or MPFA for solver
+Finite volume and TPFA
+
+So my naming convention would be:
+
+Physical/property fields: singular (porosity, pressure, temperature)
+Region-number fields: singular (pvt_region, rock_region, equilibrium_region)
+Collections of tables: plural (PVTTables, SatFuncTables, RockCompressibilityRegions)

@@ -12,7 +12,7 @@ from bores.constants import (
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.reservoir.faults import Fault, apply_faults
-from bores.reservoir.regions import Regions
+from bores.reservoir.regions import ReservoirRegions
 from bores.reservoir.rock import Rock
 from bores.reservoir.transmissibility import (
     ConnectionTransmissibilities,
@@ -62,7 +62,7 @@ class Reservoir(
     fields={
         "grid": Grid,
         "rock": Rock,
-        "regions": typing.Optional[Regions],
+        "regions": typing.Optional[ReservoirRegions],
         "unit_system": typing.Optional[UnitSystem],
     },
 ):
@@ -87,7 +87,7 @@ class Reservoir(
         self,
         grid: Grid,
         rock: Rock,
-        regions: typing.Optional[Regions] = None,
+        regions: typing.Optional[ReservoirRegions] = None,
         faults: typing.Optional[typing.Collection[Fault]] = None,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:

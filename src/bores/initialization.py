@@ -777,7 +777,7 @@ def initialize_equilibrium_arrays(
         are computed via capillary-pressure inversion instead of a sharp
         contact (see `_get_saturations_from_capillary_pressure`). Doing so
         requires a `SATNUM` region per cell to select the right
-        capillary-pressure curve; if `reservoir.regions.saturation_regions`
+        capillary-pressure curve; if `reservoir.regions.saturation_region`
         is unavailable, every cell defaults to saturation region 1 and a
         `UserWarning` is raised (see `Warns`).
     :param saturation_samples: Sample count for the capillary-pressure
@@ -791,9 +791,9 @@ def initialize_equilibrium_arrays(
         `EQLNUM` region spans more than one `PVTNUM`/`SATNUM` region, or a
         required PVT table is missing.
     :warns UserWarning: If `satfunc` is supplied but
-        `reservoir.regions.saturation_regions` (SATNUM) is unavailable;
+        `reservoir.regions.saturation_region` (SATNUM) is unavailable;
         every cell is assigned to saturation region 1 in that case. Supply
-        `reservoir.regions.saturation_regions` explicitly (e.g.
+        `reservoir.regions.saturation_region` explicitly (e.g.
         `np.ones(n_cells, dtype=np.int32)` for a single-region reservoir)
         to make the assignment explicit and silence the warning.
     """
@@ -818,30 +818,30 @@ def initialize_equilibrium_arrays(
             f"`reservoir.unit_system` ({reservoir.unit_system.value!r}) does not "
             f"match `satfunc.unit_system` ({satfunc.unit_system.value!r})."
         )
-    equilibrium_regions: IntCellArray = (
-        reservoir.regions.equilibrium_regions
+    equilibrium_region_index: IntCellArray = (
+        reservoir.regions.equilibrium_region
         if reservoir.regions is not None
-        and reservoir.regions.equilibrium_regions is not None
+        and reservoir.regions.equilibrium_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
-    pvt_regions: IntCellArray = (
-        reservoir.regions.pvt_regions
-        if reservoir.regions is not None and reservoir.regions.pvt_regions is not None
+    pvt_region_index: IntCellArray = (
+        reservoir.regions.pvt_region
+        if reservoir.regions is not None and reservoir.regions.pvt_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
-    saturation_regions: typing.Optional[IntCellArray] = (
-        reservoir.regions.saturation_regions if reservoir.regions is not None else None
+    saturation_region: typing.Optional[IntCellArray] = (
+        reservoir.regions.saturation_region if reservoir.regions is not None else None
     )
-    if satfunc is not None and saturation_regions is None:
+    if satfunc is not None and saturation_region is None:
         warnings.warn(
-            "`satfunc` was supplied but `reservoir.regions.saturation_regions` "
+            "`satfunc` was supplied but `reservoir.regions.saturation_region` "
             "(SATNUM) is unavailable; defaulting every cell to saturation region 1. "
-            "Set `reservoir.regions.saturation_regions` explicitly (e.g. "
+            "Set `reservoir.regions.saturation_region` explicitly (e.g. "
             "`np.ones(reservoir.n_cells, dtype=np.int32)` for a single-region "
             "reservoir) to make this assignment explicit and silence this warning.",
             UserWarning,
         )
-        saturation_regions = typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
+        saturation_region = typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
 
     depth = reservoir.depth
     connate_water_saturation = reservoir.rock.connate_water_saturation
@@ -857,11 +857,11 @@ def initialize_equilibrium_arrays(
     vaporized_oil_ratio = np.zeros(n_cells, dtype=dtype)
     gas_dew_point_pressure = np.zeros(n_cells, dtype=dtype)
 
-    for eqlnum in np.unique(equilibrium_regions):
-        mask = equilibrium_regions == eqlnum
+    for eqlnum in np.unique(equilibrium_region_index):
+        mask = equilibrium_region_index == eqlnum
         equilibrium_region = equilibrium.region(int(eqlnum))
 
-        region_pvtnum = np.unique(pvt_regions[mask])
+        region_pvtnum = np.unique(pvt_region_index[mask])
         if len(region_pvtnum) != 1:
             raise ValidationError(
                 f"EQLNUM {eqlnum} cells span multiple PVTNUM regions "
@@ -875,8 +875,8 @@ def initialize_equilibrium_arrays(
         if satfunc is not None:
             # Guaranteed non-`None` here: defaulted to region 1 (with a
             # warning) above whenever `satfunc` is supplied.
-            assert saturation_regions is not None
-            region_satnum = np.unique(saturation_regions[mask])
+            assert saturation_region is not None
+            region_satnum = np.unique(saturation_region[mask])
             if len(region_satnum) != 1:
                 raise ValidationError(
                     f"EQLNUM {eqlnum} cells span multiple SATNUM regions "
@@ -957,7 +957,7 @@ def initialize_equilibrium_arrays(
 
 def _get_temperature_array_from_regions(
     temperature: Temperature,
-    pvt_regions: IntCellArray,
+    pvt_region_index: IntCellArray,
     depth: CellArray,
     dtype: npt.DTypeLike = None,
 ) -> CellArray:
@@ -971,9 +971,9 @@ def _get_temperature_array_from_regions(
     per cell.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    result = np.empty(len(pvt_regions), dtype=dtype)
-    for pvtnum in np.unique(pvt_regions):
-        mask = pvt_regions == pvtnum
+    result = np.empty(len(pvt_region_index), dtype=dtype)
+    for pvtnum in np.unique(pvt_region_index):
+        mask = pvt_region_index == pvtnum
         spec = temperature.region(int(pvtnum))
         if isinstance(spec, (TemperatureGradient, TemperatureTable)):
             result[mask] = spec.at_depth(depth[mask]).astype(dtype, copy=False)  # type: ignore[union-attr]
@@ -1011,13 +1011,16 @@ def _resolve_temperature(
             "with `RTEMP`/`TEMPVD`."
         )
 
-    pvt_regions: IntCellArray = (
-        reservoir.regions.pvt_regions
-        if reservoir.regions is not None and reservoir.regions.pvt_regions is not None
+    pvt_region_index: IntCellArray = (
+        reservoir.regions.pvt_region
+        if reservoir.regions is not None and reservoir.regions.pvt_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
     return _get_temperature_array_from_regions(
-        source, pvt_regions=pvt_regions, depth=reservoir.depth, dtype=dtype
+        source,
+        pvt_region_index=pvt_region_index,
+        depth=reservoir.depth,
+        dtype=dtype,
     )
 
 
@@ -1070,7 +1073,7 @@ def initialize_reservoir_state(
         explicit array/keyword.
     :param satfunc: Optional `SatFuncRegions` for capillary-pressure-based
         saturations instead of a sharp contact. If supplied and
-        `reservoir.regions.saturation_regions` (SATNUM) is unavailable, every
+        `reservoir.regions.saturation_region` (SATNUM) is unavailable, every
         cell defaults to saturation region 1 and a `UserWarning` is raised
         (see `initialize_equilibrium_arrays`).
     :param temperature: Optional per-cell temperature (constant or `Temperature`)
@@ -1099,7 +1102,7 @@ def initialize_reservoir_state(
         (when supplied) don't share that same unit system, or if
         saturations are physically inconsistent.
     :warns UserWarning: If `satfunc` is supplied but
-        `reservoir.regions.saturation_regions` (SATNUM) is unavailable; see
+        `reservoir.regions.saturation_region` (SATNUM) is unavailable; see
         `initialize_equilibrium_arrays`. Also if exactly one of
         `pressure`/`solution_gor` (or `pressure`/`vaporized_oil_ratio`) is
         explicit while the other is equilibration-derived, since EQUIL
@@ -1274,9 +1277,9 @@ def initialize_reservoir_state(
     )
 
     pore_volumes = reservoir.pore_volumes
-    pvt_regions: IntCellArray = (
-        reservoir.regions.pvt_regions
-        if reservoir.regions is not None and reservoir.regions.pvt_regions is not None
+    pvt_region_index: IntCellArray = (
+        reservoir.regions.pvt_region
+        if reservoir.regions is not None and reservoir.regions.pvt_region is not None
         else typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
     )
 
@@ -1297,8 +1300,8 @@ def initialize_reservoir_state(
     # throughout (m3/m3, cc/cc) so no such correction applies for them.
     volume_correction = c.CUBIC_FEET_TO_STB if unit_system is UnitSystem.FIELD else 1.0
 
-    for pvtnum in np.unique(pvt_regions):
-        mask = pvt_regions == pvtnum
+    for pvtnum in np.unique(pvt_region_index):
+        mask = pvt_region_index == pvtnum
         pvt_region = pvt.region(int(pvtnum))
         static = pvt_region.static
         if static.stock_tank_oil_density is None:

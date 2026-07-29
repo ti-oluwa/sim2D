@@ -9,7 +9,7 @@ from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
 from bores.initialization import initialize_reservoir_state
-from bores.reservoir import Regions, Reservoir, Temperature
+from bores.reservoir import Reservoir, ReservoirRegions, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import EquilibriumRegions
 from bores.typing import UnitSystem
@@ -20,14 +20,14 @@ df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # Load reservoir model
 grid = Grid.from_deck(df)
-regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
+regions = ReservoirRegions.from_deck(df, n_cells=grid.n_cells, use_default=True)
 satfunc = SatFuncRegions.from_deck(df, mixing_rule="eclipse_rule")
 rock = Rock.from_deck(
     df,
     grid=grid,
-    rock_regions=regions.rock_regions,
+    rock_region=regions.rock_region,
     satfunc=satfunc,
-    saturation_regions=regions.saturation_regions,
+    saturation_region=regions.saturation_region,
 )
 reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 

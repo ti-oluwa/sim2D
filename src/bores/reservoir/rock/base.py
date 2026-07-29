@@ -284,7 +284,7 @@ class Rock(StoreSerializable):
         self,
         *,
         pressure: CellArray,
-        rock_regions: typing.Optional[IntCellArray] = None,
+        rock_region: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
@@ -308,7 +308,7 @@ class Rock(StoreSerializable):
 
         compressibility = self.compressibility_regions.to_rock_compressibility(
             pressure=pressure,
-            rock_regions=rock_regions,
+            rock_region=rock_region,
             unit_system=target_unit_system,
             dtype=dtype,
         )
@@ -358,7 +358,7 @@ class Rock(StoreSerializable):
     @staticmethod
     def _get_saturation_endpoints_from_tables(
         satfunc: SatFuncRegions,
-        saturation_regions: IntCellArray,
+        saturation_region: IntCellArray,
         n_cells: int,
         dtype: npt.DTypeLike,
     ) -> typing.Dict[str, CellArray]:
@@ -388,8 +388,8 @@ class Rock(StoreSerializable):
         residual_oil_saturation_gas_flood = np.zeros(n_cells, dtype=dtype)
         residual_gas_saturation = np.zeros(n_cells, dtype=dtype)
 
-        for satnum in np.unique(saturation_regions):
-            mask = saturation_regions == satnum
+        for satnum in np.unique(saturation_region):
+            mask = saturation_region == satnum
             endpoints = satfunc.region(
                 int(satnum)
             ).relative_permeability.get_saturation_endpoints()
@@ -412,9 +412,9 @@ class Rock(StoreSerializable):
         deck_file: DeckFile,
         *,
         grid: Grid,
-        rock_regions: typing.Optional[IntCellArray] = None,
+        rock_region: typing.Optional[IntCellArray] = None,
         satfunc: typing.Optional[SatFuncRegions] = None,
-        saturation_regions: typing.Optional[IntCellArray] = None,
+        saturation_region: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
     ) -> Self:
@@ -444,7 +444,7 @@ class Rock(StoreSerializable):
             table. Strongly recommended. Without it, any endpoint the deck
             doesn't supply explicitly silently defaults to `0.0` for every
             cell, which is rarely physically correct.
-        :param saturation_regions: Optional per-cell SATNUM array, used
+        :param saturation_region: Optional per-cell SATNUM array, used
             (only) for the `satfunc`-based derivation above. If omitted,
             loaded from the deck's own `SATNUM` keyword (defaulting to
             region 1 everywhere if that's absent too).
@@ -491,24 +491,24 @@ class Rock(StoreSerializable):
                 deck_file, interpolation_method=interpolation_method, dtype=dtype
             )
 
-        if rock_regions is None:
-            rock_regions = _load_region_array(deck_file, "ROCKNUM", n_cells)
+        if rock_region is None:
+            rock_region = _load_region_array(deck_file, "ROCKNUM", n_cells)
 
         table_derived_endpoints: typing.Optional[typing.Dict[str, CellArray]] = None
         if satfunc is not None:
-            if saturation_regions is None:
-                saturation_regions = _load_region_array(deck_file, "SATNUM", n_cells)
-            if saturation_regions is not None:
+            if saturation_region is None:
+                saturation_region = _load_region_array(deck_file, "SATNUM", n_cells)
+            if saturation_region is not None:
                 table_derived_endpoints = cls._get_saturation_endpoints_from_tables(
                     satfunc=satfunc,
-                    saturation_regions=saturation_regions,
+                    saturation_region=saturation_region,
                     n_cells=n_cells,
                     dtype=dtype,
                 )
             else:
                 warnings.warn(
                     "`satfunc` was provided but rock saturation regions (`SATNUM`) could not be determined from deck"
-                    "Pass `saturation_regions` or exclude `satfunc` to silence this warning",
+                    "Pass `saturation_region` or exclude `satfunc` to silence this warning",
                     category=UserWarning,
                     stacklevel=3,
                 )

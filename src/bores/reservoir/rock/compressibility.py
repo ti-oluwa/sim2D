@@ -738,6 +738,7 @@ class RockCompressibilityRegions(StoreSerializable):
     """
 
     __abstract_serializable__ = True
+    __slots__ = ("tables", "unit_system")
 
     def __init__(
         self,
@@ -771,13 +772,13 @@ class RockCompressibilityRegions(StoreSerializable):
                 f"(rocknum -> unit_system): "
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
-        self._tables = tables
+        self.tables = tables
         self.unit_system = expected_unit_system
 
     @property
     def n_regions(self) -> int:
         """Number of rock compressibility regions."""
-        return len(self._tables)
+        return len(self.tables)
 
     def region(self, rocknum: int) -> RockCompressibilityTable:
         """
@@ -787,9 +788,9 @@ class RockCompressibilityRegions(StoreSerializable):
         :returns: `RockCompressibilityTable` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        table = self._tables.get(rocknum)
+        table = self.tables.get(rocknum)
         if table is None:
-            available = sorted(self._tables.keys())
+            available = sorted(self.tables.keys())
             raise KeyError(
                 f"Rock compressibility region {rocknum} not found. "
                 f"Available regions: {available}."
@@ -797,7 +798,7 @@ class RockCompressibilityRegions(StoreSerializable):
         return table
 
     @classmethod
-    def single_region(cls, table: RockCompressibilityTable) -> Self:
+    def from_one(cls, table: RockCompressibilityTable) -> Self:
         """
         Wrap a single `RockCompressibilityTable` as region 1.
 
@@ -837,7 +838,7 @@ class RockCompressibilityRegions(StoreSerializable):
     def to_rock_compressibility(
         self,
         pressure: CellArray,
-        rock_regions: typing.Optional[IntCellArray] = None,
+        rock_region: typing.Optional[IntCellArray] = None,
         unit_system: typing.Optional[UnitSystem] = None,
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
@@ -851,14 +852,14 @@ class RockCompressibilityRegions(StoreSerializable):
 
         :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match the tables' `unit_system`.
-        :param rock_regions: Shape `(n_cells,)` int array of 1-based ROCKNUM
+        :param rock_region: Shape `(n_cells,)` int array of 1-based ROCKNUM
             values. When `None`, region 1 is used for all cells.
         :param unit_system: Unit system for the returned `RockCompressibility`.
             Defaults to the unit system of region 1.
         :returns: Per-cell `RockCompressibility`.
         """
         n_cells = len(pressure)
-        first_table = self._tables[next(iter(self._tables))]
+        first_table = self.tables[next(iter(self.tables))]
         dtype = np.dtype(first_table.dtype) if dtype is None else dtype
         target_unit_system = (
             unit_system if unit_system is not None else first_table.unit_system
@@ -866,7 +867,7 @@ class RockCompressibilityRegions(StoreSerializable):
         effective_compressibility = np.empty(n_cells, dtype=dtype)
         reference_pressure = np.empty(n_cells, dtype=dtype)
 
-        if rock_regions is None:
+        if rock_region is None:
             table = self.region(1)
             pore_volume_multiplier = table._pore_volume_interp(pressure)
             dpv_dp = table._pore_volume_dp_interp(pressure)
@@ -881,8 +882,8 @@ class RockCompressibilityRegions(StoreSerializable):
                 effective_compressibility *= factors["compressibility"]  # type: ignore
         else:
             unit_conversion_table = build_unit_conversion_table()
-            for rocknum in np.unique(rock_regions):
-                mask = rock_regions == rocknum
+            for rocknum in np.unique(rock_region):
+                mask = rock_region == rocknum
                 table = self.region(int(rocknum))
                 region_pressures = pressure[mask]
                 pore_volume_multiplier = table._pore_volume_interp(region_pressures)
@@ -930,7 +931,7 @@ class RockCompressibilityRegions(StoreSerializable):
         return self.__class__(
             tables={
                 rocknum: tables.convert(target, table=table)
-                for rocknum, tables in self._tables.items()
+                for rocknum, tables in self.tables.items()
             }
         )
 
@@ -938,18 +939,18 @@ class RockCompressibilityRegions(StoreSerializable):
         return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self._tables)
+        return iter(self.tables)
 
     def __len__(self) -> int:
-        return len(self._tables)
+        return len(self.tables)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._tables
+        return key in self.tables
 
     def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
-                str(rocknum): table.dump() for rocknum, table in self._tables.items()
+                str(rocknum): table.dump() for rocknum, table in self.tables.items()
             }
         }
 
@@ -962,7 +963,7 @@ class RockCompressibilityRegions(StoreSerializable):
         return cls(tables=tables)
 
     def __repr__(self) -> str:
-        region_keys = sorted(self._tables.keys())
+        region_keys = sorted(self.tables.keys())
         return (
             f"{self.__class__.__name__}("
             f"n_regions={self.n_regions}, "
