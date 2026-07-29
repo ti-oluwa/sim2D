@@ -845,7 +845,7 @@ class PVTTable(StoreSerializable):
                                 dtype=self.dtype,
                             )
                         )
-                        self._derivative_interpolatants["bubble_point_pressure_drs"] = (
+                        self._derivative_interpolatants["dpb_drs"] = (
                             _build_pchip_2d_derivative_interpolator(
                                 solution_gors,
                                 temperatures,
@@ -862,7 +862,7 @@ class PVTTable(StoreSerializable):
                             ky=k,
                         )
                         self._interpolatants["bubble_point_pressure"] = spline
-                        self._derivative_interpolatants["bubble_point_pressure_drs"] = (
+                        self._derivative_interpolatants["dpb_drs"] = (
                             _build_bilinear_2d_derivative_interpolator(
                                 solution_gors,
                                 temperatures,
@@ -1236,7 +1236,9 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False),
         )
 
-    def formation_volume_factor_dp(
+    fvf = B = b = formation_volume_factor
+
+    def db_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1357,7 +1359,9 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False),
         )
 
-    def viscosity_dp(
+    μ = mu = viscosity
+
+    def dμ_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1380,6 +1384,8 @@ class PVTTable(StoreSerializable):
                 derivative=True,
             )
         return self._pt_query("viscosity", pressure, temperature, derivative=True)
+
+    dmu_dp = dμ_dp
 
     def density(
         self,
@@ -1412,7 +1418,9 @@ class PVTTable(StoreSerializable):
             )
         return self._pt_query("density", pressure, temperature)
 
-    def density_dp(
+    ρ = rho = density
+
+    def dρ_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1435,6 +1443,8 @@ class PVTTable(StoreSerializable):
                 derivative=True,
             )
         return self._pt_query("density", pressure, temperature, derivative=True)
+
+    drho_dp = dρ_dp
 
     def compressibility(
         self,
@@ -1465,7 +1475,9 @@ class PVTTable(StoreSerializable):
             )
         return self._pt_query("compressibility", pressure, temperature)
 
-    def compressibility_dp(
+    c = cf = compressibility
+
+    def dc_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1488,6 +1500,8 @@ class PVTTable(StoreSerializable):
                 derivative=True,
             )
         return self._pt_query("compressibility", pressure, temperature, derivative=True)
+
+    dcf_dp = dc_dp
 
     def bubble_point_pressure(
         self,
@@ -1571,7 +1585,9 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False),
         )
 
-    def bubble_point_pressure_drs(
+    pb = pbub = bubble_point_pressure
+
+    def dpb_drs(
         self,
         solution_gor: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1589,7 +1605,7 @@ class PVTTable(StoreSerializable):
         if self._phase != FluidPhase.OIL or self._bubble_point_ndim != 2:
             return None
 
-        interp = self._derivative_interpolatants.get("bubble_point_pressure_drs")
+        interp = self._derivative_interpolatants.get("dpb_drs")
         if interp is None:
             return None
 
@@ -1607,6 +1623,8 @@ class PVTTable(StoreSerializable):
             if result.size == 1
             else result.astype(dtype, copy=False),
         )
+
+    dpbub_drs = dpb_drs
 
     def solution_gas_to_oil_ratio(
         self,
@@ -1673,7 +1691,9 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False),
         )
 
-    def solution_gas_to_oil_ratio_dp(
+    rs = solution_gas_to_oil_ratio
+
+    def drs_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1737,7 +1757,9 @@ class PVTTable(StoreSerializable):
             return None
         return self._pt_query("compressibility_factor", pressure, temperature)
 
-    def compressibility_factor_dp(
+    z = compressibility_factor
+
+    def dz_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1817,7 +1839,9 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False),
         )
 
-    def vaporized_oil_ratio_dp(
+    rv = vaporized_oil_ratio
+
+    def drv_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
@@ -1861,6 +1885,8 @@ class PVTTable(StoreSerializable):
             else result.astype(dtype, copy=False)
         )
 
+    pd = pdew = dew_point_pressure
+
     def solubility_in_water(
         self,
         pressure: TableQuery[NDimension],
@@ -1884,7 +1910,9 @@ class PVTTable(StoreSerializable):
             self._resolve_salinity(salinity),
         )
 
-    def solubility_in_water_dp(
+    rsw = solubility_in_water
+
+    def drsw_dp(
         self,
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],

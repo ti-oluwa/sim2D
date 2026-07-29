@@ -5,7 +5,7 @@ import typing
 from typing_extensions import Self
 
 from bores.blackoil.pvt.regions import PVTRegions
-from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
+from bores.blackoil.satfunc.regions import SatFuncRegions
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
@@ -18,7 +18,7 @@ class BlackOil(
     StoreSerializable,
     fields={
         "pvt": PVTRegions,
-        "satfunc": SaturationFunctionRegions,
+        "satfunc": SatFuncRegions,
         "unit_system": UnitSystem,
     },
 ):
@@ -37,7 +37,7 @@ class BlackOil(
     def __init__(
         self,
         pvt: PVTRegions,
-        satfunc: SaturationFunctionRegions,
+        satfunc: SatFuncRegions,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """

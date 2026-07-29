@@ -202,7 +202,7 @@ class Reservoir(
         """
         Shape `(n_cells,)` - hydrocarbon pore volume of each active cell.
 
-        Computed as `pore_volumes x (1 - Swc)` where Swc is the connate
+        Computed as `pore_volumes x (1 - swc)` where swc is the connate
         water saturation from `rock`.
 
         Units: same as `pore_volumes`.

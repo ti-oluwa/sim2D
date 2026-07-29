@@ -4,7 +4,7 @@ import rich
 from bores.blackoil.fluid import BlackOil
 from bores.blackoil.model import BlackOilModel
 from bores.blackoil.pvt import PVTRegions
-from bores.blackoil.saturation_functions import SaturationFunctionRegions
+from bores.blackoil.satfunc import SatFuncRegions
 from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
@@ -21,7 +21,7 @@ df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 # Load reservoir model
 grid = Grid.from_deck(df)
 regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
-satfunc = SaturationFunctionRegions.from_deck(df, mixing_rule="eclipse_rule")
+satfunc = SatFuncRegions.from_deck(df, mixing_rule="eclipse_rule")
 rock = Rock.from_deck(
     df,
     grid=grid,

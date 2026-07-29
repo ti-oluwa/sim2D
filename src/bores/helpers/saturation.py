@@ -51,13 +51,13 @@ def build_saturation_grids(
     ### Sharp Contacts (use_transition_zones=False):
     ```markdown
     ┌─────────────────────────────────────┐
-    │   GAS CAP (depth < GOC)            │  Sg = 1 - Sor_gas - Swc
+    │   GAS CAP (depth < GOC)            │  Sg = 1 - Sor_gas - swc
     │   Sg + So + Sw = 1.0               │  So = Sor_gas
-    │   Gas has displaced oil            │  Sw = Swc
+    │   Gas has displaced oil            │  Sw = swc
     ├─────────────────────────────────────┤ ← Gas-Oil Contact (GOC)
-    │   OIL ZONE (GOC ≤ depth < OWC)    │  So = 1 - Swc - Sgr
-    │   So + Sw + Sg = 1.0               │  Sw = Swc
-    │   Original accumulation            │  Sg = Sgr
+    │   OIL ZONE (GOC ≤ depth < OWC)    │  So = 1 - swc - sgr
+    │   So + Sw + Sg = 1.0               │  Sw = swc
+    │   Original accumulation            │  Sg = sgr
     ├─────────────────────────────────────┤ ← Oil-Water Contact (OWC)
     │   WATER ZONE (depth >= OWC)        │  Sw = 1 - Sor_water
     │   Sw + So + Sg = 1.0               │  So = Sor_water
@@ -111,18 +111,18 @@ def build_saturation_grids(
     ### Typical Parameter Values
 
     **Water-wet sandstone reservoir:**
-    - Swc = 0.20-0.30 (connate water saturation)
+    - swc = 0.20-0.30 (connate water saturation)
     - Sor_water = 0.25-0.35 (residual oil to water displacement)
     - Sor_gas = 0.10-0.20 (residual oil to gas displacement)
-    - Sgr = 0.03-0.08 (residual gas saturation)
+    - sgr = 0.03-0.08 (residual gas saturation)
     - GOC-OWC separation = 50-500 ft (typical oil column)
     - Transition thickness = 5-20 ft (if used)
 
     **Oil-wet carbonate reservoir:**
-    - Swc = 0.15-0.25 (lower connate water)
+    - swc = 0.15-0.25 (lower connate water)
     - Sor_water = 0.35-0.45 (higher residual oil)
     - Sor_gas = 0.15-0.30 (higher residual oil to gas)
-    - Sgr = 0.05-0.10 (residual gas)
+    - sgr = 0.05-0.10 (residual gas)
 
     :param depth_grid: Grid of cell-center depths (ft). Depth increases downward,
         where k=0 is the shallowest (top) layer and k=-1 is the deepest (bottom) layer.
@@ -170,7 +170,7 @@ def build_saturation_grids(
         - GOC >= OWC (contacts in wrong order)
         - Array shapes don't match
         - Saturation values outside [0, 1]
-        - Physically impossible combinations (e.g., Swc + Sor > 1.0)
+        - Physically impossible combinations (e.g., swc + Sor > 1.0)
         - Transition zones overlap
         - Transition parameters are non-positive
 
@@ -235,7 +235,7 @@ def build_saturation_grids(
     Notes:
     - Depth increases downward: smaller depth = shallower (top), larger depth = deeper (bottom)
     - Gas cap: depth < GOC (shallowest zone, uses Sor_gas)
-    - Oil zone: GOC ≤ depth < OWC (middle zone, uses Sgr)
+    - Oil zone: GOC ≤ depth < OWC (middle zone, uses sgr)
     - Water zone: depth >= OWC (deepest zone, uses Sor_water)
     - Inactive cells (porosity ≤ 0 or NaN) have zero saturation for all phases
     - All saturations are normalized to sum to exactly 1.0 in active cells
@@ -346,7 +346,7 @@ def _validate_inputs(
     - Contact depth ordering (GOC must be above OWC)
     - Array shape consistency across all grids
     - Saturation value ranges (must be between 0 and 1)
-    - Physical constraints (e.g., Swc + Sor_w <= 1.0, Swc + Sor_g <= 1.0)
+    - Physical constraints (e.g., swc + Sor_w <= 1.0, swc + Sor_g <= 1.0)
     - Transition zone parameters (positive thicknesses, non-overlapping zones)
     - Oil column thickness warnings
     - Sor_w >= Sor_g check (water displacement typically leaves more residual oil)
@@ -411,19 +411,19 @@ def _validate_inputs(
         (connate_water_saturation[active] + residual_oil_saturation_gas[active]) > 1.0
     ):
         raise ValidationError(
-            "Swc + Sor_gas exceeds 1.0 in some cells (gas zone constraint)."
+            "swc + Sor_gas exceeds 1.0 in some cells (gas zone constraint)."
         )
     if np.any(
         (connate_water_saturation[active] + residual_gas_saturation[active]) > 1.0
     ):
         raise ValidationError(
-            "Swc + Sgr exceeds 1.0 in some cells (oil zone constraint)."
+            "swc + sgr exceeds 1.0 in some cells (oil zone constraint)."
         )
     if np.any(
         (residual_oil_saturation_water[active] + residual_gas_saturation[active]) > 1.0
     ):
         raise ValidationError(
-            "Sor_water + Sgr exceeds 1.0 in some cells (not physical in any zone)."
+            "Sor_water + sgr exceeds 1.0 in some cells (not physical in any zone)."
         )
 
     # Warn if Sor_gas > Sor_water (unusual but not impossible)
@@ -498,15 +498,15 @@ def _build_sharp_contacts(
 
     **Gas Zone (depth < GOC):**
         Gas has displaced oil, leaving residual oil trapped by gas:
-        - Gas saturation: Sg = 1.0 - Sor_gas - Swc (mobile gas)
+        - Gas saturation: Sg = 1.0 - Sor_gas - swc (mobile gas)
         - Oil saturation: So = Sor_gas (residual oil to gas displacement)
-        - Water saturation: Sw = Swc (connate water)
+        - Water saturation: Sw = swc (connate water)
 
     **Oil Zone (GOC <= depth < OWC):**
         Original oil accumulation with connate water:
-        - Oil saturation: So = 1.0 - Swc - Sgr (mobile oil)
-        - Water saturation: Sw = Swc (connate water)
-        - Gas saturation: Sg = Sgr (residual gas, if any)
+        - Oil saturation: So = 1.0 - swc - sgr (mobile oil)
+        - Water saturation: Sw = swc (connate water)
+        - Gas saturation: Sg = sgr (residual gas, if any)
 
     **Water Zone (depth >= OWC):**
         Water has displaced oil, leaving residual oil trapped by water:
@@ -585,25 +585,25 @@ def _build_transition_zones(
 
     **Gas Cap Zone (depth < GOC - gas_oil_transition_thickness/2):**
         Pure gas zone where gas has displaced oil:
-        - Sg = 1.0 - Sor_gas - Swc, So = Sor_gas, Sw = Swc
+        - Sg = 1.0 - Sor_gas - swc, So = Sor_gas, Sw = swc
 
     **Gas-Oil Transition Zone (GOC - gas_oil_transition_thickness/2 <= depth <= GOC + gas_oil_transition_thickness/2):**
         Smooth transition from gas-dominated to oil-dominated:
         - Uses power-law weighting: w = ((depth - goc_top) / gas_oil_transition_thickness)^exponent
-        - Gas saturation decreases from (1 - Sor_gas - Swc) to Sgr
-        - Oil saturation increases from Sor_gas to (1 - Swc - Sgr)
-        - Water saturation remains at Swc
+        - Gas saturation decreases from (1 - Sor_gas - swc) to sgr
+        - Oil saturation increases from Sor_gas to (1 - swc - sgr)
+        - Water saturation remains at swc
 
     **Oil Zone (GOC + gas_oil_transition_thickness/2 < depth < OWC - oil_water_transition_thickness/2):**
         Pure oil zone with original accumulation:
-        - So = 1.0 - Swc - Sgr, Sw = Swc, Sg = Sgr
+        - So = 1.0 - swc - sgr, Sw = swc, Sg = sgr
 
     **Oil-Water Transition Zone (OWC - oil_water_transition_thickness/2 <= depth <= OWC + oil_water_transition_thickness/2):**
         Smooth transition from oil-dominated to water-dominated:
         - Uses power-law weighting: w = ((depth - owc_top) / oil_water_transition_thickness)^exponent
-        - Water saturation increases from Swc to (1 - Sor_water)
-        - Oil saturation decreases from (1 - Swc - Sgr) to Sor_water
-        - Gas saturation decreases from Sgr to 0
+        - Water saturation increases from swc to (1 - Sor_water)
+        - Oil saturation decreases from (1 - swc - sgr) to Sor_water
+        - Gas saturation decreases from sgr to 0
 
     **Water Zone (depth > OWC + oil_water_transition_thickness/2):**
         Pure water zone where water has displaced oil:
@@ -644,7 +644,7 @@ def _build_transition_zones(
     oil_saturation[gas_cap] = residual_oil_saturation_gas[gas_cap]
     water_saturation[gas_cap] = connate_water_saturation[gas_cap]
 
-    # Gas-oil transition: blend from (gas cap with Sor_gas) to (oil zone with Sgr)
+    # Gas-oil transition: blend from (gas cap with Sor_gas) to (oil zone with sgr)
     gas_oil_zone = (
         (depth_grid >= gas_oil_contact_top)
         & (depth_grid <= gas_oil_contact_bottom)
@@ -658,14 +658,14 @@ def _build_transition_zones(
         np.clip(frac, 0.0, 1.0, out=frac)
         weight = np.power(frac, transition_curvature_exponent)
 
-        # Gas: from (1 - Sor_gas - Swc) to Sgr
+        # Gas: from (1 - Sor_gas - swc) to sgr
         gas_saturation[gas_oil_zone] = (
             1.0
             - residual_oil_saturation_gas[gas_oil_zone]
             - connate_water_saturation[gas_oil_zone]
         ) * (1 - weight) + residual_gas_saturation[gas_oil_zone] * weight
 
-        # Oil: from Sor_gas to (1 - Swc - Sgr)
+        # Oil: from Sor_gas to (1 - swc - sgr)
         oil_saturation[gas_oil_zone] = (
             residual_oil_saturation_gas[gas_oil_zone] * (1 - weight)
             + (
@@ -676,7 +676,7 @@ def _build_transition_zones(
             * weight
         )
 
-        # Water: remains at Swc throughout transition
+        # Water: remains at swc throughout transition
         water_saturation[gas_oil_zone] = connate_water_saturation[gas_oil_zone]
 
     # Oil zone (between transitions) - original oil accumulation
@@ -705,20 +705,20 @@ def _build_transition_zones(
         np.clip(frac, 0.0, 1.0, out=frac)
         weight = np.power(frac, transition_curvature_exponent)
 
-        # Water: from Swc to (1 - Sor_water)
+        # Water: from swc to (1 - Sor_water)
         water_saturation[oil_water_zone] = (
             connate_water_saturation[oil_water_zone] * (1 - weight)
             + (1.0 - residual_oil_saturation_water[oil_water_zone]) * weight
         )
 
-        # Oil: from (1 - Swc - Sgr) to Sor_water
+        # Oil: from (1 - swc - sgr) to Sor_water
         oil_saturation[oil_water_zone] = (
             1.0
             - connate_water_saturation[oil_water_zone]
             - residual_gas_saturation[oil_water_zone]
         ) * (1 - weight) + residual_oil_saturation_water[oil_water_zone] * weight
 
-        # Gas: from Sgr to 0
+        # Gas: from sgr to 0
         gas_saturation[oil_water_zone] = residual_gas_saturation[oil_water_zone] * (
             1 - weight
         )

@@ -23,7 +23,7 @@ def make_saturation_field(
     :param min_saturation: Physical saturation range. Must satisfy `0 ≤ min_saturation < max_saturation ≤ 1`.
     :param max_saturation: Physical saturation range. Must satisfy `0 ≤ min_saturation < max_saturation ≤ 1`.
     :param spacing: `"cosine"` (default) - Chebyshev-cosine spacing, denser at the
-        endpoints. `"linspace"` - uniform spacing.
+        endpoints. `"linear"` - uniform spacing.
     :return: NDArray of shape `(n_points,)` with values in `[min_saturation, max_saturation]`,
     monotonically increasing.
     """
@@ -37,7 +37,7 @@ def make_saturation_field(
     if spacing == "cosine":
         i = np.arange(n_points, dtype=dtype)
         unit: npt.NDArray = 0.5 * (1.0 - np.cos(np.pi * i / (n_points - 1)))
-    elif spacing == "linspace":
+    elif spacing == "linear":
         unit: npt.NDArray = np.linspace(0.0, 1.0, n_points)
     else:
         raise ValueError(f"`spacing` must be 'cosine' or 'linspace', got '{spacing}'")

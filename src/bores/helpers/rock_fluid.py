@@ -5,7 +5,7 @@ import typing
 import numba
 import numpy as np
 
-from bores.blackoil.saturation_functions import (
+from bores.blackoil.satfunc import (
     CapillaryPressureTable,
     RelativePermeabilityTable,
 )
@@ -602,8 +602,8 @@ def build_effective_residual_saturation_grids(
     residual_oil_saturation_water_grid: NDimensionalGrid[ThreeDimensions],
     residual_oil_saturation_gas_grid: NDimensionalGrid[ThreeDimensions],
     residual_gas_saturation_grid: NDimensionalGrid[ThreeDimensions],
-    residual_oil_drainage_ratio_water_flood: float = 0.6,  # Sorw_drainage = 0.6 x Sorw_imbibition
-    residual_oil_drainage_ratio_gas_flood: float = 0.6,  # Sorg_drainage = 0.6 x Sorg_imbibition
+    residual_oil_drainage_ratio_water_flood: float = 0.6,  # sorw_drainage = 0.6 x sorw_imbibition
+    residual_oil_drainage_ratio_gas_flood: float = 0.6,  # sorg_drainage = 0.6 x sorg_imbibition
     residual_gas_drainage_ratio: float = 0.5,  # gas_saturationr_drainage = 0.5 x gas_saturationr_imbibition
     tolerance: float = 1e-6,
 ) -> typing.Tuple[
@@ -637,7 +637,7 @@ def build_effective_residual_saturation_grids(
     :param residual_oil_saturation_gas_grid: Residual oil saturation during gas flooding (imbibition) grid.
     :param residual_gas_saturation_grid: Residual gas saturation during gas imbibition grid.
     :param residual_oil_drainage_ratio_water_flood: Ratio to compute effective residual oil saturation in water drainage from imbibition value (default: 0.6, meaning Sor_drainage = 0.6 × Sor_imbibition).
-    :param residual_oil_drainage_ratio_gas_flood: Ratio to compute effective residual oil saturation in gas drainage from imbibition value (default: 0.6, meaning Sorg_drainage = 0.6 × Sorg_imbibition).
+    :param residual_oil_drainage_ratio_gas_flood: Ratio to compute effective residual oil saturation in gas drainage from imbibition value (default: 0.6, meaning sorg_drainage = 0.6 × sorg_imbibition).
     :param residual_gas_drainage_ratio: Ratio to compute effective residual gas saturation in drainage from imbibition value (default: 0.5, meaning gas_saturationr_drainage = 0.5 × gas_saturationr_imbibition).
     :param tolerance: Saturation change tolerance to distinguish between drainage and imbibition regimes (fraction).
     :return: A tuple containing:
@@ -673,13 +673,13 @@ def build_effective_residual_saturation_grids(
                 max_gas_saturation = max_gas_saturation_grid[i, j, k]
 
                 # Get imbibition values from rock properties
-                Sorw_imbibition = residual_oil_saturation_water_grid[i, j, k]
-                Sorg_imbibition = residual_oil_saturation_gas_grid[i, j, k]
+                sorw_imbibition = residual_oil_saturation_water_grid[i, j, k]
+                sorg_imbibition = residual_oil_saturation_gas_grid[i, j, k]
                 gas_saturationr_imbibition = residual_gas_saturation_grid[i, j, k]
 
                 # Compute drainage values using ratios
-                Sor_drainage = Sorw_imbibition * residual_oil_drainage_ratio_water_flood
-                Sorg_drainage = Sorg_imbibition * residual_oil_drainage_ratio_gas_flood
+                Sor_drainage = sorw_imbibition * residual_oil_drainage_ratio_water_flood
+                sorg_drainage = sorg_imbibition * residual_oil_drainage_ratio_gas_flood
                 gas_saturationr_drainage = (
                     gas_saturationr_imbibition * residual_gas_drainage_ratio
                 )
@@ -689,7 +689,7 @@ def build_effective_residual_saturation_grids(
                     # If water saturation is increasing we have water imbibition
                     # hence, water is displacing oil and more oil is trapped
                     effective_residual_oil_saturation_water_grid[i, j, k] = (
-                        Sorw_imbibition
+                        sorw_imbibition
                     )
                     new_max_water_saturation_grid[i, j, k] = water_saturation
 
@@ -719,7 +719,7 @@ def build_effective_residual_saturation_grids(
                     # If no significant change, use previous regime
                     if water_imbibition_flag_grid[i, j, k]:
                         effective_residual_oil_saturation_water_grid[i, j, k] = (
-                            Sorw_imbibition
+                            sorw_imbibition
                         )
                     else:
                         effective_residual_oil_saturation_water_grid[i, j, k] = (
@@ -731,7 +731,7 @@ def build_effective_residual_saturation_grids(
                     # If gas saturation is increasing the we have gas imbibition
                     # hence, gas is displacing oil and more oil trapped
                     effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                        Sorg_imbibition
+                        sorg_imbibition
                     )
                     effective_residual_gas_saturation_grid[i, j, k] = (
                         gas_saturationr_drainage
@@ -748,7 +748,7 @@ def build_effective_residual_saturation_grids(
                 elif gas_saturation < (max_gas_saturation - tolerance):
                     # If gas saturation descreasing then we have oil drainage
                     # hence, oil is displacing gas and less oil trapped
-                    effective_residual_oil_saturation_gas_grid[i, j, k] = Sorg_drainage
+                    effective_residual_oil_saturation_gas_grid[i, j, k] = sorg_drainage
                     effective_residual_gas_saturation_grid[i, j, k] = (
                         gas_saturationr_imbibition
                     )
@@ -765,14 +765,14 @@ def build_effective_residual_saturation_grids(
                     # If there's no significant change, use previous regime
                     if gas_imbibition_flag_grid[i, j, k]:
                         effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                            Sorg_imbibition
+                            sorg_imbibition
                         )
                         effective_residual_gas_saturation_grid[i, j, k] = (
                             gas_saturationr_imbibition
                         )
                     else:
                         effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                            Sorg_drainage
+                            sorg_drainage
                         )
                         effective_residual_gas_saturation_grid[i, j, k] = (
                             gas_saturationr_drainage

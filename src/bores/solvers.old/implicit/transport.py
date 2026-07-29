@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.sparse import coo_matrix
 
-from bores.blackoil.saturation_functions import SaturationFunctionTables
+from bores.blackoil.satfunc import SatFuncTables
 from bores.config import Config
 from bores.constants import c
 from bores.datastructures import BottomHolePressures
@@ -1565,23 +1565,23 @@ def compute_rock_fluid_derivatives(
     gas_saturation_grid: ThreeDimensionalGrid,
     rock_properties: RockProperties[ThreeDimensions],
     hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
-    rock_fluid_tables: SaturationFunctionTables,
+    rock_fluid_tables: SatFuncTables,
     disable_capillary_effects: bool = False,
     capillary_strength_factor: float = 1.0,
 ) -> typing.Tuple[
-    ThreeDimensionalGrid,  # dkrw_dSw
-    ThreeDimensionalGrid,  # dkrw_dSo
-    ThreeDimensionalGrid,  # dkrw_dSg
-    ThreeDimensionalGrid,  # dkro_dSw
-    ThreeDimensionalGrid,  # dkro_dSo
-    ThreeDimensionalGrid,  # dkro_dSg
-    ThreeDimensionalGrid,  # dkrg_dSw
-    ThreeDimensionalGrid,  # dkrg_dSo
-    ThreeDimensionalGrid,  # dkrg_dSg
-    ThreeDimensionalGrid,  # dPcow_dSw_eff
-    ThreeDimensionalGrid,  # dPcow_dSg_eff
-    ThreeDimensionalGrid,  # dPcgo_dSw_eff
-    ThreeDimensionalGrid,  # dPcgo_dSg_eff
+    ThreeDimensionalGrid,  # dkrw_dsw
+    ThreeDimensionalGrid,  # dkrw_dso
+    ThreeDimensionalGrid,  # dkrw_dsg
+    ThreeDimensionalGrid,  # dkro_dsw
+    ThreeDimensionalGrid,  # dkro_dso
+    ThreeDimensionalGrid,  # dkro_dsg
+    ThreeDimensionalGrid,  # dkrg_dsw
+    ThreeDimensionalGrid,  # dkrg_dso
+    ThreeDimensionalGrid,  # dkrg_dsg
+    ThreeDimensionalGrid,  # dpcow_dsw_eff
+    ThreeDimensionalGrid,  # dpcow_dsg_eff
+    ThreeDimensionalGrid,  # dpcgo_dsw_eff
+    ThreeDimensionalGrid,  # dpcgo_dsg_eff
 ]:
     """
     Compute all relperm and capillary-pressure derivative grids for the analytical Jacobian.
@@ -1590,12 +1590,12 @@ def compute_rock_fluid_derivatives(
     (with `beta` in `{Sw, So, Sg}`) are returned unchanged.
 
     **Capillary-pressure derivatives projected onto (Sw, Sg) basis** — the
-    constraint `So = 1 - Sw - Sg` gives `dSo/dSw = dSo/dSg = -1`, so:
+    constraint `So = 1 - Sw - Sg` gives `dso/dsw = dso/dsg = -1`, so:
 
-        dPcow_dSw_eff = dPcow_dSw + dPcow_dSo * (-1)
-        dPcow_dSg_eff =              dPcow_dSo * (-1)
-        dPcgo_dSw_eff =              dPcgo_dSo * (-1)
-        dPcgo_dSg_eff = dPcgo_dSg + dPcgo_dSo * (-1)
+        dpcow_dsw_eff = dpcow_dsw + dpcow_dso * (-1)
+        dpcow_dsg_eff =              dpcow_dso * (-1)
+        dpcgo_dsw_eff =              dpcgo_dso * (-1)
+        dpcgo_dsg_eff = dpcgo_dsg + dpcgo_dso * (-1)
 
     :param water_saturation_grid: Current water saturation grid.
     :param oil_saturation_grid: Current oil saturation grid.
@@ -1660,15 +1660,15 @@ def compute_rock_fluid_derivatives(
         **hysteresis_kwargs,
     )
 
-    dkrw_dSw = relperm_derivatives["dKrw_dSw"]
-    dkrw_dSo = relperm_derivatives["dKrw_dSo"]
-    dkrw_dSg = relperm_derivatives["dKrw_dSg"]
-    dkro_dSw = relperm_derivatives["dKro_dSw"]
-    dkro_dSo = relperm_derivatives["dKro_dSo"]
-    dkro_dSg = relperm_derivatives["dKro_dSg"]
-    dkrg_dSw = relperm_derivatives["dKrg_dSw"]
-    dkrg_dSo = relperm_derivatives["dKrg_dSo"]
-    dkrg_dSg = relperm_derivatives["dKrg_dSg"]
+    dkrw_dsw = relperm_derivatives["dkrw_dsw"]
+    dkrw_dso = relperm_derivatives["dkrw_dso"]
+    dkrw_dsg = relperm_derivatives["dkrw_dsg"]
+    dkro_dsw = relperm_derivatives["dkro_dsw"]
+    dkro_dso = relperm_derivatives["dkro_dso"]
+    dkro_dsg = relperm_derivatives["dkro_dsg"]
+    dkrg_dsw = relperm_derivatives["dkrg_dsw"]
+    dkrg_dso = relperm_derivatives["dkrg_dso"]
+    dkrg_dsg = relperm_derivatives["dkrg_dsg"]
 
     if capillary_table is not None and not disable_capillary_effects:
         capillary_pressure_derivatives = capillary_table.derivatives(
@@ -1683,43 +1683,43 @@ def compute_rock_fluid_derivatives(
             permeability=rock_properties.absolute_permeability.mean,
             **hysteresis_kwargs,
         )
-        dPcow_dSw = (
-            capillary_pressure_derivatives["dPcow_dSw"] * capillary_strength_factor
+        dpcow_dsw = (
+            capillary_pressure_derivatives["dpcow_dsw"] * capillary_strength_factor
         )
-        dPcow_dSo = (
-            capillary_pressure_derivatives["dPcow_dSo"] * capillary_strength_factor
+        dpcow_dso = (
+            capillary_pressure_derivatives["dpcow_dso"] * capillary_strength_factor
         )
-        dPcgo_dSo = (
-            capillary_pressure_derivatives["dPcgo_dSo"] * capillary_strength_factor
+        dpcgo_dso = (
+            capillary_pressure_derivatives["dpcgo_dso"] * capillary_strength_factor
         )
-        dPcgo_dSg = (
-            capillary_pressure_derivatives["dPcgo_dSg"] * capillary_strength_factor
+        dpcgo_dsg = (
+            capillary_pressure_derivatives["dpcgo_dsg"] * capillary_strength_factor
         )
-        dPcow_dSw_eff = dPcow_dSw - dPcow_dSo
-        dPcow_dSg_eff = -dPcow_dSo
-        dPcgo_dSw_eff = -dPcgo_dSo
-        dPcgo_dSg_eff = dPcgo_dSg - dPcgo_dSo
+        dpcow_dsw_eff = dpcow_dsw - dpcow_dso
+        dpcow_dsg_eff = -dpcow_dso
+        dpcgo_dsw_eff = -dpcgo_dso
+        dpcgo_dsg_eff = dpcgo_dsg - dpcgo_dso
     else:
         zeros = np.zeros_like(water_saturation_grid)
-        dPcow_dSw_eff = zeros
-        dPcow_dSg_eff = zeros.copy()
-        dPcgo_dSw_eff = zeros.copy()
-        dPcgo_dSg_eff = zeros.copy()
+        dpcow_dsw_eff = zeros
+        dpcow_dsg_eff = zeros.copy()
+        dpcgo_dsw_eff = zeros.copy()
+        dpcgo_dsg_eff = zeros.copy()
 
     return (  # type: ignore[return-value]
-        dkrw_dSw,
-        dkrw_dSo,
-        dkrw_dSg,
-        dkro_dSw,
-        dkro_dSo,
-        dkro_dSg,
-        dkrg_dSw,
-        dkrg_dSo,
-        dkrg_dSg,
-        dPcow_dSw_eff,
-        dPcow_dSg_eff,
-        dPcgo_dSw_eff,
-        dPcgo_dSg_eff,
+        dkrw_dsw,
+        dkrw_dso,
+        dkrw_dsg,
+        dkro_dsw,
+        dkro_dso,
+        dkro_dsg,
+        dkrg_dsw,
+        dkrg_dso,
+        dkrg_dsg,
+        dpcow_dsw_eff,
+        dpcow_dsg_eff,
+        dpcgo_dsw_eff,
+        dpcgo_dsg_eff,
     )  # ty:ignore[invalid-return-type]
 
 
@@ -1747,19 +1747,19 @@ def assemble_flux_contributions(
     gas_relative_mobility_grid: ThreeDimensionalGrid,
     oil_water_capillary_pressure_grid: ThreeDimensionalGrid,
     gas_oil_capillary_pressure_grid: ThreeDimensionalGrid,
-    dkrw_dSw_grid: ThreeDimensionalGrid,
-    dkrw_dSo_grid: ThreeDimensionalGrid,
-    dkrw_dSg_grid: ThreeDimensionalGrid,
-    dkro_dSw_grid: ThreeDimensionalGrid,
-    dkro_dSo_grid: ThreeDimensionalGrid,
-    dkro_dSg_grid: ThreeDimensionalGrid,
-    dkrg_dSw_grid: ThreeDimensionalGrid,
-    dkrg_dSo_grid: ThreeDimensionalGrid,
-    dkrg_dSg_grid: ThreeDimensionalGrid,
-    dPcow_dSw_eff_grid: ThreeDimensionalGrid,
-    dPcow_dSg_eff_grid: ThreeDimensionalGrid,
-    dPcgo_dSw_eff_grid: ThreeDimensionalGrid,
-    dPcgo_dSg_eff_grid: ThreeDimensionalGrid,
+    dkrw_dsw_grid: ThreeDimensionalGrid,
+    dkrw_dso_grid: ThreeDimensionalGrid,
+    dkrw_dsg_grid: ThreeDimensionalGrid,
+    dkro_dsw_grid: ThreeDimensionalGrid,
+    dkro_dso_grid: ThreeDimensionalGrid,
+    dkro_dsg_grid: ThreeDimensionalGrid,
+    dkrg_dsw_grid: ThreeDimensionalGrid,
+    dkrg_dso_grid: ThreeDimensionalGrid,
+    dkrg_dsg_grid: ThreeDimensionalGrid,
+    dpcow_dsw_eff_grid: ThreeDimensionalGrid,
+    dpcow_dsg_eff_grid: ThreeDimensionalGrid,
+    dpcgo_dsw_eff_grid: ThreeDimensionalGrid,
+    dpcgo_dsg_eff_grid: ThreeDimensionalGrid,
     water_viscosity_grid: ThreeDimensionalGrid,
     oil_viscosity_grid: ThreeDimensionalGrid,
     gas_viscosity_grid: ThreeDimensionalGrid,
@@ -1775,18 +1775,18 @@ def assemble_flux_contributions(
     in the sequential implicit scheme), the accumulation Jacobian terms are simply scaled by
     the frozen cell density:
 
-        dR_w/dSw_i (accumulation) = cell_water_density * (phi*V_i/dt)
-        dR_g/dSg_i (accumulation) = (cell_gas_density - cell_gas_density*alpha_Rs_i) * (phi*V_i/dt)
-        dR_g/dSw_i (accumulation) = (cell_gas_density*alpha_Rsw_i - cell_gas_density*alpha_Rs_i) * (phi*V_i/dt)
+        dR_w/dsw_i (accumulation) = cell_water_density * (phi*V_i/dt)
+        dR_g/dsg_i (accumulation) = (cell_gas_density - cell_gas_density*alpha_Rs_i) * (phi*V_i/dt)
+        dR_g/dsw_i (accumulation) = (cell_gas_density*alpha_Rsw_i - cell_gas_density*alpha_Rs_i) * (phi*V_i/dt)
             [from So = 1 - Sw - Sg substitution into M_g]
 
     Note: the gas accumulation captures all three saturation dependencies:
         M_g = gas_density*Sg + gas_density*alpha_Rs*(1-Sw-Sg) + gas_density*alpha_Rsw*Sw
-        dM_g/dSw = -gas_density*alpha_Rs + gas_density*alpha_Rsw
-        dM_g/dSg = gas_density - gas_density*alpha_Rs
+        dM_g/dsw = -gas_density*alpha_Rs + gas_density*alpha_Rsw
+        dM_g/dsg = gas_density - gas_density*alpha_Rs
 
     The flux Jacobian has a 2x2 block per (cell, neighbour) pair covering
-    dRw/dSw, dRw/dSg, dRg/dSw, dRg/dSg. Every flux stream that appears in
+    dRw/dsw, dRw/dsg, dRg/dsw, dRg/dsg. Every flux stream that appears in
     the residual contributes to all four entries:
 
       - Water residual R_w = -water_density * F_w  ->  dRw/dS terms
@@ -1822,19 +1822,19 @@ def assemble_flux_contributions(
     :param gas_relative_mobility_grid: Gas relative mobility (ft²/psi·day).
     :param oil_water_capillary_pressure_grid: Oil-water capillary pressure (psi).
     :param gas_oil_capillary_pressure_grid: Gas-oil capillary pressure (psi).
-    :param dkrw_dSw_grid: `∂krw/∂Sw` grid.
-    :param dkrw_dSo_grid: `∂krw/∂So` grid.
-    :param dkrw_dSg_grid: `∂krw/∂Sg` grid.
-    :param dkro_dSw_grid: `∂kro/∂Sw` grid.
-    :param dkro_dSo_grid: `∂kro/∂So` grid.
-    :param dkro_dSg_grid: `∂kro/∂Sg` grid.
-    :param dkrg_dSw_grid: `∂krg/∂Sw` grid.
-    :param dkrg_dSo_grid: `∂krg/∂So` grid.
-    :param dkrg_dSg_grid: `∂krg/∂Sg` grid.
-    :param dPcow_dSw_eff_grid: Effective `∂Pcow/∂Sw` (So eliminated) grid.
-    :param dPcow_dSg_eff_grid: Effective `∂Pcow/∂Sg` (So eliminated) grid.
-    :param dPcgo_dSw_eff_grid: Effective `∂Pcgo/∂Sw` (So eliminated) grid.
-    :param dPcgo_dSg_eff_grid: Effective `∂Pcgo/∂Sg` (So eliminated) grid.
+    :param dkrw_dsw_grid: `∂krw/∂Sw` grid.
+    :param dkrw_dso_grid: `∂krw/∂So` grid.
+    :param dkrw_dsg_grid: `∂krw/∂Sg` grid.
+    :param dkro_dsw_grid: `∂kro/∂Sw` grid.
+    :param dkro_dso_grid: `∂kro/∂So` grid.
+    :param dkro_dsg_grid: `∂kro/∂Sg` grid.
+    :param dkrg_dsw_grid: `∂krg/∂Sw` grid.
+    :param dkrg_dso_grid: `∂krg/∂So` grid.
+    :param dkrg_dsg_grid: `∂krg/∂Sg` grid.
+    :param dpcow_dsw_eff_grid: Effective `∂Pcow/∂Sw` (So eliminated) grid.
+    :param dpcow_dsg_eff_grid: Effective `∂Pcow/∂Sg` (So eliminated) grid.
+    :param dpcgo_dsw_eff_grid: Effective `∂Pcgo/∂Sw` (So eliminated) grid.
+    :param dpcgo_dsg_eff_grid: Effective `∂Pcgo/∂Sg` (So eliminated) grid.
     :param water_viscosity_grid: Water viscosity (cP).
     :param oil_viscosity_grid: Oil viscosity (cP).
     :param gas_viscosity_grid: Gas viscosity (cP).
@@ -1843,7 +1843,7 @@ def assemble_flux_contributions(
     :return: COO triplet `(rows, cols, vals)` for the inter-cell Jacobian entries.
     """
     cells_per_slice = cell_count_y * cell_count_z
-    # 3 accumulation entries per cell (dRw/dSw, dRg/dSg, dRg/dSw coupling)
+    # 3 accumulation entries per cell (dRw/dsw, dRg/dsg, dRg/dsw coupling)
     # + up to 8 flux entries per face × 6 faces
     max_nnz_per_slice = cells_per_slice * (3 + 6 * 16)
 
@@ -1896,7 +1896,7 @@ def assemble_flux_contributions(
                     / (cell_safe_water_fvf * bbl_to_ft3)
                 )
 
-                # Water accumulation diagonal: dR_w/dSw = water_density * phi*V/dt
+                # Water accumulation diagonal: dR_w/dsw = water_density * phi*V/dt
                 water_accumulation_diagonal = (
                     cell_water_density * accumulation_coefficient
                 )
@@ -1905,7 +1905,7 @@ def assemble_flux_contributions(
                 all_vals[i, local_ptr] = water_accumulation_diagonal
                 local_ptr += 1
 
-                # Gas accumulation diagonal: dR_g/dSg = (gas_density - gas_density*alpha_Rs) * phi*V/dt
+                # Gas accumulation diagonal: dR_g/dsg = (gas_density - gas_density*alpha_Rs) * phi*V/dt
                 # Clamp to a small positive value to prevent negative diagonal
                 # which destabilises iterative solvers when dissolved gas dominates
                 gas_accumulation_diagonal = max(
@@ -1924,10 +1924,10 @@ def assemble_flux_contributions(
                 local_ptr += 1
 
                 # Gas-water coupling accumulation:
-                # dR_g/dSw = (gas_density*alpha_Rsw - gas_density*alpha_Rs) * phi*V/dt
-                # From dM_g/dSw with So = 1 - Sw - Sg substituted:
+                # dR_g/dsw = (gas_density*alpha_Rsw - gas_density*alpha_Rs) * phi*V/dt
+                # From dM_g/dsw with So = 1 - Sw - Sg substituted:
                 #   M_g = gas_density*Sg + gas_density*alpha_Rs*(1-Sw-Sg) + gas_density*alpha_Rsw*Sw
-                #   dM_g/dSw = -gas_density*alpha_Rs + gas_density*alpha_Rsw
+                #   dM_g/dsw = -gas_density*alpha_Rs + gas_density*alpha_Rsw
                 coupling_value = (
                     cell_gas_density * cell_alpha_gas_solubility_in_water
                     - cell_gas_density * cell_alpha_solution_gor
@@ -2063,31 +2063,31 @@ def assemble_flux_contributions(
                     oil_neighbour_is_upwind = oil_potential > 0.0
                     gas_neighbour_is_upwind = gas_potential > 0.0
 
-                    # So-eliminated relperm derivatives (dSo/dSw = dSo/dSg = -1)
-                    dkrw_dSw_i_eff = dkrw_dSw_grid[i, j, k] - dkrw_dSo_grid[i, j, k]
-                    dkrw_dSg_i_eff = dkrw_dSg_grid[i, j, k] - dkrw_dSo_grid[i, j, k]
-                    dkro_dSw_i_eff = dkro_dSw_grid[i, j, k] - dkro_dSo_grid[i, j, k]
-                    dkro_dSg_i_eff = dkro_dSg_grid[i, j, k] - dkro_dSo_grid[i, j, k]
-                    dkrg_dSw_i_eff = dkrg_dSw_grid[i, j, k] - dkrg_dSo_grid[i, j, k]
-                    dkrg_dSg_i_eff = dkrg_dSg_grid[i, j, k] - dkrg_dSo_grid[i, j, k]
+                    # So-eliminated relperm derivatives (dso/dsw = dso/dsg = -1)
+                    dkrw_dsw_i_eff = dkrw_dsw_grid[i, j, k] - dkrw_dso_grid[i, j, k]
+                    dkrw_dsg_i_eff = dkrw_dsg_grid[i, j, k] - dkrw_dso_grid[i, j, k]
+                    dkro_dsw_i_eff = dkro_dsw_grid[i, j, k] - dkro_dso_grid[i, j, k]
+                    dkro_dsg_i_eff = dkro_dsg_grid[i, j, k] - dkro_dso_grid[i, j, k]
+                    dkrg_dsw_i_eff = dkrg_dsw_grid[i, j, k] - dkrg_dso_grid[i, j, k]
+                    dkrg_dsg_i_eff = dkrg_dsg_grid[i, j, k] - dkrg_dso_grid[i, j, k]
 
-                    dkrw_dSw_n_eff = (
-                        dkrw_dSw_grid[ni, nj, nk] - dkrw_dSo_grid[ni, nj, nk]
+                    dkrw_dsw_n_eff = (
+                        dkrw_dsw_grid[ni, nj, nk] - dkrw_dso_grid[ni, nj, nk]
                     )
-                    dkrw_dSg_n_eff = (
-                        dkrw_dSg_grid[ni, nj, nk] - dkrw_dSo_grid[ni, nj, nk]
+                    dkrw_dsg_n_eff = (
+                        dkrw_dsg_grid[ni, nj, nk] - dkrw_dso_grid[ni, nj, nk]
                     )
-                    dkro_dSw_n_eff = (
-                        dkro_dSw_grid[ni, nj, nk] - dkro_dSo_grid[ni, nj, nk]
+                    dkro_dsw_n_eff = (
+                        dkro_dsw_grid[ni, nj, nk] - dkro_dso_grid[ni, nj, nk]
                     )
-                    dkro_dSg_n_eff = (
-                        dkro_dSg_grid[ni, nj, nk] - dkro_dSo_grid[ni, nj, nk]
+                    dkro_dsg_n_eff = (
+                        dkro_dsg_grid[ni, nj, nk] - dkro_dso_grid[ni, nj, nk]
                     )
-                    dkrg_dSw_n_eff = (
-                        dkrg_dSw_grid[ni, nj, nk] - dkrg_dSo_grid[ni, nj, nk]
+                    dkrg_dsw_n_eff = (
+                        dkrg_dsw_grid[ni, nj, nk] - dkrg_dso_grid[ni, nj, nk]
                     )
-                    dkrg_dSg_n_eff = (
-                        dkrg_dSg_grid[ni, nj, nk] - dkrg_dSo_grid[ni, nj, nk]
+                    dkrg_dsg_n_eff = (
+                        dkrg_dsg_grid[ni, nj, nk] - dkrg_dso_grid[ni, nj, nk]
                     )
 
                     # FVF guards for neighbour; compute alpha on each side then average
@@ -2182,66 +2182,66 @@ def assemble_flux_contributions(
                     # dF = (dkr/dS / mu) * potential * T
 
                     # Water
-                    dFw_mob_dSw_i = (
-                        dkrw_dSw_i_eff
+                    dFw_mob_dsw_i = (
+                        dkrw_dsw_i_eff
                         * cell_inverse_water_viscosity
                         * water_potential
                         * T
                     )
-                    dFw_mob_dSg_i = (
-                        dkrw_dSg_i_eff
+                    dFw_mob_dsg_i = (
+                        dkrw_dsg_i_eff
                         * cell_inverse_water_viscosity
                         * water_potential
                         * T
                     )
-                    dFw_mob_dSw_n = (
-                        dkrw_dSw_n_eff
+                    dFw_mob_dsw_n = (
+                        dkrw_dsw_n_eff
                         * neighbour_inverse_water_viscosity
                         * water_potential
                         * T
                     )
-                    dFw_mob_dSg_n = (
-                        dkrw_dSg_n_eff
+                    dFw_mob_dsg_n = (
+                        dkrw_dsg_n_eff
                         * neighbour_inverse_water_viscosity
                         * water_potential
                         * T
                     )
 
                     # Oil
-                    dFo_mob_dSw_i = (
-                        dkro_dSw_i_eff * cell_inverse_oil_viscosity * oil_potential * T
+                    dFo_mob_dsw_i = (
+                        dkro_dsw_i_eff * cell_inverse_oil_viscosity * oil_potential * T
                     )
-                    dFo_mob_dSg_i = (
-                        dkro_dSg_i_eff * cell_inverse_oil_viscosity * oil_potential * T
+                    dFo_mob_dsg_i = (
+                        dkro_dsg_i_eff * cell_inverse_oil_viscosity * oil_potential * T
                     )
-                    dFo_mob_dSw_n = (
-                        dkro_dSw_n_eff
+                    dFo_mob_dsw_n = (
+                        dkro_dsw_n_eff
                         * neighbour_inverse_oil_viscosity
                         * oil_potential
                         * T
                     )
-                    dFo_mob_dSg_n = (
-                        dkro_dSg_n_eff
+                    dFo_mob_dsg_n = (
+                        dkro_dsg_n_eff
                         * neighbour_inverse_oil_viscosity
                         * oil_potential
                         * T
                     )
 
                     # Gas
-                    dFg_mob_dSw_i = (
-                        dkrg_dSw_i_eff * cell_inverse_gas_viscosity * gas_potential * T
+                    dFg_mob_dsw_i = (
+                        dkrg_dsw_i_eff * cell_inverse_gas_viscosity * gas_potential * T
                     )
-                    dFg_mob_dSg_i = (
-                        dkrg_dSg_i_eff * cell_inverse_gas_viscosity * gas_potential * T
+                    dFg_mob_dsg_i = (
+                        dkrg_dsg_i_eff * cell_inverse_gas_viscosity * gas_potential * T
                     )
-                    dFg_mob_dSw_n = (
-                        dkrg_dSw_n_eff
+                    dFg_mob_dsw_n = (
+                        dkrg_dsw_n_eff
                         * neighbour_inverse_gas_viscosity
                         * gas_potential
                         * T
                     )
-                    dFg_mob_dSg_n = (
-                        dkrg_dSg_n_eff
+                    dFg_mob_dsg_n = (
+                        dkrg_dsg_n_eff
                         * neighbour_inverse_gas_viscosity
                         * gas_potential
                         * T
@@ -2264,50 +2264,50 @@ def assemble_flux_contributions(
                     )
 
                     # Water capillary: d(Phi_w)/dS = -d(Pcow)/dS at owner, +d(Pcow)/dS at neighbour
-                    dFw_cap_dSw_i = (
+                    dFw_cap_dsw_i = (
                         upwind_water_relative_mobility
-                        * (dPcow_dSw_eff_grid[i, j, k])
+                        * (dpcow_dsw_eff_grid[i, j, k])
                         * T
                     )
-                    dFw_cap_dSg_i = (
+                    dFw_cap_dsg_i = (
                         upwind_water_relative_mobility
-                        * (dPcow_dSg_eff_grid[i, j, k])
+                        * (dpcow_dsg_eff_grid[i, j, k])
                         * T
                     )
-                    dFw_cap_dSw_n = (
+                    dFw_cap_dsw_n = (
                         upwind_water_relative_mobility
-                        * (-dPcow_dSw_eff_grid[ni, nj, nk])
+                        * (-dpcow_dsw_eff_grid[ni, nj, nk])
                         * T
                     )
-                    dFw_cap_dSg_n = (
+                    dFw_cap_dsg_n = (
                         upwind_water_relative_mobility
-                        * (-dPcow_dSg_eff_grid[ni, nj, nk])
+                        * (-dpcow_dsg_eff_grid[ni, nj, nk])
                         * T
                     )
 
                     # Gas capillary: d(Phi_g)/dS = +d(Pcgo)/dS at owner, -d(Pcgo)/dS at neighbour
-                    dFg_cap_dSw_i = (
-                        upwind_gas_relative_mobility * (dPcgo_dSw_eff_grid[i, j, k]) * T
+                    dFg_cap_dsw_i = (
+                        upwind_gas_relative_mobility * (dpcgo_dsw_eff_grid[i, j, k]) * T
                     )
-                    dFg_cap_dSg_i = (
-                        upwind_gas_relative_mobility * (dPcgo_dSg_eff_grid[i, j, k]) * T
+                    dFg_cap_dsg_i = (
+                        upwind_gas_relative_mobility * (dpcgo_dsg_eff_grid[i, j, k]) * T
                     )
-                    dFg_cap_dSw_n = (
+                    dFg_cap_dsw_n = (
                         upwind_gas_relative_mobility
-                        * (-dPcgo_dSw_eff_grid[ni, nj, nk])
+                        * (-dpcgo_dsw_eff_grid[ni, nj, nk])
                         * T
                     )
-                    dFg_cap_dSg_n = (
+                    dFg_cap_dsg_n = (
                         upwind_gas_relative_mobility
-                        * (-dPcgo_dSg_eff_grid[ni, nj, nk])
+                        * (-dpcgo_dsg_eff_grid[ni, nj, nk])
                         * T
                     )
 
                     # Water residual Jacobian: dR_w/dS = -water_density_face * dF_w/dS
-                    dRw_dSw_i = -face_water_density * (dFw_mob_dSw_i + dFw_cap_dSw_i)
-                    dRw_dSg_i = -face_water_density * (dFw_mob_dSg_i + dFw_cap_dSg_i)
-                    dRw_dSw_n = -face_water_density * (dFw_mob_dSw_n + dFw_cap_dSw_n)
-                    dRw_dSg_n = -face_water_density * (dFw_mob_dSg_n + dFw_cap_dSg_n)
+                    dRw_dsw_i = -face_water_density * (dFw_mob_dsw_i + dFw_cap_dsw_i)
+                    dRw_dsg_i = -face_water_density * (dFw_mob_dsg_i + dFw_cap_dsg_i)
+                    dRw_dsw_n = -face_water_density * (dFw_mob_dsw_n + dFw_cap_dsw_n)
+                    dRw_dsg_n = -face_water_density * (dFw_mob_dsg_n + dFw_cap_dsg_n)
 
                     # Gas residual Jacobian from three streams:
                     #   Stream 1 — free gas: -gas_density_face * dF_g/dS
@@ -2315,93 +2315,93 @@ def assemble_flux_contributions(
                     #   Stream 3 — dissolved in water: -gas_density_face * alpha_Rsw_face * dF_w/dS
 
                     # Stream 1: free gas
-                    dRg_gas_dSw_i = -face_gas_density * (dFg_mob_dSw_i + dFg_cap_dSw_i)
-                    dRg_gas_dSg_i = -face_gas_density * (dFg_mob_dSg_i + dFg_cap_dSg_i)
-                    dRg_gas_dSw_n = -face_gas_density * (dFg_mob_dSw_n + dFg_cap_dSw_n)
-                    dRg_gas_dSg_n = -face_gas_density * (dFg_mob_dSg_n + dFg_cap_dSg_n)
+                    dRg_gas_dsw_i = -face_gas_density * (dFg_mob_dsw_i + dFg_cap_dsw_i)
+                    dRg_gas_dsg_i = -face_gas_density * (dFg_mob_dsg_i + dFg_cap_dsg_i)
+                    dRg_gas_dsw_n = -face_gas_density * (dFg_mob_dsw_n + dFg_cap_dsw_n)
+                    dRg_gas_dsg_n = -face_gas_density * (dFg_mob_dsg_n + dFg_cap_dsg_n)
 
                     # Stream 2: dissolved gas in oil (oil potential has no Pc correction)
-                    dRg_oil_dSw_i = (
-                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dSw_i
+                    dRg_oil_dsw_i = (
+                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dsw_i
                     )
-                    dRg_oil_dSg_i = (
-                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dSg_i
+                    dRg_oil_dsg_i = (
+                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dsg_i
                     )
-                    dRg_oil_dSw_n = (
-                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dSw_n
+                    dRg_oil_dsw_n = (
+                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dsw_n
                     )
-                    dRg_oil_dSg_n = (
-                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dSg_n
+                    dRg_oil_dsg_n = (
+                        -face_gas_density * face_alpha_solution_gor * dFo_mob_dsg_n
                     )
 
                     # Stream 3: dissolved gas in water (water flux, same mobility+cap derivatives)
-                    dRg_water_dSw_i = (
+                    dRg_water_dsw_i = (
                         -face_gas_density
                         * face_alpha_gas_solubility_in_water
-                        * (dFw_mob_dSw_i + dFw_cap_dSw_i)
+                        * (dFw_mob_dsw_i + dFw_cap_dsw_i)
                     )
-                    dRg_water_dSg_i = (
+                    dRg_water_dsg_i = (
                         -face_gas_density
                         * face_alpha_gas_solubility_in_water
-                        * (dFw_mob_dSg_i + dFw_cap_dSg_i)
+                        * (dFw_mob_dsg_i + dFw_cap_dsg_i)
                     )
-                    dRg_water_dSw_n = (
+                    dRg_water_dsw_n = (
                         -face_gas_density
                         * face_alpha_gas_solubility_in_water
-                        * (dFw_mob_dSw_n + dFw_cap_dSw_n)
+                        * (dFw_mob_dsw_n + dFw_cap_dsw_n)
                     )
-                    dRg_water_dSg_n = (
+                    dRg_water_dsg_n = (
                         -face_gas_density
                         * face_alpha_gas_solubility_in_water
-                        * (dFw_mob_dSg_n + dFw_cap_dSg_n)
+                        * (dFw_mob_dsg_n + dFw_cap_dsg_n)
                     )
 
                     # Total gas Jacobian entries
-                    dRg_dSw_i = dRg_gas_dSw_i + dRg_oil_dSw_i + dRg_water_dSw_i
-                    dRg_dSg_i = dRg_gas_dSg_i + dRg_oil_dSg_i + dRg_water_dSg_i
-                    dRg_dSw_n = dRg_gas_dSw_n + dRg_oil_dSw_n + dRg_water_dSw_n
-                    dRg_dSg_n = dRg_gas_dSg_n + dRg_oil_dSg_n + dRg_water_dSg_n
+                    dRg_dsw_i = dRg_gas_dsw_i + dRg_oil_dsw_i + dRg_water_dsw_i
+                    dRg_dsg_i = dRg_gas_dsg_i + dRg_oil_dsg_i + dRg_water_dsg_i
+                    dRg_dsw_n = dRg_gas_dsw_n + dRg_oil_dsw_n + dRg_water_dsw_n
+                    dRg_dsg_n = dRg_gas_dsg_n + dRg_oil_dsg_n + dRg_water_dsg_n
 
                     # Write non-zero entries to thread-local COO buffer
-                    if dRw_dSw_i != 0.0:
+                    if dRw_dsw_i != 0.0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = cell_water_column
-                        all_vals[i, local_ptr] = dRw_dSw_i
+                        all_vals[i, local_ptr] = dRw_dsw_i
                         local_ptr += 1
-                    if dRw_dSg_i != 0.0:
+                    if dRw_dsg_i != 0.0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = cell_gas_column
-                        all_vals[i, local_ptr] = dRw_dSg_i
+                        all_vals[i, local_ptr] = dRw_dsg_i
                         local_ptr += 1
-                    if dRg_dSw_i != 0.0:
+                    if dRg_dsw_i != 0.0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = cell_water_column
-                        all_vals[i, local_ptr] = dRg_dSw_i
+                        all_vals[i, local_ptr] = dRg_dsw_i
                         local_ptr += 1
-                    if dRg_dSg_i != 0.0:
+                    if dRg_dsg_i != 0.0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = cell_gas_column
-                        all_vals[i, local_ptr] = dRg_dSg_i
+                        all_vals[i, local_ptr] = dRg_dsg_i
                         local_ptr += 1
-                    if dRw_dSw_n != 0.0:
+                    if dRw_dsw_n != 0.0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = neighbour_water_column
-                        all_vals[i, local_ptr] = dRw_dSw_n
+                        all_vals[i, local_ptr] = dRw_dsw_n
                         local_ptr += 1
-                    if dRw_dSg_n != 0.0:
+                    if dRw_dsg_n != 0.0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = neighbour_gas_column
-                        all_vals[i, local_ptr] = dRw_dSg_n
+                        all_vals[i, local_ptr] = dRw_dsg_n
                         local_ptr += 1
-                    if dRg_dSw_n != 0.0:
+                    if dRg_dsw_n != 0.0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = neighbour_water_column
-                        all_vals[i, local_ptr] = dRg_dSw_n
+                        all_vals[i, local_ptr] = dRg_dsw_n
                         local_ptr += 1
-                    if dRg_dSg_n != 0.0:
+                    if dRg_dsg_n != 0.0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = neighbour_gas_column
-                        all_vals[i, local_ptr] = dRg_dSg_n
+                        all_vals[i, local_ptr] = dRg_dsg_n
                         local_ptr += 1
 
         slice_fill[i] = local_ptr
@@ -2437,15 +2437,15 @@ def assemble_well_contributions(
     water_viscosity_grid: ThreeDimensionalGrid,
     oil_viscosity_grid: ThreeDimensionalGrid,
     gas_viscosity_grid: ThreeDimensionalGrid,
-    dkrw_dSw_grid: ThreeDimensionalGrid,
-    dkrw_dSo_grid: ThreeDimensionalGrid,
-    dkrw_dSg_grid: ThreeDimensionalGrid,
-    dkro_dSw_grid: ThreeDimensionalGrid,
-    dkro_dSo_grid: ThreeDimensionalGrid,
-    dkro_dSg_grid: ThreeDimensionalGrid,
-    dkrg_dSw_grid: ThreeDimensionalGrid,
-    dkrg_dSo_grid: ThreeDimensionalGrid,
-    dkrg_dSg_grid: ThreeDimensionalGrid,
+    dkrw_dsw_grid: ThreeDimensionalGrid,
+    dkrw_dso_grid: ThreeDimensionalGrid,
+    dkrw_dsg_grid: ThreeDimensionalGrid,
+    dkro_dsw_grid: ThreeDimensionalGrid,
+    dkro_dso_grid: ThreeDimensionalGrid,
+    dkro_dsg_grid: ThreeDimensionalGrid,
+    dkrg_dsw_grid: ThreeDimensionalGrid,
+    dkrg_dso_grid: ThreeDimensionalGrid,
+    dkrg_dsg_grid: ThreeDimensionalGrid,
     wells_indices: WellsIndices,
     injection_bhps: BottomHolePressures[float, ThreeDimensions],
     production_bhps: BottomHolePressures[float, ThreeDimensions],
@@ -2493,17 +2493,17 @@ def assemble_well_contributions(
         return gas_solubility_in_water_grid[i, j, k] * gas_fvf / water_fvf
 
     def _effective_derivative(
-        dkr_dSw: npt.NDArray,
-        dkr_dSo: npt.NDArray,
-        dkr_dSg: npt.NDArray,
+        dkr_dsw: npt.NDArray,
+        dkr_dso: npt.NDArray,
+        dkr_dsg: npt.NDArray,
         i: int,
         j: int,
         k: int,
     ):
         """So-eliminated effective derivatives."""
-        dkr_dSw_eff = dkr_dSw[i, j, k] - dkr_dSo[i, j, k]
-        dkr_dSg_eff = dkr_dSg[i, j, k] - dkr_dSo[i, j, k]
-        return dkr_dSw_eff, dkr_dSg_eff
+        dkr_dsw_eff = dkr_dsw[i, j, k] - dkr_dso[i, j, k]
+        dkr_dsg_eff = dkr_dsg[i, j, k] - dkr_dso[i, j, k]
+        return dkr_dsw_eff, dkr_dsg_eff
 
     for well_indices in wells_indices.injection.values():
         for perf in well_indices:
@@ -2522,15 +2522,15 @@ def assemble_well_contributions(
                     1.0 / water_viscosity if water_viscosity > 0.0 else 0.0
                 )
                 water_density = float(water_density_grid[i, j, k])
-                dkrw_dSw_eff, dkrw_dSg_eff = _effective_derivative(
-                    dkrw_dSw_grid, dkrw_dSo_grid, dkrw_dSg_grid, i, j, k
+                dkrw_dsw_eff, dkrw_dsg_eff = _effective_derivative(
+                    dkrw_dsw_grid, dkrw_dso_grid, dkrw_dsg_grid, i, j, k
                 )
 
-                # dR_w/dSw, dR_w/dSg from water well
-                dqw_dSw = T * inverse_water_viscosity * dkrw_dSw_eff * drawdown
-                dqw_dSg = T * inverse_water_viscosity * dkrw_dSg_eff * drawdown
-                _add_contribution(cell_idx, 0, 0, -water_density * dqw_dSw)
-                _add_contribution(cell_idx, 0, 1, -water_density * dqw_dSg)
+                # dR_w/dsw, dR_w/dsg from water well
+                dqw_dsw = T * inverse_water_viscosity * dkrw_dsw_eff * drawdown
+                dqw_dsg = T * inverse_water_viscosity * dkrw_dsg_eff * drawdown
+                _add_contribution(cell_idx, 0, 0, -water_density * dqw_dsw)
+                _add_contribution(cell_idx, 0, 1, -water_density * dqw_dsg)
 
             if np.isfinite(gas_bhp) and gas_bhp != 0.0:
                 drawdown = gas_bhp - cell_pressure
@@ -2539,14 +2539,14 @@ def assemble_well_contributions(
                     1.0 / gas_viscosity if gas_viscosity > 0.0 else 0.0
                 )
                 gas_density = float(gas_density_grid[i, j, k])
-                dkrg_dSw_eff, dkrg_dSg_eff = _effective_derivative(
-                    dkrg_dSw_grid, dkrg_dSo_grid, dkrg_dSg_grid, i, j, k
+                dkrg_dsw_eff, dkrg_dsg_eff = _effective_derivative(
+                    dkrg_dsw_grid, dkrg_dso_grid, dkrg_dsg_grid, i, j, k
                 )
 
-                dqg_dSw = T * inverse_gas_viscosity * dkrg_dSw_eff * drawdown
-                dqg_dSg = T * inverse_gas_viscosity * dkrg_dSg_eff * drawdown
-                _add_contribution(cell_idx, 1, 0, -gas_density * dqg_dSw)
-                _add_contribution(cell_idx, 1, 1, -gas_density * dqg_dSg)
+                dqg_dsw = T * inverse_gas_viscosity * dkrg_dsw_eff * drawdown
+                dqg_dsg = T * inverse_gas_viscosity * dkrg_dsg_eff * drawdown
+                _add_contribution(cell_idx, 1, 0, -gas_density * dqg_dsw)
+                _add_contribution(cell_idx, 1, 1, -gas_density * dqg_dsg)
 
     for well_indices in wells_indices.production.values():
         for perf in well_indices:
@@ -2568,27 +2568,27 @@ def assemble_well_contributions(
                     1.0 / water_viscosity if water_viscosity > 0.0 else 0.0
                 )
                 water_density = float(water_density_grid[i, j, k])
-                dkrw_dSw_eff, dkrw_dSg_eff = _effective_derivative(
-                    dkrw_dSw_grid, dkrw_dSo_grid, dkrw_dSg_grid, i, j, k
+                dkrw_dsw_eff, dkrw_dsg_eff = _effective_derivative(
+                    dkrw_dsw_grid, dkrw_dso_grid, dkrw_dsg_grid, i, j, k
                 )
 
-                dqw_dSw = T * inverse_water_viscosity * dkrw_dSw_eff * drawdown
-                dqw_dSg = T * inverse_water_viscosity * dkrw_dSg_eff * drawdown
+                dqw_dsw = T * inverse_water_viscosity * dkrw_dsw_eff * drawdown
+                dqw_dsg = T * inverse_water_viscosity * dkrw_dsg_eff * drawdown
                 # dR_w/dS from water production
-                _add_contribution(cell_idx, 0, 0, -water_density * dqw_dSw)
-                _add_contribution(cell_idx, 0, 1, -water_density * dqw_dSg)
+                _add_contribution(cell_idx, 0, 0, -water_density * dqw_dsw)
+                _add_contribution(cell_idx, 0, 1, -water_density * dqw_dsg)
                 # dR_g/dS from dissolved gas in produced water
                 _add_contribution(
                     cell_idx,
                     1,
                     0,
-                    -gas_density * alpha_gas_solubility_in_water * dqw_dSw,
+                    -gas_density * alpha_gas_solubility_in_water * dqw_dsw,
                 )
                 _add_contribution(
                     cell_idx,
                     1,
                     1,
-                    -gas_density * alpha_gas_solubility_in_water * dqw_dSg,
+                    -gas_density * alpha_gas_solubility_in_water * dqw_dsg,
                 )
 
             if np.isfinite(oil_bhp) and oil_bhp != 0.0:
@@ -2597,18 +2597,18 @@ def assemble_well_contributions(
                 inverse_oil_viscosity = (
                     1.0 / oil_viscosity if oil_viscosity > 0.0 else 0.0
                 )
-                dkro_dSw_eff, dkro_dSg_eff = _effective_derivative(
-                    dkro_dSw_grid, dkro_dSo_grid, dkro_dSg_grid, i, j, k
+                dkro_dsw_eff, dkro_dsg_eff = _effective_derivative(
+                    dkro_dsw_grid, dkro_dso_grid, dkro_dsg_grid, i, j, k
                 )
 
-                dqo_dSw = T * inverse_oil_viscosity * dkro_dSw_eff * drawdown
-                dqo_dSg = T * inverse_oil_viscosity * dkro_dSg_eff * drawdown
+                dqo_dsw = T * inverse_oil_viscosity * dkro_dsw_eff * drawdown
+                dqo_dsg = T * inverse_oil_viscosity * dkro_dsg_eff * drawdown
                 # dR_g/dS from dissolved gas in produced oil
                 _add_contribution(
-                    cell_idx, 1, 0, -gas_density * alpha_solution_gor * dqo_dSw
+                    cell_idx, 1, 0, -gas_density * alpha_solution_gor * dqo_dsw
                 )
                 _add_contribution(
-                    cell_idx, 1, 1, -gas_density * alpha_solution_gor * dqo_dSg
+                    cell_idx, 1, 1, -gas_density * alpha_solution_gor * dqo_dsg
                 )
 
             if np.isfinite(gas_bhp) and gas_bhp != 0.0:
@@ -2617,14 +2617,14 @@ def assemble_well_contributions(
                 inverse_gas_viscosity = (
                     1.0 / gas_viscosity if gas_viscosity > 0.0 else 0.0
                 )
-                dkrg_dSw_eff, dkrg_dSg_eff = _effective_derivative(
-                    dkrg_dSw_grid, dkrg_dSo_grid, dkrg_dSg_grid, i, j, k
+                dkrg_dsw_eff, dkrg_dsg_eff = _effective_derivative(
+                    dkrg_dsw_grid, dkrg_dso_grid, dkrg_dsg_grid, i, j, k
                 )
 
-                dqg_dSw = T * inverse_gas_viscosity * dkrg_dSw_eff * drawdown
-                dqg_dSg = T * inverse_gas_viscosity * dkrg_dSg_eff * drawdown
-                _add_contribution(cell_idx, 1, 0, -gas_density * dqg_dSw)
-                _add_contribution(cell_idx, 1, 1, -gas_density * dqg_dSg)
+                dqg_dsw = T * inverse_gas_viscosity * dkrg_dsw_eff * drawdown
+                dqg_dsg = T * inverse_gas_viscosity * dkrg_dsg_eff * drawdown
+                _add_contribution(cell_idx, 1, 0, -gas_density * dqg_dsw)
+                _add_contribution(cell_idx, 1, 1, -gas_density * dqg_dsg)
 
     return (
         np.array(rows, dtype=np.int32),
@@ -2700,19 +2700,19 @@ def assemble_analytical_jacobian(
     :return: Sparse Jacobian of shape `(2N, 2N)` in COO format.
     """
     (
-        dkrw_dSw_grid,
-        dkrw_dSo_grid,
-        dkrw_dSg_grid,
-        dkro_dSw_grid,
-        dkro_dSo_grid,
-        dkro_dSg_grid,
-        dkrg_dSw_grid,
-        dkrg_dSo_grid,
-        dkrg_dSg_grid,
-        dPcow_dSw_eff_grid,
-        dPcow_dSg_eff_grid,
-        dPcgo_dSw_eff_grid,
-        dPcgo_dSg_eff_grid,
+        dkrw_dsw_grid,
+        dkrw_dso_grid,
+        dkrw_dsg_grid,
+        dkro_dsw_grid,
+        dkro_dso_grid,
+        dkro_dsg_grid,
+        dkrg_dsw_grid,
+        dkrg_dso_grid,
+        dkrg_dsg_grid,
+        dpcow_dsw_eff_grid,
+        dpcow_dsg_eff_grid,
+        dpcgo_dsw_eff_grid,
+        dpcgo_dsg_eff_grid,
     ) = compute_rock_fluid_derivatives(
         water_saturation_grid=water_saturation_grid,
         oil_saturation_grid=oil_saturation_grid,
@@ -2756,19 +2756,19 @@ def assemble_analytical_jacobian(
         face_transmissibilities_z=face_transmissibilities.z,
         oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
         gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-        dkrw_dSw_grid=dkrw_dSw_grid,
-        dkrw_dSo_grid=dkrw_dSo_grid,
-        dkrw_dSg_grid=dkrw_dSg_grid,
-        dkro_dSw_grid=dkro_dSw_grid,
-        dkro_dSo_grid=dkro_dSo_grid,
-        dkro_dSg_grid=dkro_dSg_grid,
-        dkrg_dSw_grid=dkrg_dSw_grid,
-        dkrg_dSo_grid=dkrg_dSo_grid,
-        dkrg_dSg_grid=dkrg_dSg_grid,
-        dPcow_dSw_eff_grid=dPcow_dSw_eff_grid,
-        dPcow_dSg_eff_grid=dPcow_dSg_eff_grid,
-        dPcgo_dSw_eff_grid=dPcgo_dSw_eff_grid,
-        dPcgo_dSg_eff_grid=dPcgo_dSg_eff_grid,
+        dkrw_dsw_grid=dkrw_dsw_grid,
+        dkrw_dso_grid=dkrw_dso_grid,
+        dkrw_dsg_grid=dkrw_dsg_grid,
+        dkro_dsw_grid=dkro_dsw_grid,
+        dkro_dso_grid=dkro_dso_grid,
+        dkro_dsg_grid=dkro_dsg_grid,
+        dkrg_dsw_grid=dkrg_dsw_grid,
+        dkrg_dso_grid=dkrg_dso_grid,
+        dkrg_dsg_grid=dkrg_dsg_grid,
+        dpcow_dsw_eff_grid=dpcow_dsw_eff_grid,
+        dpcow_dsg_eff_grid=dpcow_dsg_eff_grid,
+        dpcgo_dsw_eff_grid=dpcgo_dsw_eff_grid,
+        dpcgo_dsg_eff_grid=dpcgo_dsg_eff_grid,
         water_viscosity_grid=water_viscosity_grid,
         oil_viscosity_grid=oil_viscosity_grid,
         gas_viscosity_grid=gas_viscosity_grid,
@@ -2798,15 +2798,15 @@ def assemble_analytical_jacobian(
         water_viscosity_grid=water_viscosity_grid,
         oil_viscosity_grid=oil_viscosity_grid,
         gas_viscosity_grid=gas_viscosity_grid,
-        dkrw_dSw_grid=dkrw_dSw_grid,
-        dkrw_dSo_grid=dkrw_dSo_grid,
-        dkrw_dSg_grid=dkrw_dSg_grid,
-        dkro_dSw_grid=dkro_dSw_grid,
-        dkro_dSo_grid=dkro_dSo_grid,
-        dkro_dSg_grid=dkro_dSg_grid,
-        dkrg_dSw_grid=dkrg_dSw_grid,
-        dkrg_dSo_grid=dkrg_dSo_grid,
-        dkrg_dSg_grid=dkrg_dSg_grid,
+        dkrw_dsw_grid=dkrw_dsw_grid,
+        dkrw_dso_grid=dkrw_dso_grid,
+        dkrw_dsg_grid=dkrw_dsg_grid,
+        dkro_dsw_grid=dkro_dsw_grid,
+        dkro_dso_grid=dkro_dso_grid,
+        dkro_dsg_grid=dkro_dsg_grid,
+        dkrg_dsw_grid=dkrg_dsw_grid,
+        dkrg_dso_grid=dkrg_dso_grid,
+        dkrg_dsg_grid=dkrg_dsg_grid,
         wells_indices=wells_indices,
         injection_bhps=injection_bhps,
         production_bhps=production_bhps,

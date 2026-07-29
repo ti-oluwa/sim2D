@@ -198,7 +198,7 @@ Discretization methods for numerical simulations
 MiscibilityModel = typing.Literal["immiscible", "todd-longstaff"]
 """Miscibility models for fluid interactions in the simulation"""
 
-Spacing = typing.Literal["cosine", "linspace"]
+Spacing = typing.Literal["cosine", "linear"]
 
 
 class ArrayLike(typing.Protocol[Tco]):
@@ -307,7 +307,7 @@ class MixingRuleFunc(typing.Protocol):
         :param krg: Two-phase gas relative permeability from the gas-oil
             table at the current gas saturation.
         :param kr_max: Usually oil relative permeability at connate water
-            saturation (kro at Sw=Swc, Sg=0).
+            saturation (kro at Sw=swc, Sg=0).
         :param water_saturation: Current water saturation.
         :param oil_saturation: Current oil saturation.
         :param gas_saturation: Current gas saturation.
@@ -335,33 +335,33 @@ class MixingRulePartialDerivatives(TypedDict):
 
     Fields:
 
-    d_kro_d_kro_w :
+    dkro_dkro_w :
         ∂kro / ∂kro_w  - sensitivity to the oil-water two-phase oil kr.
-    d_kro_d_kro_g :
+    dkro_dkro_g :
         ∂kro / ∂kro_g  - sensitivity to the gas-oil two-phase oil kr.
-    d_kro_d_krw :
+    dkro_dkrw :
         ∂kro / ∂krw  - sensitivity to the two-phase water kr.
         Zero for rules that do not use `krw` directly (most simple rules).
-    d_kro_d_krg :
+    dkro_dkrg :
         ∂kro / ∂krg  - sensitivity to the two-phase gas kr.
         Zero for rules that do not use `krg` directly (most simple rules).
-    d_kro_d_sw_explicit :
+    dkro_dsw_explicit :
         ∂kro / ∂Sw  through the explicit water-saturation argument of the
         mixing rule (e.g. saturation weighting in `eclipse_rule`).
         Zero for rules that do not depend directly on saturation.
-    d_kro_d_so_explicit :
+    dkro_dso_explicit :
         ∂kro / ∂So  through the explicit oil-saturation argument.
-    d_kro_d_sg_explicit :
+    dkro_dsg_explicit :
         ∂kro / ∂Sg  through the explicit gas-saturation argument.
     """
 
-    d_kro_d_kro_w: NumberOrArray
-    d_kro_d_kro_g: NumberOrArray
-    d_kro_d_krw: NumberOrArray
-    d_kro_d_krg: NumberOrArray
-    d_kro_d_sw_explicit: NumberOrArray
-    d_kro_d_so_explicit: NumberOrArray
-    d_kro_d_sg_explicit: NumberOrArray
+    dkro_dkro_w: NumberOrArray
+    dkro_dkro_g: NumberOrArray
+    dkro_dkrw: NumberOrArray
+    dkro_dkrg: NumberOrArray
+    dkro_dsw_explicit: NumberOrArray
+    dkro_dso_explicit: NumberOrArray
+    dkro_dsg_explicit: NumberOrArray
 
 
 class MixingRuleDFunc(typing.Protocol):
@@ -397,8 +397,8 @@ class MixingRuleDFunc(typing.Protocol):
 
         The tuple order (when not returning a `MixingRulePartialDerivatives` dict) is:
 
-        `(d_kro_d_kro_w, d_kro_d_kro_g, d_kro_d_krw, d_kro_d_krg,
-           d_kro_d_sw_explicit, d_kro_d_so_explicit, d_kro_d_sg_explicit)`
+        `(dkro_dkro_w, dkro_dkro_g, dkro_dkrw, dkro_dkrg,
+           dkro_dsw_explicit, dkro_dso_explicit, dkro_dsg_explicit)`
 
         :param kro_w: Two-phase oil kr from oil-water table.
         :param kro_g: Two-phase oil kr from gas-oil table.
@@ -426,17 +426,17 @@ class RelativePermeabilityDerivatives(TypedDict):
     """Dictionary holding relative permeabilities derivatives."""
 
     # w.r.t water
-    dKrw_dSw: NumberOrArray
-    dKro_dSw: NumberOrArray
-    dKrg_dSw: NumberOrArray
+    dkrw_dsw: NumberOrArray
+    dkro_dsw: NumberOrArray
+    dkrg_dsw: NumberOrArray
     # w.r.t oil
-    dKrw_dSo: NumberOrArray
-    dKro_dSo: NumberOrArray
-    dKrg_dSo: NumberOrArray
+    dkrw_dso: NumberOrArray
+    dkro_dso: NumberOrArray
+    dkrg_dso: NumberOrArray
     # w.r.t gas
-    dKrw_dSg: NumberOrArray
-    dKro_dSg: NumberOrArray
-    dKrg_dSg: NumberOrArray
+    dkrw_dsg: NumberOrArray
+    dkro_dsg: NumberOrArray
+    dkrg_dsg: NumberOrArray
 
 
 class CapillaryPressures(TypedDict):
@@ -449,10 +449,10 @@ class CapillaryPressures(TypedDict):
 class CapillaryPressureDerivatives(TypedDict):
     """Dictionary containing capillary pressure derivatives for different phase pairs."""
 
-    dPcow_dSw: NumberOrArray
-    dPcow_dSo: NumberOrArray
-    dPcgo_dSg: NumberOrArray
-    dPcgo_dSo: NumberOrArray
+    dpcow_dsw: NumberOrArray
+    dpcow_dso: NumberOrArray
+    dpcgo_dsg: NumberOrArray
+    dpcgo_dso: NumberOrArray
 
 
 class Wettability(enum.Enum):

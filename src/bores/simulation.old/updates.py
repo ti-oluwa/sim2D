@@ -19,12 +19,12 @@ from bores.grids.pvt import (
     build_oil_effective_viscosity_grid,
     build_oil_formation_volume_factor_grid,
     build_oil_viscosity_grid,
-    build_solution_gas_to_oil_ratio_grid,
     build_water_bubble_point_pressure_grid,
     build_water_compressibility_grid,
     build_water_density_grid,
     build_water_formation_volume_factor_grid,
     build_water_viscosity_grid,
+    buildsolution_gas_to_oil_ratio_grid,
 )
 from bores.grids.rock_fluid import build_effective_residual_saturation_grids
 from bores.reservoir import FluidProperties, HysteresisState, RockProperties
@@ -284,7 +284,7 @@ def update_fluid_properties(
             )
 
         # Compute Rs at New bubble point
-        gor_at_bubble_point_pressure_grid = build_solution_gas_to_oil_ratio_grid(
+        gor_at_bubble_point_pressure_grid = buildsolution_gas_to_oil_ratio_grid(
             pressure_grid=new_oil_bubble_point_pressure_grid,  # New bubble point here
             temperature_grid=temperature_grid,
             bubble_point_pressure_grid=new_oil_bubble_point_pressure_grid,  # Use same New bubble point here
@@ -292,7 +292,7 @@ def update_fluid_properties(
             oil_api_gravity_grid=fluid_properties.oil_api_gravity_grid,
         )
         # Compute New Rs at current pressure
-        new_solution_gas_to_oil_ratio_grid = build_solution_gas_to_oil_ratio_grid(
+        new_solution_gas_to_oil_ratio_grid = buildsolution_gas_to_oil_ratio_grid(
             pressure_grid=pressure_grid,
             temperature_grid=temperature_grid,
             bubble_point_pressure_grid=new_oil_bubble_point_pressure_grid,  # New bubble point here
@@ -463,9 +463,9 @@ def update_residual_saturation_grids(
     gas_saturation_grid: NDimensionalGrid[ThreeDimensions],
     old_water_saturation_grid: NDimensionalGrid[ThreeDimensions],
     old_gas_saturation_grid: NDimensionalGrid[ThreeDimensions],
-    residual_oil_drainage_ratio_water_flood: float = 0.6,  # Sorw_drainage = 0.6 x Sorw_imbibition
-    residual_oil_drainage_ratio_gas_flood: float = 0.6,  # Sorg_drainage = 0.6 x Sorg_imbibition
-    residual_gas_drainage_ratio: float = 0.5,  # Sgr_drainage = 0.5 x Sgr_imbibition
+    residual_oil_drainage_ratio_water_flood: float = 0.6,  # sorw_drainage = 0.6 x sorw_imbibition
+    residual_oil_drainage_ratio_gas_flood: float = 0.6,  # sorg_drainage = 0.6 x sorg_imbibition
+    residual_gas_drainage_ratio: float = 0.5,  # sgr_drainage = 0.5 x sgr_imbibition
     tolerance: float = 1e-6,
 ) -> typing.Tuple[RockProperties[ThreeDimensions], HysteresisState[ThreeDimensions]]:
     """

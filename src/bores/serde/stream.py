@@ -1,5 +1,5 @@
 """
-Stream model state with optional persistence for memory-efficient simulation workflows.
+Stream data with optional persistence for memory-efficient iteration over any `Serializable` item iterable.
 """
 
 import atexit
@@ -15,8 +15,6 @@ from typing_extensions import Self
 from bores.errors import StorageError, StreamError
 from bores.serde.base import SerializableT
 from bores.serde.stores.base import DataStore, EntryMeta
-from bores.blackoil.state import ModelState, self.validator
-from bores.typing import NDimension
 from bores.utils import _close_iter
 
 __all__ = ["DataStream", "StreamProgress"]
@@ -25,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class StreamProgress(typing.TypedDict):
-    """Progress statistics for state streaming."""
+    """Progress statistics for a data stream."""
 
     yield_count: int
     saved_count: int
@@ -40,82 +38,85 @@ _stop_io = 0  # Signal for stopping I/O thread
 
 class DataStream(typing.Generic[SerializableT]):
     """
-    Memory-efficient stream for model state iteration with optional persistence.
+    Memory-efficient stream for iterating any `Serializable` item with optional persistence.
 
-    Wraps a state generator/iterator and optionally persists states to disk as they're yielded,
-    immediately freeing memory. Supports batching for I/O efficiency and async I/O for
-    non-blocking disk writes.
+    Wraps a generator/iterator of `SerializableT` items and optionally persists them to
+    a `DataStore` as they're yielded, immediately freeing memory. Supports batching for
+    I/O efficiency and async I/O for non-blocking disk writes. Generic over any
+    `Serializable`/`StoreSerializable` type e.g, reservoir items, well items, or any
+    other item your `DataStore` backends know how to (de)serialise.
 
-    **Why stream states?**
-    - Low memory overhead (states persisted immediately/eventually after yield)
+    **Why stream items?**
+    - Low memory overhead (items persisted immediately/eventually after yield)
     - Batch persistence for I/O efficiency
-    - Optional async I/O (2-3x speedup when I/O slower than simulation)
+    - Optional async I/O (2-3x speedup when I/O slower than production of items)
     - Optional validation before save
     - Progress tracking and logging
     - Auto-save on context exit (no lost data)
-    - Replay from store (load previously saved states)
-    - Selective persistence (save only states matching predicate)
+    - Replay from store (load previously saved items)
+    - Selective persistence (save only items matching predicate)
     - Checkpointing for crash recovery
     - Memory monitoring with automatic flushing
 
     **Async/Background I/O**
-    When `background_io=True` disk writes happen in a background thread.  The
-    simulation fills a queue; the I/O worker drains it.  `max_queue_size`
-    applies back-pressure so memory stays bounded when the simulation is faster
-    than disk.
+    When `background_io=True` disk writes happen in a background thread. The
+    source fills a queue; the I/O worker drains it. `max_queue_size`
+    applies back-pressure so memory stays bounded when the source produces
+    items faster than disk can absorb them.
 
     **Persistence model**
-    States are accumulated in a local batch buffer.  When the buffer reaches
+    Items are accumulated in a local batch buffer. When the buffer reaches
     `batch_size` (or the memory limit), `flush(...)` is called:
 
-    * **Synchronous path** — each item in the batch is appended to the store directly.
-    * **Asynchronous/background path** — the batch list is enqueued; the I/O worker appends each
+    * **Synchronous path** - each item in the batch is appended to the store directly.
+    * **Asynchronous/background path** - the batch list is enqueued; the I/O worker appends each
       item to the store and then discards the list.
 
     The store's `append(...)` method is used (not `dump`) so existing entries are
-    never overwritten.  The store must have `can_append=True`.
+    never overwritten. The store must have `can_append=True`.
 
     **Replay**
-    After the generator is exhausted, `replay(...)` loads all saved states back
-    from the store.  `__iter__` does this automatically when
-    `auto_replay=True` (the default).
+    After the source is exhausted, `replay(...)` loads all saved items back
+    from the store. `__iter__` does this automatically when `auto_replay=True` (the default).
 
     Example Usage:
 
     ```python
     store = HDF5Store("run01.h5")
-    with DataStream(source=run(), store=store, background_io=True) as stream:
-        for data in stream.until(some_condition):
-            analyse(data)          # background thread writes while we analyse
+    with DataStream(ReservoirState, source=run(), store=store, background_io=True) as stream:
+        for item in stream.until(some_condition):
+            analyse(item)          # background thread writes while we analyse
 
     # Replay the whole run later
-    for data in stream.replay():
-        plot(data)
+    for item in stream.replay():
+        plot(item)
 
     # Load only specific entries
-    for data in stream.replay(indices=[0, 50, 99]):
+    for item in stream.replay(indices=[0, 50, 99]):
         ...
 
     # Load entries matching a predicate on EntryMeta
-    for data in stream.replay(predicate=lambda e: e.index % 10 == 0):
+    for item in stream.replay(predicate=lambda e: e.idx % 10 == 0):
         ...
     ```
     """
 
     def __init__(
         self,
+        item_type: typing.Type[SerializableT],
         source: typing.Optional[typing.Iterable[SerializableT]] = None,
         store: typing.Optional[DataStore[SerializableT, typing.Any]] = None,
         batch_size: int = 50,
-        validator: bool = False,
+        validator: typing.Optional[
+            typing.Callable[[SerializableT], SerializableT]
+        ] = None,
+        meta: typing.Optional[
+            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
+        ] = None,
         auto_save: bool = True,
         auto_replay: bool = True,
-        save: typing.Union[
-            typing.Callable[[SerializableT], bool], bool
-        ] = True,
-        checkpoint_store: typing.Optional[
-            DataStore[SerializableT, typing.Any]
-        ] = None,
+        save: typing.Union[typing.Callable[[SerializableT], bool], bool] = True,
+        checkpoint_store: typing.Optional[DataStore[SerializableT, typing.Any]] = None,
         checkpoint_interval: typing.Optional[int] = None,
         max_batch_memory_usage: typing.Optional[float] = None,
         background_io: bool = False,
@@ -124,41 +125,58 @@ class DataStream(typing.Generic[SerializableT]):
         queue_timeout: float = 1.0,
     ) -> None:
         """
-        Initialize state stream.
+        Initialize data stream.
 
-        :param states: Generator or iterator of `ModelState` instances
-        :param store: Optional `DataStore` for persistence. If None, states only yielded (no persistence).
-            The data store must support appending new states. that is, `store.can_append` must be True.
-        :param batch_size: Number of states to accumulate before flushing to disk (default: 50)
-        :param validator: Validate states before persisting (default: False)
-        :param auto_save: Automatically flush remaining states on context exit (default: True)
-        :param auto_replay: If True, automatically replay from store when iterating after consumption.
-            If False, raises `StreamError` instead (default: True)
-        :param lazy_load: When replaying from store, use lazy loading if supported (default: True)
-        :param save: Usually a function to filter which states to save. Can be a boolean flag that will determined whether to save states or not.
-            If provided, only states where save(state) returns True are saved.
-            Example: ```lambda s: s.step % 10 == 0``` (save every 10th state)
-        :param checkpoint_interval: Optional interval for checkpointing. If provided,
-            creates a checkpoint every N states for crash recovery. Example: 100
-        :param checkpoint_store: Optional `DataStore` for checkpointing. This must be provide if `checkpoint_interval` is set.
-            The data store must support appending new states. that is, `store.can_append` must be True.
+        :param item_type: The `Serializable` subclass being streamed. Required
+            even when `source` is given because `store`-only (replay) construction has
+            no live item to infer it from, and `DataStore.load(...)` always needs
+            an explicit type to deserialise into, so this is never optional.
+        :param source: Generator or iterator of `item_type` instances. May be
+            omitted for store-only (replay) construction.
+        :param store: Optional `DataStore` for persistence. If None, items are only
+            yielded (no persistence). The data store must support appending new
+            items, i.e. `store.can_append` must be True.
+        :param batch_size: Number of items to accumulate before flushing to disk (default: 50)
+        :param validator: Optional callable applied to each item before it is
+            persisted (to `store`, `checkpoint_store`, and on `replay(...)`
+            unless overridden there). Receives the item and must return a
+            (possibly transformed) item of the same type; raise to abort the
+            write. `None` (default) skips validation entirely.
+        :param meta: Optional callable that receives an item and returns a plain
+            `dict` of JSON-serialisable values to store alongside it (forwarded
+            directly to `DataStore.append`'s own `meta` parameter).
+        :param auto_save: Automatically flush remaining items on context exit (default: True)
+        :param auto_replay: If True, automatically replay from store when iterating after
+            consumption. If False, raises `StreamError` instead (default: True)
+        :param save: Usually a function to filter which items to save. Can be a boolean flag
+            that determines whether to save items or not.
+            If provided, only items where save(item) returns True are saved.
+            Example: ```lambda s: s.step % 10 == 0``` (save every 10th item)
+        :param checkpoint_interval: Optional interval, in *yielded item count* (not any
+            domain-specific counter), for checkpointing. If provided, creates a checkpoint
+            every N yielded items for crash recovery. Example: 100
+        :param checkpoint_store: Optional `DataStore` for checkpointing. This must be provided if
+            `checkpoint_interval` is set. The data store must support appending new items, i.e.
+            `store.can_append` must be True.
         :param max_batch_memory_usage: Maximum batch memory in MB before forcing flush.
-            Estimated by sampling first state's memory footprint. Batch flushes when either
+            Estimated by sampling first item's memory footprint. Batch flushes when either
             `batch_size` or `max_batch_memory_usage` threshold is reached. Example: 50.0 MB
         :param background_io: Enable asynchronous I/O for non-blocking disk writes (default: False).
-            When enabled, disk writes happen in a background thread, allowing simulation to continue.
-            Provides 2-3x speedup when I/O is slower than simulation timesteps.
-        :param max_queue_size: Maximum states/batches in I/O queue before blocking (default: 100).
+            When enabled, disk writes happen in a background thread, allowing the source to keep
+            producing items. Provides 2-3x speedup when I/O is slower than item production.
+        :param max_queue_size: Maximum items/batches in I/O queue before blocking (default: 100).
             Acts as backpressure to prevent unbounded memory growth when I/O can't keep up.
             Higher values allow more buffering but use more memory. Use a negative value for unbounded growth.
-        :param io_thread_name: Name for I/O worker thread, useful for debugging (default: "state-io-worker")
+        :param io_thread_name: Name for I/O worker thread, useful for debugging (default: "stream-io-worker")
         :param queue_timeout: Timeout in seconds for queue operations (default: 1.0).
             Used for responsive shutdown and error checking.
         """
+        self.item_type = item_type
         self.source = iter(source) if source is not None else None
         self.store = store
         self.batch_size = batch_size
         self.validator = validator
+        self.meta = meta
         self.auto_save = auto_save
         self.auto_replay = auto_replay
         self.save = save
@@ -175,7 +193,7 @@ class DataStream(typing.Generic[SerializableT]):
         if self.store is None:
             if self.validator:
                 logger.warning(
-                    "Validation is enabled but no store provided. States will be validated "
+                    "`validator` is set but no store provided. Items will be validated "
                     "but not persisted."
                 )
             if self.auto_save:
@@ -212,7 +230,7 @@ class DataStream(typing.Generic[SerializableT]):
                 f"`checkpoint_store` {checkpoint_store!r} does not support appending."
             )
 
-        # Internal state
+        # Internal item
         self._batch: typing.List[SerializableT] = []
         self._yield_count: int = 0
         self._saved_count: int = 0
@@ -220,7 +238,7 @@ class DataStream(typing.Generic[SerializableT]):
         self._started: bool = False
         self._uses_save_func = callable(save)
         self._consumed: bool = False
-        self._state_size_mb: typing.Optional[float] = None
+        self._item_size_mb: typing.Optional[float] = None
 
         # Async I/O infrastructure
         self._io_queue: typing.Optional[queue.Queue] = None
@@ -231,16 +249,16 @@ class DataStream(typing.Generic[SerializableT]):
 
         # Store-only (replay) mode
         if self.source is None and self.store is None:
-            raise StreamError("Either `states` or `store` must be provided.")
+            raise StreamError("Either `source` or `store` must be provided.")
 
         if self.source is None and self.store is not None:
             # Store-only mode is intended for replay
             if not self.auto_replay:
                 logger.warning(
-                    "Creating stream with `store` but no `states`. forcing `auto_replay=True`."
+                    "Creating stream with `store` but no `source`. forcing `auto_replay=True`."
                 )
                 self.auto_replay = True
-            # Mark as already consumed since there's no states to iterate
+            # Mark as already consumed since there's no items to iterate
             self._consumed = True
 
         if self.background_io:
@@ -293,15 +311,13 @@ class DataStream(typing.Generic[SerializableT]):
 
                         # Process batch
                         batch: typing.List[SerializableT] = item
-                        logger.debug(f"I/O worker writing batch of {len(batch)} states")
+                        logger.debug(f"I/O worker writing batch of {len(batch)} items")
 
                         try:
                             count = 0
-                            for state in batch:
+                            for item in batch:
                                 store.append(
-                                    state,
-                                    validator=self.validator if self.validator else None,
-                                    meta=lambda s: {"step": s.step},
+                                    item, validator=self.validator, meta=self.meta
                                 )
                                 count += 1
 
@@ -381,16 +397,16 @@ class DataStream(typing.Generic[SerializableT]):
 
     def __iter__(self) -> typing.Iterator[SerializableT]:
         """
-        Iterate over states, optionally persisting as we go.
+        Iterate over items, optionally persisting as we go.
 
-        Yields states one at a time, accumulating in a batch buffer.
+        Yields items one at a time, accumulating in a batch buffer.
         When batch is full, flush to store and clear buffer.
 
         Memory pattern:
-            1. Yield state to user -> User processes it
+            1. Yield item to user -> User processes it
             2. Add to batch buffer (small memory cost)
             3. When batch full -> Flush to disk, clear buffer
-            4. Net effect: Only `batch_size` states stay in memory at once
+            4. Net effect: Only `batch_size` items stay in memory at once
 
         Note: If the underlying iterable is a generator, it can only be consumed once.
         After the first iteration:
@@ -398,10 +414,9 @@ class DataStream(typing.Generic[SerializableT]):
             - If `auto_replay=False`, raises `StreamError` (use `replay()` explicitly)
             - If no store exists, raises `StreamError` (create fresh stream)
 
-        :return: Iterator over `ModelState` instances
+        :return: Iterator over `item_type` instances
         :raises `StreamError`: If trying to iterate again after exhaustion (when `auto_replay=False` or no store)
         """
-        # Check if we've already consumed the iterable
         if self._consumed:
             if self.auto_replay and self.store is not None:
                 logger.debug(
@@ -421,17 +436,17 @@ class DataStream(typing.Generic[SerializableT]):
                     "Stream already consumed and no store available for replay."
                 )
 
-        # No states provided, this shouldn't happen as `_consumed` should already be set to false
+        # No items provided, this shouldn't happen as `_consumed` should already be set to false
         # but still handle it
         if self.source is None:
-            raise StreamError("No states provided and stream not consumed.")
+            raise StreamError("No items provided and stream not consumed.")
 
         if self.store is None:
             logger.info("No store provided, streaming without persistence")
             try:
-                for state in self.source:
+                for item in self.source:
                     self._yield_count += 1
-                    yield state
+                    yield item
             finally:
                 _close_iter(self.source)
             self._consumed = True
@@ -443,29 +458,29 @@ class DataStream(typing.Generic[SerializableT]):
         )
 
         try:
-            for state in self.source:
+            for item in self.source:
                 self._yield_count += 1
 
                 # Surface any background I/O errors before continuing/yielding
                 if self.background_io:
                     self._check_io_error()
 
-                yield state
+                yield item
 
-                if self._should_save(state=state):
-                    self._batch.append(state)
+                if self._should_save(item=item):
+                    self._batch.append(item)
 
                     if self._should_flush():
                         self.flush(block=False)
 
-                    if self._should_checkpoint(state=state):
-                        self._save_checkpoint(state=state)
+                    if self._should_checkpoint(item=item):
+                        self._save_checkpoint(item=item)
         finally:
             _close_iter(self.source)
 
         # Flush whatever is left
         if self._batch and self.auto_save:
-            logger.debug(f"Flushing final batch of {len(self._batch)} states")
+            logger.debug(f"Flushing final batch of {len(self._batch)} items")
             self.flush(block=False)
 
         # Mark the stream as consumed
@@ -495,9 +510,9 @@ class DataStream(typing.Generic[SerializableT]):
         exc_tb: typing.Optional[typing.Any],
     ) -> None:
         """
-        Context manager exit. Flushes any remaining states and ensure async I/O completion.
+        Context manager exit. Flushes any remaining items and ensure async I/O completion.
 
-        Ensures all states saved even if iteration interrupted.
+        Ensures all items saved even if iteration interrupted.
         For async I/O, waits for background thread to finish all pending writes.
 
         :param exc_type: Exception type if error occurred
@@ -505,11 +520,11 @@ class DataStream(typing.Generic[SerializableT]):
         :param exc_tb: Exception traceback if error occurred
         """
         if self._batch and self.auto_save and self.store is not None:
-            logger.warning(f"Flushing {len(self._batch)} unsaved states on exit")
+            logger.warning(f"Flushing {len(self._batch)} unsaved items on exit")
             try:
                 self.flush(block=False)  # Enqueue for I/O worker
             except Exception as exc:
-                logger.error(f"Failed to flush states on exit: {exc}", exc_info=True)
+                logger.error(f"Failed to flush items on exit: {exc}", exc_info=True)
 
         # Wait for background I/O to complete
         if self.background_io:
@@ -522,23 +537,23 @@ class DataStream(typing.Generic[SerializableT]):
                 if exc_type is None:
                     raise
 
-        # Close the underlying states iterable if it has not already been closed
+        # Close the underlying items iterable if it has not already been closed
         if not self._consumed and self.source is not None:
             _close_iter(self.source)
 
         if exc_type is None:
             logger.info(
-                f"Stream complete: {self._saved_count} states saved, "
+                f"Stream complete: {self._saved_count} items saved, "
                 f"{self._checkpoints_count} checkpoints created."
             )
         else:
             logger.error(
-                f"Stream interrupted after {self._saved_count} states have been saved: {exc_val}"
+                f"Stream interrupted after {self._saved_count} items have been saved: {exc_val}"
             )
 
     def close(self) -> None:
         """
-        Manually close the stream, flushing any remaining states and stopping background I/O.
+        Manually close the stream, flushing any remaining items and stopping background I/O.
 
         This is useful if not using a context manager. After calling `close()`, the stream is exhausted.
         Calling `close()` again has no effect.
@@ -552,52 +567,53 @@ class DataStream(typing.Generic[SerializableT]):
 
     def last(self) -> typing.Optional[SerializableT]:
         """
-        Get the last state from the stream.
+        Get the last item from the stream.
 
-        Iterates through the entire stream and returns the final state.
+        Iterates through the entire stream and returns the final item.
         Useful for quickly accessing only the end result of a simulation.
 
-        :return: The last `ModelState` instance, or None if the stream is empty
+        :return: The last `item_type` instance, or None if the stream is empty
         """
-        logger.debug("Retrieving last state from stream")
+        logger.debug("Retrieving last item from stream")
         if self._consumed and self.store is not None:
             max_idx = self.store.max_index()
             if max_idx is None:
                 return None
-            results = list(self.store.load(ModelState, indices=[max_idx]))
+            results = list(self.store.load(self.item_type, indices=[max_idx]))
             return results[0] if results else None
 
-        last_state: typing.Optional[SerializableT] = None
-        for state in self:
-            last_state = state
+        last_item: typing.Optional[SerializableT] = None
+        for item in self:
+            last_item = item
 
-        if last_state is not None:
-            logger.debug(f"Last state retrieved: step {last_state.step}")
+        if last_item is not None:
+            logger.debug(f"Last item retrieved (yield_count={self._yield_count})")
         else:
-            logger.debug("Stream is empty, no last state available")
-        return last_state
+            logger.debug("Stream is empty, no last item available")
+        return last_item
 
     def consume(self) -> None:
         """
-        Exhaust the entire stream without yielding states.
+        Exhaust the entire stream without yielding items.
 
-        This method iterates through all states, triggering any configured side effects
-        (persistence, checkpointing, validation) without returning states. Useful when
+        This method iterates through all items, triggering any configured side effects
+        (persistence, checkpointing, validation) without returning items. Useful when
         you only want the side effects (saving to store, creating checkpoints) without
-        processing individual states.
+        processing individual items.
 
         The stream's internal mechanisms (__iter__, batching, flushing, checkpointing)
         still occur normally, only the yielding to caller is skipped.
 
         Example:
         ```python
-        # Just save all states to disk without processing them
-        stream = DataStream(states=simulation(), store=store)
-        stream.consume()  # States saved, nothing returned
+        # Just save all items to disk without processing them
+        stream = DataStream(ItemType, source=produce(), store=store)
+        stream.consume()  # Items saved, nothing returned
 
-        # Create checkpoints without holding states in memory
+        # Create checkpoints without holding items in memory
         stream = DataStream(
-            states=simulation(),
+            ItemType,
+            source=produce(),
             checkpoint_interval=100,
             checkpoint_store=HDF5Store("./checkpoints.h5")
         )
@@ -613,46 +629,37 @@ class DataStream(typing.Generic[SerializableT]):
         logger.debug("Consuming stream (no yield to caller)")
         for _ in self:
             pass  # Iterate through, triggering side effects but not yielding
-        logger.debug(f"Stream consumed: {self._yield_count} states processed")
+        logger.debug(f"Stream consumed: {self._yield_count} items processed")
 
     def replay(
         self,
         indices: typing.Optional[typing.Sequence[int]] = None,
         predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        steps: typing.Optional[
-            typing.Union[typing.Sequence[int], typing.Callable[[int], bool]]
-        ] = None,
         validator: typing.Optional[
             typing.Callable[[SerializableT], SerializableT]
         ] = None,
     ) -> typing.Iterator[SerializableT]:
         """
-        Load and iterate over previously saved states from the store.
+        Load and iterate over previously saved items from the store.
 
         All filtering happens before any array data is deserialised, so skipped
-        entries have no I/O cost.  `indices`, `steps`, and `predicate` can
-        be combined: `indices` always takes priority and bypasses the other two;
-        `steps` and `predicate` are composed with a logical AND when both are
-        supplied.
+        entries have no I/O cost. When both `indices` and `predicate` are
+        supplied, `indices` takes priority and `predicate` is ignored.
 
         Note: each call to `replay(...)` continues to increment `yield_count`.
-        Replaying 100 states after streaming 100 states gives `yield_count == 200`.
+        Replaying 100 items after streaming 100 items gives `yield_count == 200`.
 
         :param indices: Load only the entries at these zero-based insertion-order
-            positions.  When given, `steps` and `predicate` are ignored.
-        :param steps: Filter by simulation step number.  Accepts either a sequence
-            of exact step numbers (`steps=[0, 100, 200]`) or a callable that
-            receives a step number and returns `bool`
-            (`steps=lambda s: s % 50 == 0`).  Composed with `predicate` when
-            both are provided.
+            positions. When given, `predicate` is ignored.
         :param predicate: `(EntryMeta) -> bool` filter evaluated against stored
-            entry metadata.  Use this for any metadata beyond step number, e.g.
-            `predicate=lambda e: e.meta.get("converged")`.  Composed with
-            `steps` when both are provided.
+            entry metadata - `entry.idx` (store-assigned insertion position) is
+            always available regardless of what `meta` records; `entry.meta`
+            holds whatever your `meta` callable recorded at append time, if
+            anything (e.g. `predicate=lambda e: e.meta.get("step") == 500` for
+            an item type that records a `"step"` key).
         :param validator: Optional post-load callable applied to each deserialised
-            state before it is yielded.  Defaults to `self.validator` when the
-            stream was constructed with `validate=True`.
-        :return: Iterator over `ModelState` instances matching the filter criteria,
+            item before it is yielded. Defaults to `self.validator` when not given.
+        :return: Iterator over `item_type` instances matching the filter criteria,
             in insertion order.
         :raises StreamError: If no store was provided at construction time.
             Or if any storage-related error occurs.
@@ -662,46 +669,24 @@ class DataStream(typing.Generic[SerializableT]):
 
         logger.debug(f"Replaying from {self.store}")
 
-        pred = predicate
-        if steps:
-            if callable(steps):
-
-                def _predicate(entry: EntryMeta) -> bool:
-                    step = int(entry.meta.get("step", -1))
-                    if predicate is not None:
-                        return steps(step) and predicate(entry)  # type: ignore
-                    return steps(step)  # type: ignore
-
-            else:
-                steps_set = set(steps)
-
-                def _predicate(entry: EntryMeta) -> bool:
-                    step = int(entry.meta.get("step", -1))
-                    in_steps = step in steps_set
-                    if predicate is not None:
-                        return in_steps and predicate(entry)
-                    return in_steps
-
-            pred = _predicate
-
-        states = None
+        items = None
         try:
-            states = self.store.load(
-                ModelState,
+            items = self.store.load(
+                self.item_type,
                 indices=indices,
-                predicate=pred,
-                validator=validator or (self.validator if self.validator else None),
+                predicate=predicate,
+                validator=validator or self.validator,
             )
-            for state in states:
+            for item in items:
                 self._yield_count += 1
-                yield state
+                yield item
         except StorageError as exc:
             raise StreamError(
                 f"An error occured while replaying stream: {exc}"
             ) from exc
         finally:
-            if states is not None:
-                _close_iter(states)
+            if items is not None:
+                _close_iter(items)
 
         logger.debug(f"Replay complete: {self._yield_count} total yielded")
 
@@ -709,39 +694,39 @@ class DataStream(typing.Generic[SerializableT]):
         self, condition: typing.Callable[[SerializableT], bool]
     ) -> typing.Iterator[SerializableT]:
         """
-        Iterate over states, optionally persisting as we go, until `condition` evaluates to True.
+        Iterate over items, optionally persisting as we go, until `condition` evaluates to True.
 
-        This is a wrapper around `__iter__`, allowing you to stream states until a stop criteria is met
+        This is a wrapper around `__iter__`, allowing you to stream items until a stop criteria is met
 
         :param condition: Iteration stop condition/criteria.
-        :return: Iterator over `ModelState` instances
+        :return: Iterator over `item_type` instances
         :raises `StreamError`: If trying to iterate again after exhaustion (when auto_replay=False or no store)
         """
-        for state in self:
-            if condition(state):
-                yield state
+        for item in self:
+            if condition(item):
+                yield item
                 break
-            yield state
+            yield item
 
     def while_(
         self, condition: typing.Callable[[SerializableT], bool]
     ) -> typing.Iterator[SerializableT]:
         """
-        Iterate over states, optionally persisting as we go, as long `condition` evaluates to True.
+        Iterate over items, optionally persisting as we go, as long `condition` evaluates to True.
         Stop when `condition` evaluates to False.
 
-        This is a wrapper around `__iter__`, allowing you to stream states
+        This is a wrapper around `__iter__`, allowing you to stream items
         based on a criteria until it can no longer be met
 
         :param condition: Iteration continuation condition/criteria.
-        :return: Iterator over `ModelState` instances
+        :return: Iterator over `item_type` instances
         :raises `StreamError`: If trying to iterate again after exhaustion (when auto_replay=False or no store)
         """
-        for state in self:
-            if not condition(state):
-                yield state
+        for item in self:
+            if not condition(item):
+                yield item
                 break
-            yield state
+            yield item
 
     def flush(self, block: bool = False) -> None:
         """
@@ -777,7 +762,7 @@ class DataStream(typing.Generic[SerializableT]):
 
         if self.background_io:
             logger.debug(
-                f"Enqueuing batch of {batch_size} states to I/O thread (block={block})"
+                f"Enqueuing batch of {batch_size} items to I/O thread (block={block})"
             )
 
             # Check for errors before enqueuing
@@ -802,28 +787,27 @@ class DataStream(typing.Generic[SerializableT]):
 
             except queue.Full as exc:
                 logger.error(
-                    f"I/O queue full ({self.max_queue_size}). "
-                    f"Cannot buffer more states."
+                    f"I/O queue full ({self.max_queue_size}). Cannot buffer more items."
                 )
                 raise StreamError(
                     "I/O queue exhausted. Simulation running faster than disk writes. "
                     "Increase `max_queue_size` or reduce `batch_size`."
                 ) from exc
         else:
-            logger.debug(f"Flushing batch of {batch_size} states to {self.store}")
+            logger.debug(f"Flushing batch of {batch_size} items to {self.store}")
 
             try:
                 with self.store(mode="a") as store:
-                    for state in self._batch:
+                    for item in self._batch:
                         store.append(
-                            state,
-                            validator=self.validator if self.validator else None,
-                            meta=lambda s: {"step": s.step},
+                            item,
+                            validator=self.validator,
+                            meta=self.meta,
                         )
 
                 self._saved_count += batch_size
                 logger.debug(
-                    f"Flushed {batch_size} states (total saved: {self._saved_count})"
+                    f"Flushed {batch_size} items (total saved: {self._saved_count})"
                 )
             except Exception as exc:
                 logger.error(f"Failed to flush batch: {exc}")
@@ -834,35 +818,35 @@ class DataStream(typing.Generic[SerializableT]):
 
     def get_pending_batch(self) -> typing.List[SerializableT]:
         """
-        Get a copy of states in the current batch (not yet flushed to store).
+        Get a copy of items in the current batch (not yet flushed to store).
 
         Useful for:
         - Inspecting what will be saved on next flush
-        - Recovering states if an error occurs before flush
+        - Recovering items if an error occurs before flush
         - Debugging batch accumulation behavior
 
         :return: Copy of the current batch buffer (safe to modify without affecting stream)
         """
         return self._batch.copy()
 
-    def _estimate_state_size(self, state: SerializableT) -> float:
+    def _estimate_item_size(self, item: SerializableT) -> float:
         """
-        Estimate memory footprint of a single state in MB.
+        Estimate memory footprint of a single item in MB.
 
-        :param state: ReservoirState to measure
+        :param item: Item to measure
         :return: Estimated size in MB
         """
-        if self._state_size_mb is not None:
-            return self._state_size_mb
+        if self._item_size_mb is not None:
+            return self._item_size_mb
 
         size_bytes = 0
 
-        for attr_name in dir(state):
+        for attr_name in dir(item):
             if attr_name.startswith("_"):
                 continue
 
             try:
-                attr = getattr(state, attr_name)
+                attr = getattr(item, attr_name)
                 if isinstance(attr, np.ndarray):
                     size_bytes += attr.nbytes
                 elif hasattr(attr, "__dict__"):
@@ -879,20 +863,20 @@ class DataStream(typing.Generic[SerializableT]):
                 )
                 continue
 
-        self._state_size_mb = size_bytes / 1024 / 1024
-        logger.debug(f"Estimated state size: {self._state_size_mb:.2f} MB")
-        return self._state_size_mb
+        self._item_size_mb = size_bytes / 1024 / 1024
+        logger.debug(f"Estimated item size: {self._item_size_mb:.2f} MB")
+        return self._item_size_mb
 
-    def _should_save(self, state: SerializableT) -> bool:
+    def _should_save(self, item: SerializableT) -> bool:
         """
-        Determine if state should be saved based on `save`.
+        Determine if item should be saved based on `save`.
 
-        :param state: ReservoirState to evaluate
-        :return: True if state should be saved, False otherwise
+        :param item: Item to evaluate
+        :return: True if item should be saved, False otherwise
         """
         if not self._uses_save_func:
             return self.save  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
-        return self.save(state)  # type: ignore[call-arg]  # ty:ignore[call-non-callable]
+        return self.save(item)  # type: ignore[call-arg]  # ty:ignore[call-non-callable]
 
     def _should_flush(self) -> bool:
         """
@@ -904,117 +888,141 @@ class DataStream(typing.Generic[SerializableT]):
             return True
 
         if self.max_batch_memory_usage is not None and self._batch:
-            state_size = self._estimate_state_size(self._batch[0])
-            batch_memory_usage = state_size * len(self._batch)
-
+            item_size = self._estimate_item_size(self._batch[0])
+            batch_memory_usage = item_size * len(self._batch)
             if batch_memory_usage > self.max_batch_memory_usage:
                 logger.warning(
                     f"Batch memory limit reached ({batch_memory_usage:.1f} MB > "
-                    f"{self.max_batch_memory_usage:.1f} MB) with {len(self._batch)} states - "
+                    f"{self.max_batch_memory_usage:.1f} MB) with {len(self._batch)} items - "
                     f"flushing early"
                 )
                 return True
 
         return False
 
-    def _should_checkpoint(self, state: SerializableT) -> bool:
+    def _should_checkpoint(self, item: SerializableT) -> bool:
         """
-        Determine if a checkpoint should be created for this state.
+        Determine if a checkpoint should be created after yielding `item`.
 
-        :param state: Current state
+        Cadence is based on `self._yield_count` (how many items this stream
+        has yielded so far), not any attribute of `item` itself - unlike
+        `save`/`meta`, which do inspect the item, checkpoint *cadence* has no
+        domain-specific equivalent to fall back on generically.
+
+        :param item: Current item (unused directly; kept for a consistent
+            call signature with `_should_save`/`_save_checkpoint`).
         :return: True if checkpoint should be created, False otherwise
         """
         return (
             self.checkpoint_interval is not None
             and self.checkpoint_store is not None
-            and state.step > 0
-            and state.step % self.checkpoint_interval == 0
+            and self._yield_count > 0
+            and self._yield_count % self.checkpoint_interval == 0
         )
 
-    def _save_checkpoint(self, state: SerializableT) -> None:
+    def _save_checkpoint(self, item: SerializableT) -> None:
         """
         Save a checkpoint for crash recovery.
 
-        Creates a separate checkpoint file that can be used to resume simulation
-        from this point.
+        Creates an entry in `checkpoint_store` that can be used to resume
+        from this point later, via `checkpoint(index=...)`/`checkpoints()`.
 
-        :param state: ReservoirState to checkpoint
+        :param item: Item to checkpoint.
         """
         if self.checkpoint_store is None:
             return
         try:
-            self.checkpoint_store.append(
-                state,
-                validator=self.validator if self.validator else None,
-                meta=lambda s: {"step": s.step},
+            entry = self.checkpoint_store.append(
+                item, validator=self.validator, meta=self.meta
             )
             self._checkpoints_count += 1
-            logger.info(f"Checkpoint saved at step {state.step}")
+            logger.info(
+                f"Checkpoint saved (checkpoint index={entry.idx}, yield_count={self._yield_count})"
+            )
         except Exception as exc:
             logger.error(
-                f"Failed to save checkpoint at step {state.step}: {exc}", exc_info=True
+                f"Failed to save checkpoint at yield_count={self._yield_count}: {exc}",
+                exc_info=True,
             )
 
-    def checkpoint(self, step: int) -> SerializableT:
+    def checkpoint(
+        self,
+        index: typing.Optional[int] = None,
+        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
+    ) -> SerializableT:
         """
-        Load a specific checkpoint by step number.
+        Load a specific checkpoint.
 
-        :param step: Step number of checkpoint to load
-        :return: Loaded ModelState from checkpoint
-        :raises `StreamError`: If checkpointing not configured
-        :raises `FileNotFoundError`: If checkpoint doesn't exist
+        Exactly one of `index`/`predicate` must be given. `index` is
+        `checkpoint_store`'s own insertion-order position among checkpoints
+        (the *n*-th checkpoint ever saved, 0-based) - always available
+        regardless of what `meta` records. `predicate` filters on whatever
+        `meta` recorded, if anything (e.g.
+        `predicate=lambda e: e.meta.get("step") == 500` for an item type
+        that records a `"step"` key).
+
+        :param index: Zero-based position among saved checkpoints.
+        :param predicate: `(EntryMeta) -> bool` filter, evaluated against
+            `checkpoint_store`'s stored metadata.
+        :return: Loaded `item_type` instance.
+        :raises `StreamError`: If checkpointing not configured, if neither or
+            both of `index`/`predicate` are given, or if no matching
+            checkpoint exists.
         """
         if self.checkpoint_store is None:
             raise StreamError(
                 "Checkpointing not configured. No `checkpoint_store` found."
             )
+        if (index is None) == (predicate is None):
+            raise StreamError("Exactly one of `index` or `predicate` must be given.")
 
-        results = list(
-            self.checkpoint_store.load(
-                ModelState,
-                predicate=lambda e: int(e.meta["step"]) == step,
+        if index is not None:
+            results = list(self.checkpoint_store.load(self.item_type, indices=[index]))
+        else:
+            results = list(
+                self.checkpoint_store.load(self.item_type, predicate=predicate)
             )
-        )
         if not results:
-            raise StreamError(f"No checkpoint found for step {step}.")
+            raise StreamError(
+                f"No checkpoint found for index={index!r} predicate={predicate!r}."
+            )
         return results[0]
 
     def checkpoints(self) -> typing.Generator[SerializableT, None, None]:
         """
-        Yield all checkpointed states in insertion order.
+        Yield all checkpointed items in insertion order.
 
-        :return: Generator yielding state checkpoints
+        :return: Generator yielding checkpointed items.
         :raises `StreamError`: If checkpointing not configured
         """
         if self.checkpoint_store is None:
             raise StreamError("No `checkpoint_store` configured.")
-        yield from self.checkpoint_store.load(ModelState)
+        yield from self.checkpoint_store.load(self.item_type)
 
-    def list_checkpoints(self) -> typing.List[int]:
+    def list_checkpoints(self) -> typing.List[EntryMeta]:
         """
-        List all available checkpoint step numbers.
+        List metadata for all available checkpoints, in insertion order.
 
-        :return: Sorted list of checkpoint step numbers
+        Each `EntryMeta.idx` is usable directly as `checkpoint(index=...)`;
+        `EntryMeta.meta` holds whatever `meta` recorded for that item, if
+        anything.
+
+        :return: List of `EntryMeta`, one per saved checkpoint.
         :raises `StreamError`: If checkpointing not configured
         """
         if self.checkpoint_store is None:
             raise StreamError(
                 "Checkpointing not configured. No `checkpoint_store` found"
             )
-
-        return sorted(
-            int(e.meta["step"])
-            for e in self.checkpoint_store.entries()
-            if "step" in e.meta
-        )
+        return list(self.checkpoint_store.entries())
 
     def progress(self) -> StreamProgress:
         """
         Get streaming progress statistics.
 
         :return: Dictionary with progress metrics including:
-            - yield_count: Total states yielded
-            - saved_count: Total states saved to store
+            - yield_count: Total items yielded
+            - saved_count: Total items saved to store
             - checkpoints_count: Total checkpoints created
             - batch_pending: States in current batch (not yet saved)
             - store_backend: Type of store being used (or None)
@@ -1022,8 +1030,8 @@ class DataStream(typing.Generic[SerializableT]):
             - io_queue_size: Size of async I/O queue (if background_io enabled)
             - io_thread_alive: Whether I/O thread is running (if background_io enabled)
         """
-        if self._batch and self._state_size_mb is not None:
-            batch_memory_usage = self._state_size_mb * len(self._batch)
+        if self._batch and self._item_size_mb is not None:
+            batch_memory_usage = self._item_size_mb * len(self._batch)
         else:
             batch_memory_usage = 0.0
 
@@ -1045,9 +1053,9 @@ class DataStream(typing.Generic[SerializableT]):
     @property
     def yield_count(self) -> int:
         """
-        Total number of states yielded (including replays).
+        Total number of items yielded (including replays).
 
-        :return: Count of yielded states
+        :return: Count of yielded items
         """
         return self._yield_count
 
@@ -1067,9 +1075,9 @@ class DataStream(typing.Generic[SerializableT]):
     @property
     def saved_count(self) -> int:
         """
-        Number of states saved to store so far.
+        Number of items saved to store so far.
 
-        :return: Count of saved states
+        :return: Count of saved items
         """
         return self._saved_count
 

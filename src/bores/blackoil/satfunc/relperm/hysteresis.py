@@ -21,7 +21,7 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.saturation_functions.relperm.tables import (
+from bores.blackoil.satfunc.relperm.tables import (
     MixingRule,
     RelativePermeabilityTable,
     TwoPhaseRelPermTable,
@@ -30,7 +30,7 @@ from bores.blackoil.saturation_functions.relperm.tables import (
     relperm_table,
     serialize_mixing_rule,
 )
-from bores.blackoil.saturation_functions.utils import (
+from bores.blackoil.satfunc.utils import (
     compute_killough_scanning_curve,
     compute_killough_scanning_curve_derivative,
 )
@@ -346,7 +346,7 @@ def _get_oil_water_relative_permeability_derivatives(
         **kwargs,
     )
     # The oil-water hysteresis scanning variable is always Sw
-    return derivatives["dKrw_dSw"], derivatives["dKro_dSw"]
+    return derivatives["dkrw_dsw"], derivatives["dkro_dsw"]
 
 
 def _get_gas_oil_relative_permeability_derivatives(
@@ -405,7 +405,7 @@ def _get_gas_oil_relative_permeability_derivatives(
         **kwargs,
     )
     # The gas-oil hysteresis scanning variable is always Sg
-    return derivatives["dKro_dSg"], derivatives["dKrg_dSg"]
+    return derivatives["dkro_dsg"], derivatives["dkrg_dsg"]
 
 
 @relperm_table
@@ -578,7 +578,7 @@ class KilloughLandRelPermTable(
     def get_residual_oil_saturation_water(self) -> Number:
         """
         Static (drainage-table) residual oil to water, from the primary
-        drainage table. Note this is the *static* Sorw the table declares,
+        drainage table. Note this is the *static* sorw the table declares,
         not the dynamically Land-trapped value used during an active
         imbibition scan (see `_parse_hysteresis_kwargs`/`compute_land_residual_saturation`).
         """
@@ -1295,38 +1295,38 @@ class KilloughLandRelPermTable(
         oil_relative_permeability_derivative_water = (
             mixing_rule_partial_derivatives["d_kro_d_kro_w"]
             * oil_relative_permeability_water_derivative
-            + mixing_rule_partial_derivatives["d_kro_d_sw_explicit"]
+            + mixing_rule_partial_derivatives["d_kro_dsw_explicit"]
         )
         oil_relative_permeability_derivative_oil = mixing_rule_partial_derivatives[
-            "d_kro_d_so_explicit"
+            "d_kro_dso_explicit"
         ]
         oil_relative_permeability_derivative_gas = (
             mixing_rule_partial_derivatives["d_kro_d_kro_g"]
             * oil_relative_permeability_gas_derivative
-            + mixing_rule_partial_derivatives["d_kro_d_sg_explicit"]
+            + mixing_rule_partial_derivatives["d_kro_dsg_explicit"]
         )
 
         if is_scalar:
             return RelativePermeabilityDerivatives(
-                dKrw_dSw=water_relative_permeability_derivative.item(),  # type: ignore
-                dKro_dSw=oil_relative_permeability_derivative_water.item(),  # type: ignore
-                dKrg_dSw=0.0,
-                dKrw_dSo=0.0,
-                dKro_dSo=oil_relative_permeability_derivative_oil.item(),  # type: ignore
-                dKrg_dSo=0.0,
-                dKrw_dSg=0.0,
-                dKro_dSg=oil_relative_permeability_derivative_gas.item(),  # type: ignore
-                dKrg_dSg=gas_relative_permeability_derivative.item(),  # type: ignore
+                dkrw_dsw=water_relative_permeability_derivative.item(),  # type: ignore
+                dkro_dsw=oil_relative_permeability_derivative_water.item(),  # type: ignore
+                dkrg_dsw=0.0,
+                dkrw_dso=0.0,
+                dkro_dso=oil_relative_permeability_derivative_oil.item(),  # type: ignore
+                dkrg_dso=0.0,
+                dkrw_dsg=0.0,
+                dkro_dsg=oil_relative_permeability_derivative_gas.item(),  # type: ignore
+                dkrg_dsg=gas_relative_permeability_derivative.item(),  # type: ignore
             )
 
         return RelativePermeabilityDerivatives(
-            dKrw_dSw=water_relative_permeability_derivative,
-            dKro_dSw=oil_relative_permeability_derivative_water,
-            dKrg_dSw=zeros.copy(),
-            dKrw_dSo=zeros.copy(),
-            dKro_dSo=oil_relative_permeability_derivative_oil,
-            dKrg_dSo=zeros.copy(),
-            dKrw_dSg=zeros.copy(),
-            dKro_dSg=oil_relative_permeability_derivative_gas,
-            dKrg_dSg=gas_relative_permeability_derivative,
+            dkrw_dsw=water_relative_permeability_derivative,
+            dkro_dsw=oil_relative_permeability_derivative_water,
+            dkrg_dsw=zeros.copy(),
+            dkrw_dso=zeros.copy(),
+            dkro_dso=oil_relative_permeability_derivative_oil,
+            dkrg_dso=zeros.copy(),
+            dkrw_dsg=zeros.copy(),
+            dkro_dsg=oil_relative_permeability_derivative_gas,
+            dkrg_dsg=gas_relative_permeability_derivative,
         )

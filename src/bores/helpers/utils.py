@@ -1143,7 +1143,7 @@ def make_saturation_grid(
     :param s_min: Physical saturation range. Must satisfy `0 ≤ s_min < s_max ≤ 1`.
     :param s_max: Physical saturation range. Must satisfy `0 ≤ s_min < s_max ≤ 1`.
     :param spacing: `"cosine"` (default) — Chebyshev-cosine spacing, denser at the
-        endpoints. `"linspace"` — uniform spacing.
+        endpoints. `"linear"` — uniform spacing.
     :return: NDArray of shape `(n_points,)` with values in `[s_min, s_max]`,
     monotonically increasing.
     """
@@ -1157,7 +1157,7 @@ def make_saturation_grid(
     if spacing == "cosine":
         i = np.arange(n_points, dtype=dtype)
         unit: npt.NDArray = 0.5 * (1.0 - np.cos(np.pi * i / (n_points - 1)))
-    elif spacing == "linspace":
+    elif spacing == "linear":
         unit: npt.NDArray = np.linspace(0.0, 1.0, n_points)
     else:
         raise ValueError(f"`spacing` must be 'cosine' or 'linspace', got '{spacing}'")

@@ -19,12 +19,12 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.saturation_functions.capillary_pressure.tables import (
+from bores.blackoil.satfunc.capillary_pressure.tables import (
     CapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
     capillary_pressure_table,
 )
-from bores.blackoil.saturation_functions.utils import (
+from bores.blackoil.satfunc.utils import (
     compute_killough_scanning_curve,
     compute_killough_scanning_curve_derivative,
 )
@@ -66,7 +66,6 @@ def _get_oil_water_capillary_pressure(
     oil_water_wetting_phase = (
         oil_water_capillary_pressure_table.get_oil_water_wetting_phase()
     )
-
     if isinstance(oil_water_capillary_pressure_table, TwoPhaseCapillaryPressureTable):
         if oil_water_wetting_phase == FluidPhase.WATER:
             wetting_saturation = water_saturation
@@ -109,7 +108,6 @@ def _get_gas_oil_capillary_pressure(
     :return: Gas-oil capillary pressure Pcgo = Pg - Po (scalar or array).
     """
     gas_oil_wetting_phase = gas_oil_capillary_pressure_table.get_gas_oil_wetting_phase()
-
     if isinstance(gas_oil_capillary_pressure_table, TwoPhaseCapillaryPressureTable):
         if gas_oil_wetting_phase == FluidPhase.OIL:
             wetting_saturation = oil_saturation
@@ -141,11 +139,11 @@ def _get_oil_water_capillary_pressure_derivative(
     **kwargs: typing.Any,
 ) -> NumberOrArray[NDimension]:
     """
-    Return dPcow/d(reference_sat) for the oil-water capillary pressure table.
+    Return dpcow/d(reference_sat) for the oil-water capillary pressure table.
 
     For `TwoPhaseCapillaryPressureTable` this is the derivative w.r.t. the
     table's own reference saturation (Sw in water-wet, So in oil-wet). For
-    three-phase tables `dPcow/dSw` is returned to match the scanning variable
+    three-phase tables `dpcow/dsw` is returned to match the scanning variable
     used by the hysteresis layer.
 
     :param oil_water_capillary_pressure_table: Oil-water capillary pressure table (two-phase or three-phase).
@@ -177,7 +175,7 @@ def _get_oil_water_capillary_pressure_derivative(
         gas_saturation=gas_saturation,
         **kwargs,
     )
-    return derivatives["dPcow_dSw"]
+    return derivatives["dpcow_dsw"]
 
 
 def _get_gas_oil_capillary_pressure_derivative(
@@ -190,11 +188,11 @@ def _get_gas_oil_capillary_pressure_derivative(
     **kwargs: typing.Any,
 ) -> NumberOrArray[NDimension]:
     """
-    Return dPcgo/d(reference_sat) for the gas-oil capillary pressure table.
+    Return dpcgo/d(reference_sat) for the gas-oil capillary pressure table.
 
     For `TwoPhaseCapillaryPressureTable` this is the derivative w.r.t. the
     table's own reference saturation. For three-phase tables
-    `dPcgo/dSg` is returned to match the scanning variable used by the
+    `dpcgo/dsg` is returned to match the scanning variable used by the
     hysteresis layer.
 
     :param gas_oil_capillary_pressure_table: Gas-oil capillary pressure table (two-phase or three-phase).
@@ -225,7 +223,7 @@ def _get_gas_oil_capillary_pressure_derivative(
         gas_saturation=gas_saturation,
         **kwargs,
     )
-    return derivatives["dPcgo_dSg"]
+    return derivatives["dpcgo_dsg"]
 
 
 @capillary_pressure_table
@@ -617,10 +615,10 @@ class KilloughCapillaryPressureTable(
 
         Returns the following non-zero entries.
 
-        - `dPcow_dSw`: dPcow/dSw - oil-water Pc scanned over Sw.
-        - `dPcow_dSo`: zero - Pcow does not depend directly on So in this model.
-        - `dPcgo_dSg`: dPcgo/dSg - gas-oil Pc scanned over Sg.
-        - `dPcgo_dSo`: zero - Pcgo does not depend directly on So.
+        - `dpcow_dsw`: dpcow/dsw - oil-water Pc scanned over Sw.
+        - `dpcow_dso`: zero - Pcow does not depend directly on So in this model.
+        - `dpcgo_dsg`: dpcgo/dsg - gas-oil Pc scanned over Sg.
+        - `dpcgo_dso`: zero - Pcgo does not depend directly on So.
 
         :param water_saturation: Water saturation (fraction, 0-1) - scalar or array.
         :param oil_saturation: Oil saturation (fraction, 0-1) - scalar or array.
@@ -637,7 +635,7 @@ class KilloughCapillaryPressureTable(
             or `None` (defaults to `max_gas_saturation`).
         :param kwargs: Additional keyword arguments forwarded to the backing tables.
         :return: `CapillaryPressureDerivatives` dictionary containing
-            `dPcow_dSw`, `dPcow_dSo`, `dPcgo_dSg`, and `dPcgo_dSo`.
+            `dpcow_dsw`, `dpcow_dso`, `dpcgo_dsg`, and `dpcgo_dso`.
         """
         is_scalar = np.isscalar(water_saturation)
         water_saturation = np.atleast_1d(water_saturation)  # type: ignore
@@ -769,15 +767,15 @@ class KilloughCapillaryPressureTable(
 
         if is_scalar:
             return CapillaryPressureDerivatives(
-                dPcow_dSw=oil_water_capillary_pressure_derivative.item(),  # type: ignore
-                dPcow_dSo=0.0,
-                dPcgo_dSg=gas_oil_capillary_pressure_derivative.item(),  # type: ignore
-                dPcgo_dSo=0.0,
+                dpcow_dsw=oil_water_capillary_pressure_derivative.item(),  # type: ignore
+                dpcow_dso=0.0,
+                dpcgo_dsg=gas_oil_capillary_pressure_derivative.item(),  # type: ignore
+                dpcgo_dso=0.0,
             )
 
         return CapillaryPressureDerivatives(
-            dPcow_dSw=oil_water_capillary_pressure_derivative,
-            dPcow_dSo=zeros.copy(),
-            dPcgo_dSg=gas_oil_capillary_pressure_derivative,
-            dPcgo_dSo=zeros.copy(),
+            dpcow_dsw=oil_water_capillary_pressure_derivative,
+            dpcow_dso=zeros.copy(),
+            dpcgo_dsg=gas_oil_capillary_pressure_derivative,
+            dpcgo_dso=zeros.copy(),
         )

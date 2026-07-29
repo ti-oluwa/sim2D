@@ -505,7 +505,7 @@ docs/
 **Must cover:**
 
 - Concept of relative permeability (explain physical meaning)
-- Endpoints: Swi, Sor, Sgr (what they mean in field)
+- Endpoints: Swi, Sor, sgr (what they mean in field)
 - Available models:
   - `BrooksCoreyThreePhaseRelPermModel` (most common)
   - Corey model

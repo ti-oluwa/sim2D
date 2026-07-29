@@ -6,18 +6,18 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.saturation_functions.capillary_pressure.tables import (
+from bores.blackoil.satfunc.capillary_pressure.tables import (
     CapillaryPressureTable,
     ThreePhaseCapillaryPressureTable,
     TwoPhaseCapillaryPressureTable,
 )
-from bores.blackoil.saturation_functions.relperm.mixing_rules import MixingRule
-from bores.blackoil.saturation_functions.relperm.tables import (
+from bores.blackoil.satfunc.relperm.mixing_rules import MixingRule
+from bores.blackoil.satfunc.relperm.tables import (
     RelativePermeabilityTable,
     ThreePhaseRelPermTable,
     TwoPhaseRelPermTable,
 )
-from bores.blackoil.saturation_functions.utils import (
+from bores.blackoil.satfunc.utils import (
     build_saturation_reference_field,
     pchip_resample,
 )
@@ -35,14 +35,14 @@ from bores.typing import (
 )
 
 __all__ = [
-    "SaturationFunctionTables",
+    "SatFuncTables",
     "as_three_phase_capillary_pressure_table",
     "as_three_phase_relperm_table",
 ]
 
 
 @attrs.frozen(slots=True)
-class SaturationFunctionTables(StoreSerializable):
+class SatFuncTables(StoreSerializable):
     """
     Saturation function table(s) defining rock-fluid interactions in the reservoir.
 
@@ -72,13 +72,13 @@ class SaturationFunctionTables(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `SaturationFunctionTables` with capillary pressure in every
+        Return a new `SatFuncTables` with capillary pressure in every
         region rescaled to *target*.
 
         Relative permeability is dimensionless and is unaffected.
 
         :param target: Target `UnitSystem`.
-        :returns: New `SaturationFunctionTables` in *target* units.
+        :returns: New `SatFuncTables` in *target* units.
         """
         if self.capillary_pressure is None:
             return self
@@ -140,8 +140,8 @@ def _oil_water_point_sweep_along_water_saturation(
     the corresponding (Sw, So, Sg) triple with Sg fixed at zero.
 
     :param water_saturation: Candidate water saturation to clamp.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
     :return: Three-tuple `(Sw, So, Sg)` with Sg = 0.
     """
     water_saturation = _clamp(
@@ -166,8 +166,8 @@ def _oil_water_point_sweep_along_oil_saturation(
     the corresponding (Sw, So, Sg) triple with Sg fixed at zero.
 
     :param oil_saturation: Candidate oil saturation to clamp.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
     :return: Three-tuple `(Sw, So, Sg)` with Sg = 0.
     """
     oil_saturation = _clamp(
@@ -188,14 +188,14 @@ def _gas_oil_point_sweep_along_gas_saturation(
 ) -> typing.Tuple[Number, Number, Number]:
     """
     Clamp a gas saturation value to the gas-oil mobile window and return the
-    corresponding (Sw, So, Sg) triple with Sw fixed at Swc.
+    corresponding (Sw, So, Sg) triple with Sw fixed at swc.
 
     :param gas_saturation: Candidate gas saturation to clamp.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
+    :param irreducible_water_saturation: Connate water saturation (swc).
     :param residual_oil_saturation_gas: Residual oil saturation in a gas flood
-        (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
-    :return: Three-tuple `(Sw, So, Sg)` with Sw = Swc.
+        (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
+    :return: Three-tuple `(Sw, So, Sg)` with Sw = swc.
     """
     gas_saturation = _clamp(
         gas_saturation,
@@ -219,13 +219,13 @@ def _gas_oil_point_sweep_along_oil_saturation(
 ) -> typing.Tuple[Number, Number, Number]:
     """
     Clamp an oil saturation value to the gas-oil mobile window and return the
-    corresponding (Sw, So, Sg) triple with Sw fixed at Swc.
+    corresponding (Sw, So, Sg) triple with Sw fixed at swc.
 
     :param oil_saturation: Candidate oil saturation to clamp.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
-    :return: Three-tuple `(Sw, So, Sg)` with Sw = Swc.
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
+    :return: Three-tuple `(Sw, So, Sg)` with Sw = swc.
     """
     oil_saturation = _clamp(
         oil_saturation,
@@ -295,8 +295,8 @@ def _sample_oil_water_relative_permeabilities(
     :param oil_water_reference_saturations: Saturation axis to sample along.
     :param sweep_axis_is_water_saturation: When `True` the reference axis is
         water saturation; when `False` it is oil saturation.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
     :param model_kwargs: Extra keyword arguments forwarded to every table evaluation call.
     :param oil_water_wetting_phase: Wetting phase for the oil-water system.
     :param number_of_output_points: Number of points used when PCHIP-resampling a tabular source table.
@@ -392,9 +392,9 @@ def _sample_gas_oil_relative_permeabilities(
     :param gas_oil_reference_saturations: Saturation axis to sample along.
     :param sweep_axis_is_gas_saturation: When `True` the reference axis is
         gas saturation; when `False` it is oil saturation.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
     :param model_kwargs: Extra keyword arguments forwarded to every table evaluation call.
     :param gas_oil_wetting_phase: Wetting phase for the gas-oil system.
     :param number_of_output_points: Number of points used when PCHIP-resampling a tabular source table.
@@ -490,8 +490,8 @@ def _sample_oil_water_capillary_pressure(
     :param oil_water_reference_saturations: Saturation axis to sample along.
     :param sweep_axis_is_water_saturation: When `True` the reference axis is
         water saturation; when `False` it is oil saturation.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
     :param model_kwargs: Extra keyword arguments forwarded to every table
         evaluation call.
     :param number_of_output_points: Number of points used when PCHIP-resampling
@@ -563,9 +563,9 @@ def _sample_gas_oil_capillary_pressure(
     :param gas_oil_reference_saturations: Saturation axis to sample along.
     :param sweep_axis_is_gas_saturation: When `True` the reference axis is
         gas saturation; when `False` it is oil saturation.
-    :param irreducible_water_saturation: Connate water saturation (Swc).
-    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
+    :param irreducible_water_saturation: Connate water saturation (swc).
+    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
     :param model_kwargs: Extra keyword arguments forwarded to every table evaluation call.
     :param number_of_output_points: Number of points used when PCHIP-resampling a tabular source table.
     :param spacing: Grid spacing strategy used during PCHIP resampling.
@@ -647,10 +647,10 @@ def as_three_phase_relperm_table(
     and endpoint enrichment without any additional table calls.
 
     :param table: Source analytical or tabular relative permeability table.
-    :param irreducible_water_saturation: Irreducible water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
-    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
+    :param irreducible_water_saturation: Irreducible water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
+    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
     :param model_kwargs: Extra kwargs forwarded to every table evaluation call.
     :param oil_water_wetting_phase: Wetting phase for the oil-water sub-table.
     :param gas_oil_wetting_phase: Wetting phase for the gas-oil sub-table.
@@ -892,10 +892,10 @@ def as_three_phase_capillary_pressure_table(
     and endpoint enrichment without any additional table calls.
 
     :param table: Source analytical or tabular capillary pressure table.
-    :param irreducible_water_saturation: Irreducible water saturation (Swc).
-    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (Sorw).
-    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (Sorg).
-    :param residual_gas_saturation: Residual gas saturation (Sgr).
+    :param irreducible_water_saturation: Irreducible water saturation (swc).
+    :param residual_oil_saturation_water: Residual oil saturation in a waterflood (sorw).
+    :param residual_oil_saturation_gas: Residual oil saturation in a gas flood (sorg).
+    :param residual_gas_saturation: Residual gas saturation (sgr).
     :param model_kwargs: Extra kwargs forwarded to every table evaluation call.
     :param oil_water_wetting_phase: Wetting phase for the oil-water sub-table.
     :param gas_oil_wetting_phase: Wetting phase for the gas-oil sub-table.

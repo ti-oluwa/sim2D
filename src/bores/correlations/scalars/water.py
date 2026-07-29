@@ -168,7 +168,7 @@ def compute_water_bubble_point_pressure(
     lower_bound_pressure = c.MINIMUM_VALID_PRESSURE
     upper_bound_pressure = c.MAXIMUM_VALID_PRESSURE
 
-    lower_bound_solubility = (
+    lower_boundsolubility = (
         compute_gas_solubility_in_water(
             pressure=lower_bound_pressure,
             temperature=temperature,
@@ -177,7 +177,7 @@ def compute_water_bubble_point_pressure(
         )
         - c.GAS_SOLUBILITY_TOLERANCE
     )
-    upper_bound_solubility = (
+    upper_boundsolubility = (
         compute_gas_solubility_in_water(
             pressure=upper_bound_pressure,
             temperature=temperature,
@@ -187,12 +187,10 @@ def compute_water_bubble_point_pressure(
         + c.GAS_SOLUBILITY_TOLERANCE
     )
 
-    if not (
-        lower_bound_solubility <= gas_solubility_in_water <= upper_bound_solubility
-    ):
+    if not (lower_boundsolubility <= gas_solubility_in_water <= upper_boundsolubility):
         raise ComputationError(
             f"Target gas solubility {gas_solubility_in_water}SCF/STB is outside the range "
-            f"[{lower_bound_solubility:.6f}, {upper_bound_solubility:.6f}] "
+            f"[{lower_boundsolubility:.6f}, {upper_boundsolubility:.6f}] "
             f"for gas '{gas}' at T={temperature}°F and salinity={salinity}ppm."
         )
 

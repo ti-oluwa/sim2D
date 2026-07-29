@@ -5,15 +5,15 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.saturation_functions.capillary_pressure.tables import (
+from bores.blackoil.satfunc.capillary_pressure.tables import (
     ThreePhaseCapillaryPressureTable,
 )
-from bores.blackoil.saturation_functions.relperm.mixing_rules import MixingRule
-from bores.blackoil.saturation_functions.relperm.tables import (
+from bores.blackoil.satfunc.relperm.mixing_rules import MixingRule
+from bores.blackoil.satfunc.relperm.tables import (
     MinimumRelPerm,
     ThreePhaseRelPermTable,
 )
-from bores.blackoil.saturation_functions.tables import SaturationFunctionTables
+from bores.blackoil.satfunc.tables import SatFuncTables
 from bores.constants import UnitConversionTable
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -23,35 +23,35 @@ from bores.typing import Spacing, UnitSystem
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["SaturationFunctionRegions"]
+__all__ = ["SatFuncRegions"]
 
 
-class SaturationFunctionRegions(StoreSerializable):
+class SatFuncRegions(StoreSerializable):
     """
     Multi-region saturation-function tables keyed by 1-based `SATNUM` region index.
 
     Eclipse supports multiple saturation function regions via the `SATNUM`
     keyword - each cell is assigned a region index and its relative
     permeability and capillary pressure are evaluated from the corresponding
-    `SaturationFunctionTables` instance.
+    `SatFuncTables` instance.
 
     Use `region(satnum)` to retrieve the tables for a given region, and
     `from_deck` to construct from a deck.
     """
 
     __abstract_serializable__ = True
-    __slots__ = ("_tables", "unit_system")
+    __slots__ = ("tables", "unit_system")
 
     def __init__(
         self,
-        tables: typing.Dict[int, SaturationFunctionTables],
+        tables: typing.Dict[int, SatFuncTables],
         *,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Build a `SaturationFunctionRegions` from a pre-built regions dict.
+        Build a `SatFuncRegions` from a pre-built regions dict.
 
-        :param tables: Mapping from 1-based SATNUM index to `SaturationFunctionTables`.
+        :param tables: Mapping from 1-based SATNUM index to `SatFuncTables`.
         :param unit_system: Expected unit system for all tables. If omitted,
             it is inferred from the first table and every other table is
             required to match it.
@@ -75,25 +75,25 @@ class SaturationFunctionRegions(StoreSerializable):
                 f"{ {k: v.value for k, v in mismatched.items()} }."
             )
 
-        self._tables = tables
+        self.tables = tables
         self.unit_system = expected_unit_system
 
     @property
     def n_regions(self) -> int:
         """Number of saturation function regions."""
-        return len(self._tables)
+        return len(self.tables)
 
-    def region(self, satnum: int) -> SaturationFunctionTables:
+    def region(self, satnum: int) -> SatFuncTables:
         """
-        Return the `SaturationFunctionTables` for a given 1-based region index.
+        Return the `SatFuncTables` for a given 1-based region index.
 
         :param satnum: 1-based SATNUM region index.
-        :returns: `SaturationFunctionTables` for that region.
+        :returns: `SatFuncTables` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        tables = self._tables.get(satnum)
+        tables = self.tables.get(satnum)
         if tables is None:
-            available = sorted(self._tables.keys())
+            available = sorted(self.tables.keys())
             raise KeyError(
                 f"Saturation function region {satnum} not found. "
                 f"Available regions: {available}."
@@ -101,14 +101,14 @@ class SaturationFunctionRegions(StoreSerializable):
         return tables
 
     @classmethod
-    def single_region(cls, tables: SaturationFunctionTables) -> Self:
+    def single_region(cls, tables: SatFuncTables) -> Self:
         """
-        Wrap a single `SaturationFunctionTables` as region 1.
+        Wrap a single `SatFuncTables` as region 1.
 
         Convenience factory for the common single-region case.
 
-        :param tables: `SaturationFunctionTables` instance.
-        :returns: `SaturationFunctionRegions` with one entry at key 1.
+        :param tables: `SatFuncTables` instance.
+        :returns: `SatFuncRegions` with one entry at key 1.
         """
         return cls(tables={1: tables})
 
@@ -120,18 +120,18 @@ class SaturationFunctionRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `SaturationFunctionRegions` with capillary pressure in every
+        Return a new `SatFuncRegions` with capillary pressure in every
         region rescaled to *target*.
 
         Relative permeability is dimensionless and is unaffected.
 
         :param target: Target `UnitSystem`.
-        :returns: New `SaturationFunctionRegions` in *target* units.
+        :returns: New `SatFuncRegions` in *target* units.
         """
         return self.__class__(
             tables={
                 satnum: tables.convert(target, table=table)
-                for satnum, tables in self._tables.items()
+                for satnum, tables in self.tables.items()
             }
         )
 
@@ -155,7 +155,7 @@ class SaturationFunctionRegions(StoreSerializable):
 
         Detects which Eclipse saturation-function keyword family is present
         (`SWOF`/`SGOF` or `SWFN`/`SGFN` + `SOF2`/`SOF3`) and builds one
-        `SaturationFunctionTables` per `SATNUM` region, each combining a
+        `SatFuncTables` per `SATNUM` region, each combining a
         `ThreePhaseRelPermTable` and (when available) a
         `ThreePhaseCapillaryPressureTable`.
 
@@ -179,7 +179,7 @@ class SaturationFunctionRegions(StoreSerializable):
             the capillary pressure table for each region. When `False`, skip
             capillary pressure entirely (useful for runs that ignore Pc).
         :param dtype: Array dtype shared by every region's tables.
-        :returns: `SaturationFunctionRegions` keyed by 1-based SATNUM index.
+        :returns: `SatFuncRegions` keyed by 1-based SATNUM index.
         :raises ValidationError: If no recognised saturation-function keywords
             are found.
         """
@@ -202,7 +202,7 @@ class SaturationFunctionRegions(StoreSerializable):
                 "(second family)."
             )
 
-        tables: typing.Dict[int, SaturationFunctionTables] = {}
+        tables: typing.Dict[int, SatFuncTables] = {}
         for region_index in range(n_regions):
             satnum = region_index + 1  # 1-based
 
@@ -231,7 +231,7 @@ class SaturationFunctionRegions(StoreSerializable):
                     dtype=dtype,
                 )
 
-            tables[satnum] = SaturationFunctionTables(
+            tables[satnum] = SatFuncTables(
                 relative_permeability=relative_permeability,
                 capillary_pressure=capillary_pressure,
             )
@@ -242,29 +242,29 @@ class SaturationFunctionRegions(StoreSerializable):
             )
         return cls(tables=tables)
 
-    def __getitem__(self, key: int) -> SaturationFunctionTables:
+    def __getitem__(self, key: int) -> SatFuncTables:
         return self.region(key)
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self._tables)
+        return iter(self.tables)
 
     def __len__(self) -> int:
-        return len(self._tables)
+        return len(self.tables)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._tables
+        return key in self.tables
 
     def __dump__(self) -> typing.Dict[str, typing.Any]:
         return {
             "tables": {
-                str(satnum): tables.dump() for satnum, tables in self._tables.items()
+                str(satnum): tables.dump() for satnum, tables in self.tables.items()
             }
         }
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         tables = {
-            int(satnum): SaturationFunctionTables.load(table_data)
+            int(satnum): SatFuncTables.load(table_data)
             for satnum, table_data in data["tables"].items()
         }
         return cls(tables=tables)

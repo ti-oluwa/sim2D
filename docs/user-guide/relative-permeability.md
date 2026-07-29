@@ -623,7 +623,7 @@ krg_values = np.zeros_like(Sg_values)
 kro_g_values = np.zeros_like(Sg_values)
 
 for i, sg in enumerate(Sg_values):
-    so = 1.0 - 0.25 - sg  # Sw = Swc = 0.25
+    so = 1.0 - 0.25 - sg  # Sw = swc = 0.25
     result = relperm.get_relative_permeabilities(
         water_saturation=0.25, oil_saturation=so, gas_saturation=sg,
     )

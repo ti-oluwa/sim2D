@@ -1025,7 +1025,7 @@ class InjectedFluid(WellFluid):
         cell has not yet been contacted by the injected phase.
 
         The mobility floor ensures that at early time, when the reservoir relative
-        permeability of the injected phase is zero (e.g. Sw ≈ Swc), the well
+        permeability of the injected phase is zero (e.g. Sw ≈ swc), the well
         connection still has a physically-meaningful minimum injectivity. As the
         injected phase accumulates in the wellblock, the reservoir relative
         permeability naturally rises above the floor and the standard reservoir
@@ -1048,7 +1048,7 @@ class InjectedFluid(WellFluid):
             For a water injector this is krw(Sw); for a gas injector krg(Sg).
         :param endpoint_relative_permeability: Endpoint (maximum) relative
             permeability of the injected phase from the two-phase table
-            (e.g. krw at Sor for water, krg at Swc for gas). For unit-normalized
+            (e.g. krw at Sor for water, krg at swc for gas). For unit-normalized
             tables this is 1.0. The caller is responsible for supplying the
             correct value from whichever relperm table is active.
         :param pressure: Reservoir pressure at the perforation (psi). Used to

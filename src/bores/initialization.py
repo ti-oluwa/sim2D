@@ -16,10 +16,10 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVTRegions
 from bores.blackoil.pvt.tables import PVTTable
-from bores.blackoil.saturation_functions.capillary_pressure.tables import (
+from bores.blackoil.satfunc.capillary_pressure.tables import (
     CapillaryPressureTable,
 )
-from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
+from bores.blackoil.satfunc.regions import SatFuncRegions
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -469,8 +469,8 @@ def _initialize_center_point_equilibrium(
             saturation_samples=saturation_samples,
         )
     else:
-        # Sharp contact: Sw = 1 below WOC, Sw = Swc in the oil zone,
-        # Sg = 1 - Swc above GOC. No smooth transition zone.
+        # Sharp contact: Sw = 1 below WOC, Sw = swc in the oil zone,
+        # Sg = 1 - swc above GOC. No smooth transition zone.
         water_saturation = connate_water_saturation.astype(dtype, copy=False).copy()
         gas_saturation = np.zeros(n, dtype=dtype)
         if region.has_goc:
@@ -762,7 +762,7 @@ def initialize_equilibrium_arrays(
     equilibrium: EquilibriumRegions,
     temperature: CellArray,
     *,
-    satfunc: typing.Optional[SaturationFunctionRegions] = None,
+    satfunc: typing.Optional[SatFuncRegions] = None,
     depth_step: Number = 1.0,
     dtype: npt.DTypeLike = None,
     saturation_samples: int = N_SATURATION_SAMPLES,
@@ -773,7 +773,7 @@ def initialize_equilibrium_arrays(
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
 
-    :param satfunc: Optional `SaturationFunctionRegions`; when given, saturations
+    :param satfunc: Optional `SatFuncRegions`; when given, saturations
         are computed via capillary-pressure inversion instead of a sharp
         contact (see `_get_saturations_from_capillary_pressure`). Doing so
         requires a `SATNUM` region per cell to select the right
@@ -1027,7 +1027,7 @@ def initialize_reservoir_state(
     *,
     deck_file: typing.Optional[DeckFile] = None,
     equilibrium: typing.Optional[EquilibriumRegions] = None,
-    satfunc: typing.Optional[SaturationFunctionRegions] = None,
+    satfunc: typing.Optional[SatFuncRegions] = None,
     temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
     water_saturation: typing.Optional[CellArray] = None,
@@ -1068,7 +1068,7 @@ def initialize_reservoir_state(
     :param deck_file: Optional `DeckFile` to read explicit arrays from.
     :param equilibrium: Optional `EquilibriumRegions` for any fields not covered by an
         explicit array/keyword.
-    :param satfunc: Optional `SaturationFunctionRegions` for capillary-pressure-based
+    :param satfunc: Optional `SatFuncRegions` for capillary-pressure-based
         saturations instead of a sharp contact. If supplied and
         `reservoir.regions.saturation_regions` (SATNUM) is unavailable, every
         cell defaults to saturation region 1 and a `UserWarning` is raised

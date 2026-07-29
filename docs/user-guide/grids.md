@@ -151,10 +151,10 @@ thickness = bores.build_uniform_grid(grid_shape, value=15.0)
 depth = bores.build_depth_grid(thickness, datum=5000.0) # Absolute depth from datum
 
 # Residual saturation grids
-Swc  = bores.build_uniform_grid(grid_shape, value=0.25)
-Sorw = bores.build_uniform_grid(grid_shape, value=0.30)
-Sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-Sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+swc  = bores.build_uniform_grid(grid_shape, value=0.25)
+sorw = bores.build_uniform_grid(grid_shape, value=0.30)
+sorg = bores.build_uniform_grid(grid_shape, value=0.15)
+sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
 porosity = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Sharp contacts (no transition zones)
@@ -162,10 +162,10 @@ Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4950.0,       # GOC depth (ft)
     oil_water_contact=5060.0,     # OWC depth (ft)
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
 )
 ```
@@ -187,10 +187,10 @@ Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4950.0,
     oil_water_contact=5060.0,
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
     use_transition_zones=True,
     gas_oil_transition_thickness=10.0,   # ft

@@ -504,7 +504,7 @@ gas_oil_table = bores.TwoPhaseRelPermTable(
 # Immobile connate water — krw = 0 for all Sw <= 1
 sw_values = bores.array([0.0, 0.12, 1.0])
 krw_values = bores.array([0.0, 0.0, 0.0])  # connate water, never mobile
-krow_values = bores.array([1.0, 1.0, 0.0])  # kro = 1 at Sw=Swc, 0 at Sw=1
+krow_values = bores.array([1.0, 1.0, 0.0])  # kro = 1 at Sw=swc, 0 at Sw=1
 
 oil_water_table = bores.TwoPhaseRelPermTable(
     wetting_phase=bores.FluidPhase.WATER,

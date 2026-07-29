@@ -31,7 +31,7 @@ import numba
 import numpy as np
 from numba.extending import overload
 
-from bores.blackoil.saturation_functions.utils import build_pchip_interpolant
+from bores.blackoil.satfunc.utils import build_pchip_interpolant
 from bores.errors import ValidationError
 from bores.typing import (
     MixingRuleDFunc,
@@ -199,15 +199,15 @@ class MixingRule:
             if isinstance(derivatives, Mapping):
                 return derivatives  # type: ignore[return-value]
 
-            # Unpack 7-tuple: (d_kro_w, d_kro_g, d_krw, d_krg, d_sw, d_so, d_sg)
+            # Unpack 7-tuple: (dkro_w, dkro_g, dkrw, dkrg, dsw, dso, dsg)
             return MixingRulePartialDerivatives(
-                d_kro_d_kro_w=derivatives[0],
-                d_kro_d_kro_g=derivatives[1],
-                d_kro_d_krw=derivatives[2],
-                d_kro_d_krg=derivatives[3],
-                d_kro_d_sw_explicit=derivatives[4],
-                d_kro_d_so_explicit=derivatives[5],
-                d_kro_d_sg_explicit=derivatives[6],
+                dkro_dkro_w=derivatives[0],
+                dkro_dkro_g=derivatives[1],
+                dkro_dkrw=derivatives[2],
+                dkro_dkrg=derivatives[3],
+                dkro_dsw_explicit=derivatives[4],
+                dkro_dso_explicit=derivatives[5],
+                dkro_dsg_explicit=derivatives[6],
             )
         return _central_difference_partial_derivatives(
             rule=self,
@@ -347,7 +347,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_kro_w = (f_plus - f_minus) / two_h_kro_w
+    dkro_dkro_w = (f_plus - f_minus) / two_h_kro_w
 
     # Compute ∂f/∂(kro_g) using relative perturbation
     f_plus = rule(
@@ -370,7 +370,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_kro_g = (f_plus - f_minus) / two_h_kro_g
+    dkro_dkro_g = (f_plus - f_minus) / two_h_kro_g
 
     # Compute ∂f/∂(krw) using relative perturbation
     f_plus = rule(
@@ -393,7 +393,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_krw = (f_plus - f_minus) / two_h_krw
+    dkro_dkrw = (f_plus - f_minus) / two_h_krw
 
     # Compute ∂f/∂(krg) using relative perturbation
     f_plus = rule(
@@ -416,7 +416,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_krg = (f_plus - f_minus) / two_h_krg
+    dkro_dkrg = (f_plus - f_minus) / two_h_krg
 
     # Compute ∂f/∂(Sw) using relative perturbation
     f_plus = rule(
@@ -439,7 +439,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_sw_explicit = (f_plus - f_minus) / two_h_sw
+    dkro_dsw_explicit = (f_plus - f_minus) / two_h_sw
 
     # Compute ∂f/∂(So) using relative perturbation
     f_plus = rule(
@@ -462,7 +462,7 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation - h_so,
         gas_saturation=gas_saturation,
     )
-    d_kro_d_so_explicit = (f_plus - f_minus) / two_h_so
+    dkro_dso_explicit = (f_plus - f_minus) / two_h_so
 
     # Compute ∂f/∂(Sg) using relative perturbation
     f_plus = rule(
@@ -485,16 +485,16 @@ def _central_difference_partial_derivatives(
         oil_saturation=oil_saturation,
         gas_saturation=gas_saturation - h_sg,
     )
-    d_kro_d_sg_explicit = (f_plus - f_minus) / two_h_sg
+    dkro_dsg_explicit = (f_plus - f_minus) / two_h_sg
 
     return MixingRulePartialDerivatives(
-        d_kro_d_kro_w=d_kro_d_kro_w,
-        d_kro_d_kro_g=d_kro_d_kro_g,
-        d_kro_d_krw=d_kro_d_krw,
-        d_kro_d_krg=d_kro_d_krg,
-        d_kro_d_sw_explicit=d_kro_d_sw_explicit,
-        d_kro_d_so_explicit=d_kro_d_so_explicit,
-        d_kro_d_sg_explicit=d_kro_d_sg_explicit,
+        dkro_dkro_w=dkro_dkro_w,
+        dkro_dkro_g=dkro_dkro_g,
+        dkro_dkrw=dkro_dkrw,
+        dkro_dkrg=dkro_dkrg,
+        dkro_dsw_explicit=dkro_dsw_explicit,
+        dkro_dso_explicit=dkro_dso_explicit,
+        dkro_dsg_explicit=dkro_dsg_explicit,
     )
 
 
@@ -764,10 +764,10 @@ def _(
     """
     kw = np.asarray(kro_w, dtype=np.float64)
     kg = np.asarray(kro_g, dtype=np.float64)
-    d_kro_d_kro_w = np.where(kw < kg, 1.0, np.where(kw > kg, 0.0, 0.5))
-    d_kro_d_kro_g = 1.0 - d_kro_d_kro_w
+    dkro_dkro_w = np.where(kw < kg, 1.0, np.where(kw > kg, 0.0, 0.5))
+    dkro_dkro_g = 1.0 - dkro_dkro_w
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -828,10 +828,10 @@ def _(
     kg = np.asarray(kro_g, dtype=np.float64)
     D = np.maximum(kw + kg - kw * kg, eps)
     both_zero = (kw <= 0.0) & (kg <= 0.0)
-    d_kro_d_kro_w = np.where(both_zero, 0.0, kg**2 / D**2)
-    d_kro_d_kro_g = np.where(both_zero, 0.0, kw**2 / D**2)
+    dkro_dkro_w = np.where(both_zero, 0.0, kg**2 / D**2)
+    dkro_dkro_g = np.where(both_zero, 0.0, kw**2 / D**2)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -928,12 +928,12 @@ def _(
     raw = krocw * (A * B - w - g)
     active = (kw > 0.0) & (kg > 0.0) & (raw > 0.0)
 
-    d_kro_d_kro_w = np.where(active, B, 0.0)
-    d_kro_d_kro_g = np.where(active, A, 0.0)
-    d_kro_d_krw = np.where(active, krocw * (B - 1.0), 0.0)
-    d_kro_d_krg = np.where(active, krocw * (A - 1.0), 0.0)
+    dkro_dkro_w = np.where(active, B, 0.0)
+    dkro_dkro_g = np.where(active, A, 0.0)
+    dkro_dkrw = np.where(active, krocw * (B - 1.0), 0.0)
+    dkro_dkrg = np.where(active, krocw * (A - 1.0), 0.0)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, d_kro_d_krw, d_kro_d_krg, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, dkro_dkrw, dkro_dkrg, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1043,10 +1043,10 @@ def _(
     kg = np.asarray(kro_g, dtype=np.float64)
     kro = np.sqrt(kw * kg)
     safe_kro = np.maximum(kro, 1e-30)
-    d_kro_d_kro_w = np.where(kro > 0.0, 0.5 * kg / safe_kro, 0.0)
-    d_kro_d_kro_g = np.where(kro > 0.0, 0.5 * kw / safe_kro, 0.0)
+    dkro_dkro_w = np.where(kro > 0.0, 0.5 * kg / safe_kro, 0.0)
+    dkro_dkro_g = np.where(kro > 0.0, 0.5 * kw / safe_kro, 0.0)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1114,10 +1114,10 @@ def _(
     kg = np.asarray(kro_g, dtype=np.float64)
     both_positive = (kw > 0.0) & (kg > 0.0)
     safe_sum = np.where(both_positive, kw + kg, 1.0)
-    d_kro_d_kro_w = np.where(both_positive, 2.0 * kg**2 / safe_sum**2, 0.0)
-    d_kro_d_kro_g = np.where(both_positive, 2.0 * kw**2 / safe_sum**2, 0.0)
+    dkro_dkro_w = np.where(both_positive, 2.0 * kg**2 / safe_sum**2, 0.0)
+    dkro_dkro_g = np.where(both_positive, 2.0 * kw**2 / safe_sum**2, 0.0)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1197,12 +1197,12 @@ def _(
     active = T > 0.0
     T_safe = np.where(active, T, 1.0)
 
-    d_kro_d_kro_w = np.where(active, sw / T_safe, 0.0)
-    d_kro_d_kro_g = np.where(active, sg / T_safe, 0.0)
-    d_sw = np.where(active, sg * (kw - kg) / T_safe**2, 0.0)
-    d_sg = np.where(active, sw * (kg - kw) / T_safe**2, 0.0)
+    dkro_dkro_w = np.where(active, sw / T_safe, 0.0)
+    dkro_dkro_g = np.where(active, sg / T_safe, 0.0)
+    dsw = np.where(active, sg * (kw - kg) / T_safe**2, 0.0)
+    dsg = np.where(active, sw * (kg - kw) / T_safe**2, 0.0)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, d_sw, z, d_sg)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, dsw, z, dsg)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1268,10 +1268,10 @@ def _(
     kw = np.asarray(kro_w, dtype=np.float64)
     kg = np.asarray(kro_g, dtype=np.float64)
     active = (kw > 0.0) & (kg > 0.0) & (kw * kg * (2.0 - kw - kg) > 0.0)
-    d_kro_d_kro_w = np.where(active, kg * (2.0 - 2.0 * kw - kg), 0.0)
-    d_kro_d_kro_g = np.where(active, kw * (2.0 - kw - 2.0 * kg), 0.0)
+    dkro_dkro_w = np.where(active, kg * (2.0 - 2.0 * kw - kg), 0.0)
+    dkro_dkro_g = np.where(active, kw * (2.0 - kw - 2.0 * kg), 0.0)
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1339,14 +1339,14 @@ def _(
     kw = np.asarray(kro_w, dtype=np.float64)
     kg = np.asarray(kro_g, dtype=np.float64)
     both_zero = (kw <= 0.0) & (kg <= 0.0)
-    d_kro_d_kro_w = np.where(
+    dkro_dkro_w = np.where(
         both_zero, 0.0, np.where(kw > kg, 0.0, np.where(kg > kw, 1.0, 0.5))
     )
-    d_kro_d_kro_g = np.where(
+    dkro_dkro_g = np.where(
         both_zero, 0.0, np.where(kg > kw, 0.0, np.where(kw > kg, 1.0, 0.5))
     )
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
@@ -1432,10 +1432,10 @@ def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
         active = (kw > 0.0) & (kg > 0.0)
         safe_kw = np.where(active, kw, 1.0)
         safe_kg = np.where(active, kg, 1.0)
-        d_kro_d_kro_w = np.where(active, a * safe_kw ** (a - 1.0) * safe_kg**b, 0.0)
-        d_kro_d_kro_g = np.where(active, b * safe_kw**a * safe_kg ** (b - 1.0), 0.0)
+        dkro_dkro_w = np.where(active, a * safe_kw ** (a - 1.0) * safe_kg**b, 0.0)
+        dkro_dkro_g = np.where(active, b * safe_kw**a * safe_kg ** (b - 1.0), 0.0)
         z = _zeros_like_kro(kro_w)
-        return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+        return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
     return rule
 
@@ -1535,20 +1535,20 @@ def _(
     Dw_safe = np.where(Dw > 0.0, Dw, 1.0)
     Dg_safe = np.where(Dg > 0.0, Dg, 1.0)
 
-    d_kro_d_kro_w = np.where(active & (Dw > 0.0), so / Dw_safe, 0.0)
-    d_kro_d_kro_g = np.where(active & (Dg > 0.0), so / Dg_safe, 0.0)
+    dkro_dkro_w = np.where(active & (Dw > 0.0), so / Dw_safe, 0.0)
+    dkro_dkro_g = np.where(active & (Dg > 0.0), so / Dg_safe, 0.0)
 
-    d_sw = np.where(active & (Dg > 0.0), -kg * so / Dg_safe**2, 0.0)
-    d_so = np.where(
+    dsw = np.where(active & (Dg > 0.0), -kg * so / Dg_safe**2, 0.0)
+    dso = np.where(
         active,
         np.where(Dw > 0.0, kw * sg / Dw_safe**2, 0.0)
         + np.where(Dg > 0.0, kg * sw / Dg_safe**2, 0.0),
         0.0,
     )
-    d_sg = np.where(active & (Dw > 0.0), -kw * so / Dw_safe**2, 0.0)
+    dsg = np.where(active & (Dw > 0.0), -kw * so / Dw_safe**2, 0.0)
 
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, d_sw, d_so, d_sg)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, dsw, dso, dsg)  # type: ignore[return-value]
 
 
 @mixing_rule
@@ -1606,10 +1606,10 @@ def _(
     """
     kw = np.asarray(kro_w, dtype=np.float64)
     kg = np.asarray(kro_g, dtype=np.float64)
-    d_kro_d_kro_w = np.where(kw > kg, 1.0, np.where(kg > kw, 0.0, 0.5))
-    d_kro_d_kro_g = 1.0 - d_kro_d_kro_w
+    dkro_dkro_w = np.where(kw > kg, 1.0, np.where(kg > kw, 0.0, 0.5))
+    dkro_dkro_g = 1.0 - dkro_dkro_w
     z = _zeros_like_kro(kro_w)
-    return (d_kro_d_kro_w, d_kro_d_kro_g, z, z, z, z, z)  # type: ignore[return-value]
+    return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
 def get_mixing_rule_partial_derivatives(
@@ -1637,13 +1637,13 @@ def get_mixing_rule_partial_derivatives(
 
     This function returns a dictionary containing seven partial derivatives:
 
-    - `d_kro_d_kro_w`: sensitivity to the oil-water two-phase oil kr.
-    - `d_kro_d_kro_g`: sensitivity to the gas-oil two-phase oil kr.
-    - `d_kro_d_krw`: sensitivity to the two-phase water kr.
-    - `d_kro_d_krg`: sensitivity to the two-phase gas kr.
-    - `d_kro_d_sw_explicit`: explicit Sw dependence in the mixing rule.
-    - `d_kro_d_so_explicit`: explicit So dependence in the mixing rule.
-    - `d_kro_d_sg_explicit`: explicit Sg dependence in the mixing rule.
+    - `dkro_dkro_w`: sensitivity to the oil-water two-phase oil kr.
+    - `dkro_dkro_g`: sensitivity to the gas-oil two-phase oil kr.
+    - `dkro_dkrw`: sensitivity to the two-phase water kr.
+    - `dkro_dkrg`: sensitivity to the two-phase gas kr.
+    - `dkro_dsw_explicit`: explicit Sw dependence in the mixing rule.
+    - `dkro_dso_explicit`: explicit So dependence in the mixing rule.
+    - `dkro_dsg_explicit`: explicit Sg dependence in the mixing rule.
 
     :param rule: The mixing rule callable.
     :param kro_w: Oil relative permeability from the oil-water two-phase table.

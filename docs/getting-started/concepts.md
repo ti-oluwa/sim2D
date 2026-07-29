@@ -107,11 +107,11 @@ model = bores.reservoir_model(
     oil_viscosity_grid=oil_viscosity,
     oil_specific_gravity_grid=oil_sg,
     oil_bubble_point_pressure_grid=bubble_point,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     irreducible_water_saturation_grid=Swir,
-    connate_water_saturation_grid=Swc,
+    connate_water_saturation_grid=swc,
 )
 ```
 

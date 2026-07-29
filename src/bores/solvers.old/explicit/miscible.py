@@ -320,7 +320,7 @@ def solve_transport(
         updated_water_saturation_grid,
         updated_oil_saturation_grid,
         updated_gas_saturation_grid,
-        updated_solvent_concentration_grid,
+        updatedsolvent_concentration_grid,
         cfl_violation_info,
     ) = apply_updates(
         water_saturation_grid=current_water_saturation_grid,
@@ -466,7 +466,7 @@ def solve_transport(
                 gas_saturation_grid=updated_gas_saturation_grid.astype(
                     dtype, copy=False
                 ),
-                solvent_concentration_grid=updated_solvent_concentration_grid.astype(
+                solvent_concentration_grid=updatedsolvent_concentration_grid.astype(
                     dtype, copy=False
                 ),
                 maximum_cfl_encountered=maximum_cfl_encountered,
@@ -519,7 +519,7 @@ def solve_transport(
             ),
             oil_saturation_grid=updated_oil_saturation_grid.astype(dtype, copy=False),
             gas_saturation_grid=updated_gas_saturation_grid.astype(dtype, copy=False),
-            solvent_concentration_grid=updated_solvent_concentration_grid.astype(
+            solvent_concentration_grid=updatedsolvent_concentration_grid.astype(
                 dtype, copy=False
             ),
             maximum_cfl_encountered=maximum_cfl_encountered,
@@ -670,7 +670,7 @@ def compute_fluxes_from_neighbour(
     gas_velocity = upwind_gas_mobility * gas_potential_difference / flow_length
 
     # Upwind solvent concentration (moves with oil)
-    upwinded_solvent_concentration = (
+    upwindedsolvent_concentration = (
         neighbour_solvent_concentration
         if oil_velocity > 0
         else cell_solvent_concentration
@@ -683,7 +683,7 @@ def compute_fluxes_from_neighbour(
 
     # Solvent mass flux in oil phase (ft³/day)
     # The solvent concentration travels with the oil phase
-    solvent_flux_in_oil = oil_flux_at_face * upwinded_solvent_concentration
+    solvent_flux_in_oil = oil_flux_at_face * upwindedsolvent_concentration
     return (water_flux_at_face, oil_flux_at_face, gas_flux_at_face, solvent_flux_in_oil)
 
 
@@ -1401,7 +1401,7 @@ def apply_updates(
     :param cell_size_y: Cell size in y direction (ft)
     :param time_step_in_days: Time step size (days)
     :param cfl_threshold: Maximum allowed CFL number
-    :return: Tuple of (updated_water_sat, updated_oil_sat, updated_gas_sat, updated_solvent_conc, cfl_violation_info)
+    :return: Tuple of (updated_water_sat, updated_oil_sat, updated_gas_sat, updatedsolvent_conc, cfl_violation_info)
              where `cfl_violation_info` is [violated, i, j, k, cfl_number, maximum_cfl]
     """
     apply_pvt_correction = (
@@ -1416,7 +1416,7 @@ def apply_updates(
     updated_water_saturation_grid = water_saturation_grid.copy()
     updated_oil_saturation_grid = oil_saturation_grid.copy()
     updated_gas_saturation_grid = gas_saturation_grid.copy()
-    updated_solvent_concentration_grid = solvent_concentration_grid.copy()
+    updatedsolvent_concentration_grid = solvent_concentration_grid.copy()
 
     # CFL violation tracking: [violated (0 or 1), i, j, k, cfl_number, maximum_cfl]
     cfl_violation = np.zeros(6, dtype=np.float64)
@@ -1556,14 +1556,14 @@ def apply_updates(
                     # New oil volume (after saturation updates)
                     new_oil_volume = new_oil_saturation * cell_pore_volume
                     # Current solvent volume in oil
-                    old_solvent_volume = (
+                    oldsolvent_volume = (
                         cell_solvent_concentration * oil_saturation * cell_pore_volume
                     )
                     # Solvent volume flux from advection
-                    advected_solvent_volume = net_solvent_flux * time_step_in_days
+                    advectedsolvent_volume = net_solvent_flux * time_step_in_days
 
                     # Solvent volume from injection (if miscible)
-                    injected_solvent_volume = 0.0
+                    injectedsolvent_volume = 0.0
                     if (
                         cell_gas_injection_rate > 0.0
                         and cell_solvent_injection_concentration > 0.0
@@ -1577,34 +1577,34 @@ def apply_updates(
                         )
                         # Maximum solvent that can dissolve without exceeding C=1
                         max_dissolvable = new_oil_volume - (
-                            old_solvent_volume + advected_solvent_volume
+                            oldsolvent_volume + advectedsolvent_volume
                         )
                         # Take minimum to prevent oversaturation
-                        injected_solvent_volume = max(
+                        injectedsolvent_volume = max(
                             0.0, min(potential_injected_volume, max_dissolvable)
                         )
 
                     # Total solvent volume in oil
                     new_solvent_volume = (
-                        old_solvent_volume
-                        + advected_solvent_volume
-                        + injected_solvent_volume
+                        oldsolvent_volume
+                        + advectedsolvent_volume
+                        + injectedsolvent_volume
                     )
                     # New concentration
                     new_concentration = new_solvent_volume / new_oil_volume
                     # Clamp to [0, 1] (should already be satisfied, but ensure numerical stability)
-                    updated_solvent_concentration_grid[i, j, k] = clip(
+                    updatedsolvent_concentration_grid[i, j, k] = clip(
                         new_concentration, 0.0, 1.0
                     )
                 else:
                     # No oil in cell, concentration is undefined (set to 0)
-                    updated_solvent_concentration_grid[i, j, k] = 0.0
+                    updatedsolvent_concentration_grid[i, j, k] = 0.0
 
     return (
         updated_water_saturation_grid,
         updated_oil_saturation_grid,
         updated_gas_saturation_grid,
-        updated_solvent_concentration_grid,
+        updatedsolvent_concentration_grid,
         cfl_violation,
     )
 

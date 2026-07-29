@@ -250,12 +250,12 @@ def _build_pseudo_pressures_vectorized(
 
     # Cumulative integration from reference pressure
     # Find index closest to reference pressure
-    ref_idx = np.searchsorted(pressures, reference_pressure)
+    reference_idx = np.searchsorted(pressures, reference_pressure)
 
-    if ref_idx == 0:
+    if reference_idx == 0:
         # Reference is at or below minimum, hence we integrate forward only
         pseudo_pressures = cumulative_trapezoid(integrand_array, pressures, initial=0)
-    elif ref_idx >= len(pressures):
+    elif reference_idx >= len(pressures):
         # Reference is at or above maximum, hence we integrate backward only
         pseudo_pressures = -cumulative_trapezoid(
             integrand_array[::-1], pressures[::-1], initial=0
@@ -264,14 +264,14 @@ def _build_pseudo_pressures_vectorized(
         # Reference is in the middle so we integrate both directions
         # Backward from ref to start
         backward = -cumulative_trapezoid(
-            integrand_array[: ref_idx + 1][::-1],
-            pressures[: ref_idx + 1][::-1],
+            integrand_array[: reference_idx + 1][::-1],
+            pressures[: reference_idx + 1][::-1],
             initial=0,
         )[::-1]
 
         # Forward from ref to end
         forward = cumulative_trapezoid(
-            integrand_array[ref_idx:], pressures[ref_idx:], initial=0
+            integrand_array[reference_idx:], pressures[reference_idx:], initial=0
         )
         # Then we combine
         pseudo_pressures = np.concatenate([backward[:-1], forward])
@@ -396,7 +396,7 @@ def build_pchip_interpolants_from_points(
         and last 10 % of the x-range during expansion. Pass `0` to disable
         endpoint enrichment.
     :param spacing: Grid spacing mode for the expanded base field/array. `"cosine"`
-        clusters points near the boundaries; `"linspace"` gives uniform spacing.
+        clusters points near the boundaries; `"linear"` gives uniform spacing.
     :param minimum_scale_span: Minimum x-range required before field/array expansion is
         attempted. Defaults to `1.0`, which is appropriate for pressure axes
         measured in psi.
@@ -793,6 +793,8 @@ class PseudoPressureTable(
         return typing.cast(
             FloatArray[NDimension], result.reshape(pressure_arr.shape, copy=False)
         )
+
+    dm_dp = gradient  # alias
 
     def convert(
         self,

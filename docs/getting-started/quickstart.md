@@ -69,11 +69,11 @@ oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.5)     # cP
 bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)   # psi
 
 # Residual and irreducible saturations
-Sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
-Sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
-Sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
+sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
+sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
+sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
 Swir = bores.build_uniform_grid(grid_shape, value=0.20)  # Irreducible water
-Swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
+swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
 
 # Build depth grid from thickness and a datum (top of reservoir at 5000 ft)
 depth = bores.build_depth_grid(thickness, datum=5000.0)
@@ -85,10 +85,10 @@ Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4999.0,      # Above reservoir top (no gas cap)
     oil_water_contact=5100.0,    # Below reservoir base (all oil zone)
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
 )
 
@@ -119,11 +119,11 @@ model = bores.reservoir_model(
     oil_viscosity_grid=oil_viscosity,
     oil_specific_gravity_grid=oil_sg,
     oil_bubble_point_pressure_grid=bubble_point,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     irreducible_water_saturation_grid=Swir,
-    connate_water_saturation_grid=Swc,
+    connate_water_saturation_grid=swc,
     datum_depth=5000,
 )
 
@@ -247,7 +247,7 @@ If you are working on a problem where numerical accuracy is critical, for exampl
 
 Every cell in the reservoir grid needs a set of physical properties: pressure, temperature, porosity, permeability, saturations, and so on. The `bores.build_uniform_grid()` helper creates a NumPy array of the specified shape filled with a single value. In a real study, you would typically load heterogeneous property distributions from geological models or well log data.
 
-Residual saturations define the minimum amount of each phase that remains trapped in the rock after displacement. These values control the maximum recovery you can achieve and directly influence the shape of relative permeability curves. The irreducible water saturation (`Swir`) is the minimum water saturation achievable by oil drainage, while the connate water saturation (`Swc`) represents the initial water present when the reservoir was formed.
+Residual saturations define the minimum amount of each phase that remains trapped in the rock after displacement. These values control the maximum recovery you can achieve and directly influence the shape of relative permeability curves. The irreducible water saturation (`Swir`) is the minimum water saturation achievable by oil drainage, while the connate water saturation (`swc`) represents the initial water present when the reservoir was formed.
 
 ### Building Saturation Grids
 

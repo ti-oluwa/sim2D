@@ -366,11 +366,11 @@ def _validate_saturations(
     if n_below_connate > 0:
         report.warn(
             check_connate,
-            f"{n_below_connate} cell(s) have initial Sw below connate water saturation (Swc).",
+            f"{n_below_connate} cell(s) have initial Sw below connate water saturation (swc).",
             "This may indicate inconsistent initialisation or saturation end-point tables.",
         )
     else:
-        report.info(check_connate, "Initial Sw >= Swc everywhere.")
+        report.info(check_connate, "Initial Sw >= swc everywhere.")
 
 
 def _validate_porosity(

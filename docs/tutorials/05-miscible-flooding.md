@@ -75,11 +75,11 @@ oil_viscosity = bores.build_uniform_grid(grid_shape, value=2.0)
 bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)
 oil_sg = bores.build_uniform_grid(grid_shape, value=0.87)
 
-Sorw = bores.build_uniform_grid(grid_shape, value=0.22)
-Sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-Sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sorw = bores.build_uniform_grid(grid_shape, value=0.22)
+sorg = bores.build_uniform_grid(grid_shape, value=0.15)
+sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
 Swir = bores.build_uniform_grid(grid_shape, value=0.22)
-Swc  = bores.build_uniform_grid(grid_shape, value=0.22)
+swc  = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Build initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)
@@ -88,10 +88,10 @@ Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
     oil_water_contact=5100.0,     # OWC near reservoir bottom
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
 )
 
@@ -113,11 +113,11 @@ model = bores.reservoir_model(
     oil_viscosity_grid=oil_viscosity,
     oil_specific_gravity_grid=oil_sg,
     oil_bubble_point_pressure_grid=bubble_point,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     irreducible_water_saturation_grid=Swir,
-    connate_water_saturation_grid=Swc,
+    connate_water_saturation_grid=swc,
     reservoir_gas="CO2",
     datum_depth=5000,
 )
@@ -314,7 +314,7 @@ fig.show()
 
 Compare this recovery curve with the immiscible gas flood from [Tutorial 4](04-gas-injection.md). The miscible flood should show significantly higher ultimate recovery because:
 
-1. **Zero residual oil in swept zones** - Miscibility eliminates capillary trapping, so oil saturation can drop to zero in cells fully contacted by CO2 (instead of being limited to Sorg = 0.15 in the immiscible case).
+1. **Zero residual oil in swept zones** - Miscibility eliminates capillary trapping, so oil saturation can drop to zero in cells fully contacted by CO2 (instead of being limited to sorg = 0.15 in the immiscible case).
 
 2. **Better sweep efficiency** - The mixing of CO2 with oil reduces the viscosity contrast, improving the mobility ratio and reducing viscous fingering.
 

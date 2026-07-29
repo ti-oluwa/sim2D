@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.saturation_functions.regions import SaturationFunctionRegions
+from bores.blackoil.satfunc.regions import SatFuncRegions
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -357,7 +357,7 @@ class Rock(StoreSerializable):
 
     @staticmethod
     def _get_saturation_endpoints_from_tables(
-        satfunc: SaturationFunctionRegions,
+        satfunc: SatFuncRegions,
         saturation_regions: IntCellArray,
         n_cells: int,
         dtype: npt.DTypeLike,
@@ -413,7 +413,7 @@ class Rock(StoreSerializable):
         *,
         grid: Grid,
         rock_regions: typing.Optional[IntCellArray] = None,
-        satfunc: typing.Optional[SaturationFunctionRegions] = None,
+        satfunc: typing.Optional[SatFuncRegions] = None,
         saturation_regions: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
@@ -438,7 +438,7 @@ class Rock(StoreSerializable):
         :param deck_file: Parsed `DeckFile` containing PROPS/GRID keywords.
         :param grid: Already-loaded `Grid` (provides `n_cells` and cell
             centroid depths for temperature interpolation).
-        :param satfunc: Optional `SaturationFunctionRegions`, used to derive any
+        :param satfunc: Optional `SatFuncRegions`, used to derive any
             of the five saturation-endpoint arrays not explicitly present
             in `deck_file`, from each cell's SATNUM saturation-function
             table. Strongly recommended. Without it, any endpoint the deck
