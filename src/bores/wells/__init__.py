@@ -1,6 +1,10 @@
-"""Well modeling components for BORES."""
-
-from .core import *  # noqa
-from .base import *  # noqa
-from .controls import *  # noqa
-from .schedules import *  # noqa
+from ._deck import *
+from .base import *
+from .controls import *
+from .groups import *
+from .hydraulics import *
+from .indices import *
+from .model import *
+from .perforations import *
+from .states import *
+from .trajectory import *

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `bores.correlations.arrays` module contains vectorized versions of every scalar PVT correlation from `bores.correlations.core`. Where the scalar module operates on single float values, the array module operates on NumPy arrays of any shape and dimension. These are the functions the simulator calls internally to compute fluid properties across the entire reservoir grid in a single pass, and you can use them for post-processing, custom property computations, or building property grids from scratch.
+The `bores.correlations.arrays` module contains vectorized versions of every scalar PVT correlation from `bores.correlations.scalars`. Where the scalar module operates on single float values, the array module operates on NumPy arrays of any shape and dimension. These are the functions the simulator calls internally to compute fluid properties across the entire reservoir grid in a single pass, and you can use them for post-processing, custom property computations, or building property grids from scratch.
 
 Every function in this module accepts `NDimensionalGrid` arrays (typed NumPy arrays parameterized by dimension) and returns arrays of the same shape. The functions use the same correlations, formulas, and valid ranges as their scalar counterparts. Many are compiled with Numba's `@numba.njit` decorator for performance-critical inner loops, while CoolProp-based functions iterate over array elements internally.
 
@@ -18,7 +18,7 @@ from bores.correlations.arrays import (
 
 !!! info "Relationship to Scalar Correlations"
 
-    Every public function in `bores.correlations.arrays` has a corresponding scalar version in `bores.correlations.core` with the same name and the same parameters. The only difference is that array functions accept and return NumPy arrays instead of floats. See the [Scalar Correlations](correlations-scalar.md) page for detailed descriptions of each correlation's formula, valid ranges, and physical interpretation.
+    Every public function in `bores.correlations.arrays` has a corresponding scalar version in `bores.correlations.scalars` with the same name and the same parameters. The only difference is that array functions accept and return NumPy arrays instead of floats. See the [Scalar Correlations](correlations-scalar.md) page for detailed descriptions of each correlation's formula, valid ranges, and physical interpretation.
 
 ---
 
@@ -28,7 +28,7 @@ The key differences between the array and scalar modules are:
 
 **Input types.** Scalar functions accept `float` parameters. Array functions accept `NDimensionalGrid[NDimension]` parameters, which are NumPy arrays of shape `(nx,)`, `(nx, ny)`, or `(nx, ny, nz)` depending on the simulation dimensionality.
 
-**Broadcasting.** Array functions follow NumPy broadcasting rules. You can pass a scalar value for a parameter that is uniform across the grid (like gas gravity) and it will be broadcast against the grid-shaped parameters (like pressure). Some parameters explicitly accept `FloatOrArray` types for this purpose.
+**Broadcasting.** Array functions follow NumPy broadcasting rules. You can pass a scalar value for a parameter that is uniform across the grid (like gas gravity) and it will be broadcast against the grid-shaped parameters (like pressure). Some parameters explicitly accept `NumberOrArray` types for this purpose.
 
 **Validation.** Scalar functions raise `ValidationError` immediately when a single invalid value is detected. Array functions use `min_()` and `max_()` helpers to check the entire grid at once, raising an error if any element violates the constraint.
 

@@ -163,7 +163,7 @@ config = bores.Config(
 | Aspect | Immiscible | Miscible |
 |---|---|---|
 | Gas-oil interfacial tension | Non-zero | Zero (above MMP) |
-| Residual oil in swept zone | Sorg (typically 15-25%) | Approaches 0% |
+| Residual oil in swept zone | sorg (typically 15-25%) | Approaches 0% |
 | Microscopic displacement efficiency | Moderate | Near 100% |
 | Gravity override | Severe | Still present |
 | Viscosity reduction | None | Significant |

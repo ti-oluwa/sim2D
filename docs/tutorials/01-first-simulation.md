@@ -83,11 +83,11 @@ bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)   # psi
 oil_sg = bores.build_uniform_grid(grid_shape, value=0.85)           # ~35 deg API
 
 # Residual and irreducible saturations
-Sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
-Sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
-Sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
+sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
+sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
+sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
 Swir = bores.build_uniform_grid(grid_shape, value=0.20)  # Irreducible water
-Swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
+swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
 
 # Build initial saturations from fluid contacts
 # Depth grid: top of reservoir at 5000 ft, 20 ft per layer
@@ -97,10 +97,10 @@ Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
     oil_water_contact=5055.0,     # OWC near reservoir bottom
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
 )
 ```
@@ -118,10 +118,10 @@ The oil specific gravity of 0.85 corresponds to roughly 35 degrees API, which is
 ```python
 # Isotropic permeability: 100 mD in all directions
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)
-permeability = bores.RockPermeability(x=perm_grid, y=perm_grid, z=perm_grid)
+permeability = bores.Permeability(x=perm_grid, y=perm_grid, z=perm_grid)
 ```
 
-Permeability controls how easily fluid flows through the rock. We use `bores.RockPermeability` to define permeability in each direction. For isotropic rock (same permeability everywhere), you can pass the same grid for x, y, and z. If you only provide the x-direction grid, BORES assumes isotropy and copies it to y and z automatically.
+Permeability controls how easily fluid flows through the rock. We use `bores.Permeability` to define permeability in each direction. For isotropic rock (same permeability everywhere), you can pass the same grid for x, y, and z. If you only provide the x-direction grid, BORES assumes isotropy and copies it to y and z automatically.
 
 A value of 100 mD is typical of a good quality sandstone reservoir. In the [next tutorial](02-building-models.md), you will learn how to create anisotropic permeability where vertical permeability differs from horizontal, which is very common in real reservoirs due to layered deposition.
 
@@ -130,7 +130,7 @@ A value of 100 mD is typical of a good quality sandstone reservoir. In the [next
     If your permeability is isotropic, you can pass just the x-direction grid and BORES will use it for all directions:
 
     ```python
-    permeability = bores.RockPermeability(x=perm_grid)
+    permeability = bores.Permeability(x=perm_grid)
     # y and z are automatically set equal to x
     ```
 
@@ -154,11 +154,11 @@ model = bores.reservoir_model(
     oil_viscosity_grid=oil_viscosity,
     oil_specific_gravity_grid=oil_sg,
     oil_bubble_point_pressure_grid=bubble_point,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     irreducible_water_saturation_grid=Swir,
-    connate_water_saturation_grid=Swc,
+    connate_water_saturation_grid=swc,
     datum_depth=5000,
 )
 ```

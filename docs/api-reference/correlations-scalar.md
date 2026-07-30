@@ -2,14 +2,14 @@
 
 ## Overview
 
-The `bores.correlations.core` module contains scalar PVT correlation functions. Each function accepts single float values as input and returns a single float result. These are the building blocks that the simulator calls internally when computing fluid properties cell by cell, and you can also call them directly in your own scripts for point calculations, unit conversions, validation against laboratory data, or building custom PVT tables.
+The `bores.correlations.scalars` module contains scalar PVT correlation functions. Each function accepts single float values as input and returns a single float result. These are the building blocks that the simulator calls internally when computing fluid properties cell by cell, and you can also call them directly in your own scripts for point calculations, unit conversions, validation against laboratory data, or building custom PVT tables.
 
 All functions in this module use oilfield units: pressure in psi, temperature in degrees Fahrenheit, density in lbm/ft³, viscosity in centipoise, and volume factors in bbl/STB or ft³/SCF. The module also provides generic CoolProp-based functions that accept any fluid name supported by the CoolProp thermodynamic library, which are useful for computing properties of non-standard fluids like CO2, nitrogen, or other injection gases.
 
-The functions are organized by property category below. Within each category, you will find correlation-specific variants (e.g., Standing, Vazquez-Beggs) as well as unified dispatch functions that select the best correlation automatically based on conditions. Import them from `bores.correlations.core` or from `bores.correlations` directly.
+The functions are organized by property category below. Within each category, you will find correlation-specific variants (e.g., Standing, Vazquez-Beggs) as well as unified dispatch functions that select the best correlation automatically based on conditions. Import them from `bores.correlations.scalars` or from `bores.correlations` directly.
 
 ```python
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_oil_formation_volume_factor_standing,
     compute_gas_compressibility_factor,
     compute_oil_viscosity,
@@ -33,7 +33,7 @@ These utility functions convert between temperature scales. They accept both sca
 | `fahrenheit_to_rankine(temp_F)` | Fahrenheit to Rankine | $F + 459.67$ |
 
 ```python
-from bores.correlations.core import fahrenheit_to_kelvin, kelvin_to_fahrenheit
+from bores.correlations.scalars import fahrenheit_to_kelvin, kelvin_to_fahrenheit
 
 temp_K = fahrenheit_to_kelvin(200.0)   # 366.48 K
 temp_F = kelvin_to_fahrenheit(366.48)  # 200.0 F
@@ -74,7 +74,7 @@ Computes fluid density from the equation of state using CoolProp. Returns densit
 | `fluid` | `str` | - | CoolProp fluid name (e.g., `"CO2"`, `"Water"`, `"Methane"`) |
 
 ```python
-from bores.correlations.core import compute_fluid_density
+from bores.correlations.scalars import compute_fluid_density
 
 co2_density = compute_fluid_density(3000.0, 200.0, "CO2")
 print(f"CO2 density: {co2_density:.2f} lbm/ft³")
@@ -123,7 +123,7 @@ compute_gas_gravity(gas: str) -> float
 Computes the specific gravity of a gas relative to air at standard conditions. Accepts any CoolProp-supported gas name.
 
 ```python
-from bores.correlations.core import compute_gas_gravity
+from bores.correlations.scalars import compute_gas_gravity
 
 methane_gravity = compute_gas_gravity("Methane")   # ~0.554
 co2_gravity = compute_gas_gravity("CO2")           # ~1.52
@@ -172,7 +172,7 @@ Converts oil specific gravity to API gravity in degrees.
 $$API = \frac{141.5}{SG} - 131.5$$
 
 ```python
-from bores.correlations.core import compute_oil_api_gravity
+from bores.correlations.scalars import compute_oil_api_gravity
 
 api = compute_oil_api_gravity(0.85)  # ~34.97 degrees API
 ```
@@ -224,7 +224,7 @@ $$B_o = 0.972 + 0.000147 \cdot \left[R_s \cdot \left(\frac{\gamma_g}{\gamma_o}\r
 **Valid range:** 60-300 F, oil SG 0.5-0.95, GOR 20-2000 SCF/STB.
 
 ```python
-from bores.correlations.core import compute_oil_formation_volume_factor_standing
+from bores.correlations.scalars import compute_oil_formation_volume_factor_standing
 
 Bo = compute_oil_formation_volume_factor_standing(
     temperature=200.0,
@@ -386,7 +386,7 @@ compute_gas_compressibility_factor(
 Unified dispatch function. The `method` parameter accepts `"papay"`, `"hall-yarborough"`, or `"dak"` (default). DAK is usually sufficient for black-oil simulations.
 
 ```python
-from bores.correlations.core import compute_gas_compressibility_factor
+from bores.correlations.scalars import compute_gas_compressibility_factor
 
 Z = compute_gas_compressibility_factor(
     pressure=2000.0, temperature=150.0, gas_gravity=0.65, method="dak"

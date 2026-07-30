@@ -2,16 +2,29 @@
 
 import logging
 import typing
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from uuid import uuid4
 
 import attrs
 from typing_extensions import Self
 
+from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
-from bores.serialization import Serializable
-from bores.stores import StoreSerializable
+from bores.serde.base import Serializable
+from bores.serde.stores import StoreSerializable
+from bores.typing import UnitConversionFactors, UnitConversionTable, UnitSystem
 
-__all__ = ["Constant", "Constants", "ConstantsContext", "c", "get_constant"]
+__all__ = [
+    "Constant",
+    "Constants",
+    "ConstantsContext",
+    "c",
+    "get_constant",
+    "get_conversion_factors",
+    "build_unit_conversion_table",
+    "set_default_constants",
+    "UNIT_CONVERSION_TABLE",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +48,26 @@ class Constant(Serializable):
     unit: typing.Optional[str] = None
     """Optional unit of measurement for this constant."""
 
+    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    """
+    Alternate names this constant is also known by (e.g. a unit-suffixed
+    name and a system-suffixed name for the same numeric value). This is
+    the single source of truth `Constants` reads to build its alias index -
+    it does not, by itself, create any dict entries.
+    """
+
     def __str__(self) -> str:
         """Return a human-readable string representation of the `Constant`."""
         return f"{self.value}{self.unit or ''}"
 
     def __repr__(self) -> str:
-        """Return a string representation of the `Constant`."""
         parts = [f"value={self.value}"]
         if self.description:
             parts.append(f"description='{self.description}'")
         if self.unit:
             parts.append(f"unit='{self.unit}'")
+        if self.aliases:
+            parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
 
@@ -89,7 +111,13 @@ class ConstantFactory(Serializable):
     """Zero-argument callable that returns the constant's current value."""
 
     description: typing.Optional[str] = None
+    """Optional description of what this constant represents."""
+
     unit: typing.Optional[str] = None
+    """Optional unit of measurement for this constant."""
+
+    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    """Alternate names - see `Constant.aliases`."""
 
     @property
     def value(self) -> typing.Any:
@@ -110,21 +138,24 @@ class ConstantFactory(Serializable):
             parts.append(f"description='{self.description}'")
         if self.unit:
             parts.append(f"unit='{self.unit}'")
+        if self.aliases:
+            parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        """Serialize by evaluating the factory — produces a plain value snapshot."""
+    def __dump__(self) -> typing.Dict[str, typing.Any]:
+        """Serialize by evaluating the factory - produces a plain value snapshot."""
         evaluated = Constant(
             value=self.value,
             description=self.description,
             unit=self.unit,
+            aliases=self.aliases,
         )
-        return evaluated.dump(recurse)
+        return evaluated.dump()
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Constant:
         """
-        Deserialization always produces a plain ``Constant`` — a factory
+        Deserialization always produces a plain ``Constant`` - a factory
         function cannot be reconstructed from serialized data.
         """
         return Constant.load(data)
@@ -167,19 +198,62 @@ DEFAULT_CONSTANTS: typing.Dict[
     str, typing.Union[typing.Any, Constant, ConstantFactory]
 ] = {
     # Standard Conditions
-    "STANDARD_PRESSURE": Constant(
-        value=101325, description="Standard atmospheric pressure (SI units)", unit="Pa"
+    # Pressure
+    "STANDARD_PRESSURE_PASCAL": Constant(
+        value=101325,
+        description="Standard atmospheric pressure in Pascals (SI units)",
+        unit="Pa",
+        aliases=("STANDARD_PRESSURE_SI",),
     ),
-    "STANDARD_PRESSURE_IMPERIAL": Constant(
-        value=14.696,
-        description="Standard atmospheric pressure (Imperial units)",
+    "STANDARD_PRESSURE_PSI": Constant(
+        value=14.6959,
+        description="Standard atmospheric pressure in Pound-per-Square-Inch (psi)",
         unit="psi",
+        aliases=("STANDARD_PRESSURE_IMPERIAL",),
     ),
-    "STANDARD_TEMPERATURE": Constant(
-        value=288.7056, description="Standard temperature (15.6°C) (SI units)", unit="K"
+    "STANDARD_PRESSURE_BAR": Constant(
+        value=1.01325,
+        description="Standard atmospheric pressure in Bars (abs)",
+        unit="barsa [bar]",
     ),
-    "STANDARD_TEMPERATURE_IMPERIAL": Constant(
-        value=60.0, description="Standard temperature (Imperial units)", unit="°F"
+    "STANDARD_PRESSURE_ATM": Constant(
+        value=1.0000,
+        description="Standard atmospheric pressure in Atmospheres",
+        unit="atm",
+    ),
+    # Hydrostatic gradient factors
+    "HYDROSTATIC_GRADIENT_FACTOR_FIELD": Constant(
+        value=1.0 / 144.0,
+        description="Hydrostatic gradient factor for FIELD units: psi per (lbm/ft³ * ft)",
+        unit="psi / (lbm/ft³ * ft)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_METRIC": Constant(
+        value=9.80665e-5,
+        description="Hydrostatic gradient factor for METRIC units: bar per (kg/m³ * m)",
+        unit="bar / (kg/m³ * m)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_LAB": Constant(
+        value=9.6787e-4,
+        description="Hydrostatic gradient factor for LAB units: atm per (g/cm³ * cm)",
+        unit="atm / (g/cm³ * cm)",
+    ),
+    "HYDROSTATIC_GRADIENT_FACTOR_SI": Constant(
+        value=9.80665,
+        description="Hydrostatic gradient factor for SI units: Pa per (kg/m³ * m)",
+        unit="Pa / (kg/m³ * m)",
+    ),
+    # Temperature
+    "STANDARD_TEMPERATURE_KELVIN": Constant(
+        value=288.7056,
+        description="Standard temperature in Kelvin",
+        unit="K",
+        aliases=("STANDARD_TEMPERATURE_SI",),
+    ),
+    "STANDARD_TEMPERATURE_FAHRENHEIT": Constant(
+        value=60.0,
+        description="Standard temperature in Fahrenheit",
+        unit="°F",
+        aliases=("STANDARD_TEMPERATURE_IMPERIAL",),
     ),
     "STANDARD_TEMPERATURE_RANKINE": Constant(
         value=518.67, description="Standard temperature (15.6°C) in Rankine", unit="°R"
@@ -188,52 +262,69 @@ DEFAULT_CONSTANTS: typing.Dict[
         value=15.6, description="Standard temperature in Celsius", unit="°C"
     ),
     # Thermal and Compressibility Properties
+    # Oil
     "OIL_THERMAL_EXPANSION_COEFFICIENT": Constant(
         value=9.7e-4, description="Thermal expansion coefficient for oil", unit="1/K"
-    ),
-    "WATER_THERMAL_EXPANSION_COEFFICIENT": Constant(
-        value=3.0e-4, description="Thermal expansion coefficient for water", unit="1/K"
-    ),
-    "WATER_ISOTHERMAL_COMPRESSIBILITY": Constant(
-        value=4.6e-10,
-        description="Isothermal compressibility of water at 15.6°C (SI units)",
-        unit="1/Pa",
     ),
     "OIL_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL": Constant(
         value=5.39e-4,
         description="Thermal expansion coefficient for oil (Imperial units)",
         unit="1/°F",
     ),
+    # Water
+    "WATER_THERMAL_EXPANSION_COEFFICIENT": Constant(
+        value=3.0e-4, description="Thermal expansion coefficient for water", unit="1/K"
+    ),
     "WATER_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL": Constant(
         value=1.67e-4,
         description="Thermal expansion coefficient for water (Imperial units)",
         unit="1/°F",
     ),
+    "WATER_ISOTHERMAL_COMPRESSIBILITY": Constant(
+        value=4.6e-10,
+        description="Isothermal compressibility of water at Standard temperature (15.6°C) (SI units)",
+        unit="1/Pa",
+    ),
     "WATER_ISOTHERMAL_COMPRESSIBILITY_IMPERIAL": Constant(
         value=3.17e-6,
-        description="Isothermal compressibility of water at 15.6°C (Imperial units)",
+        description="Isothermal compressibility of water at Standard temperature (15.6°C) (Imperial units)",
         unit="1/psi",
     ),
     # Standard Densities
-    "STANDARD_WATER_DENSITY": Constant(
-        value=998.2,
-        description="Standard water density at 15.6°C (SI units)",
-        unit="kg/m³",
-    ),
+    # Water
     "STANDARD_WATER_DENSITY_IMPERIAL": Constant(
         value=62.37,
-        description="Standard water density at 15.6°C (Imperial units)",
-        unit="lb/ft³",
+        description="Standard water density at Standard temperature (15.6°C) (Imperial/field units)",
+        unit="lbm/ft³",
     ),
-    "STANDARD_AIR_DENSITY": Constant(
-        value=1.225,
-        description="Standard air density at 15.6°C (SI units)",
+    "STANDARD_WATER_DENSITY_METRIC": Constant(
+        value=998.2,
+        description="Standard water density at Standard temperature (15.6°C) (Metric units)",
         unit="kg/m³",
+        aliases=("STANDARD_WATER_DENSITY_SI",),
     ),
-    "STANDARD_AIR_DENSITY_IMPERIAL": Constant(
+    "STANDARD_WATER_DENSITY_LAB": Constant(
+        value=0.9982,
+        description="Standard water density at Standard temperature (15.6°C) (Lab units)",
+        unit="g/cm³",
+    ),
+    # Air
+    "STANDARD_AIR_DENSITY_FIELD": Constant(
         value=0.0765,
-        description="Standard air density at 15.6°C (Imperial units)",
-        unit="lb/ft³",
+        description="Standard air density at Standard temperature (15.6°C) (Imperial/field units)",
+        unit="lbm/ft³",
+        aliases=("STANDARD_AIR_DENSITY_IMPERIAL",),
+    ),
+    "STANDARD_AIR_DENSITY_METRIC": Constant(
+        value=1.225,
+        description="Standard air density at Standard temperature (15.6°C) (Metric units)",
+        unit="kg/m³",
+        aliases=("STANDARD_AIR_DENSITY_SI",),
+    ),
+    "STANDARD_AIR_DENSITY_LAB": Constant(
+        value=1.225e-3,
+        description="Standard air density at Standard temperature (15.6°C) (Lab units)",
+        unit="g/cm³",
     ),
     # Molecular Weights
     "MOLECULAR_WEIGHT_WATER": Constant(
@@ -281,6 +372,11 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "PSI_TO_BAR": Constant(
         value=0.0689476, description="Conversion factor from psi to bar", unit="bar/psi"
+    ),
+    "ATM_TO_PASCAL": Constant(
+        value=101325.0,
+        description="Conversion factor from atm to Pascals",
+        unit="atm/Pa",
     ),
     # Temperature Conversions
     "RANKINE_TO_KELVIN": Constant(
@@ -343,6 +439,16 @@ DEFAULT_CONSTANTS: typing.Dict[
         unit="(m³/m³)/(BBL/STB)",
     ),
     # Volume Conversions
+    "MSCF_TO_SCF": Constant(
+        value=1000.0,
+        description="Conversion factor from thousand standard cubic feet (Mscf) to standard cubic feet (scf)",
+        unit="scf/Mscf",
+    ),
+    "SCF_TO_MSCF": Constant(
+        value=1.0 / 1000.0,
+        description="Conversion factor from standard cubic feet (scf) to thousand standard cubic feet (Mscf)",
+        unit="Mscf/scf",
+    ),
     "CUBIC_METER_TO_SCF": Constant(
         value=35.3147,
         description="Conversion factor from cubic meters to standard cubic feet",
@@ -365,22 +471,22 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "STB_TO_CUBIC_FEET": Constant(
         value=5.614583,
-        description="Conversion factor from stock tank barrels to cubic feet",
+        description="Conversion factor from stock tank barrels to (standard) cubic feet",
         unit="ft³/STB",
     ),
     "CUBIC_FEET_TO_STB": Constant(
         value=1 / 5.614583,
-        description="Conversion factor from cubic feet to stock tank barrels",
+        description="Conversion factor from (standard) cubic feet to stock tank barrels",
         unit="STB/ft³",
     ),
     "STB_TO_CUBIC_METER": Constant(
         value=0.158987,
-        description="Conversion factor from stock tank barrels to cubic meters",
+        description="Conversion factor from stock tank barrels to (standard) cubic meters",
         unit="m³/STB",
     ),
     "CUBIC_METER_TO_STB": Constant(
         value=1 / 0.158987,
-        description="Conversion factor from cubic meters to stock tank barrels",
+        description="Conversion factor from (standard) cubic meters to stock tank barrels",
         unit="STB/m³",
     ),
     "BARRELS_TO_CUBIC_METER": Constant(
@@ -404,18 +510,21 @@ DEFAULT_CONSTANTS: typing.Dict[
         unit="dyne/cm·psi",
     ),
     # Gas Constant
-    "IDEAL_GAS_CONSTANT": Constant(
-        value=8.31446261815324, description="Universal gas constant", unit="J/(mol·K)"
+    "IDEAL_GAS_CONSTANT_LAB": Constant(
+        value=8.31446261815324,
+        description="Universal gas constant (Lab units)",
+        unit="J/(mol·K)",
     ),
     "IDEAL_GAS_CONSTANT_SI": Constant(
         value=8.31446261815324e-3,
         description="Universal gas constant (SI units)",
         unit="kJ/(mol·K)",
     ),
-    "IDEAL_GAS_CONSTANT_IMPERIAL": Constant(
+    "IDEAL_GAS_CONSTANT_FIELD": Constant(
         value=10.73159,
         description="Universal gas constant (Imperial units)",
         unit="ft³·psi/(lb·mol·°R)",
+        aliases=("IDEAL_GAS_CONSTANT_IMPERIAL",),
     ),
     # Density Conversions
     "POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER": Constant(
@@ -470,10 +579,10 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Conversion factor from meters to inches",
         unit="in/m",
     ),
-    "FT_TO_METERS": Constant(
+    "FEET_TO_METERS": Constant(
         value=0.3048, description="Conversion factor from feet to meters", unit="m/ft"
     ),
-    "METERS_TO_FT": Constant(
+    "METERS_TO_FEET": Constant(
         value=1 / 0.3048,
         description="Conversion factor from meters to feet",
         unit="ft/m",
@@ -538,6 +647,12 @@ DEFAULT_CONSTANTS: typing.Dict[
     "DAYS_PER_SECOND": Constant(
         value=1 / 86400.0, description="Number of days in a second", unit="day/s"
     ),
+    "HOURS_PER_DAY": Constant(
+        value=24.0, description="Number of hours in a day", unit="hrs/day"
+    ),
+    "DAYS_PER_HOUR": Constant(
+        value=1 / 24.0, description="Number of days in a hour", unit="day/hr"
+    ),
     "DAYS_PER_YEAR": Constant(
         value=365.25, description="Number of days in a year", unit="day/year"
     ),
@@ -566,23 +681,82 @@ DEFAULT_CONSTANTS: typing.Dict[
     # Gravity
     "ACCELERATION_DUE_TO_GRAVITY_METER_PER_SECONDS_SQUARE": Constant(
         value=9.80665,
-        description="Standard acceleration due to gravity in m/s²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in m/s²",
         unit="m/s²",
     ),
     "ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE": Constant(
         value=32.174,
-        description="Standard acceleration due to gravity in ft/s²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in ft/s²",
         unit="ft/s²",
     ),
     "ACCELERATION_DUE_TO_GRAVITY_FEET_PER_DAY_SQUARE": Constant(
         value=32.174 * 86400.0**2,
-        description="Standard acceleration due to gravity in ft/day²",
+        description="Standard acceleration due to gravity (on preferred planet - default is Earth) in ft/day²",
         unit="ft/day²",
     ),
-    "GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2": Constant(
+    "GRAVITATIONAL_FACTOR_FIELD": Constant(
         value=32.174,
-        description="Gravitational constant in lbm·ft/(lbf·s²). Conversion factor from pound-force to pound-mass or vice versa under Earth's gravity.",
+        description="Gravitational conversion factor in lbm·ft/(lbf·s²). Conversion factor from pound-force to pound-mass or vice versa under Earth's gravity.",
         unit="lbm·ft/(lbf·s²)",
+        aliases=("GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2",),
+    ),
+    "GRAVITATIONAL_FACTOR_METRIC": Constant(
+        value=1.0,
+        description=(
+            "Mass/force coherence factor for METRIC units. kg is already a "
+            "coherent SI mass unit (1 N = 1 kg*m/s2 with no separate "
+            "conversion factor), so this is 1.0 - included for a uniform "
+            "per-system lookup, not because METRIC needs a real correction "
+            "the way FIELD's lbm/lbf split does."
+        ),
+        unit="dimensionless",
+    ),
+    "GRAVITATIONAL_FACTOR_LAB": Constant(
+        value=1.0,
+        description=(
+            "Mass/force coherence factor for LAB units. Grams are a "
+            "coherent CGS mass unit (1 dyne = 1 g*cm/s2), so this is 1.0 - "
+            "same reasoning as GRAVITATIONAL_FACTOR_METRIC."
+        ),
+        unit="dimensionless",
+    ),
+    "GRAVITATIONAL_FACTOR_SI": Constant(
+        value=1.0,
+        description="Mass/force coherence factor for SI units - 1.0, SI is coherent by construction.",
+        unit="dimensionless",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_FIELD": Constant(
+        value=144.0,
+        description=(
+            "density * gravitational_acceleration * length, divided by "
+            "GRAVITATIONAL_FACTOR_FIELD, lands in lbf/ft2 for FIELD units - "
+            "this converts that to lbf/in2 (psi)."
+        ),
+        unit="in²/ft²",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_METRIC": Constant(
+        value=100_000.0,
+        description=(
+            "density * gravitational_acceleration * length lands in Pa for "
+            "METRIC units (kg/m3 * m/s2 * m is already coherent) - this "
+            "converts Pa to bar."
+        ),
+        unit="Pa/bar",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_LAB": Constant(
+        value=1_013_250.0,
+        description=(
+            "density * gravitational_acceleration * length lands in barye "
+            "(dyne/cm2) for LAB units (g/cm3 * cm/s2 * cm is already "
+            "coherent CGS) - this converts barye to atm "
+            "(1 atm = 101325 Pa = 1013250 barye)."
+        ),
+        unit="barye/atm",
+    ),
+    "HYDROSTATIC_AREA_FACTOR_SI": Constant(
+        value=1.0,
+        description="density * gravitational_acceleration * length already lands in Pa for SI units - no conversion needed.",
+        unit="dimensionless",
     ),
     # Reservoir `Fluid` Defaults
     "RESERVOIR_GAS": Constant(
@@ -639,7 +813,7 @@ DEFAULT_CONSTANTS: typing.Dict[
         description=(
             "Minimum mobile pore-space fraction below which the corresponding "
             "phase relative-permeability or capillary-pressure is forced to zero. Matched to `SATURATION_EPSILON` so "
-            "validity guards and clamp bounds are numerically consistent — a "
+            "validity guards and clamp bounds are numerically consistent - a "
             "pore space smaller than the clamp floor cannot produce a meaningful "
             "normalised saturation. Dtype-aware via `get_floating_point_info()`."
         ),
@@ -680,6 +854,87 @@ DEFAULT_CONSTANTS: typing.Dict[
         description="Minimum fluid compressibility below which the fluid should be considered incompressible",
         unit="1/psi",
     ),
+    # Wellbore Hydraulics - Friction Correlation
+    "WELLBORE_LAMINAR_REYNOLDS_LIMIT": Constant(
+        value=2300.0,
+        description=(
+            "Reynolds number below which tubing flow is treated as laminar "
+            "(f = 64/Re) by the simplified Darcy friction-factor correlation."
+        ),
+        unit="dimensionless",
+    ),
+    "WELLBORE_TURBULENT_REYNOLDS_LIMIT": Constant(
+        value=1.0e5,
+        description=(
+            "Reynolds number above which the simplified Darcy friction-factor "
+            "correlation switches from the Blasius fit to the explicit "
+            "Swamee-Jain-style approximation. Between "
+            "WELLBORE_LAMINAR_REYNOLDS_LIMIT and this value, Blasius (f = "
+            "0.316 * Re^-0.25) is used."
+        ),
+        unit="dimensionless",
+    ),
+    "COLEBROOK_MAX_ITERATIONS": Constant(
+        value=50,
+        description=(
+            "Maximum fixed-point iterations for the Colebrook-White friction "
+            "factor solve (friction_method='colebrook')."
+        ),
+        unit="iterations",
+    ),
+    "COLEBROOK_TOLERANCE": Constant(
+        value=1.0e-10,
+        description=(
+            "Absolute convergence tolerance on the friction factor for the "
+            "Colebrook-White fixed-point iteration."
+        ),
+        unit="dimensionless",
+    ),
+    # Well Control Resolution
+    "CONTROL_MAX_FIXED_POINT_ITERATIONS": Constant(
+        value=20,
+        description=(
+            "Maximum fixed-point iterations reconciling perforation flowing "
+            "pressures against IPR-derived phase rates at a fixed reference "
+            "pressure (BHP)."
+        ),
+        unit="iterations",
+    ),
+    "CONTROL_RATE_CONVERGENCE_TOLERANCE": Constant(
+        value=1.0e-6,
+        description=(
+            "Relative convergence tolerance on total phase rate for both the "
+            "pressure/rate fixed-point iteration and the BHP bisection search."
+        ),
+        unit="fraction",
+    ),
+    "CONTROL_MAX_BISECTION_ITERATIONS": Constant(
+        value=40,
+        description=(
+            "Maximum bisection iterations solving for the reference pressure "
+            "(BHP) that delivers a rate-mode control's target rate."
+        ),
+        unit="iterations",
+    ),
+    "CONTROL_INJECTOR_BHP_BRACKET_MULTIPLIER": Constant(
+        value=10.0,
+        description=(
+            "Upper bisection bracket for injector rate-mode BHP search, "
+            "expressed as a multiple of the highest connected-cell pressure. "
+            "Widen this if an injector's target rate isn't reachable within "
+            "the default bracket; the bisection is best-effort and returns "
+            "the closest bound reached rather than raising if the bracket "
+            "doesn't contain the solution."
+        ),
+        unit="dimensionless",
+    ),
+    "AQUIFER_BESSEL_SERIES_TERMS": Constant(
+        value=30,
+        description=(
+            "Empirically validated safety margin for the Klins finite-aquifer series"
+        ),
+        unit="dimensionless",
+    ),
 }
 
 
@@ -689,30 +944,34 @@ class Constants(
     fields={"_store": typing.Dict[str, Constant]},
 ):
     """
-    Physical constants and conversion factors used in reservoir simulations.
+    Physical constants and conversion factors.
 
     All constants are stored in an internal dictionary and can be accessed via dot notation.
-    `Constants` can be modified at runtime if needed. Use __getattr__ for value access and
-    __getitem__ for `Constant` object access.
+    `Constants` can be modified at runtime if needed. Use `__getattr__` for value access and
+    `__getitem__` for `Constant` object access.
+
+    **Aliases**
+
+    A `Constant`/`ConstantFactory` may declare `aliases=(...)`, alternate
+    names for the same value. Aliases are *not* separate entries in the
+    store; they are name-resolution redirects to the one canonical entry.
+    Reading or writing through an alias always reaches the same underlying
+    object as reading or writing through the canonical name. There is
+    exactly one value in memory, not two copies to keep in sync.
     """
 
-    __slots__ = ("_store",)
+    __slots__ = ("_store", "_aliases")
 
     def __new__(cls, *args, **kwargs) -> Self:
         instance = super().__new__(cls)
         instance._store = {}
+        instance._aliases = {}
         return instance
 
     def __init__(
         self,
         defaults: typing.Optional[typing.Dict[str, typing.Any]] = None,
     ) -> None:
-        """
-        Initialize the constants store with default values.
-
-        :param defaults: Optional dictionary of default constants to initialize with.
-            If None, uses the predefined `DEFAULT_CONSTANTS`.
-        """
         defaults = (
             {**DEFAULT_CONSTANTS, **defaults}
             if defaults is not None
@@ -720,27 +979,54 @@ class Constants(
         )
         for name, value in defaults.items():
             if isinstance(value, (Constant, ConstantFactory)):
-                self._store[name] = value
+                wrapped = value
             elif callable(value):
-                # Wrap callables in `ConstantFactory` objects
-                self._store[name] = ConstantFactory(factory=value)
+                wrapped = ConstantFactory(factory=value)
             else:
-                # Wrap raw values in `Constant` objects
-                self._store[name] = Constant(value=value)
+                wrapped = Constant(value=value)
+            self._store[name] = wrapped
+            self._register_aliases(name, wrapped)
+
+    def _register_aliases(
+        self, canonical: str, constant: typing.Union[Constant, ConstantFactory]
+    ) -> None:
+        """
+        Index *constant*'s declared aliases against *canonical* in `_aliases`.
+
+        :raises ValidationError: If an alias collides with an existing
+            canonical name, or is already claimed by a different canonical.
+        """
+        for alias in getattr(constant, "aliases", ()):
+            if alias == canonical:
+                continue
+            if alias in self._store:
+                raise ValidationError(
+                    f"Alias {alias!r} for {canonical!r} collides with an "
+                    "existing canonical constant name."
+                )
+            existing = self._aliases.get(alias)
+            if existing is not None and existing != canonical:
+                raise ValidationError(
+                    f"Alias {alias!r} is already registered to "
+                    f"{existing!r}; cannot also register it to {canonical!r}."
+                )
+            self._aliases[alias] = canonical
+
+    def _unregister_aliases_for(self, canonical: str) -> None:
+        """Drop every alias currently pointing at *canonical* (used on delete)."""
+        for alias in [a for a, c in self._aliases.items() if c == canonical]:
+            del self._aliases[alias]
+
+    def _resolve(self, name: str) -> str:
+        """Resolve *name* to its canonical store key (identity if not an alias)."""
+        return self._aliases.get(name, name)
 
     def __getattr__(self, name: str) -> typing.Any:
-        """Get a constant's value using dot notation.
-
-        :param name: Name of the constant
-        :return: Value of the constant (unwrapped from `Constant` object)
-        :raises AttributeError: If the constant does not exist
-        """
         if name.startswith("_"):
-            # Allow access to private attributes normally
             return object.__getattribute__(self, name)
 
         try:
-            constant = self._store[name]
+            constant = self._store[self._resolve(name)]
             return (
                 constant.value
                 if isinstance(constant, (Constant, ConstantFactory))
@@ -752,120 +1038,68 @@ class Constants(
             ) from None
 
     def __getitem__(self, name: str) -> Constant:
-        """Get the `Constant` object (with metadata) using bracket notation.
-
-        :param name: Name of the constant
-        :return: `Constant` object with value, description, and unit
-        :raises KeyError: If the constant does not exist
-        """
-        return self._store[name]
+        return self._store[self._resolve(name)]
 
     def __setattr__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
-        """Set a constant value using dot notation.
-
-        Accepts either a raw value (which will be wrapped in a `Constant`) or a `Constant` object.
-
-        :param name: Name of the constant
-        :param value: Value to set (raw value or `Constant` object)
-        """
         if name.startswith("_"):
-            # Allow setting private attributes normally
             object.__setattr__(self, name, value)
-        else:
-            if isinstance(value, Constant):
-                self._store[name] = value
-            else:
-                # Wrap raw values in `Constant` objects
-                self._store[name] = Constant(value=value)
+            return
+
+        canonical = self._resolve(name)
+        wrapped = value if isinstance(value, Constant) else Constant(value=value)
+        self._store[canonical] = wrapped
+        # A value set via `c.SOME_ALIAS = ...` doesn't retroactively rename
+        # the canonical slot, it just updates the value living there. If the
+        # replacement itself declares new aliases, register those too.
+        self._register_aliases(canonical, wrapped)
 
     def __setitem__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
-        """Set a constant using bracket notation.
-
-        :param name: Name of the constant
-        :param value: Value to set (raw value or Constant object)
-        """
-        if isinstance(value, Constant):
-            self._store[name] = value
-        else:
-            # Wrap raw values in `Constant` objects
-            self._store[name] = Constant(value=value)
+        canonical = self._resolve(name)
+        wrapped = value if isinstance(value, Constant) else Constant(value=value)
+        self._store[canonical] = wrapped
+        self._register_aliases(canonical, wrapped)
 
     def __delattr__(self, name: str) -> None:
-        """
-        Delete a constant from the store.
-
-        :param name: Name of the constant to delete
-        :raises AttributeError: If the constant does not exist
-        """
         if name.startswith("_"):
             object.__delattr__(self, name)
-        else:
-            try:
-                del self._store[name]
-            except KeyError:
-                raise AttributeError(
-                    f"'{type(self).__name__}' object has no attribute '{name}'"
-                ) from None
+            return
+
+        if name in self._aliases:
+            # Deleting via an alias only removes that pointer.
+            del self._aliases[name]
+            return
+        try:
+            del self._store[name]
+            self._unregister_aliases_for(name)
+        except KeyError:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            ) from None
 
     def __delitem__(self, name: str) -> None:
-        """
-        Delete a constant using bracket notation.
-
-        :param name: Name of the constant to delete
-        :raises KeyError: If the constant does not exist
-        """
+        if name in self._aliases:
+            del self._aliases[name]
+            return
         del self._store[name]
+        self._unregister_aliases_for(name)
 
     def __contains__(self, name: str) -> bool:
-        """
-        Check if a constant exists.
-
-        :param name: Name of the constant
-        :return: True if the constant exists, False otherwise
-        """
-        return name in self._store
+        return name in self._store or name in self._aliases
 
     def __iter__(self) -> typing.Iterator[str]:
-        """
-        Iterate over constant names.
-
-        :return: Iterator over constant names
-        """
         return iter(self._store)
 
     def keys(self) -> typing.KeysView[str]:
-        """
-        Get all constant names.
-
-        :return: View of all constant names
-        """
         return self._store.keys()
 
     def values(self) -> typing.ValuesView[Constant]:
-        """
-        Get all `Constant` objects.
-
-        :return: View of all Constant objects
-        """
         return self._store.values()
 
     def items(self) -> typing.ItemsView[str, Constant]:
-        """
-        Get all constant name-`Constant` object pairs.
-
-        :return: View of all constant name-Constant pairs
-        """
         return self._store.items()
 
     def get(self, name: str, default: typing.Any = None) -> typing.Any:
-        """
-        Get a constant's value with a default fallback.
-
-        :param name: Name of the constant
-        :param default: Default value if constant doesn't exist
-        :return: Value of the constant or default
-        """
-        constant = self._store.get(name)
+        constant = self._store.get(self._resolve(name))
         if constant is None:
             return default
         return constant.value if isinstance(constant, Constant) else constant
@@ -873,76 +1107,49 @@ class Constants(
     def get_constant(
         self, name: str, default: typing.Optional[Constant] = None
     ) -> typing.Optional[Constant]:
-        """
-        Get a `Constant` object with a default fallback.
-
-        :param name: Name of the constant
-        :param default: Default `Constant` if constant doesn't exist
-        :return: `Constant` object or default
-        """
-        return self._store.get(name, default)
+        return self._store.get(self._resolve(name), default)
 
     def __dir__(self):
         default = super().__dir__()
-        constants = list(self.keys())
-        return sorted({*default, *constants})
+        return sorted({*default, *self._store.keys(), *self._aliases.keys()})
 
     def _ipython_key_completions_(self) -> typing.List[str]:
-        return sorted(self.keys())
-
-    def __repr__(self) -> str:
-        """Return a string representation of the Constants object."""
-        return f"{type(self).__name__}(constants={len(self._store)})"
+        return sorted({*self._store.keys(), *self._aliases.keys()})
 
     def __len__(self) -> int:
-        """Return the number of constants in the store."""
         return len(self._store)
-
-    def __call__(self) -> "ConstantsContext":
-        """
-        Create a context manager that within its context, temporarily overrides/set the default constants
-        accessed through the global constants proxy `bores.c`  to this `Constants` instance.
-
-        :return: `ConstantsContext` for temporary overrides
-        """
-        return ConstantsContext(self)
-
-    def __dump__(self, recurse: bool = True) -> typing.Dict[str, typing.Any]:
-        """Dump constants to dict."""
-        return {
-            name: const.dump(recurse)
-            if isinstance(const, (Constant, ConstantFactory))
-            else const
-            for name, const in self._store.items()
-        }
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        """Load constants from dict."""
-        store = {
-            name: Constant.load(val)
-            if isinstance(val, dict) and "value" in val
-            else Constant(value=val)
-            for name, val in data.items()
-        }
+        """Load constants from dict, re-deriving the alias index from each entry."""
         constants = cls(defaults={})  # type: ignore[arg-type]
-        constants._store = store
+        for name, val in data.items():
+            wrapped = (
+                Constant.load(val)
+                if isinstance(val, dict) and "value" in val
+                else Constant(value=val)
+            )
+            constants._store[name] = wrapped
+            constants._register_aliases(name, wrapped)
         return constants
 
 
-_constants_context: ContextVar[Constants] = ContextVar(
-    "constants_context", default=Constants()
+_DEFAULT_CONTEXT_ID = uuid4().hex
+_constants_context: ContextVar[typing.Tuple[Constants, str]] = ContextVar(
+    "constants_context", default=(Constants(), _DEFAULT_CONTEXT_ID)
 )
 
 
 class ConstantsContext:
     """
-    Context manager for temporary global `Constants` overrides.
+    Context manager for temporary process-local `Constants` overrides.
 
     This context manager allows for temporary overrides of the global `Constants`
     instance within a specific context. Upon exiting the context, the previous
     `Constants` instance is restored.
     """
+
+    __slots__ = ("_constants", "_id", "_token")
 
     def __init__(self, constants: Constants) -> None:
         """
@@ -950,16 +1157,28 @@ class ConstantsContext:
 
         :param constants: New `Constants` instance to use within the context
         """
-        self._new_constants = constants
-        self._token = None
+        self._constants = constants
+        self._id = uuid4().hex
+        self._token: typing.Optional[Token[typing.Tuple[Constants, str]]] = None
+
+    @property
+    def id(self) -> str:
+        """The context id"""
+        return self._id
+
+    @property
+    def constants(self) -> Constants:
+        """The context's `Constants`"""
+        return self._constants
 
     def __enter__(self) -> Constants:
-        """Enter the context, setting the new `Constants` instance.
+        """
+        Enter the context, setting the new `Constants` instance.
 
         :return: The new `Constants` instance
         """
-        self._token = _constants_context.set(self._new_constants)  # type: ignore[assignment]
-        return self._new_constants
+        self._token = _constants_context.set((self._constants, self._id))
+        return self._constants
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         """Exit the context, restoring the previous `Constants` instance."""
@@ -967,7 +1186,8 @@ class ConstantsContext:
             _constants_context.reset(self._token)
 
 
-class _ConstantsProxy:
+@typing.final
+class __ConstantsProxy:
     """
     Proxy class to access the current context's `Constants` instance.
 
@@ -977,13 +1197,26 @@ class _ConstantsProxy:
     """
 
     @property
+    def context_id(self) -> str:
+        """
+        Get the current context's ID.
+
+        :return: `ConstantsContext` ID.
+        """
+        return _constants_context.get()[1]
+
+    @property
     def _constants(self) -> Constants:
         """
         Get the current context's `Constants` instance.
 
         :return: Current `Constants` instance
         """
-        return _constants_context.get()
+        return _constants_context.get()[0]
+
+    def in_default_context(self) -> bool:
+        """Returns `True` if we are the default (process local) `Constants` context"""
+        return self.context_id == _DEFAULT_CONTEXT_ID
 
     def __getattr__(self, name: str) -> typing.Any:
         """
@@ -1013,14 +1246,567 @@ class _ConstantsProxy:
         return self._constants._ipython_key_completions_()
 
 
-c = _ConstantsProxy()
+c = __ConstantsProxy()
 """Global proxy to access physical constants and conversion factors."""
 
 
 def get_constant(name: str) -> typing.Optional[Constant]:
-    """Get a `Constant` object by name from the global constants.
+    """
+    Get a `Constant` object by name from the global constants.
 
     :param name: Name of the constant
     :return: `Constant` object or None if not found
     """
     return c._constants.get_constant(name)
+
+
+def set_default_constants(constants: Constants, /) -> None:
+    """
+    Set/override the default (process local) `Constants` used.
+
+    Note: This method should not be called inside a `ConstantsContext`.
+        An error will be raise if called like so.
+
+    :param constants: The `Constants` object to set as default.
+    """
+    if c.context_id != _DEFAULT_CONTEXT_ID:
+        raise ValidationError(
+            "Cannot set constants. Are you in a `ConstantsContext`? Only call in default context"
+        )
+    _constants_context.set((constants, _DEFAULT_CONTEXT_ID))
+
+
+def build_unit_conversion_table(
+    constants: typing.Optional[Constants] = None,
+) -> UnitConversionTable:
+    """
+    Build a complete unit conversion table from the provided or default
+    constants registry.
+
+    All numeric values are read from `constants` (or the global `c`
+    proxy) so they stay in sync with any application-level overrides made
+    via `ConstantsContext`.
+
+    Each entry converts every dimensional quantity from the source
+    `UnitSystem` to the target `UnitSystem`. The twelve source -> target
+    pairs cover all ordered combinations of FIELD, METRIC, LAB, and SI
+    (same-system pairs are handled by `IDENTITY_FACTORS` in
+    `get_conversion_factors`).
+
+    Intermediate factors are derived algebraically from the primitives
+    stored in the constants registry so no magic numbers are hard-coded
+    here.
+    """
+    con = constants or c
+
+    # Primitive conversion factors from the constants registry
+    psi_to_pa: float = con.PSI_TO_PASCAL  # 6894.757 Pa/psi
+    psi_to_bar: float = con.PSI_TO_BAR  # 0.0689476 bar/psi
+    atm_to_pa: float = con.ATM_TO_PASCAL  # 101 325.0 Pa/atm
+    ft_to_m: float = con.FEET_TO_METERS  # 0.3048 m/ft
+    m_to_ft: float = con.METERS_TO_FEET  # 3.28084 ft/m
+    lbm_ft3_to_kg_m3: float = con.POUNDS_PER_CUBIC_FEET_TO_KILOGRAM_PER_CUBIC_METER
+    lbm_ft3_to_g_cm3: float = con.POUNDS_PER_CUBIC_FEET_TO_GRAMS_PER_CUBIC_METER
+    cp_to_pas: float = con.CENTIPOISE_TO_PASCAL_SECONDS  # 0.001
+    md_to_m2: float = con.MILLIDARCY_TO_SQUARE_METER  # 9.869233e-16
+    scf_stb_to_sm3_sm3: float = con.SCF_PER_STB_TO_CUBIC_METER_PER_CUBIC_METER
+    stb_to_m3: float = con.STB_TO_CUBIC_METER  # 0.158987
+    scf_to_m3: float = con.SCF_TO_SCM  # 0.0283168
+    seconds_per_day: float = con.SECONDS_PER_DAY  # 86400.0
+    hours_per_day: float = con.HOURS_PER_DAY  # 24.0
+
+    # Derived intermediates (no magic numbers beyond what is above)
+    cm_to_m: float = 0.01
+    m_to_cm: float = 100.0
+    ft_to_cm: float = ft_to_m * m_to_cm
+    cm_to_ft: float = cm_to_m * m_to_ft
+    kg_m3_to_g_cm3: float = cm_to_m**3  # 1e-6 / 1e-3 = 1e-3
+
+    bar_to_pa: float = psi_to_pa / (
+        psi_to_pa / atm_to_pa * (1.0 / psi_to_bar) * psi_to_bar
+    )
+    # Simpler: bar_to_pa = 1e5; but derive from constants to stay consistent
+    # 1 bar = 14.5038 psi; bar_to_pa = 14.5038 * psi_to_pa / 14.5038... just:
+    bar_to_pa = 1.0 / psi_to_bar * psi_to_pa  # 100 000 Pa/bar
+    psi_to_atm: float = psi_to_pa / atm_to_pa
+    bar_to_atm: float = bar_to_pa / atm_to_pa
+
+    # Volume (reservoir)
+    ft3_to_m3: float = ft_to_m**3
+    m3_to_ft3: float = m_to_ft**3
+    ft3_to_cm3: float = ft_to_cm**3
+    cm3_to_ft3: float = cm_to_ft**3
+    m3_to_cm3: float = m_to_cm**3
+    cm3_to_m3: float = cm_to_m**3
+
+    # Time
+    seconds_per_hour: float = seconds_per_day / hours_per_day  # 3600.0
+    days_per_second: float = 1.0 / seconds_per_day
+
+    # Surface volumes
+    # STB -> m³: stb_to_m3
+    # STB -> cm³:
+    stb_to_cm3: float = stb_to_m3 * m3_to_cm3
+    # SCF -> m³: scf_to_m3
+    # SCF -> cm³:
+    scf_to_cm3: float = scf_to_m3 * m3_to_cm3
+    # Sm³ -> SCF:
+    sm3_to_scf: float = 1.0 / scf_to_m3
+    # Sm³ -> STB:
+    sm3_to_stb: float = 1.0 / stb_to_m3
+    # Sm³ -> scc:
+    sm3_to_scc: float = m3_to_cm3
+    # scc -> Sm³:
+    scc_to_sm3: float = cm3_to_m3
+
+    # GOR: SCF/STB -> Sm³/Sm³
+    # = (scf_to_m3) / (stb_to_m3)  -- same as scf_stb_to_sm3_sm3
+    gor_field_to_metric: float = scf_stb_to_sm3_sm3
+    # GOR: Sm³/Sm³ -> SCF/STB
+    gor_metric_to_field: float = 1.0 / scf_stb_to_sm3_sm3
+    # GOR: SCF/STB -> scc/scc  (scf->scc / stb->scc)
+    gor_field_to_lab: float = scf_to_cm3 / stb_to_cm3
+    # GOR: scc/scc -> SCF/STB
+    gor_lab_to_field: float = 1.0 / gor_field_to_lab
+    # GOR: Sm³/Sm³ -> scc/scc  (both dimensionless, same ratio - 1.0)
+    # Sm³/Sm³ and scc/scc are both volume/volume in their respective systems;
+    # the numerical value of the ratio is unchanged.
+    gor_metric_to_lab: float = 1.0
+    gor_lab_to_metric: float = 1.0
+
+    # OGR (Rv): STB/SCF -> Sm³/Sm³
+    ogr_field_to_metric: float = stb_to_m3 / scf_to_m3
+    ogr_metric_to_field: float = 1.0 / ogr_field_to_metric
+    ogr_field_to_lab: float = stb_to_cm3 / scf_to_cm3
+    ogr_lab_to_field: float = 1.0 / ogr_field_to_lab
+    ogr_metric_to_lab: float = 1.0
+    ogr_lab_to_metric: float = 1.0
+
+    # FVF
+    # liquid FVF: rb/STB -> rm³/Sm³
+    # rb = reservoir barrel = ft³/5.614583 ... but FVF is dimensionless ratio
+    # rb/STB and rm³/Sm³ are both (reservoir vol)/(surface vol); what changes
+    # is the unit of each. rb/STB = 5.614583 ft³ / (5.614583 ft³) = 1 numerically
+    # if reservoir and surface are same fluid. The actual conversion factor
+    # between rb/STB and rm³/Sm³ is:
+    #   (rb -> rm³) / (STB -> Sm³) = (stb_to_m3) / (stb_to_m3) = 1.0
+    # Similarly rcf/SCF -> rm³/Sm³ = (ft3_to_m3) / (scf_to_m3)
+    liq_fvf_field_to_metric: float = 1.0  # rb/STB -> rm³/Sm³
+    liq_fvf_field_to_lab: float = 1.0  # rb/STB -> rcc/scc
+    liq_fvf_field_to_si: float = 1.0  # rb/STB -> rm³/Sm³
+    gas_fvf_field_to_metric: float = ft3_to_m3 / scf_to_m3  # rcf/SCF -> rm³/Sm³
+    gas_fvf_field_to_lab: float = ft3_to_cm3 / scf_to_cm3  # rcf/SCF -> rcc/scc
+    gas_fvf_metric_to_field: float = 1.0 / gas_fvf_field_to_metric
+    gas_fvf_lab_to_field: float = 1.0 / gas_fvf_field_to_lab
+
+    # Surface liquid rates: STB/day -> Sm³/day, scc/hr, Sm³/s
+    liq_rate_field_to_metric: float = stb_to_m3  # STB/day -> Sm³/day
+    liq_rate_field_to_lab: float = stb_to_cm3 / hours_per_day  # STB/day -> scc/hr
+    liq_rate_field_to_si: float = stb_to_m3 / seconds_per_day  # STB/day -> Sm³/s
+    liq_rate_metric_to_field: float = 1.0 / liq_rate_field_to_metric
+    liq_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
+    liq_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
+    liq_rate_lab_to_field: float = 1.0 / liq_rate_field_to_lab
+    liq_rate_lab_to_metric: float = 1.0 / liq_rate_metric_to_lab
+    liq_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
+    liq_rate_si_to_field: float = 1.0 / liq_rate_field_to_si
+    liq_rate_si_to_metric: float = 1.0 / liq_rate_metric_to_si
+    liq_rate_si_to_lab: float = 1.0 / liq_rate_lab_to_si
+
+    # Surface gas rates: SCF/day -> Sm³/day, scc/hr, Sm³/s
+    gas_rate_field_to_metric: float = scf_to_m3  # SCF/day -> Sm³/day
+    gas_rate_field_to_lab: float = scf_to_cm3 / hours_per_day  # SCF/day -> scc/hr
+    gas_rate_field_to_si: float = scf_to_m3 / seconds_per_day  # SCF/day -> Sm³/s
+    gas_rate_metric_to_field: float = 1.0 / gas_rate_field_to_metric
+    gas_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
+    gas_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
+    gas_rate_lab_to_field: float = 1.0 / gas_rate_field_to_lab
+    gas_rate_lab_to_metric: float = 1.0 / gas_rate_metric_to_lab
+    gas_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
+    gas_rate_si_to_field: float = 1.0 / gas_rate_field_to_si
+    gas_rate_si_to_metric: float = 1.0 / gas_rate_metric_to_si
+    gas_rate_si_to_lab: float = 1.0 / gas_rate_lab_to_si
+
+    # Reservoir rates: ft³/day -> m³/day, cm³/hr, m³/s
+    res_rate_field_to_metric: float = ft3_to_m3  # ft³/day -> m³/day
+    res_rate_field_to_lab: float = ft3_to_cm3 / hours_per_day  # ft³/day -> cm³/hr
+    res_rate_field_to_si: float = ft3_to_m3 / seconds_per_day  # ft³/day -> m³/s
+    res_rate_metric_to_field: float = 1.0 / res_rate_field_to_metric
+    res_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # m³/day -> cm³/hr
+    res_rate_metric_to_si: float = days_per_second  # m³/day -> m³/s
+    res_rate_lab_to_field: float = 1.0 / res_rate_field_to_lab
+    res_rate_lab_to_metric: float = 1.0 / res_rate_metric_to_lab
+    res_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # cm³/hr -> m³/s
+    res_rate_si_to_field: float = 1.0 / res_rate_field_to_si
+    res_rate_si_to_metric: float = 1.0 / res_rate_metric_to_si
+    res_rate_si_to_lab: float = 1.0 / res_rate_lab_to_si
+
+    # Mass
+    mass_field_to_metric: float = lbm_ft3_to_kg_m3 * ft3_to_m3  # lbm -> kg
+    mass_field_to_lab: float = lbm_ft3_to_g_cm3 * ft3_to_cm3  # lbm -> g
+    mass_metric_to_field: float = 1.0 / mass_field_to_metric
+    mass_metric_to_lab: float = 1.0 / kg_m3_to_g_cm3  # kg -> g (1000)
+    mass_lab_to_field: float = 1.0 / mass_field_to_lab
+    mass_lab_to_metric: float = kg_m3_to_g_cm3  # g -> kg
+
+    def _inverse(x: float) -> float:
+        return 1.0 / x
+
+    table: UnitConversionTable = {
+        ##############
+        # FIELD -> *
+        ##############
+        (UnitSystem.FIELD, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=psi_to_bar,
+            length=ft_to_m,
+            area=ft_to_m**2,
+            volume=ft3_to_m3,
+            time=1.0,  # day -> day
+            mass=mass_field_to_metric,
+            temperature=5.0 / 9.0,
+            temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+            density=lbm_ft3_to_kg_m3,
+            viscosity=1.0,  # cP -> cP
+            permeability=1.0,  # mD -> mD
+            compressibility=_inverse(psi_to_bar),
+            liquid_surface_volume=stb_to_m3,
+            gas_surface_volume=scf_to_m3,
+            liquid_fvf=liq_fvf_field_to_metric,
+            gas_fvf=gas_fvf_field_to_metric,
+            gas_oil_ratio=gor_field_to_metric,
+            oil_gas_ratio=ogr_field_to_metric,
+            liquid_surface_rate=liq_rate_field_to_metric,
+            gas_surface_rate=gas_rate_field_to_metric,
+            reservoir_rate=res_rate_field_to_metric,
+        ),
+        (UnitSystem.FIELD, UnitSystem.SI): UnitConversionFactors(
+            pressure=psi_to_pa,
+            length=ft_to_m,
+            area=ft_to_m**2,
+            volume=ft3_to_m3,
+            time=days_per_second,  # day -> s
+            mass=mass_field_to_metric,  # lbm -> kg (SI mass = kg)
+            temperature=5.0 / 9.0,
+            temperature_offset=(-32.0 * 5.0 / 9.0) + 273.15,  # °F -> K
+            density=lbm_ft3_to_kg_m3,
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(psi_to_pa),
+            liquid_surface_volume=stb_to_m3,
+            gas_surface_volume=scf_to_m3,
+            liquid_fvf=liq_fvf_field_to_si,
+            gas_fvf=gas_fvf_field_to_metric,  # rcf/SCF -> rm³/Sm³ same as metric
+            gas_oil_ratio=gor_field_to_metric,
+            oil_gas_ratio=ogr_field_to_metric,
+            liquid_surface_rate=liq_rate_field_to_si,
+            gas_surface_rate=gas_rate_field_to_si,
+            reservoir_rate=res_rate_field_to_si,
+        ),
+        (UnitSystem.FIELD, UnitSystem.LAB): UnitConversionFactors(
+            pressure=psi_to_atm,
+            length=ft_to_cm,
+            area=ft_to_cm**2,
+            volume=ft3_to_cm3,
+            time=_inverse(hours_per_day),  # day -> hr
+            mass=mass_field_to_lab,
+            temperature=5.0 / 9.0,
+            temperature_offset=(-32.0) * (5.0 / 9.0),  # °F -> °C
+            density=lbm_ft3_to_g_cm3,
+            viscosity=1.0,  # cP -> cP
+            permeability=1.0,  # mD -> mD
+            compressibility=_inverse(psi_to_atm),
+            liquid_surface_volume=stb_to_cm3,
+            gas_surface_volume=scf_to_cm3,
+            liquid_fvf=liq_fvf_field_to_lab,
+            gas_fvf=gas_fvf_field_to_lab,
+            gas_oil_ratio=gor_field_to_lab,
+            oil_gas_ratio=ogr_field_to_lab,
+            liquid_surface_rate=liq_rate_field_to_lab,
+            gas_surface_rate=gas_rate_field_to_lab,
+            reservoir_rate=res_rate_field_to_lab,
+        ),
+        ##############
+        # METRIC -> *
+        ##############
+        (UnitSystem.METRIC, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_bar),
+            length=m_to_ft,
+            area=m_to_ft**2,
+            volume=m3_to_ft3,
+            time=1.0,  # day -> day
+            mass=mass_metric_to_field,
+            temperature=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
+            density=_inverse(lbm_ft3_to_kg_m3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=psi_to_bar,
+            liquid_surface_volume=_inverse(stb_to_m3),
+            gas_surface_volume=_inverse(scf_to_m3),
+            liquid_fvf=_inverse(liq_fvf_field_to_metric),
+            gas_fvf=gas_fvf_metric_to_field,
+            gas_oil_ratio=gor_metric_to_field,
+            oil_gas_ratio=ogr_metric_to_field,
+            liquid_surface_rate=liq_rate_metric_to_field,
+            gas_surface_rate=gas_rate_metric_to_field,
+            reservoir_rate=res_rate_metric_to_field,
+        ),
+        (UnitSystem.METRIC, UnitSystem.SI): UnitConversionFactors(
+            pressure=bar_to_pa,
+            length=1.0,
+            area=1.0,
+            volume=1.0,
+            time=days_per_second,  # day -> s
+            mass=1.0,  # kg -> kg
+            temperature=1.0,
+            temperature_offset=273.15,  # °C -> K
+            density=1.0,
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(bar_to_pa),
+            liquid_surface_volume=1.0,  # Sm³ -> Sm³
+            gas_surface_volume=1.0,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=1.0,
+            oil_gas_ratio=1.0,
+            liquid_surface_rate=liq_rate_metric_to_si,
+            gas_surface_rate=gas_rate_metric_to_si,
+            reservoir_rate=res_rate_metric_to_si,
+        ),
+        (UnitSystem.METRIC, UnitSystem.LAB): UnitConversionFactors(
+            pressure=bar_to_atm,
+            length=m_to_cm,
+            area=m_to_cm**2,
+            volume=m3_to_cm3,
+            time=_inverse(hours_per_day),  # day -> hr
+            mass=mass_metric_to_lab,
+            temperature=1.0,
+            temperature_offset=0.0,  # °C -> °C
+            density=kg_m3_to_g_cm3,
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=_inverse(bar_to_atm),
+            liquid_surface_volume=sm3_to_scc,  # Sm³ -> scc
+            gas_surface_volume=sm3_to_scc,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=gor_metric_to_lab,
+            oil_gas_ratio=ogr_metric_to_lab,
+            liquid_surface_rate=liq_rate_metric_to_lab,
+            gas_surface_rate=gas_rate_metric_to_lab,
+            reservoir_rate=res_rate_metric_to_lab,
+        ),
+        ##############
+        # SI -> *
+        ##############
+        (UnitSystem.SI, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_pa),
+            length=m_to_ft,
+            area=m_to_ft**2,
+            volume=m3_to_ft3,
+            time=seconds_per_day,  # s -> day
+            mass=_inverse(mass_field_to_metric),
+            temperature=9.0 / 5.0,
+            temperature_offset=(-273.15 * 9.0 / 5.0) + 32.0,  # K -> °F
+            density=_inverse(lbm_ft3_to_kg_m3),
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=psi_to_pa,
+            liquid_surface_volume=_inverse(stb_to_m3),
+            gas_surface_volume=_inverse(scf_to_m3),
+            liquid_fvf=_inverse(liq_fvf_field_to_si),
+            gas_fvf=_inverse(gas_fvf_field_to_metric),
+            gas_oil_ratio=gor_metric_to_field,
+            oil_gas_ratio=ogr_metric_to_field,
+            liquid_surface_rate=liq_rate_si_to_field,
+            gas_surface_rate=gas_rate_si_to_field,
+            reservoir_rate=res_rate_si_to_field,
+        ),
+        (UnitSystem.SI, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=_inverse(bar_to_pa),
+            length=1.0,
+            area=1.0,
+            volume=1.0,
+            time=seconds_per_day,  # s -> day
+            mass=1.0,
+            temperature=1.0,
+            temperature_offset=-273.15,  # K -> °C
+            density=1.0,
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=bar_to_pa,
+            liquid_surface_volume=1.0,
+            gas_surface_volume=1.0,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=1.0,
+            oil_gas_ratio=1.0,
+            liquid_surface_rate=liq_rate_si_to_metric,
+            gas_surface_rate=gas_rate_si_to_metric,
+            reservoir_rate=res_rate_si_to_metric,
+        ),
+        (UnitSystem.SI, UnitSystem.LAB): UnitConversionFactors(
+            pressure=_inverse(atm_to_pa),
+            length=m_to_cm,
+            area=m_to_cm**2,
+            volume=m3_to_cm3,
+            time=seconds_per_hour,  # s -> hr
+            mass=mass_metric_to_lab,  # kg -> g
+            temperature=1.0,
+            temperature_offset=-273.15,  # K -> °C
+            density=kg_m3_to_g_cm3,
+            viscosity=_inverse(cp_to_pas),
+            permeability=_inverse(md_to_m2),
+            compressibility=atm_to_pa,
+            liquid_surface_volume=sm3_to_scc,
+            gas_surface_volume=sm3_to_scc,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=gor_metric_to_lab,
+            oil_gas_ratio=ogr_metric_to_lab,
+            liquid_surface_rate=liq_rate_si_to_lab,
+            gas_surface_rate=gas_rate_si_to_lab,
+            reservoir_rate=res_rate_si_to_lab,
+        ),
+        ##############
+        # LAB -> *
+        ##############
+        (UnitSystem.LAB, UnitSystem.FIELD): UnitConversionFactors(
+            pressure=_inverse(psi_to_atm),
+            length=cm_to_ft,
+            area=cm_to_ft**2,
+            volume=cm3_to_ft3,
+            time=hours_per_day,  # hr -> day
+            mass=mass_lab_to_field,
+            temperature=9.0 / 5.0,
+            temperature_offset=32.0,  # °C -> °F
+            density=_inverse(lbm_ft3_to_g_cm3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=psi_to_atm,
+            liquid_surface_volume=_inverse(stb_to_cm3),
+            gas_surface_volume=_inverse(scf_to_cm3),
+            liquid_fvf=_inverse(liq_fvf_field_to_lab),
+            gas_fvf=gas_fvf_lab_to_field,
+            gas_oil_ratio=gor_lab_to_field,
+            oil_gas_ratio=ogr_lab_to_field,
+            liquid_surface_rate=liq_rate_lab_to_field,
+            gas_surface_rate=gas_rate_lab_to_field,
+            reservoir_rate=res_rate_lab_to_field,
+        ),
+        (UnitSystem.LAB, UnitSystem.METRIC): UnitConversionFactors(
+            pressure=_inverse(bar_to_atm),
+            length=cm_to_m,
+            area=cm_to_m**2,
+            volume=cm3_to_m3,
+            time=hours_per_day,  # hr -> day
+            mass=mass_lab_to_metric,
+            temperature=1.0,
+            temperature_offset=0.0,  # °C -> °C
+            density=_inverse(kg_m3_to_g_cm3),
+            viscosity=1.0,
+            permeability=1.0,
+            compressibility=bar_to_atm,
+            liquid_surface_volume=scc_to_sm3,
+            gas_surface_volume=scc_to_sm3,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=gor_lab_to_metric,
+            oil_gas_ratio=ogr_lab_to_metric,
+            liquid_surface_rate=liq_rate_lab_to_metric,
+            gas_surface_rate=gas_rate_lab_to_metric,
+            reservoir_rate=res_rate_lab_to_metric,
+        ),
+        (UnitSystem.LAB, UnitSystem.SI): UnitConversionFactors(
+            pressure=atm_to_pa,
+            length=cm_to_m,
+            area=cm_to_m**2,
+            volume=cm3_to_m3,
+            time=seconds_per_hour,  # hr -> s
+            mass=mass_lab_to_metric,  # g -> kg
+            temperature=1.0,
+            temperature_offset=273.15,  # °C -> K
+            density=_inverse(kg_m3_to_g_cm3),
+            viscosity=cp_to_pas,
+            permeability=md_to_m2,
+            compressibility=_inverse(atm_to_pa),
+            liquid_surface_volume=scc_to_sm3,
+            gas_surface_volume=scc_to_sm3,
+            liquid_fvf=1.0,
+            gas_fvf=1.0,
+            gas_oil_ratio=gor_lab_to_metric,
+            oil_gas_ratio=ogr_lab_to_metric,
+            liquid_surface_rate=liq_rate_lab_to_si,
+            gas_surface_rate=gas_rate_lab_to_si,
+            reservoir_rate=res_rate_lab_to_si,
+        ),
+    }
+    return table
+
+
+IDENTITY_FACTORS = UnitConversionFactors(
+    pressure=1.0,
+    length=1.0,
+    area=1.0,
+    volume=1.0,
+    time=1.0,
+    mass=1.0,
+    temperature=1.0,
+    temperature_offset=0.0,
+    density=1.0,
+    viscosity=1.0,
+    permeability=1.0,
+    compressibility=1.0,
+    liquid_surface_volume=1.0,
+    gas_surface_volume=1.0,
+    liquid_fvf=1.0,
+    gas_fvf=1.0,
+    gas_oil_ratio=1.0,
+    oil_gas_ratio=1.0,
+    liquid_surface_rate=1.0,
+    gas_surface_rate=1.0,
+    reservoir_rate=1.0,
+)
+"""Identity unit conversion factors. Has all multiplicative factors as 1.0, and offset 0.0."""
+
+UNIT_CONVERSION_TABLE = build_unit_conversion_table()
+"""Default unit conversion table"""
+
+
+def get_conversion_factors(
+    from_system: UnitSystem,
+    to_system: UnitSystem,
+    /,
+    *,
+    table: typing.Optional[UnitConversionTable] = None,
+) -> UnitConversionFactors:
+    """
+    Return a dictionary of scalar conversion factors for every physical
+    dimension used by the classes in this library.
+
+    Each value converts a quantity expressed in `from_system` to
+    `to_system` by **multiplication**, except temperature which uses an
+    affine map stored as two keys:
+
+    - "temperature"  - multiplicative factor.
+    - "temperature_offset" - additive delta (in target units) applied
+    *after* scaling: T_to = T_from * scale + offset.
+
+    :param from_system: Source `UnitSystem`.
+    :param to_system: Target `UnitSystem`.
+    :returns: Conversion-factor dictionary.
+    :raises KeyError: If the (from_system, to_system) pair is not defined.
+    """
+    if from_system == to_system:
+        return IDENTITY_FACTORS
+
+    table = table or build_unit_conversion_table()
+    key = (from_system, to_system)
+    if key not in table:
+        pairs = [f"{a.value} -> {b.value}" for a, b in table]
+        raise KeyError(
+            f"No unit conversion defined from {from_system.value!r} "
+            f"to {to_system.value!r}. Supported pairs: {pairs}."
+        )
+    return table[key]

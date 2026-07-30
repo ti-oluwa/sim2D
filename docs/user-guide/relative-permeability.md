@@ -412,7 +412,7 @@ gas_oil_table = bores.TwoPhaseRelPermTable(
 relperm_table = bores.ThreePhaseRelPermTable(
     oil_water_table=oil_water_table,
     gas_oil_table=gas_oil_table,
-    mixing_rule=bores.eclipse_rule,
+    mixing_rule=bores.deck_rule,
 )
 ```
 
@@ -623,7 +623,7 @@ krg_values = np.zeros_like(Sg_values)
 kro_g_values = np.zeros_like(Sg_values)
 
 for i, sg in enumerate(Sg_values):
-    so = 1.0 - 0.25 - sg  # Sw = Swc = 0.25
+    so = 1.0 - 0.25 - sg  # Sw = swc = 0.25
     result = relperm.get_relative_permeabilities(
         water_saturation=0.25, oil_saturation=so, gas_saturation=sg,
     )

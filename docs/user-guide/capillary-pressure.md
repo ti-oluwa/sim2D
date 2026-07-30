@@ -515,7 +515,7 @@ capillary_pressure = bores.BrooksCoreyCapillaryPressureModel(
 )
 
 # Sweep water saturation across the mobile range (no free gas)
-Sw_values = np.linspace(0.26, 0.75, 100)  # Slightly above Swc to avoid singularity
+Sw_values = np.linspace(0.26, 0.75, 100)  # Slightly above swc to avoid singularity
 pcoil_water_values = np.zeros_like(Sw_values)
 
 for i, sw in enumerate(Sw_values):

@@ -55,10 +55,10 @@ grid_shape = (20, 20, 5)
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)  # 100 mD
 
 # Option 1: Just pass x, BORES copies to y and z
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 # Option 2: Explicitly set all directions
-permeability = bores.RockPermeability(x=perm_grid, y=perm_grid, z=perm_grid)
+permeability = bores.Permeability(x=perm_grid, y=perm_grid, z=perm_grid)
 ```
 
 ### Anisotropic Permeability
@@ -74,7 +74,7 @@ kx = bores.build_uniform_grid(grid_shape, value=200.0)   # 200 mD horizontal
 ky = bores.build_uniform_grid(grid_shape, value=200.0)   # Same in y
 kz = bores.build_uniform_grid(grid_shape, value=20.0)    # 20 mD vertical (kv/kh = 0.1)
 
-permeability = bores.RockPermeability(x=kx, y=ky, z=kz)
+permeability = bores.Permeability(x=kx, y=ky, z=kz)
 ```
 
 Anisotropy has a major impact on vertical sweep efficiency. Low vertical permeability limits gravity override in gas injection and reduces water coning near production wells.
@@ -104,7 +104,7 @@ kx = kx * noise
 # Apply kv/kh ratio
 kz = kx * 0.1
 
-permeability = bores.RockPermeability(x=kx, y=kx, z=kz)
+permeability = bores.Permeability(x=kx, y=kx, z=kz)
 ```
 
 !!! info "Permeability Range"
@@ -165,7 +165,7 @@ base_perm = bores.build_layered_grid(
 )
 noise = np.exp(rng.normal(0, 0.25, grid_shape)).astype(np.float32)
 kx = base_perm * noise
-permeability = bores.RockPermeability(x=kx, y=kx, z=kx * 0.1)
+permeability = bores.Permeability(x=kx, y=kx, z=kx * 0.1)
 
 # Other properties
 thickness = bores.build_uniform_grid(grid_shape, value=15.0)
@@ -177,19 +177,19 @@ bubble_pt = bores.build_uniform_grid(grid_shape, value=2800.0)
 
 # Saturations from fluid contacts
 depth = bores.build_depth_grid(thickness) + 5000.0
-Swc  = bores.build_uniform_grid(grid_shape, value=0.25)
-Sorw = bores.build_uniform_grid(grid_shape, value=0.25)
-Sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-Sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+swc  = bores.build_uniform_grid(grid_shape, value=0.25)
+sorw = bores.build_uniform_grid(grid_shape, value=0.25)
+sorg = bores.build_uniform_grid(grid_shape, value=0.15)
+sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
     gas_oil_contact=4950.0,
     oil_water_contact=5060.0,
-    connate_water_saturation_grid=Swc,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
+    connate_water_saturation_grid=swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
 )
 
@@ -209,11 +209,11 @@ model = bores.reservoir_model(
     oil_viscosity_grid=oil_visc,
     oil_specific_gravity_grid=oil_sg,
     oil_bubble_point_pressure_grid=bubble_pt,
-    residual_oil_saturation_water_grid=Sorw,
-    residual_oil_saturation_gas_grid=Sorg,
-    residual_gas_saturation_grid=Sgr,
-    irreducible_water_saturation_grid=Swc,
-    connate_water_saturation_grid=Swc,
+    residual_oil_saturation_water_grid=sorw,
+    residual_oil_saturation_gas_grid=sorg,
+    residual_gas_saturation_grid=sgr,
+    irreducible_water_saturation_grid=swc,
+    connate_water_saturation_grid=swc,
 )
 ```
 

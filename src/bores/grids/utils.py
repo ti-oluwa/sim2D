@@ -1,1165 +1,426 @@
-"""Gridding Utilities"""
+"""Gridding utilities"""
 
 import typing
-import warnings
 
 import numba
 import numpy as np
 import numpy.typing as npt
 
 from bores.errors import ValidationError
-from bores.precision import get_dtype
-from bores.types import (
-    NDimension,
-    NDimensionalGrid,
-    Orientation,
-    Spacing,
-    ThreeDimensionalGrid,
-    ThreeDimensions,
-    TwoDimensionalGrid,
-    TwoDimensions,
-)
-
-__all__ = [
-    "coarsen_grid",
-    "coarsen_permeability_grids",
-    "flatten_multilayer_grid_to_surface",
-    "flatten_multilayer_grids",
-    "get_pad_mask",
-    "layer_to_link_permeability",
-    "link_to_layer_permeability",
-    "make_saturation_grid",
-    "pad_grid",
-    "unpad_grid",
-]
-
-
-def pad_grid(
-    grid: NDimensionalGrid[NDimension], pad_width: int = 1
-) -> NDimensionalGrid[NDimension]:
-    """
-    Pads a N-Dimensional grid with the edge values to create a border around the grid.
-
-    This is useful for finite difference methods where boundary conditions are applied.
-
-    :param grid: N-Dimensional numpy array representing the grid to be padded
-    :param pad_width: Width of the padding to be applied on all sides of the grid
-    :return: Padded N-Dimensional numpy array
-    """
-    return np.pad(grid, pad_width=pad_width, mode="edge")  # type: ignore[return-value]
-
-
-@numba.njit(cache=True)
-def get_pad_mask(grid_shape: typing.Tuple[int, ...], pad_width: int = 1) -> np.ndarray:
-    """
-    Generate a boolean mask for the padded grid indicating the padded regions.
-
-    :param grid_shape: Shape of the original grid before padding
-    :param pad_width: Width of the padding applied on all sides of the grid
-    :return: Boolean mask numpy array where True indicates padded regions
-    """
-    padded_shape = tuple(dim + 2 * pad_width for dim in grid_shape)
-    mask = np.zeros(padded_shape, dtype=bool)
-
-    # Set padded regions to True
-    slices = tuple(
-        slice(0, pad_width)
-        if i == 0
-        else slice(-pad_width, None)
-        if i == 1
-        else slice(pad_width, -pad_width)
-        for i, _ in enumerate(padded_shape)
-    )
-    mask[slices] = True
-    return mask
-
-
-@numba.njit(cache=True)
-def unpad_grid(
-    grid: NDimensionalGrid[NDimension], pad_width: int = 1
-) -> NDimensionalGrid[NDimension]:
-    """
-    Remove padding from a N-Dimensional grid.
-
-    :param grid: Padded N-Dimensional numpy array representing the grid
-    :param pad_width: Width of the padding to be removed from all sides of the grid
-    :return: N-Dimensional numpy array with padding removed
-    """
-    # Build slices list explicitly (generator expressions not supported in Numba)
-    ndim = grid.ndim
-    if ndim == 2:
-        unpadded_grid = grid[pad_width:-pad_width, pad_width:-pad_width]
-    elif ndim == 3:
-        unpadded_grid = grid[
-            pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width
-        ]
-    else:
-        raise ValueError(
-            f"Unsupported grid dimension: {ndim}. Only 2D and 3D grids are supported."
-        )
-
-    return unpadded_grid  # type: ignore
-
-
-def coarsen_grid(
-    data: np.ndarray,
-    batch_size: typing.Tuple[int, ...],
-    method: typing.Literal["mean", "sum", "max", "min", "harmonic"] = "mean",
-    epsilon: float = 1e-10,
-) -> np.ndarray:
-    """
-    Coarsen (downsample) a 2D or 3D grid by aggregating blocks of adjacent cells.
-
-    Pads the grid if necessary to make dimensions divisible by `batch_size`.
-
-    :param data: 2D or 3D numpy array to coarsen. Shape can be (nx, ny) or (nx, ny, nz).
-    :param batch_size: Tuple of ints representing the coarsening factor along each dimension.
-        Length must match `data.ndim`. Example: (2,2) for 2D, (2,2,2) for 3D.
-    :param method: Aggregation method to use on each block.
-        - 'mean': Arithmetic mean (for porosity, saturation)
-        - 'sum': Sum (for total volume, pore volume)
-        - 'max': Maximum value in block
-        - 'min': Minimum value in block
-        - 'harmonic': Harmonic mean (WARNING: only valid for isotropic averaging)
-    :param epsilon: Small value to avoid division by zero in harmonic mean (default: 1e-10)
-    :return: Coarsened numpy array.
-    :raises ValidationError: if `batch_size` length does not match `data.ndim` or if method is unsupported.
-
-    Note:
-        For permeability coarsening, use `coarsen_permeability_grids()` instead, which
-        applies direction-appropriate averaging (harmonic in flow direction, arithmetic
-        perpendicular).
-
-    Example:
-    ```python
-    data2d = np.arange(16, dtype=float).reshape(4,4)
-    coarsen_grid(data2d, batch_size=(2,2))
-    # array([[ 2.5,  4.5],
-    #        [10.5, 12.5]])
-
-    data3d = np.arange(64, dtype=float).reshape(4,4,4)
-    coarsen_grid(data3d, batch_size=(2,2,2), method='max')
-    # array([[[ 5.,  7.],
-    #         [13., 15.]],
-    #        [[21., 23.],
-    #         [29., 31.]]])
-    ```
-    """
-    if len(batch_size) != data.ndim:
-        raise ValidationError(
-            f"batch_size length {len(batch_size)} must match data.ndim {data.ndim}"
-        )
-
-    # Validate method
-    valid_methods = ("mean", "sum", "max", "min", "harmonic")
-    if method not in valid_methods:
-        raise ValidationError(
-            f"Unsupported method '{method}'. Must be one of {valid_methods}"
-        )
-
-    # Calculate padding needed
-    pad_width = []
-    for dim, b in zip(data.shape, batch_size):
-        remainder = dim % b
-        if remainder == 0:
-            pad_width.append((0, 0))
-        else:
-            pad_width.append((0, b - remainder))
-
-    # Pad with appropriate value based on method
-    # Use NaN for methods that support it (will be ignored in aggregation)
-    if method in ("mean", "max", "min", "harmonic"):
-        pad_value = np.nan
-    elif method == "sum":
-        pad_value = 0.0
-
-    data_padded = np.pad(
-        data, pad_width=pad_width, mode="constant", constant_values=pad_value
-    )
-
-    # Reshape to group blocks along each dimension
-    # E.g., (100, 50) with batch (2, 5) -> (50, 2, 10, 5) -> aggregate over axes (1, 3)
-    reshape_shape = []
-    for dim, b in zip(data_padded.shape, batch_size):
-        reshape_shape.extend([dim // b, b])
-
-    data_reshaped = data_padded.reshape(reshape_shape)
-
-    # Axes to aggregate over: every second axis (the block dimensions)
-    agg_axes = tuple(range(1, data_reshaped.ndim, 2))
-
-    dtype = get_dtype()
-
-    # Apply aggregation
-    if method == "mean":
-        coarsened = np.nanmean(data_reshaped, axis=agg_axes).astype(dtype)
-
-    elif method == "sum":
-        coarsened = data_reshaped.sum(axis=agg_axes, dtype=dtype)
-
-    elif method == "max":
-        coarsened = np.nanmax(data_reshaped, axis=agg_axes).astype(dtype)
-
-    elif method == "min":
-        coarsened = np.nanmin(data_reshaped, axis=agg_axes).astype(dtype)
-
-    elif method == "harmonic":
-        # Harmonic mean: H = n / sum(1/x_i)
-        # Add epsilon to avoid division by zero
-        with np.errstate(divide="ignore", invalid="ignore"):
-            reciprocals = 1.0 / (data_reshaped + epsilon)
-            reciprocals = np.where(np.isnan(data_reshaped), np.nan, reciprocals)
-
-            # Count non-NaN values per block
-            counts = np.sum(~np.isnan(data_reshaped), axis=agg_axes)
-
-            # Sum of reciprocals, ignoring NaNs
-            sum_reciprocals = np.nansum(reciprocals, axis=agg_axes)
-
-            # Harmonic mean = n / sum(1/x)
-            coarsened = counts / sum_reciprocals
-
-            # Handle edge cases
-            coarsened = np.where(counts == 0, np.nan, coarsened)
-            coarsened = np.where(np.isinf(coarsened), 0.0, coarsened)
-            coarsened = coarsened.astype(dtype)
-
-    return coarsened
-
-
-def _coarsen_2d_permeability_grids(
-    kx: TwoDimensionalGrid,
-    ky: TwoDimensionalGrid,
-    batch_size: TwoDimensions,
-    epsilon: float = 1e-10,
-) -> typing.Tuple[TwoDimensionalGrid, TwoDimensionalGrid]:
-    """
-    Coarsen 2D permeability grids using direction-appropriate averaging.
-
-    Uses Cardwell-Parsons averaging:
-    - k_x: harmonic mean in x-direction, arithmetic mean in y-direction
-    - k_y: harmonic mean in y-direction, arithmetic mean in x-direction
-
-    This preserves the effective permeability for flow in each direction.
-
-    :param kx: X-direction permeability grid (mD), shape (nx, ny)
-    :param ky: Y-direction permeability grid (mD), shape (nx, ny)
-    :param batch_size: Coarsening factors (bx, by) for each direction
-    :param epsilon: Small value to avoid division by zero (default: 1e-10)
-    :return: Tuple of (coarsened_kx, coarsened_ky)
-    :raises ValidationError: If grids have different shapes or batch_size is invalid
-
-    Example:
-    ```python
-    # 4x4 grid with layered permeability
-    kx = np.array([[100, 100, 100, 100],
-                    [  1,   1,   1,   1],
-                    [100, 100, 100, 100],
-                    [  1,   1,   1,   1]], dtype=float)
-    ky = kx.copy()
-
-    kx_c, ky_c = _coarsen_2d_permeability_grids(kx, ky, batch_size=(2, 2))
-    # kx_c uses harmonic mean in x (across layers), arithmetic in y
-    # ky_c uses harmonic mean in y (across layers), arithmetic in x
-    ```
-
-    References:
-        Cardwell, W. T., & Parsons, R. L. (1945). "Average Permeabilities of
-        Heterogeneous Oil Sands." Transactions of the AIME, 160(01), 34-42.
-    """
-    if kx.shape != ky.shape:
-        raise ValidationError(
-            f"Permeability grids must have same shape. Got kx: {kx.shape}, ky: {ky.shape}"
-        )
-
-    if kx.ndim != 2:
-        raise ValidationError(
-            f"Expected 2D grids, got {kx.ndim}D. Use _coarsen_3d_permeability_grids instead."
-        )
-
-    if len(batch_size) != 2:
-        raise ValidationError(
-            f"batch_size must have 2 elements for 2D grids, got {len(batch_size)}"
-        )
-
-    bx, by = batch_size
-    if bx < 1 or by < 1:
-        raise ValidationError(f"batch_size elements must be >= 1, got ({bx}, {by})")
-
-    nx, ny = kx.shape
-
-    # Compute padding
-    pad_x = (bx - nx % bx) % bx
-    pad_y = (by - ny % by) % by
-
-    # Pad grids with NaN
-    if pad_x > 0 or pad_y > 0:
-        kx_padded = np.pad(
-            kx, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan
-        )
-        ky_padded = np.pad(
-            ky, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan
-        )
-    else:
-        kx_padded = kx
-        ky_padded = ky
-
-    nx_new, ny_new = kx_padded.shape
-    nx_coarse = nx_new // bx
-    ny_coarse = ny_new // by
-
-    dtype = get_dtype()
-
-    # Initialize output arrays
-    kx_coarse = np.zeros((nx_coarse, ny_coarse), dtype=dtype)
-    ky_coarse = np.zeros((nx_coarse, ny_coarse), dtype=dtype)
-
-    # Coarsen k_x: harmonic in x, arithmetic in y
-    for i in range(nx_coarse):
-        for j in range(ny_coarse):
-            # Extract block
-            block_kx = kx_padded[i * bx : (i + 1) * bx, j * by : (j + 1) * by]
-
-            # First, take harmonic mean along x-direction (axis=0)
-            kx_harmonic_x = _axis_harmonic_mean(block_kx, axis=0, epsilon=epsilon)
-
-            # Then, take arithmetic mean along y-direction
-            kx_coarse[i, j] = np.nanmean(kx_harmonic_x)
-
-    # Coarsen k_y: harmonic in y, arithmetic in x
-    for i in range(nx_coarse):
-        for j in range(ny_coarse):
-            # Extract block
-            block_ky = ky_padded[i * bx : (i + 1) * bx, j * by : (j + 1) * by]
-
-            # First, take harmonic mean along y-direction (axis=1)
-            ky_harmonic_y = _axis_harmonic_mean(block_ky, axis=1, epsilon=epsilon)
-
-            # Then, take arithmetic mean along x-direction
-            ky_coarse[i, j] = np.nanmean(ky_harmonic_y)
-
-    return kx_coarse, ky_coarse
-
-
-def _coarsen_3d_permeability_grids(
-    kx: ThreeDimensionalGrid,
-    ky: ThreeDimensionalGrid,
-    kz: ThreeDimensionalGrid,
-    batch_size: ThreeDimensions,
-    epsilon: float = 1e-10,
-) -> typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
-    """
-    Coarsen 3D permeability grids using direction-appropriate averaging.
-
-    Uses Cardwell-Parsons averaging extended to 3D:
-    - k_x: harmonic mean in x, arithmetic mean in y and z
-    - k_y: harmonic mean in y, arithmetic mean in x and z
-    - k_z: harmonic mean in z, arithmetic mean in x and y
-
-    This preserves the effective permeability for flow in each direction.
-
-    :param kx: X-direction permeability grid (mD), shape (nx, ny, nz)
-    :param ky: Y-direction permeability grid (mD), shape (nx, ny, nz)
-    :param kz: Z-direction permeability grid (mD), shape (nx, ny, nz)
-    :param batch_size: Coarsening factors (bx, by, bz) for each direction
-    :param epsilon: Small value to avoid division by zero (default: 1e-10)
-    :return: Tuple of (coarsened_kx, coarsened_ky, coarsened_kz)
-    :raises ValidationError: If grids have different shapes or batch_size is invalid
-
-    Example:
-    ```python
-    # 4x4x4 grid
-    kx = np.random.uniform(10, 100, (4, 4, 4))
-    ky = np.random.uniform(10, 100, (4, 4, 4))
-    kz = np.random.uniform(1, 10, (4, 4, 4))  # Lower vertical perm
-
-    kx_c, ky_c, kz_c = _coarsen_3d_permeability_grids(
-        kx, ky, kz,
-        batch_size=(2, 2, 2)
-    )
-    # Result: 2x2x2 coarsened grids
-    ```
-
-    References:
-        Cardwell, W. T., & Parsons, R. L. (1945). "Average Permeabilities of
-        Heterogeneous Oil Sands." Transactions of the AIME, 160(01), 34-42.
-
-        Deutsch, C. V. (1989). "Calculating Effective Absolute Permeability in
-        Sandstone/Shale Sequences." SPE Formation Evaluation, 4(03), 343-348.
-    """
-    if not (kx.shape == ky.shape == kz.shape):
-        raise ValidationError(
-            f"All permeability grids must have same shape. "
-            f"Got kx: {kx.shape}, ky: {ky.shape}, kz: {kz.shape}"
-        )
-
-    if kx.ndim != 3:
-        raise ValidationError(
-            f"Expected 3D grids, got {kx.ndim}D. Use _coarsen_2d_permeability_grids instead."
-        )
-
-    if len(batch_size) != 3:
-        raise ValidationError(
-            f"batch_size must have 3 elements for 3D grids, got {len(batch_size)}"
-        )
-
-    bx, by, bz = batch_size
-    if bx < 1 or by < 1 or bz < 1:
-        raise ValidationError(
-            f"All batch_size elements must be >= 1, got ({bx}, {by}, {bz})"
-        )
-
-    nx, ny, nz = kx.shape
-
-    # Compute padding
-    pad_x = (bx - nx % bx) % bx
-    pad_y = (by - ny % by) % by
-    pad_z = (bz - nz % bz) % bz
-
-    # Pad grids with NaN
-    if pad_x > 0 or pad_y > 0 or pad_z > 0:
-        pad_width = ((0, pad_x), (0, pad_y), (0, pad_z))
-        kx_padded = np.pad(kx, pad_width, mode="constant", constant_values=np.nan)
-        ky_padded = np.pad(ky, pad_width, mode="constant", constant_values=np.nan)
-        kz_padded = np.pad(kz, pad_width, mode="constant", constant_values=np.nan)
-    else:
-        kx_padded = kx
-        ky_padded = ky
-        kz_padded = kz
-
-    nx_new, ny_new, nz_new = kx_padded.shape
-    nx_coarse = nx_new // bx
-    ny_coarse = ny_new // by
-    nz_coarse = nz_new // bz
-
-    dtype = get_dtype()
-
-    # Initialize output arrays
-    kx_coarse = np.zeros((nx_coarse, ny_coarse, nz_coarse), dtype=dtype)
-    ky_coarse = np.zeros((nx_coarse, ny_coarse, nz_coarse), dtype=dtype)
-    kz_coarse = np.zeros((nx_coarse, ny_coarse, nz_coarse), dtype=dtype)
-
-    # Coarsen k_x: harmonic in x, arithmetic in y and z
-    for i in range(nx_coarse):
-        for j in range(ny_coarse):
-            for k in range(nz_coarse):
-                # Extract block
-                block_kx = kx_padded[
-                    i * bx : (i + 1) * bx, j * by : (j + 1) * by, k * bz : (k + 1) * bz
-                ]
-
-                # Harmonic mean in x (axis=0), then arithmetic in y and z
-                kx_harmonic_x = _axis_harmonic_mean(block_kx, axis=0, epsilon=epsilon)
-                kx_coarse[i, j, k] = np.nanmean(kx_harmonic_x)
-
-    # Coarsen k_y: harmonic in y, arithmetic in x and z
-    for i in range(nx_coarse):
-        for j in range(ny_coarse):
-            for k in range(nz_coarse):
-                # Extract block
-                block_ky = ky_padded[
-                    i * bx : (i + 1) * bx, j * by : (j + 1) * by, k * bz : (k + 1) * bz
-                ]
-
-                # Harmonic mean in y (axis=1), then arithmetic in x and z
-                ky_harmonic_y = _axis_harmonic_mean(block_ky, axis=1, epsilon=epsilon)
-                ky_coarse[i, j, k] = np.nanmean(ky_harmonic_y)
-
-    # Coarsen k_z: harmonic in z, arithmetic in x and y
-    for i in range(nx_coarse):
-        for j in range(ny_coarse):
-            for k in range(nz_coarse):
-                # Extract block
-                block_kz = kz_padded[
-                    i * bx : (i + 1) * bx, j * by : (j + 1) * by, k * bz : (k + 1) * bz
-                ]
-
-                # Harmonic mean in z (axis=2), then arithmetic in x and y
-                kz_harmonic_z = _axis_harmonic_mean(block_kz, axis=2, epsilon=epsilon)
-                kz_coarse[i, j, k] = np.nanmean(kz_harmonic_z)
-
-    return kx_coarse, ky_coarse, kz_coarse
-
-
-def _axis_harmonic_mean(
-    data: npt.NDArray, axis: int, epsilon: float = 1e-10
-) -> npt.NDArray:
-    """
-    Compute harmonic mean along a specific axis, handling NaN values.
-
-    Harmonic mean: H = n / sum(1/x_i) where n = count of non-NaN values
-
-    :param data: Input array
-    :param axis: Axis along which to compute harmonic mean
-    :param epsilon: Small value added to denominator to avoid division by zero
-    :return: Array with harmonic mean computed along specified axis
-    """
-    with np.errstate(divide="ignore", invalid="ignore"):
-        # Compute reciprocals, preserving NaN
-        reciprocals = np.where(np.isnan(data), np.nan, 1.0 / (data + epsilon))
-
-        # Count non-NaN values along axis
-        counts = np.sum(~np.isnan(data), axis=axis)
-
-        # Sum reciprocals, ignoring NaN
-        sum_reciprocals = np.nansum(reciprocals, axis=axis)
-
-        # Harmonic mean = n / sum(1/x)
-        result = counts / (sum_reciprocals + epsilon)
-
-        # Handle edge cases
-        result = np.where(counts == 0, np.nan, result)
-        result = np.where(np.isinf(result), 0.0, result)
-
-    return result
-
-
-def coarsen_permeability_grids(
-    kx: typing.Union[TwoDimensionalGrid, ThreeDimensionalGrid],
-    ky: typing.Union[TwoDimensionalGrid, ThreeDimensionalGrid],
-    kz: typing.Optional[ThreeDimensionalGrid] = None,
-    batch_size: typing.Union[TwoDimensions, ThreeDimensions, None] = None,
-    epsilon: float = 1e-10,
-) -> typing.Union[
-    typing.Tuple[TwoDimensionalGrid, TwoDimensionalGrid],
-    typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
-]:
-    """
-    Coarsen permeability grids using direction-appropriate averaging.
-
-    Automatically dispatches to 2D or 3D version based on input dimensions.
-
-    :param kx: X-direction permeability grid (mD)
-    :param ky: Y-direction permeability grid (mD)
-    :param kz: Z-direction permeability grid (mD), required for 3D
-    :param batch_size: Coarsening factors for each direction
-    :param epsilon: Small value to avoid division by zero (default: 1e-10)
-    :return: Coarsened permeability grids (kx, ky) for 2D or (kx, ky, kz) for 3D
-
-    Example:
-    ```python
-    # 2D case
-    kx, ky = coarsen_permeability_grids(kx_2d, ky_2d, batch_size=(2, 2))
-
-    # 3D case
-    kx, ky, kz = coarsen_permeability_grids(kx_3d, ky_3d, kz_3d, batch_size=(2, 2, 2))
-    ```
-    """
-    if batch_size is None:
-        raise ValidationError("batch_size must be provided")
-
-    if kx.ndim == 2:
-        if kz is not None:
-            raise ValidationError("kz should not be provided for 2D grids")
-        if len(batch_size) != 2:
-            raise ValidationError(
-                f"`batch_size` must have 2 elements for 2D grids, got {len(batch_size)}"
-            )
-        return _coarsen_2d_permeability_grids(
-            kx=kx,  # type: ignore[arg-type]
-            ky=ky,  # type: ignore[arg-type]
-            batch_size=batch_size,  # type: ignore[arg-type]
-            epsilon=epsilon,
-        )
-
-    elif kx.ndim == 3:
-        if kz is None:
-            raise ValidationError("kz must be provided for 3D grids")
-        if len(batch_size) != 3:
-            raise ValidationError(
-                f"`batch_size` must have 3 elements for 3D grids, got {len(batch_size)}"
-            )
-        return _coarsen_3d_permeability_grids(
-            kx=kx,  # type: ignore[arg-type]
-            ky=ky,  # type: ignore[arg-type]
-            kz=kz,
-            batch_size=batch_size,  # type: ignore[arg-type]
-            epsilon=epsilon,
-        )
-
-    raise ValidationError(f"Permeability grids must be 2D or 3D, got {kx.ndim}D")
-
-
-FlattenStrategy = typing.Union[
-    typing.Callable[[npt.NDArray], typing.Union[float, np.floating, npt.NDArray]],
-    typing.Literal["max", "min", "mean", "sum", "top", "bottom", "weighted_mean"],
-]
-
-
-def flatten_multilayer_grid_to_surface(
-    multilayer_grid: ThreeDimensionalGrid,
-    strategy: FlattenStrategy = "max",
-    weights: typing.Optional[ThreeDimensionalGrid] = None,
-    ignore_nan: bool = True,
-) -> TwoDimensionalGrid:
-    """
-    Flatten a 3D multilayer grid to a 2D surface by collapsing the z-axis (depth).
-
-    This is useful for creating 2D property maps from 3D reservoir grids, such as:
-    - Maximum saturation across all layers
-    - Average pressure over reservoir thickness
-    - Top-of-reservoir property maps
-
-    The z-axis (axis=2) corresponds to depth, where k=0 is the top layer and
-    k=nz-1 is the bottom layer.
-
-    :param multilayer_grid: 3D grid with shape (nx, ny, nz) to flatten
-    :param strategy: Flattening method to use:
-        - "max": Maximum value across layers (useful for saturation, pressure)
-        - "min": Minimum value across layers
-        - "mean": Arithmetic mean across layers (useful for average properties)
-        - "sum": Sum across layers (useful for volumes, totals)
-        - "top": Value at top layer (k=0)
-        - "bottom": Value at bottom layer (k=nz-1)
-        - "weighted_mean": Weighted average (requires `weights` parameter)
-        - callable: Custom function that takes 1D array and returns scalar
-    :param weights: Optional 3D weight grid (same shape as multilayer_grid).
-        Only used when strategy="weighted_mean". Typically layer thickness.
-    :param ignore_nan: If True, use NaN-aware operations (nanmax, nanmean, etc.).
-        If False, NaN values will propagate to the output. Default: True.
-    :return: 2D grid with shape (nx, ny) after flattening
-    :raises ValidationError: If input is not 3D, weights shape mismatch, or invalid strategy
-
-    Examples:
-    ```python
-    # Maximum oil saturation across all layers
-    so_max = flatten_multilayer_grid_to_surface(so_grid, strategy="max")
-
-    # Average pressure (thickness-weighted)
-    p_avg = flatten_multilayer_grid_to_surface(
-        pressure_grid,
-        strategy="weighted_mean",
-        weights=thickness_grid
-    )
-
-    # Top-of-reservoir porosity
-    phi_top = flatten_multilayer_grid_to_surface(porosity_grid, strategy="top")
-
-    # Custom strategy: 90th percentile
-    p90 = flatten_multilayer_grid_to_surface(
-        perm_grid,
-        strategy=lambda z: np.nanpercentile(z, 90)
-    )
-    ```
-
-    Notes:
-    - For permeability, consider using directional averaging instead of simple flattening
-    - NaN values are handled appropriately if `ignore_nan=True`
-    - Weighted mean normalizes weights automatically (no need to pre-normalize)
-    """
-    if multilayer_grid.ndim != 3:
-        raise ValidationError(
-            f"`multilayer_grid` must be 3D with shape (nx, ny, nz), got {multilayer_grid.ndim}D"
-        )
-
-    nx, ny, nz = multilayer_grid.shape
-    dtype = get_dtype()
-
-    # Handle weighted mean separately
-    if strategy == "weighted_mean":
-        if weights is None:
-            raise ValidationError(
-                "`weights` parameter is required when `strategy='weighted_mean'`"
-            )
-        if weights.shape != multilayer_grid.shape:
-            raise ValidationError(
-                f"`weights` shape {weights.shape} must match `multilayer_grid` shape {multilayer_grid.shape}"
-            )
-
-        # Weighted average: sum(w * x) / sum(w)
-        if ignore_nan:
-            # Handle NaN in both data and weights
-            weighted_sum = np.nansum(weights * multilayer_grid, axis=2)
-            weight_sum = np.nansum(weights, axis=2)  # type: ignore[arg-type]
-        else:
-            weighted_sum = np.sum(weights * multilayer_grid, axis=2)
-            weight_sum = np.sum(weights, axis=2)  # type: ignore[arg-type]
-
-        # Avoid division by zero
-        result = np.divide(
-            weighted_sum,
-            weight_sum,
-            out=np.full((nx, ny), np.nan, dtype=dtype),
-            where=(weight_sum != 0),
-        )
-        return result.astype(dtype)  # type: ignore[return-value]
-
-    if isinstance(strategy, str):
-        if strategy == "max":
-            func = np.nanmax if ignore_nan else np.max
-            return func(multilayer_grid, axis=2).astype(dtype)
-
-        elif strategy == "min":
-            func = np.nanmin if ignore_nan else np.min
-            return func(multilayer_grid, axis=2).astype(dtype)
-
-        elif strategy == "mean":
-            func = np.nanmean if ignore_nan else np.mean
-            return func(multilayer_grid, axis=2, dtype=dtype)
-
-        elif strategy == "sum":
-            func = np.nansum if ignore_nan else np.sum
-            return func(multilayer_grid, axis=2, dtype=dtype)
-
-        elif strategy == "top":
-            # k=0 is top layer
-            return multilayer_grid[:, :, 0].astype(dtype)  # type: ignore[return-value]
-
-        elif strategy == "bottom":
-            # k=nz-1 is bottom layer
-            return multilayer_grid[:, :, -1].astype(dtype)  # type: ignore[return-value]
-
-        else:
-            raise ValidationError(
-                f"Unknown strategy '{strategy}'. Valid options: "
-                "'max', 'min', 'mean', 'sum', 'top', 'bottom', 'weighted_mean'"
-            )
-
-    elif callable(strategy):
-        # Check if function is vectorized (much faster)
-        try:
-            # Test with a small slice
-            test_slice = multilayer_grid[0, 0, :]
-            result_scalar = strategy(test_slice)
-
-            # Check if result is scalar
-            if not np.isscalar(result_scalar):
-                raise ValidationError(
-                    f"Custom strategy function must return a scalar, got {type(result_scalar)}"
-                )
-
-            # Try vectorized approach first
-            # Reshape to (nx*ny, nz) for efficient processing
-            reshaped = multilayer_grid.reshape(-1, nz)
-
-            # Check if function works on 2D array (vectorized)
-            try:
-                # Some numpy functions can handle 2D input
-                result_flat = strategy(reshaped)
-                if result_flat.shape == (nx * ny,):  # type: ignore[union-attr]
-                    return result_flat.reshape(nx, ny).astype(dtype)  # type: ignore[union-attr]
-            except (ValueError, TypeError):
-                pass  # Fall back to `apply_along_axis`
-
-            # Fall back to slower `apply_along_axis`
-            warnings.warn(
-                "Using `apply_along_axis` for custom strategy. "
-                "For better performance, use vectorized numpy functions or built-in strategies.",
-                UserWarning,
-                stacklevel=2,
-            )
-            result = np.apply_along_axis(strategy, axis=2, arr=multilayer_grid)
-            return result.astype(dtype)  # type: ignore[return-value]
-
-        except Exception as exc:
-            raise ValidationError(f"Custom strategy function failed: {exc}") from exc
-
-    raise ValidationError(
-        f"`strategy` must be a string or callable, got {type(strategy)}"
-    )
-
-
-def flatten_multilayer_grids(
-    grids: typing.Dict[str, ThreeDimensionalGrid],
-    strategy: typing.Union[FlattenStrategy, typing.Dict[str, FlattenStrategy]] = "max",
-    weights: typing.Optional[typing.Dict[str, ThreeDimensionalGrid]] = None,
-    ignore_nan: bool = True,
-) -> typing.Dict[str, TwoDimensionalGrid]:
-    """
-    Flatten multiple 3D grids to 2D surfaces using specified strategies.
-
-    Convenient wrapper for flattening multiple related grids (e.g., all saturations,
-    all pressures) with a single call.
-
-    :param grids: Dictionary of {name: 3D_grid} to flatten
-    :param strategy: Single strategy for all grids, or dict of {name: strategy}
-    :param weights: Optional dict of {name: weight_grid} for weighted averaging
-    :param ignore_nan: If True, use NaN-aware operations
-    :return: Dictionary of {name: 2D_grid} after flattening
-
-    Example:
-    ```python
-    grids_3d = {
-        'oil_saturation': so_grid,
-        'water_saturation': sw_grid,
-        'pressure': p_grid,
-    }
-
-    # Use same strategy for all
-    grids_2d = flatten_multilayer_grids(grids_3d, strategy="max")
-
-    # Use different strategies per grid
-    strategies = {
-        'oil_saturation': 'max',
-        'water_saturation': 'mean',
-        'pressure': 'weighted_mean',
-    }
-    weights_dict = {
-        'pressure': thickness_grid,
-    }
-    grids_2d = flatten_multilayer_grids(
-        grids_3d,
-        strategy=strategies,
-        weights=weights_dict
-    )
-    ```
-    """
-    result = {}
-    for name, grid in grids.items():
-        if isinstance(strategy, dict):
-            grid_strategy = strategy.get(name, "max")  # type: ignore
-        else:
-            grid_strategy = strategy
-
-        grid_weights = None
-        if weights is not None and name in weights:
-            grid_weights = weights[name]
-
-        result[name] = flatten_multilayer_grid_to_surface(
-            grid,
-            strategy=grid_strategy,
-            weights=grid_weights,
-            ignore_nan=ignore_nan,
-        )
-    return result
-
-
-_ORIENTATION_TO_AXIS: typing.Dict[Orientation, int] = {
-    Orientation.X: 0,
-    Orientation.Y: 1,
-    Orientation.Z: 2,
+from bores.grids.base import Grid
+from bores.typing import CellArray, IntArray, OneDimension, Side
+
+__all__ = ["as_pyvista_grid"]
+
+
+SIDE_ALIASES: typing.Dict[str, Side] = {
+    "left": Side.WEST,
+    "right": Side.EAST,
+    "front": Side.SOUTH,
+    "back": Side.NORTH,
+    "up": Side.TOP,
+    "down": Side.BOTTOM,
+}
+
+AXIS_SIDES: typing.Dict[int, typing.Tuple[Side, Side]] = {
+    0: (Side.WEST, Side.EAST),
+    1: (Side.SOUTH, Side.NORTH),
+    2: (Side.TOP, Side.BOTTOM),
 }
 
 
-def _resolve_axis(
-    orientation: typing.Union[Orientation, typing.Literal["x", "y", "z"]],
-    ndim: int,
-) -> int:
-    """Resolve an `Orientation` (or string) to a numpy axis index."""
-    if isinstance(orientation, str):
-        orientation = Orientation(orientation)
-    axis = _ORIENTATION_TO_AXIS.get(orientation)
-    if axis is None:
-        raise ValueError(f"`orientation` must be one of X, Y, Z, got {orientation!r}.")
-    if axis >= ndim:
-        raise ValueError(
-            f"`orientation` {orientation!r} maps to axis {axis}, but the array "
-            f"only has {ndim} dimension(s)."
+def resolve_side(side: typing.Union[Side, str]) -> Side:
+    """
+    Resolve a `Side`, its `.value` string, or a common alias
+    ('left'/'right'/'front'/'back'/'up'/'down') to a `Side` member.
+
+    :param side: `Side` member, value string, or alias.
+    :returns: Resolved `Side`.
+    :raises ValidationError: If `side` doesn't resolve to a known `Side`.
+    """
+    if isinstance(side, Side):
+        return side
+
+    key = side.strip().lower()
+    if key in SIDE_ALIASES:
+        return SIDE_ALIASES[key]
+    try:
+        return Side(key)
+    except ValueError as exc:
+        valid = sorted({member.value for member in Side} | set(SIDE_ALIASES))
+        raise ValidationError(f"Unknown side {side!r}. Valid values: {valid}.") from exc
+
+
+def classify_boundary_faces(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+    """
+    Classify every boundary face of `grid` into one of the six `Side`s.
+
+    For each boundary face, its outward normal is re-derived defensively as
+    `sign(dot(face_unit_normals[face], face_centroid - owner_cell_centroid))`
+    rather than trusting `Grid.face_unit_normals`'s stored sign directly.
+    The axis with the largest-magnitude (re-oriented) normal component
+    decides X/Y/Z; its sign decides which of the two `Side`s on that axis.
+
+    Every boundary face is genuinely exterior by definition (its
+    `face_cell_indices` neighbour is `-1`), so classification is purely by
+    outward-normal direction - no bounding-box-extremity check. A face on
+    an irregular flank (partway along a fault-bounded edge, or the inner
+    corner of an L-shaped field) is still genuinely facing one direction
+    and belongs on that side; requiring proximity to the domain's
+    bounding-box corner would drop real boundary faces on any non-box-shaped
+    field. Every boundary face is assigned to exactly one `Side` - nothing
+    is dropped.
+
+    Classification happens in whatever frame `grid`'s stored coordinates
+    are actually in. For a grid built with the default
+    `apply_map_axes=True` (corner-point/Cartesian factories), that's true
+    map/geographic space, so `Side.WEST` means true west. For a grid built
+    with `apply_map_axes=False`, it means the grid's own local axes -
+    consistent with every other computation on such a grid.
+
+    :param grid: Grid to classify. Must have resolved face geometry
+        (`face_unit_normals`, `face_centroids`, `cell_centroids`) - true
+        for any `Grid` built through a grid factory.
+    :returns: Mapping from every `Side` to the *positions* (0-based, into
+        `Grid.boundary_face_indices` - not global face indices) of the
+        faces assigned to that side, as an `int32` array. A `Side` with no
+        matching faces maps to an empty array rather than being omitted.
+    :raises ValidationError: If `grid`'s face geometry hasn't been resolved.
+    """
+    if grid.cell_centroids is None:
+        raise ValidationError(
+            "`grid` has no `cell_centroids`; cannot re-derive outward face orientation."
         )
-    return axis
+
+    boundary = grid.boundary_face_indices
+    if len(boundary) == 0:
+        return {side: np.empty(0, dtype=np.int32) for side in Side}
+
+    owners = grid.face_cell_indices[boundary, 0]
+    face_centroids = grid.face_centroids[boundary]
+    cell_centroids = grid.cell_centroids[owners]
+
+    raw_normals = grid.face_unit_normals[boundary]
+    outward_ref = face_centroids - cell_centroids
+    flip = np.sign(np.einsum("ij,ij->i", raw_normals, outward_ref))
+    flip[flip == 0.0] = 1.0
+    normals = raw_normals * flip[:, None]
+
+    dominant_axis = np.argmax(np.abs(normals), axis=1)
+    dominant_sign = np.sign(normals[np.arange(len(boundary)), dominant_axis])
+    # A stored/rederived unit normal should never be exactly zero on its own
+    # dominant axis. We guard against it anyway rather than silently dropping.
+    dominant_sign[dominant_sign == 0.0] = 1.0
+
+    positions = np.arange(len(boundary))
+    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    for axis, (negative_side, positive_side) in AXIS_SIDES.items():
+        on_axis = dominant_axis == axis
+        result[negative_side] = positions[on_axis & (dominant_sign < 0.0)].astype(  # type: ignore[assignment]
+            np.int32
+        )
+        result[positive_side] = positions[on_axis & (dominant_sign > 0.0)].astype(  # type: ignore[assignment]
+            np.int32
+        )
+    return result
 
 
-def layer_to_link_permeability(
-    cell_permeability: npt.NDArray,
-    cell_lenghts: npt.NDArray,
-    orientation: typing.Union[
-        Orientation, typing.Literal["x", "y", "z"]
-    ] = Orientation.Z,
+def classify_boundary_cells(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+    """
+    Classify every boundary-adjacent cell of `grid` into one of the six
+    `Side`s, derived from `classify_boundary_faces`.
+
+    A cell is included on a `Side` if it owns at least one boundary face
+    classified there. A corner cell genuinely touching two flanks (e.g.
+    both the west and south edges) appears in both `Side`s' arrays - that's
+    correct, not a bug: it really is exposed on both.
+
+    :param grid: Grid to classify.
+    :returns: Mapping from every `Side` to the *global cell indices*
+        (into `grid`'s own cell numbering) of cells with at least one
+        boundary face on that side, deduplicated and sorted (`np.unique`).
+        A `Side` with no matching cells maps to an empty array.
+    """
+    faces_by_side = classify_boundary_faces(grid)
+    boundary = grid.boundary_face_indices
+    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    for side, face_positions in faces_by_side.items():
+        if len(face_positions) == 0:
+            result[side] = np.empty(0, dtype=np.int32)
+            continue
+        global_face_indices = boundary[face_positions]
+        owners = grid.face_cell_indices[global_face_indices, 0]
+        result[side] = np.unique(owners).astype(np.int32)
+    return result
+
+
+def cells_on_side(
+    grid: Grid,
+    side: typing.Union[Side, str],
+    *,
+    classified: typing.Optional[typing.Mapping[Side, IntArray[OneDimension]]] = None,
+) -> IntArray[OneDimension]:
+    """
+    Global cell indices of every boundary-adjacent cell on one flank of `grid`.
+
+    ```python
+    west_cells = cells_on_side(grid, "west")
+    ```
+
+    :param grid: Grid to classify. Ignored if `classified` is supplied.
+    :param side: Which flank - a `Side` member, its `.value` string, or a
+        common alias ('left'/'right'/'front'/'back'/'up'/'down').
+    :param classified: Pre-computed `classify_boundary_cells(grid)` result.
+        Pass this when calling for several sides on the same grid, to avoid
+        re-classifying every boundary face once per side.
+    :returns: Sorted, deduplicated global cell indices on that side. Empty
+        array if the grid has no boundary cells on that flank.
+    :raises ValidationError: If `side` doesn't resolve to a known `Side`.
+    """
+    resolved = resolve_side(side)
+    cells = classified if classified is not None else classify_boundary_cells(grid)
+    return cells[resolved]
+
+
+@numba.njit(parallel=True, cache=True)
+def _count_cell_entries(
+    cell_face_offsets: npt.NDArray,
+    cell_face_indices: npt.NDArray,
+    face_vertex_offsets: npt.NDArray,
 ) -> npt.NDArray:
     """
-    Convert per-cell permeability to inter-cell interface (link) permeability.
+    Count the flat-buffer entries each cell contributes to the VTK polyhedron
+    face stream (type 42).
 
-    Works for any flow direction. Pass kx with dx and `Orientation.X`, ky with
-    dy and `Orientation.Y`, or kz with dz and `Orientation.Z`.
+    VTK polyhedron per-cell layout:
 
-    For each pair of adjacent cells `i` and `i+1` along `orientation`, the
-    dimension-weighted harmonic mean link permeability is:
+        [total_count, n_faces, nv_f0, v0, v1, …, nv_f1, v0, …]
 
-    ```
-    k_link[i] = (d[i] + d[i+1]) / (d[i]/k[i] + d[i+1]/k[i+1])
-    ```
+    So the entry count for a cell with *F* faces of vertex counts
+    *V0, V1, …, V_{F-1}* is:
 
-    where `d[i]` is the cell dimension in the direction of flow (ft).
+        1  (total_count)
+      + 1  (n_faces)
+      + F  (one nv_fi per face)
+      + ΣVi  (all vertex indices)
 
-    The input grid can have any number of dimensions. All axes other than the
-    one selected by `orientation` are treated as independent spatial locations
-    and are passed through unchanged. The output has the same shape as the
-    input except that the selected axis is reduced by one (n_cells -> n_cells - 1).
+    Cells with 0 faces (fully suppressed pinchouts) get count 0 and are
+    excluded from the output buffer.
 
-    :param cell_permeability: Array of per-cell permeability values (mD).
-        The size along the axis selected by `orientation` is `n_cells`.
-        All values must be strictly positive.
+    :param cell_face_offsets: CSR offsets array, length `n_cells + 1`.
+    :param cell_face_indices: CSR face-index data array.
+    :param face_vertex_offsets: CSR offsets into vertex indices, length
+        `n_faces + 1`.
+    :returns: Shape `(n_cells,)` int64 entry-count array.
+    """
+    n_cells = cell_face_offsets.shape[0] - 1
+    counts = np.zeros(n_cells, dtype=np.int64)
 
-        Accepted shapes (with `orientation=Orientation.Z`):
+    for cell_idx in numba.prange(n_cells):  # type: ignore
+        face_start = cell_face_offsets[cell_idx]
+        face_end = cell_face_offsets[cell_idx + 1]
+        n_faces = face_end - face_start
+        if n_faces == 0:
+            continue
+        n_verts_total = np.int64(0)
+        for face_idx_local in range(face_start, face_end):
+            face_idx = cell_face_indices[face_idx_local]
+            n_verts_total += (
+                face_vertex_offsets[face_idx + 1] - face_vertex_offsets[face_idx]
+            )
+        # 1 (total_count) + 1 (n_faces) + n_faces (per-face counts) + n_verts_total
+        counts[cell_idx] = np.int64(2) + np.int64(n_faces) + n_verts_total
+    return counts
 
-        - `(n_cells,)` - 1-D, one value per cell
-        - `(nx, n_cells)` - 2-D, spatially varying in x
-        - `(nx, ny, n_cells)` - 3-D full grid
 
-    :param cell_lenghts: 1-D array of cell lengths/thicknesses in the flow direction
-        (ft), length `n_cells`. Pass dx for `Orientation.X`, dy for
-        `Orientation.Y`, dz for `Orientation.Z`. Must be strictly positive
-        and match the size of `cell_permeability` along the selected axis.
-    :param orientation: Flow direction. Accepts `Orientation.X/Y/Z` or the
-        string literals `"x"`, `"y"`, `"z"`. Defaults to `Orientation.Z`.
-        Follows the same convention as `build_layered_grid`:
-        X -> axis 0, Y -> axis 1, Z -> axis 2.
-    :return: Array of interface link permeability values (mD) with the same
-        shape as `cell_permeability` except the selected axis is reduced from
-        `n_cells` to `n_cells - 1`.
+@numba.njit(parallel=True, cache=True)
+def _fill_cell_entries(
+    cell_face_offsets: npt.NDArray,
+    cell_face_indices: npt.NDArray,
+    face_vertex_offsets: npt.NDArray,
+    face_vertex_indices: npt.NDArray,
+    cell_starts: npt.NDArray,
+    out: npt.NDArray,
+) -> None:
+    """
+    Fill the pre-allocated VTK polyhedron face-stream buffer in parallel.
+
+    Each cell owns the slice `out[cell_starts[cell_idx] : cell_starts[cell_idx] + count[cell_idx]]`
+    and writes to it independently.
+
+    Per-cell output layout:
+
+        out[cell_starts[cell_idx]]     = total_count   (entries that follow)
+        out[cell_starts[cell_idx] + 1] = n_faces
+        then for each face face_idx:
+            out[position]   = n_verts_fi
+            out[position+1 … position+n_verts_fi] = global vertex indices
+
+    :param cell_face_offsets: CSR offsets, length `n_cells + 1`.
+    :param cell_face_indices: CSR face-index data.
+    :param face_vertex_offsets: CSR offsets into vertex data, length `n_faces + 1`.
+    :param face_vertex_indices: Flat vertex index data.
+    :param cell_starts: Start position in `out` for each cell, derived
+        from the exclusive prefix sum of `_count_cell_entries`.
+        Cells with count 0 are skipped (their start value is arbitrary).
+    :param out: Pre-allocated int64 output buffer of length
+        `sum(_count_cell_entries(…))`.
+    """
+    n_cells = cell_face_offsets.shape[0] - 1
+
+    for cell_idx in numba.prange(n_cells):  # type: ignore
+        face_start = cell_face_offsets[cell_idx]
+        face_end = cell_face_offsets[cell_idx + 1]
+        n_faces = face_end - face_start
+        if n_faces == 0:
+            continue
+
+        position = cell_starts[cell_idx]
+        total_count_pos = position  # filled last
+        position += 1
+        out[position] = n_faces
+        position += 1
+
+        for face_idx_local in range(face_start, face_end):
+            face_idx = cell_face_indices[face_idx_local]
+            vertex_start = face_vertex_offsets[face_idx]
+            vertex_end = face_vertex_offsets[face_idx + 1]
+            n_verts = vertex_end - vertex_start
+            out[position] = n_verts
+            position += 1
+            for vertex_idx in range(vertex_start, vertex_end):
+                out[position] = face_vertex_indices[vertex_idx]
+                position += 1
+
+        # total_count = everything written after the leading integer
+        out[total_count_pos] = position - total_count_pos - np.int64(1)
+
+
+def as_pyvista_grid(
+    grid: Grid,
+    *,
+    cell_data: typing.Optional[typing.Dict[str, CellArray]] = None,
+) -> typing.Any:
+    """
+    Convert a `bores.grids.base.Grid` to a `pyvista.UnstructuredGrid`.
+
+    Each grid cell is represented as a **VTK polyhedron (type 42)** built
+    from the cell's actual face and vertex geometry. This is geometrically
+    exact for all grid types; corner-point, Voronoi, Cartesian, and general
+    polyhedral.
+
+    Pinched-out cells (cells whose faces were all suppressed during
+    corner-point construction) have no VTK representation and are silently
+    omitted from the output mesh. Their data is also omitted from any
+    attached cell-data arrays so that array lengths always match the number
+    of rendered cells. The cells remain present in the source `Grid`
+    object so that physics code is unaffected.
+
+
+    **`MapAxes`**:
+
+    No rotation happens here. `grid.vertex_coordinates` is already in map
+    space by the time it reaches this function as the corner-point and
+    Cartesian grid factories apply `MAPAXES` when `grid.metadata["map_axes"]`
+    is present, unless they were explicitly built with `apply_map_axes=False`,
+    in which case this renders the same local-space geometry every other
+    computation on the grid uses.
+
+    :param grid: Source `Grid`.
+    :param cell_data: Optional mapping of scalar field name to a shape
+        `(n_cells,)` NumPy array. Each entry is attached as a PyVista
+        cell-data array and can be visualised with
+        `pv_grid.plot(scalars="<scalar>")`. Arrays must have length
+        `grid.n_cells`; they are automatically filtered to the valid
+        (non-pinched) cells before attachment.
+    :returns: A `pyvista.UnstructuredGrid` ready for rendering or
+        further PyVista processing.
+    :raises ImportError: If `pyvista` is not installed.
+    :raises ValueError: If a `cell_data` array has length != `grid.n_cells`.
 
     Example:
 
     ```python
-    import numpy as np
-    from bores.types import Orientation
-    from bores.grids.utils import layer_to_link_permeability
+    from bores.grids.utils import as_pyvista_grid
+    import pyvista as pv
 
-    # Vertical (z) direction - SPE1 layers
-    kz = np.array([250.0, 25.0, 50.0])   # mD
-    dz = np.array([ 20.0, 30.0, 50.0])   # ft
-    kz_links = layer_to_link_permeability(kz, dz, Orientation.Z)
-    # array([39.0625, 36.3636])
+    pressure = np.zeros((n_cells,))
+    pv_grid = as_pyvista_grid(grid, cell_data={"pressure": pressure})
 
-    # Horizontal (x) direction
-    kx = np.array([500.0, 50.0, 200.0])   # mD
-    dx = np.array([1000.0, 1000.0, 1000.0])   # ft
-    kx_links = layer_to_link_permeability(kx, dx, Orientation.X)
-    # array([90.9091, 80.0])
-
-    # 3-D grid - kz varies along last axis
-    kz_grid = np.broadcast_to(kz, (10, 10, 3)).copy()
-    kz_links_grid = layer_to_link_permeability(kz_grid, dz, Orientation.Z)
-    # shape (10, 10, 2)
+    pl = pv.Plotter()
+    pl.add_mesh(pv_grid, scalars="pressure", show_edges=True)
+    pl.show()
     ```
     """
-    cell_permeability = np.asarray(cell_permeability, dtype=float)
-    cell_lenghts = np.asarray(cell_lenghts, dtype=float)
+    try:
+        import pyvista as pv  # type: ignore[import-untyped]
+    except ImportError as exc:
+        raise ImportError(
+            "The 'pyvista' library is required for PyVista conversion. "
+            "Install it with: pip install pyvista"
+        ) from exc
 
-    if cell_lenghts.ndim != 1:
-        raise ValueError("`cell_lenghts` must be a 1-D array.")
+    n_cells = grid.n_cells
 
-    axis = _resolve_axis(orientation, cell_permeability.ndim)
-    n_cells = cell_permeability.shape[axis]
+    # Copy as this function flips Z in-place below for PyVista's up
+    # convention, which must not mutate `grid.vertex_coordinates` itself.
+    all_points = grid.vertex_coordinates.copy()
 
-    if n_cells != len(cell_lenghts):
-        raise ValueError(
-            f"`cell_permeability` has {n_cells} cells along {orientation!r} (axis {axis}) "
-            f"but `cell_lenghts` has length {len(cell_lenghts)}."
-        )
-    if n_cells < 2:
-        raise ValueError(
-            f"Need at least 2 cells to compute interface links, got {n_cells}."
-        )
-    if np.any(cell_permeability <= 0):
-        raise ValueError("All `cell_permeability` values must be strictly positive.")
-    if np.any(cell_lenghts <= 0):
-        raise ValueError("All `cell_lenghts` values must be strictly positive.")
-
-    # Reshape `cell_lenghts` so it broadcasts against `cell_permeability` along axis.
-    broadcast_shape = [1] * cell_permeability.ndim
-    broadcast_shape[axis] = n_cells
-    d_broadcast = cell_lenghts.reshape(broadcast_shape)
-
-    upper_slice = [slice(None)] * cell_permeability.ndim
-    lower_slice = [slice(None)] * cell_permeability.ndim
-    upper_slice[axis] = slice(None, -1)  # cells 0 … n-2
-    lower_slice[axis] = slice(1, None)  # cells 1 … n-1
-
-    d_upper = d_broadcast[tuple(upper_slice)]
-    d_lower = d_broadcast[tuple(lower_slice)]
-    k_upper = cell_permeability[tuple(upper_slice)]
-    k_lower = cell_permeability[tuple(lower_slice)]
-
-    return (d_upper + d_lower) / (d_upper / k_upper + d_lower / k_lower)
-
-
-def link_to_layer_permeability(
-    interface_permeability: npt.NDArray,
-    cell_lenghts: npt.NDArray,
-    anchor_permeability: typing.Union[float, npt.NDArray],
-    anchor_index: int = 0,
-    orientation: typing.Union[
-        Orientation, typing.Literal["x", "y", "z"]
-    ] = Orientation.Z,
-) -> npt.NDArray:
-    """
-    Recover per-cell permeability from inter-cell interface (link) permeability.
-
-    Works for any flow direction. Pass kx links with dx and `Orientation.X`,
-    ky links with dy and `Orientation.Y`, or kz links with dz and `Orientation.Z`.
-    The inverse of `layer_to_link_permeability`.
-
-    Because there are `n_cells - 1` equations for `n_cells` unknowns the
-    system is underdetermined. You must fix one cell's permeability as an
-    anchor. The remaining values are recovered by propagating the
-    harmonic-mean constraint forward and backward from that anchor:
-
-    ```
-    # forward  (recovering cell i+1 from cell i)
-    k[i+1] = d[i+1] / ((d[i] + d[i+1]) / k_link[i] - d[i] / k[i])
-
-    # backward (recovering cell i from cell i+1)
-    k[i] = d[i] / ((d[i] + d[i+1]) / k_link[i] - d[i+1] / k[i+1])
-    ```
-
-    The output has the same shape as `interface_permeability` except that the
-    axis selected by `orientation` grows by one (n_cells - 1 -> n_cells).
-
-    :param interface_permeability: Array of interface link permeability values
-        (mD).  The size along the axis selected by `orientation` is
-        `n_cells - 1`. All values must be strictly positive.
-    :param cell_lenghts: 1-D array of cell lengths/thicknesses in the flow direction
-        (ft), length `n_cells`. Pass dx for `Orientation.X`, dy for
-        `Orientation.Y`, dz for `Orientation.Z`. Must be strictly positive.
-    :param anchor_permeability: Known permeability (mD) of the anchor cell.
-        Can be a scalar (same value everywhere) or an array whose shape matches
-        a slice of `interface_permeability` with the orientation axis removed
-        (one value per spatial location).
-    :param anchor_index: Index of the cell whose permeability is known along
-        the orientation axis. Defaults to `0` (first cell).
-    :param orientation: Flow direction.  Accepts `Orientation.X/Y/Z` or the
-        string literals `"x"`, `"y"`, `"z"`. Defaults to `Orientation.Z`.
-    :return: Array of per-cell permeability values (mD) with the same shape
-        as `interface_permeability` except the selected axis grows from
-        `n_cells - 1` to `n_cells`.
-
-    Example:
-
-    ```python
-    import numpy as np
-    from bores.types import Orientation
-    from bores.grids.utils import link_to_layer_permeability
-
-    # 1-D round-trip - vertical (z) direction
-    dz = np.array([20.0, 30.0, 50.0])
-    kz_links = np.array([39.0625, 36.3636])
-    kz = link_to_layer_permeability(
-        kz_links, dz, anchor_permeability=250.0, orientation=Orientation.Z
-    )
-    # array([250.,  25.,  50.])
-
-    # 3-D: recover a (10, 10, 3) kz grid from a (10, 10, 2) link grid
-    links_grid = np.broadcast_to(kz_links, (10, 10, 2)).copy()
-    kz_grid = link_to_layer_permeability(
-        links_grid, dz, anchor_permeability=250.0, orientation=Orientation.Z
-    )
-    # shape (10, 10, 3)
-    ```
-    """
-    interface_permeability = np.asarray(interface_permeability, dtype=float)
-    cell_lenghts = np.asarray(cell_lenghts, dtype=float)
-
-    if cell_lenghts.ndim != 1:
-        raise ValueError("`cell_lenghts` must be a 1-D array.")
-
-    n_cells = len(cell_lenghts)
-    n_interfaces = n_cells - 1
-    axis = _resolve_axis(orientation, interface_permeability.ndim)
-
-    if interface_permeability.shape[axis] != n_interfaces:
-        raise ValueError(
-            f"`interface_permeability` has {interface_permeability.shape[axis]} values "
-            f"along {orientation!r} (axis {axis}) but `cell_lenghts` implies "
-            f"{n_interfaces} interfaces ({n_cells} cells)."
-        )
-    if not (0 <= anchor_index < n_cells):
-        raise ValueError(
-            f"`anchor_index` must be in [0, {n_cells - 1}], got {anchor_index}."
-        )
-    if np.any(np.asarray(anchor_permeability) <= 0):
-        raise ValueError("`anchor_permeability` must be strictly positive.")
-    if np.any(cell_lenghts <= 0):
-        raise ValueError("All `cell_lenghts` values must be strictly positive.")
-    if np.any(interface_permeability <= 0):
-        raise ValueError(
-            "All `interface_permeability` values must be strictly positive."
-        )
-
-    output_shape = list(interface_permeability.shape)
-    output_shape[axis] = n_cells
-    recovered = np.empty(output_shape, dtype=float)
-
-    def _get(array: npt.NDArray, index: int) -> npt.NDArray:
-        idx = [slice(None)] * array.ndim
-        idx[axis] = index  # type: ignore
-        return array[tuple(idx)]
-
-    def _set(array: npt.NDArray, index: int, values: npt.NDArray) -> None:
-        idx = [slice(None)] * array.ndim
-        idx[axis] = index  # type: ignore
-        array[tuple(idx)] = values
-
-    # Seed anchor
-    _set(
-        recovered,
-        anchor_index,
-        np.broadcast_to(
-            anchor_permeability, _get(recovered, anchor_index).shape
-        ).copy(),
+    # Build VTK polyhedron face stream
+    # First, count entries per cell
+    counts = _count_cell_entries(
+        cell_face_offsets=grid.cell_face_offsets.astype(np.int64),
+        cell_face_indices=grid.cell_face_indices.astype(np.int64),
+        face_vertex_offsets=grid.face_vertex_offsets.astype(np.int64),
     )
 
-    # Propagate forward: anchor_index -> last cell
-    for i in range(anchor_index, n_cells - 1):
-        d_upper = cell_lenghts[i]
-        d_lower = cell_lenghts[i + 1]
-        link = _get(interface_permeability, i)
-        k_upper = _get(recovered, i)
-        total_resistance = (d_upper + d_lower) / link
-        lower_resistance = total_resistance - d_upper / k_upper
+    # valid_cell_mask: cells that will appear in the PyVista mesh
+    valid_cell_mask = counts > 0
 
-        if np.any(lower_resistance <= 0):
-            raise ValueError(
-                f"Cannot recover permeability at cell {i + 1}: interface {i} implies "
-                f"a non-positive or infinite value at one or more spatial locations. "
-                f"Verify that `anchor_permeability` at cell {anchor_index} is "
-                f"consistent with the provided link values."
-            )
-        _set(recovered, i + 1, d_lower / lower_resistance)
+    # Next, exclusive prefix sum -> start positions for each cell
+    cell_starts = np.zeros(n_cells, dtype=np.int64)
+    cell_starts[valid_cell_mask] = np.concatenate(
+        [
+            [0],
+            np.cumsum(counts[valid_cell_mask])[:-1],
+        ]
+    )
+    total_entries = int(counts.sum())
 
-    # Propagate backward: anchor_index -> first cell
-    for i in range(anchor_index - 1, -1, -1):
-        d_upper = cell_lenghts[i]
-        d_lower = cell_lenghts[i + 1]
-        link = _get(interface_permeability, i)
-        k_lower = _get(recovered, i + 1)
-        total_resistance = (d_upper + d_lower) / link
-        upper_resistance = total_resistance - d_lower / k_lower
+    # Lastly, fill buffer
+    flat_cells = np.empty(total_entries, dtype=np.int64)
+    _fill_cell_entries(
+        cell_face_offsets=grid.cell_face_offsets.astype(np.int64),
+        cell_face_indices=grid.cell_face_indices.astype(np.int64),
+        face_vertex_offsets=grid.face_vertex_offsets.astype(np.int64),
+        face_vertex_indices=grid.face_vertex_indices.astype(np.int64),
+        cell_starts=cell_starts,
+        out=flat_cells,
+    )
 
-        if np.any(upper_resistance <= 0):
-            raise ValueError(
-                f"Cannot recover permeability at cell {i}: interface {i} implies "
-                f"a non-positive or infinite value at one or more spatial locations. "
-                f"Verify that `anchor_permeability` at cell {anchor_index} is "
-                f"consistent with the provided link values."
-            )
-        _set(recovered, i, d_upper / upper_resistance)
+    # Assemble PyVista `UnstructuredGrid`
+    n_valid = int(valid_cell_mask.sum())
+    cell_types = np.full(n_valid, 42, dtype=np.uint8)  # VTK_POLYHEDRON = 42
+    # Negate the z-coordinate before creating the mesh. so it can be shown right side up
+    # Data uses Z positive downward (depth) convention but PyVista uses Z positive upward
+    # (3D graphics or coordinate system) convention
+    all_points[:, 2] *= -1
+    pv_grid = pv.UnstructuredGrid(flat_cells, cell_types, all_points)
 
-    return recovered
+    # Attach built-in geometric arrays (filtered to valid cells)
+    assert grid.cell_volumes is not None
+    pv_grid.cell_data["cell_volume"] = grid.cell_volumes[valid_cell_mask]
+    pv_grid.cell_data["cell_depth"] = grid.cell_center_depths[valid_cell_mask]
+    pv_grid.cell_data["cell_thickness"] = grid.cell_thickness[valid_cell_mask]
 
-
-@numba.njit(cache=True)
-def make_saturation_grid(
-    n_points: int = 200,
-    s_min: float = 0.0,
-    s_max: float = 1.0,
-    spacing: Spacing = "cosine",
-    dtype: npt.DTypeLike = np.float64,
-) -> npt.NDArray:
-    """
-    Build a 1-D saturation grid over `[s_min, s_max]`.
-
-    :param n_points: Number of grid points (>= 2).
-    :param s_min: Physical saturation range. Must satisfy `0 ≤ s_min < s_max ≤ 1`.
-    :param s_max: Physical saturation range. Must satisfy `0 ≤ s_min < s_max ≤ 1`.
-    :param spacing: `"cosine"` (default) — Chebyshev-cosine spacing, denser at the
-        endpoints. `"linspace"` — uniform spacing.
-    :return: NDArray of shape `(n_points,)` with values in `[s_min, s_max]`,
-    monotonically increasing.
-    """
-    if n_points < 2:
-        raise ValueError(f"`n_points` must be >= 2, got {n_points}")
-    if not (0.0 <= s_min < s_max <= 1.0):
-        raise ValueError(
-            f"Require 0 ≤ s_min < s_max ≤ 1, got `s_min={s_min}`, `s_max={s_max}`"
-        )
-
-    if spacing == "cosine":
-        i = np.arange(n_points, dtype=dtype)
-        unit: npt.NDArray = 0.5 * (1.0 - np.cos(np.pi * i / (n_points - 1)))
-    elif spacing == "linspace":
-        unit: npt.NDArray = np.linspace(0.0, 1.0, n_points)
-    else:
-        raise ValueError(f"`spacing` must be 'cosine' or 'linspace', got '{spacing}'")
-
-    return (s_min + unit * (s_max - s_min)).astype(dtype)
+    # Attach caller-supplied arrays
+    if cell_data:
+        for name, array in cell_data.items():
+            arr = np.asarray(array)
+            if arr.shape[0] != n_cells:
+                raise ValueError(
+                    f"cell_data[{name!r}] has {arr.shape[0]} entries "
+                    f"but grid has {n_cells} cells."
+                )
+            pv_grid.cell_data[name] = arr[valid_cell_mask]
+    return pv_grid

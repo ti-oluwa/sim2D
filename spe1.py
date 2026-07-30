@@ -4,7 +4,7 @@ import typing
 import numpy as np
 
 import bores
-from bores.correlations.core import (
+from bores.correlations.scalars import (
     compute_gas_molecular_weight,
     compute_oil_specific_gravity,
 )
@@ -108,7 +108,7 @@ kz_grid = bores.layered_grid(
     layer_values=kz_values,
     orientation=bores.Orientation.Z,
 )
-absolute_permeability = bores.RockPermeability(x=kx_grid, y=ky_grid, z=kz_grid)
+absolute_permeability = bores.Permeability(x=kx_grid, y=ky_grid, z=kz_grid)
 
 net_to_gross_grid = bores.uniform_grid(grid_shape=grid_shape, value=1.0)
 
@@ -504,7 +504,7 @@ gas_oil_table = bores.TwoPhaseRelPermTable(
 # Immobile connate water — krw = 0 for all Sw <= 1
 sw_values = bores.array([0.0, 0.12, 1.0])
 krw_values = bores.array([0.0, 0.0, 0.0])  # connate water, never mobile
-krow_values = bores.array([1.0, 1.0, 0.0])  # kro = 1 at Sw=Swc, 0 at Sw=1
+krow_values = bores.array([1.0, 1.0, 0.0])  # kro = 1 at Sw=swc, 0 at Sw=1
 
 oil_water_table = bores.TwoPhaseRelPermTable(
     wetting_phase=bores.FluidPhase.WATER,

@@ -209,7 +209,7 @@ restored_config = type(config).load(data)
 If you create custom classes that need to be serialized, you can implement the `__dump__` and `__load__` methods:
 
 ```python
-from bores.serialization import Serializable
+from bores.serialization.base import Serializable
 
 class MyData(Serializable):
     def __init__(self, values):
@@ -289,13 +289,13 @@ The `to_file()` method saves any serializable object to a file. The `from_file()
 
 ```python
 import bores
-from bores.models import ReservoirModel
+from bores.model import BlackOil
 
 # Save a model to HDF5
 model.to_file("my_model.h5")
 
 # Load it back
-loaded_model = ReservoirModel.from_file("my_model.h5")
+loaded_model = BlackOil.from_file("my_model.h5")
 ```
 
 The `save` method is an alias for `to_file`, so you can use whichever reads better in your code:
@@ -317,7 +317,7 @@ store = ZarrStore("models.zarr")
 model.to_store(store)
 
 # Load from an existing store
-loaded_model = ReservoirModel.from_store(store)
+loaded_model = BlackOil.from_store(store)
 ```
 
 The `from_store()` method returns the first item in the store (or `None` if the store is empty). If the store contains multiple items, only the first is returned.
@@ -343,8 +343,8 @@ Reservoir models contain large arrays (porosity, permeability, saturations), so 
 model.to_file("reservoir_model.h5")
 
 # Load model
-from bores.models import ReservoirModel
-loaded_model = ReservoirModel.from_file("reservoir_model.h5")
+from bores.model import BlackOil
+loaded_model = BlackOil.from_file("reservoir_model.h5")
 ```
 
 ### `Timer` State

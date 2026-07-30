@@ -184,8 +184,8 @@ You can access these values programmatically through the constants system:
 ```python
 import bores
 
-print(bores.c.STANDARD_PRESSURE)     # 14.696 psi
-print(bores.c.STANDARD_TEMPERATURE)  # 60.0 F
+print(bores.c.STANDARD_PRESSURE_SI)     # 14.696 psi
+print(bores.c.STANDARD_TEMPERATURE_SI)  # 60.0 F
 ```
 
 ---

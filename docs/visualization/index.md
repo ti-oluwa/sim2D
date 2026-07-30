@@ -6,7 +6,7 @@ The default 3D module uses Plotly and renders in the browser. For GPU-accelerate
 
 All visualization is handled through `DataVisualizer` classes, one for each module. Each visualizer uses a registry of renderers that map plot types to rendering strategies. You pass in your data (typically from a `ModelState`) and get back a Plotly `Figure` or PyVista `Plotter` object that you can display interactively, save as an image, or embed in a report.
 
-The visualization modules are designed to work directly with BORES data structures. The 3D visualizers accept `ModelState` or `ReservoirModel` objects and can extract any registered property by name. The 1D and 2D visualizers work with numpy arrays, which you extract from states yourself. This gives you full control over data selection and transformation while keeping the plotting API clean.
+The visualization modules are designed to work directly with BORES data structures. The 3D visualizers accept `ModelState` or `BlackOil` objects and can extract any registered property by name. The 1D and 2D visualizers work with numpy arrays, which you extract from states yourself. This gives you full control over data selection and transformation while keeping the plotting API clean.
 
 ## Visualization Modules
 

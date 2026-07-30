@@ -30,7 +30,7 @@ These are the main entry points for building reservoir models and wells. The fac
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `reservoir_model()` | function | Build a `ReservoirModel` from raw grid data, fluid properties, and rock properties. Computes all derived PVT grids internally. |
+| `reservoir_model()` | function | Build a `BlackOil` from raw grid data, fluid properties, and rock properties. Computes all derived PVT grids internally. |
 | `injection_well()` | function | Build an `InjectionWell` with fluid, control, perforations, and schedule. |
 | `production_well()` | function | Build a `ProductionWell` with fluid, control, perforations, and schedule. |
 | `wells_()` | function | Combine multiple wells into a `Wells` collection for use in `Config`. |
@@ -54,7 +54,7 @@ model = bores.reservoir_model(
     thickness_grid=thickness,
     pressure_grid=pressure,
     rock_compressibility=3e-6,
-    absolute_permeability=bores.RockPermeability(
+    absolute_permeability=bores.Permeability(
         kx=bores.build_uniform_grid(shape, 100.0),
         ky=bores.build_uniform_grid(shape, 100.0),
         kz=bores.build_uniform_grid(shape, 10.0),
@@ -78,10 +78,10 @@ model = bores.reservoir_model(
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `ReservoirModel` | class | Immutable model holding all grid data, fluid properties, rock properties, and saturation state. Generic over `NDimension`. |
+| `BlackOil` | class | Immutable model holding all grid data, fluid properties, rock properties, and saturation state. Generic over `NDimension`. |
 | `FluidProperties` | class | Oil, gas, and water PVT properties at reservoir conditions. |
 | `RockProperties` | class | Porosity, permeability, and compressibility. |
-| `RockPermeability` | class | Directional permeability (kx, ky, kz). |
+| `Permeability` | class | Directional permeability (kx, ky, kz). |
 | `HysteresisState` | class | Historical saturation data for hysteresis tracking. |
 
 All data model classes are frozen `attrs` classes. You modify them using `attrs.evolve()` to create new instances with changed fields.
@@ -663,14 +663,14 @@ The constants system provides named, documented physical constants with unit inf
 | `Constants` | class | Container for all simulation constants. Access individual constants as attributes. |
 | `Constant` | class | A single constant with value, unit, and description. |
 | `ConstantsContext` | class | Context manager for temporarily modifying constant values. |
-| `c` | object | The global `Constants` instance. Access constants as `bores.c.STANDARD_PRESSURE`, `bores.c.GAS_CONSTANT`, etc. |
+| `c` | object | The global `Constants` instance. Access constants as `bores.c.STANDARD_PRESSURE_SI`, `bores.c.GAS_CONSTANT`, etc. |
 | `get_constant()` | function | Retrieve a constant by name string. |
 
 ```python
 import bores
 
-print(bores.c.STANDARD_PRESSURE)      # 14.696 psi
-print(bores.c.STANDARD_TEMPERATURE)   # 60.0 F
+print(bores.c.STANDARD_PRESSURE_SI)      # 14.696 psi
+print(bores.c.STANDARD_TEMPERATURE_SI)   # 60.0 F
 print(bores.c.GAS_CONSTANT)           # 10.7316 psi*ft³/(lbmol*R)
 ```
 

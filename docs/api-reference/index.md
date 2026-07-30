@@ -12,11 +12,11 @@ The correlations modules are the computational foundation of the simulator. Ever
 
 | Module | Description |
 | --- | --- |
-| `bores.correlations.core` | Scalar PVT correlation functions (single float inputs and outputs) |
+| `bores.correlations.scalars` | Scalar PVT correlation functions (single float inputs and outputs) |
 | `bores.correlations.arrays` | Array PVT correlation functions (numpy array inputs and outputs) |
 | `bores` | Top-level package re-exporting all public classes, functions, and constants |
 
-The scalar correlations in `bores.correlations.core` are also accessible through `bores.correlations` directly (via a wildcard re-export). The array correlations must be imported from `bores.correlations.arrays` explicitly.
+The scalar correlations in `bores.correlations.scalars` are also accessible through `bores.correlations` directly (via a wildcard re-export). The array correlations must be imported from `bores.correlations.arrays` explicitly.
 
 ---
 
@@ -25,7 +25,7 @@ The scalar correlations in `bores.correlations.core` are also accessible through
 **Scalar correlations** are for point calculations: computing a single property value from a single set of conditions. Use them for quick checks, unit conversions, or building custom PVT tables.
 
 ```python
-from bores.correlations.core import compute_oil_formation_volume_factor_standing
+from bores.correlations.scalars import compute_oil_formation_volume_factor_standing
 
 Bo = compute_oil_formation_volume_factor_standing(
     temperature=200.0,          # degrees F

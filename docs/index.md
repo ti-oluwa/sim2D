@@ -72,7 +72,7 @@ water_saturation, oil_saturation, gas_saturation = bores.build_saturation_grids(
 
 # Isotropic permeability: 100 mD
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 # Build the reservoir model
 model = bores.reservoir_model(

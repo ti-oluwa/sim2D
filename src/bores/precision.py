@@ -38,7 +38,7 @@ def set_dtype(dtype: npt.DTypeLike) -> None:
 
     :param dtype: The data type to set as default.
     """
-    _bores_dtype.set(dtype)
+    _bores_dtype.set(np.dtype(dtype))
 
 
 set_precision = set_dtype
@@ -51,7 +51,7 @@ def with_precision(dtype: npt.DTypeLike):
 
     :param dtype: The data type to set within the context.
     """
-    token = _bores_dtype.set(dtype)
+    token = _bores_dtype.set(np.dtype(dtype))
     try:
         yield
     finally:

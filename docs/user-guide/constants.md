@@ -53,9 +53,9 @@ if const is not None:
 
 | Constant | Value | Unit | Description |
 |---|---|---|---|
-| `STANDARD_PRESSURE` | 101325 | Pa | Standard atmospheric pressure (SI) |
+| `STANDARD_PRESSURE_SI` | 101325 | Pa | Standard atmospheric pressure (SI) |
 | `STANDARD_PRESSURE_IMPERIAL` | 14.696 | psi | Standard atmospheric pressure (Imperial) |
-| `STANDARD_TEMPERATURE` | 288.7056 | K | Standard temperature 15.6C (SI) |
+| `STANDARD_TEMPERATURE_SI` | 288.7056 | K | Standard temperature 15.6C (SI) |
 | `STANDARD_TEMPERATURE_IMPERIAL` | 60.0 | F | Standard temperature (Imperial) |
 | `STANDARD_TEMPERATURE_RANKINE` | 518.67 | R | Standard temperature (Rankine) |
 | `STANDARD_TEMPERATURE_CELSIUS` | 15.6 | C | Standard temperature (Celsius) |
@@ -64,9 +64,9 @@ if const is not None:
 
 | Constant | Value | Unit | Description |
 |---|---|---|---|
-| `STANDARD_WATER_DENSITY` | 998.2 | kg/m³ | Water density at standard conditions (SI) |
+| `STANDARD_WATER_DENSITY_SI` | 998.2 | kg/m³ | Water density at standard conditions (SI) |
 | `STANDARD_WATER_DENSITY_IMPERIAL` | 62.37 | lb/ft³ | Water density at standard conditions (Imperial) |
-| `STANDARD_AIR_DENSITY` | 1.225 | kg/m³ | Air density at standard conditions (SI) |
+| `STANDARD_AIR_DENSITY_SI` | 1.225 | kg/m³ | Air density at standard conditions (SI) |
 | `STANDARD_AIR_DENSITY_IMPERIAL` | 0.0765 | lb/ft³ | Air density at standard conditions (Imperial) |
 
 ### Molecular Weights
@@ -242,7 +242,7 @@ if const is not None:
 | `ACCELERATION_DUE_TO_GRAVITY_METER_PER_SECONDS_SQUARE` | 9.807 | m/s² | Standard gravity (SI) |
 | `ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE` | 32.174 | ft/s² | Standard gravity (Imperial) |
 | `ACCELERATION_DUE_TO_GRAVITY_FEET_PER_DAY_SQUARE` | 2.388e10 | ft/day² | Standard gravity (Imperial, daily basis) |
-| `GRAVITATIONAL_CONSTANT_LBM_FT_PER_LBF_S2` | 32.174 | lbm ft/(lbf s²) | gc conversion factor |
+| `GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2` | 32.174 | lbm ft/(lbf s²) | gc conversion factor |
 
 ### Numerical Thresholds
 

@@ -16,7 +16,7 @@ The phase identity tells BORES how to interpret the PVT data and which correlati
 
 ```python
 from bores.fluids import Fluid
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 
 # The simplest possible Fluid - just a name and phase
 # Properties fall back to built-in correlations using the reservoir_gas identity
@@ -47,7 +47,7 @@ The most common reason to create a `Fluid` is to attach measured or equation-of-
 import numpy as np
 import bores
 from bores.fluids import Fluid
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 from bores.tables.pvt import build_gas_pvt_data, PVTTable
 
 bores.use_32bit_precision()
@@ -110,7 +110,7 @@ The recommended approach is to attach a PVT table to your `Fluid` and then call 
 
 ```python
 from bores.fluids import Fluid
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 from bores.tables.pvt import PVTTable
 
 # Fluid with a PVT table attached
@@ -137,7 +137,7 @@ If you do not have a PVT table for the fluid, you can build pseudo-pressure from
 
 ```python
 from bores.fluids import Fluid
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 
 # Without a PVT table, BORES falls back to DAK Z-factor and Lee-Kesler viscosity
 # The specific_gravity and molecular_weight attributes come from WellFluid subclasses
@@ -153,7 +153,7 @@ If you already have a `PseudoPressureTable` from an external calculation, you ca
 
 ```python
 from bores.fluids import Fluid
-from bores.types import FluidPhase
+from bores.typing import FluidPhase
 from bores.tables.pseudo_pressure import PseudoPressureTable
 
 # Load a pre-built pseudo-pressure table
