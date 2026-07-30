@@ -4,8 +4,8 @@ import typing
 
 from typing_extensions import Self
 
-from bores.blackoil.pvt.regions import PVTRegions
-from bores.blackoil.satfunc.regions import SatFuncRegions
+from bores.blackoil.pvt.regions import PVT
+from bores.blackoil.satfunc.regions import SatFunc
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
@@ -16,14 +16,10 @@ __all__ = ["BlackOil"]
 
 class BlackOil(
     StoreSerializable,
-    fields={
-        "pvt": PVTRegions,
-        "satfunc": SatFuncRegions,
-        "unit_system": UnitSystem,
-    },
+    fields={"pvt": PVT, "satfunc": SatFunc, "unit_system": UnitSystem},
 ):
     """
-    Black-oil fluid physics model.
+    Black-oil fluid physics model/system.
 
     Holds the multi-region table objects that define the
     fluid physics for a black-oil simulation.
@@ -36,8 +32,8 @@ class BlackOil(
 
     def __init__(
         self,
-        pvt: PVTRegions,
-        satfunc: SatFuncRegions,
+        pvt: PVT,
+        satfunc: SatFunc,
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """

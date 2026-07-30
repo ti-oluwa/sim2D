@@ -11,7 +11,7 @@ This module provides three layers:
     (psi, °F, bbl/STB, ft³/SCF, cP, lbm/ft³, SCF/STB) unless documented
     otherwise.
 
-**Table layer** - `PVTTable`, `PVTTables`, `PVTRegions`
+**Table layer** - `PVTTable`, `PVTTables`, `PVT`
     Wraps `PVTData` with fast scipy / PCHIP interpolators.  Every primary
     property (Bo, μo, Rs, Bg, μg, z, Bw, μw) has a matching `*_dp` method
     that returns ∂/∂P via the derivative of the same interpolator - no
@@ -19,7 +19,7 @@ This module provides three layers:
     are pre-built into their own tables at construction time so simulation
     evaluation is a single interpolator call.
 
-**Region layer** - `PVTRegions`
+**Region layer** - `PVT`
     `Dict[int, PVTTables]` keyed by 1-based `PVTNUM` region index.
     `from_deck` builds all regions from a parsed `DeckFile`.
 

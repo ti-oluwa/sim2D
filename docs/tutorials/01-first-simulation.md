@@ -118,10 +118,10 @@ The oil specific gravity of 0.85 corresponds to roughly 35 degrees API, which is
 ```python
 # Isotropic permeability: 100 mD in all directions
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)
-permeability = bores.RockPermeability(x=perm_grid, y=perm_grid, z=perm_grid)
+permeability = bores.Permeability(x=perm_grid, y=perm_grid, z=perm_grid)
 ```
 
-Permeability controls how easily fluid flows through the rock. We use `bores.RockPermeability` to define permeability in each direction. For isotropic rock (same permeability everywhere), you can pass the same grid for x, y, and z. If you only provide the x-direction grid, BORES assumes isotropy and copies it to y and z automatically.
+Permeability controls how easily fluid flows through the rock. We use `bores.Permeability` to define permeability in each direction. For isotropic rock (same permeability everywhere), you can pass the same grid for x, y, and z. If you only provide the x-direction grid, BORES assumes isotropy and copies it to y and z automatically.
 
 A value of 100 mD is typical of a good quality sandstone reservoir. In the [next tutorial](02-building-models.md), you will learn how to create anisotropic permeability where vertical permeability differs from horizontal, which is very common in real reservoirs due to layered deposition.
 
@@ -130,7 +130,7 @@ A value of 100 mD is typical of a good quality sandstone reservoir. In the [next
     If your permeability is isotropic, you can pass just the x-direction grid and BORES will use it for all directions:
 
     ```python
-    permeability = bores.RockPermeability(x=perm_grid)
+    permeability = bores.Permeability(x=perm_grid)
     # y and z are automatically set equal to x
     ```
 

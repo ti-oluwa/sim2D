@@ -52,7 +52,7 @@ def _cell_index(dims: GridDimensions, i: int, j: int, k: int) -> int:
     return (i - 1) + (j - 1) * dims.nx + (k - 1) * dims.nx * dims.ny
 
 
-def make_well_from_records(
+def load_well_from_records(
     grid: Grid,
     welspecs_record: typing.Mapping[str, typing.Any],
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
@@ -164,7 +164,7 @@ def make_well_from_records(
     )
 
 
-def make_wells_from_records(
+def load_wells_from_records(
     grid: Grid,
     welspecs_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
@@ -179,14 +179,14 @@ def make_wells_from_records(
     Build a `Wells` container from every `WELSPECS`/`COMPDAT` record in a
     deck.
 
-    :param grid: Forwarded to `make_well_from_records`.
+    :param grid: Forwarded to `load_well_from_records`.
     :param welspecs_records: All parsed `WELSPECS` records in the deck.
     :param compdat_records: All parsed `COMPDAT` records in the deck.
     :param unit_system: The deck's unit system.
     :param injector_names: Well names that appear in `WCONINJE`. Every
         other well is built as `WellType.PRODUCER`. WELSPECS/COMPDAT alone
         don't say which a well is.
-    :param well_kwargs: Forwarded to every `make_well_from_records` call
+    :param well_kwargs: Forwarded to every `load_well_from_records` call
         (`wellbore_radius`, `tubing_inner_diameter`, etc. Deck has no
         per-well tubing-diameter keyword, so this is deck-wide).
     :returns: `Wells` keyed by well name.
@@ -201,7 +201,7 @@ def make_wells_from_records(
             wpimult_by_well.setdefault(record["well"], []).append(record)
 
     wells = {
-        record["well"]: make_well_from_records(
+        record["well"]: load_well_from_records(
             grid,
             welspecs_record=record,
             compdat_records=compdat_by_well.get(record["well"], []),
@@ -235,7 +235,7 @@ def from_deck_gas_rate(
     return value * c.MSCF_TO_SCF if unit_system is UnitSystem.FIELD else value
 
 
-def make_producer_control_from_record(
+def load_producer_control_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> ProducerControl:
     """
@@ -270,7 +270,7 @@ def make_producer_control_from_record(
     )
 
 
-def make_injector_control_from_record(
+def load_injector_control_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> InjectorControl:
     """
@@ -310,7 +310,7 @@ ECONOMIC_QUANTITY_FIELDS = {
 }
 
 
-def make_economic_limits_from_record(
+def load_economic_limits_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> typing.Tuple[EconomicLimit, ...]:
     """
@@ -363,14 +363,14 @@ def apply_economic_limits(
     for record in wecon_records:
         well_name = record["well"]
         current = controls[well_name]
-        new_limits = make_economic_limits_from_record(record, unit_system=unit_system)
+        new_limits = load_economic_limits_from_record(record, unit_system=unit_system)
         if new_limits:
             controls.set(
                 well_name, attrs.evolve(current, limits=current.limits + new_limits)
             )
 
 
-def make_controls_from_records(
+def load_controls_from_records(
     wconprod_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     wconinje_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     unit_system: UnitSystem,
@@ -387,17 +387,17 @@ def make_controls_from_records(
     """
     controls: typing.Dict[str, WellControl] = {}
     for record in wconprod_records:
-        controls[record["well"]] = make_producer_control_from_record(
+        controls[record["well"]] = load_producer_control_from_record(
             record, unit_system=unit_system
         )
     for record in wconinje_records:
-        controls[record["well"]] = make_injector_control_from_record(
+        controls[record["well"]] = load_injector_control_from_record(
             record, unit_system=unit_system
         )
     return WellControls(controls=controls)
 
 
-def make_groups_from_records(
+def load_groups_from_records(
     gruptree_records: typing.Sequence[typing.Mapping[str, typing.Any]],
 ) -> WellGroups:
     """
@@ -413,7 +413,7 @@ def make_groups_from_records(
     return WellGroups(groups=groups)
 
 
-def make_group_control_from_record(
+def load_group_control_from_record(
     record: typing.Mapping[str, typing.Any],
     *,
     is_injection: bool,
@@ -451,7 +451,7 @@ def make_group_control_from_record(
     )
 
 
-def make_group_controls_from_records(
+def load_group_controls_from_records(
     gconprod_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     gconinje_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     unit_system: UnitSystem,
@@ -466,11 +466,11 @@ def make_group_controls_from_records(
     """
     controls: typing.Dict[str, GroupControl] = {}
     for record in gconprod_records:
-        controls[record["group"]] = make_group_control_from_record(
+        controls[record["group"]] = load_group_control_from_record(
             record, is_injection=False, unit_system=unit_system
         )
     for record in gconinje_records:
-        controls[record["group"]] = make_group_control_from_record(
+        controls[record["group"]] = load_group_control_from_record(
             record, is_injection=True, unit_system=unit_system
         )
     return GroupControls(controls=controls)
@@ -498,7 +498,7 @@ def load_wells_from_deck(deck_file: DeckFile, grid: Grid) -> Wells:
     """
     :param deck_file: Parsed deck containing `WELSPECS`/`COMPDAT`/`WCONINJE`.
     :param grid: Grid built from the same deck, for completion depth lookups.
-    :param well_kwargs: Forwarded to `make_wells_from_records` (wellbore_radius, etc.).
+    :param well_kwargs: Forwarded to `load_wells_from_records` (wellbore_radius, etc.).
     :returns: Wells for every `WELSPECS`/`COMPDAT` well in the deck.
     :raises ValidationError: If the deck has no SPECGRID/DIMENS.
     """
@@ -512,7 +512,7 @@ def load_wells_from_deck(deck_file: DeckFile, grid: Grid) -> Wells:
     wconinje = deck_file.get("WCONINJE") or []
     wpimult = deck_file.get("WPIMULT")
     injector_names = {record["well"] for record in wconinje}
-    return make_wells_from_records(
+    return load_wells_from_records(
         grid=grid,
         welspecs_records=welspecs,
         compdat_records=compdat,
@@ -528,7 +528,7 @@ def load_well_controls_from_deck(deck_file: DeckFile) -> WellControls:
     :returns: `WellControls` for every well with a `WCONPROD` or `WCONINJE`
         record, with WECON limits merged in where present.
     """
-    controls = make_controls_from_records(
+    controls = load_controls_from_records(
         wconprod_records=deck_file.get("WCONPROD") or [],
         wconinje_records=deck_file.get("WCONINJE") or [],
         unit_system=deck_file.unit_system,
@@ -557,7 +557,7 @@ def load_groups_from_deck(deck_file: DeckFile) -> WellGroups:
         raise DeckParseError(
             "Cannot load well groups from deck. `GRUPTREE` is missing."
         )
-    return make_groups_from_records(gruptree)
+    return load_groups_from_records(gruptree)
 
 
 def load_group_controls_from_deck(deck_file: DeckFile) -> GroupControls:
@@ -573,7 +573,7 @@ def load_group_controls_from_deck(deck_file: DeckFile) -> GroupControls:
             "Cannot load well group controls from deck. `GCONPROD` and `GCONINJE` are both missing. "
             "Atleast one should be present."
         )
-    return make_group_controls_from_records(
+    return load_group_controls_from_records(
         gconprod_records=gconprod,
         gconinje_records=gconinje,
         unit_system=deck_file.unit_system,

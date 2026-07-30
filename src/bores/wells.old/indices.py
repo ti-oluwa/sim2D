@@ -4,7 +4,7 @@ import typing
 import attrs
 
 from bores.datastructures import ContextFlag
-from bores.reservoir import RockPermeability
+from bores.reservoir import Permeability
 from bores.solvers.base import to_1D_index
 from bores.typing import NDimensionalGrid, ThreeDimensions
 from bores.wells.base import Well, Wells
@@ -59,7 +59,7 @@ def build_wells_indices(
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     net_to_gross_grid: NDimensionalGrid[ThreeDimensions],
     wells: Wells[ThreeDimensions],
-    absolute_permeability: RockPermeability[ThreeDimensions],
+    absolute_permeability: Permeability[ThreeDimensions],
     regime_constant: float = -3 / 4,
 ) -> WellsIndices:
     """

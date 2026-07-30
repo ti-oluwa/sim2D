@@ -9,7 +9,7 @@ from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
 from bores.typing import IntCellArray
 
-__all__ = ["ReservoirRegions"]
+__all__ = ["Regions"]
 
 
 def _load_region_array(
@@ -31,7 +31,7 @@ def _load_region_array(
 
 
 @attrs.frozen(slots=True)
-class ReservoirRegions(StoreSerializable):
+class Regions(StoreSerializable):
     """
     Reservoir per-cell region assignments metadata.
 
@@ -47,7 +47,7 @@ class ReservoirRegions(StoreSerializable):
     pvt_region: typing.Optional[IntCellArray] = None
     """
     Shape (n_cells,) - PVT region index per cell (1-based).
-    Selects which PVTTables entry from PVTRegions applies.
+    Selects which PVTTables entry from PVT applies.
     Read from PVTNUM. Default: 1 everywhere.
     """
 
@@ -87,7 +87,7 @@ class ReservoirRegions(StoreSerializable):
         cls, deck_file: DeckFile, *, n_cells: int, use_default: bool = False
     ) -> Self:
         """
-        Build `ReservoirRegions` from a parsed DeckFile.
+        Build `Regions` from a parsed DeckFile.
 
         Missing keywords default to None (region 1 is assumed by callers).
 
@@ -95,7 +95,7 @@ class ReservoirRegions(StoreSerializable):
         :param n_cells: Number of active cells, for validation.
         :param use_default: If True, missing keywords are filled with region 1.
             Else, they are left as None. Default: False.
-        :returns: `ReservoirRegions` object loaded from ECLIPSE deck.
+        :returns: `Regions` object loaded from ECLIPSE deck.
         """
         default_region = 1 if use_default else None
         return cls(

@@ -97,7 +97,7 @@ oil_sg = bores.build_uniform_grid(grid_shape, value=0.85)  # ~35 deg API
 
 # Isotropic permeability: 100 mD in all directions
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)
-permeability = bores.RockPermeability(x=perm_grid, y=perm_grid, z=perm_grid)
+permeability = bores.Permeability(x=perm_grid, y=perm_grid, z=perm_grid)
 
 # ---------------------------------------------------------------------------
 # Step 3: Build the reservoir model

@@ -6,12 +6,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import RectBivariateSpline  # type: ignore[import-untyped]
 
+from bores.blackoil.fluids.simple import Fluid
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.tables import PVTTable
 from bores.constants import c
 from bores.correlations import arrays, scalars
 from bores.errors import ValidationError
-from bores.fluids import Fluid
 from bores.precision import get_dtype
 from bores.typing import (
     FluidPhase,

@@ -42,12 +42,12 @@ from bores.typing import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["PVTRegions", "load_pvt_regions"]
+__all__ = ["PVT", "load_pvt_regions"]
 
 
 @attrs.frozen(slots=True)
 class PVTRegion(Serializable):
-    """Collection of PVT tables and static properties for a single Eclipse PVT region."""
+    """A collection of PVT tables and static properties for a single Eclipse PVT region."""
 
     static: StaticPVT
     """Static PVT properties for this region (e.g. DENSITY, VISCOSITY)."""
@@ -91,7 +91,7 @@ class PVTRegion(Serializable):
         )
 
 
-class PVTRegions(StoreSerializable):
+class PVT(StoreSerializable):
     """
     Multi-region PVT tables keyed by 1-based `PVTNUM` region index.
 
@@ -105,7 +105,7 @@ class PVTRegions(StoreSerializable):
     Example:
 
     ```python
-    pvt = PVTRegions.from_deck(deck_file, temperature=200.0)
+    pvt = PVT.from_deck(deck_file, temperature=200.0)
     region = pvt.region(pvtnum_array[cell_idx])
     bo = region.tables.oil.formation_volume_factor(p, t)
     ```
@@ -121,7 +121,7 @@ class PVTRegions(StoreSerializable):
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Build a `PVTRegions` from a pre-built regions dict.
+        Build a `PVT` from a pre-built regions dict.
 
         :param regions: Mapping from 1-based PVTNUM index to `PVTRegion`.
         :param unit_system: Expected unit system for all regions. If omitted,
@@ -179,7 +179,7 @@ class PVTRegions(StoreSerializable):
         Convenience factory for the common single-region case.
 
         :param region: `PVTRegion` instance.
-        :returns: `PVTRegions` with one entry at key 1.
+        :returns: `PVT` with one entry at key 1.
         """
         return cls(regions={1: region})
 
@@ -206,7 +206,7 @@ class PVTRegions(StoreSerializable):
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param validate: Run physical-consistency checks.
         :param warn_on_extrapolation: Log warnings on extrapolation.
-        :returns: `PVTRegions` keyed by 1-based PVTNUM index.
+        :returns: `PVT` keyed by 1-based PVTNUM index.
         """
         regions = load_pvt_regions(
             deck_file=deck_file,
@@ -228,10 +228,10 @@ class PVTRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `PVTRegions` with all region tables converted to *target*.
+        Return a new `PVT` with all region tables converted to *target*.
 
         :param target: Target `UnitSystem`.
-        :returns: New `PVTRegions` in *target* units.
+        :returns: New `PVT` in *target* units.
         """
         return self.__class__(
             regions={
@@ -356,7 +356,7 @@ def _generate_temperature_axis(
             depths = np.linspace(min_value, max_value, count, dtype=dtype)
         else:
             warnings.warn(
-                "TemperatureGradient without a `depth_range`: falling back to a "
+                "`TemperatureGradient` without a `depth_range`: falling back to a "
                 "minimal bracket around the reference temperature. Pass the "
                 "region's actual cell-depth extent for a physically accurate "
                 "temperature axis.",
@@ -459,7 +459,7 @@ def _build_oil_data_from_pvto(
 
     if len(solution_gor_to_rows) < 2:
         raise ValidationError(
-            f"PVTO table requires at least 2 Rs values; got {len(solution_gor_to_rows)}."
+            f"`PVTO` table requires at least 2 Rs values; got {len(solution_gor_to_rows)}."
         )
 
     solution_gor_keys = sorted(solution_gor_to_rows.keys())
@@ -515,7 +515,7 @@ def _build_oil_data_from_pvto(
     )
     if len(reference_rows) < 2:
         raise ValidationError(
-            "PVTO table has no Rs group with an undersaturated (>1 row) "
+            "`PVTO` table has no Rs group with an undersaturated (>1 row) "
             "branch; cannot extrapolate undersaturated properties for the "
             "single-row Rs groups."
         )
@@ -523,30 +523,30 @@ def _build_oil_data_from_pvto(
     reference_pressure_arr = np.array(
         [row["pressure"] for row in reference_rows], dtype=dtype
     )
-    reference_bo_arr = np.array([row["bo"] for row in reference_rows], dtype=dtype)
-    reference_visc_arr = np.array(
+    reference_oil_fvf_arr = np.array([row["bo"] for row in reference_rows], dtype=dtype)
+    reference_viscosity_arr = np.array(
         [row["viscosity"] for row in reference_rows], dtype=dtype
     )
     reference_delta_pressure = reference_pressure_arr - reference_pressure_arr[0]
-    reference_delta_bo = reference_bo_arr - reference_bo_arr[0]
-    reference_visc_ratio = reference_visc_arr / reference_visc_arr[0]
+    reference_delta_oil_fvf = reference_oil_fvf_arr - reference_oil_fvf_arr[0]
+    reference_viscosity_ratio = reference_viscosity_arr / reference_viscosity_arr[0]
 
     # ΔBo(ΔP) and viscosity-ratio(ΔP) relative to the reference branch's own
     # saturated point, so they can be applied to any other Rs group's
     # saturated point regardless of its own pressure scale.
-    delta_bo_of_dp = interp1d(
+    delta_oil_fvf_of_dp = interp1d(
         reference_delta_pressure,
-        reference_delta_bo,
+        reference_delta_oil_fvf,
         kind="linear",
         bounds_error=False,
-        fill_value=(reference_delta_bo[0], reference_delta_bo[-1]),
+        fill_value=(reference_delta_oil_fvf[0], reference_delta_oil_fvf[-1]),
     )
-    visc_ratio_of_dp = interp1d(
+    viscosity_ratio_of_dp = interp1d(
         reference_delta_pressure,
-        reference_visc_ratio,
+        reference_viscosity_ratio,
         kind="linear",
         bounds_error=False,
-        fill_value=(reference_visc_ratio[0], reference_visc_ratio[-1]),
+        fill_value=(reference_viscosity_ratio[0], reference_viscosity_ratio[-1]),
     )
 
     # Per-Rs interpolators for the full (saturated + undersaturated) branch
@@ -571,12 +571,12 @@ def _build_oil_data_from_pvto(
             if len(extra_dp) == 0:
                 extra_dp = np.array([1.0], dtype=dtype)
             extra_pressures = pressure_arr[0] + extra_dp
-            extra_bo = oil_fvf_arr[0] + delta_bo_of_dp(extra_dp)
-            extra_visc = oil_viscosity_arr[0] * visc_ratio_of_dp(extra_dp)
+            extra_oil_fvf = oil_fvf_arr[0] + delta_oil_fvf_of_dp(extra_dp)
+            extra_viscosity = oil_viscosity_arr[0] * viscosity_ratio_of_dp(extra_dp)
 
             pressure_arr = np.concatenate([pressure_arr, extra_pressures])
-            oil_fvf_arr = np.concatenate([oil_fvf_arr, extra_bo])
-            oil_viscosity_arr = np.concatenate([oil_viscosity_arr, extra_visc])
+            oil_fvf_arr = np.concatenate([oil_fvf_arr, extra_oil_fvf])
+            oil_viscosity_arr = np.concatenate([oil_viscosity_arr, extra_viscosity])
             order = np.argsort(pressure_arr)
             pressure_arr = pressure_arr[order]
             oil_fvf_arr = oil_fvf_arr[order]
@@ -602,11 +602,11 @@ def _build_oil_data_from_pvto(
         )
 
     # Rs(P) on the saturated branch via inverse of Pb(Rs).
-    # Pb must be monotonically increasing with Rs for a well-formed PVTO table.
+    # Pb must be monotonically increasing with Rs for a well-formed `PVTO` table.
     # If not strictly monotone, we clip safely.
     if not np.all(np.diff(bubble_point_pressure_values) > 0):
         warnings.warn(
-            "PVTO bubble-point pressures are not strictly increasing with Rs. "
+            "`PVTO` bubble-point pressures are not strictly increasing with Rs. "
             "Rs(P) inversion may be inaccurate for some pressure values.",
             UserWarning,
             stacklevel=4,
@@ -670,7 +670,7 @@ def _build_oil_data_from_pvto(
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
     # Compressibility must be non-negative; clamp to physical range
     _clip_compressibility(
-        oil_compressibility_2d, dtype=dtype, context="PVTO oil compressibility"
+        oil_compressibility_2d, dtype=dtype, context="`PVTO` oil compressibility"
     )
     return PVTData(
         phase=FluidPhase.OIL,
@@ -732,7 +732,9 @@ def _build_oil_data_from_pvdo(
 
     rows = sorted(pvdo_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
-        raise ValidationError(f"PVDO table requires at least 2 rows; got {len(rows)}.")
+        raise ValidationError(
+            f"`PVDO` table requires at least 2 rows; got {len(rows)}."
+        )
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
     oil_fvf_1d = np.array([row["bo"] for row in rows], dtype=dtype)
@@ -740,11 +742,11 @@ def _build_oil_data_from_pvdo(
     n_p = len(pressures)
 
     if not np.all(np.diff(pressures) > 0):
-        raise ValidationError("PVDO pressures must be strictly increasing.")
+        raise ValidationError("`PVDO` pressures must be strictly increasing.")
     if np.any(oil_fvf_1d <= 0):
-        raise ValidationError("PVDO Bo values must be positive.")
+        raise ValidationError("`PVDO` Bo values must be positive.")
     if np.any(oil_viscosity_1d <= 0):
-        raise ValidationError("PVDO viscosity values must be positive.")
+        raise ValidationError("`PVDO` viscosity values must be positive.")
 
     oil_fvf_2d = _broadcast_to_2d(oil_fvf_1d, n_t)
     oil_viscosity_2d = _broadcast_to_2d(oil_viscosity_1d, n_t)
@@ -766,7 +768,7 @@ def _build_oil_data_from_pvdo(
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
     _clip_compressibility(
-        oil_compressibility_2d, dtype=dtype, context="PVDO oil compressibility"
+        oil_compressibility_2d, dtype=dtype, context="`PVDO` oil compressibility"
     )
 
     return PVTData(
@@ -823,7 +825,9 @@ def _build_gas_data_from_pvdg(
 
     rows = sorted(pvdg_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
-        raise ValidationError(f"PVDG table requires at least 2 rows; got {len(rows)}.")
+        raise ValidationError(
+            f"`PVDG` table requires at least 2 rows; got {len(rows)}."
+        )
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
     # Eclipse reports Bg in rb/Mscf under FIELD units only; METRIC/LAB decks
@@ -837,11 +841,11 @@ def _build_gas_data_from_pvdg(
     gas_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
     if not np.all(np.diff(pressures) > 0):
-        raise ValidationError("PVDG pressures must be strictly increasing.")
+        raise ValidationError("`PVDG` pressures must be strictly increasing.")
     if np.any(gas_fvf_1d <= 0):
-        raise ValidationError("PVDG Bg values must be positive.")
+        raise ValidationError("`PVDG` Bg values must be positive.")
     if np.any(gas_viscosity_1d <= 0):
-        raise ValidationError("PVDG viscosity values must be positive.")
+        raise ValidationError("`PVDG` viscosity values must be positive.")
 
     n_p = len(pressures)
     gas_fvf_2d = _broadcast_to_2d(gas_fvf_1d, n_t)
@@ -862,7 +866,7 @@ def _build_gas_data_from_pvdg(
         dbg_dp = PchipInterpolator(pressures, gas_fvf_2d[:, j]).derivative(1)(pressures)
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
     _clip_compressibility(
-        gas_compressibility_2d, dtype=dtype, context="PVDG gas compressibility"
+        gas_compressibility_2d, dtype=dtype, context="`PVDG` gas compressibility"
     )
 
     return PVTData(
@@ -925,7 +929,7 @@ def _build_gas_data_from_pvtg(
 
     if len(pressure_to_rows) < 2:
         raise ValidationError(
-            f"PVTG table requires at least 2 pressure values; got {len(pressure_to_rows)}."
+            f"`PVTG` table requires at least 2 pressure values; got {len(pressure_to_rows)}."
         )
 
     pressure_keys = sorted(pressure_to_rows.keys())
@@ -933,12 +937,12 @@ def _build_gas_data_from_pvtg(
     n_p = len(pressure_values)
 
     if not np.all(np.diff(pressure_values) > 0):
-        raise ValidationError("PVTG pressures must be strictly increasing.")
+        raise ValidationError("`PVTG` pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups -> common Rv grid
     all_rv = sorted({row["rv"] for rows in pressure_to_rows.values() for row in rows})
     if len(all_rv) < 1:
-        raise ValidationError("PVTG table contains no Rv values.")
+        raise ValidationError("`PVTG` table contains no Rv values.")
 
     rv_values = np.array(all_rv, dtype=dtype)
     n_rv = len(rv_values)
@@ -961,11 +965,11 @@ def _build_gas_data_from_pvtg(
 
         if np.any(gas_fvf_arr <= 0):
             raise ValidationError(
-                f"PVTG Bg values must be positive at pressure {pressure_key} psi."
+                f"`PVTG` Bg values must be positive at pressure {pressure_key} psi."
             )
         if np.any(gas_viscosity_arr <= 0):
             raise ValidationError(
-                f"PVTG viscosity values must be positive at pressure {pressure_key} psi."
+                f"`PVTG` viscosity values must be positive at pressure {pressure_key} psi."
             )
 
         # If this pressure group has only one Rv point, broadcast it
@@ -1004,7 +1008,7 @@ def _build_gas_data_from_pvtg(
 
     if not np.all(np.diff(rv_max_sorted) > 0):
         warnings.warn(
-            "PVTG dew-point Rv envelope (max Rv per tabulated pressure) is not "
+            "`PVTG` dew-point Rv envelope (max Rv per tabulated pressure) is not "
             "strictly monotonic. Dew-point pressure lookups may be inaccurate "
             "for some Rv values.",
             UserWarning,
@@ -1056,7 +1060,7 @@ def _build_gas_data_from_pvtg(
         )
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
     _clip_compressibility(
-        gas_compressibility_2d, dtype=dtype, context="PVTG gas compressibility"
+        gas_compressibility_2d, dtype=dtype, context="`PVTG` gas compressibility"
     )
 
     # Rv table: shape (n_p, n_rv) - same Rv values at every pressure
@@ -1142,11 +1146,11 @@ def _build_water_data_from_pvtw(
     water_viscosibility = pvtw_record.get("cv", 0.0)
 
     if reference_water_fvf <= 0:
-        raise ValidationError("PVTW Bw must be positive.")
+        raise ValidationError("`PVTW` Bw must be positive.")
     if water_compressibility < 0:
-        raise ValidationError("PVTW cw (compressibility) must be non-negative.")
+        raise ValidationError("`PVTW` cw (compressibility) must be non-negative.")
     if reference_water_viscosity <= 0:
-        raise ValidationError("PVTW viscosity must be positive.")
+        raise ValidationError("`PVTW` viscosity must be positive.")
 
     min_pressure = max(0.0, reference_pressure / 10.0)
     max_pressure = reference_pressure * 10.0
@@ -1230,7 +1234,7 @@ def load_pvt_regions(
     dtype: npt.DTypeLike = None,
 ) -> typing.Dict[int, PVTRegion]:
     """
-    Build a `PVTRegions` object from a parsed `DeckFile`.
+    Build a `PVT` object from a parsed `DeckFile`.
 
     Detects which Eclipse PVT keywords are present and builds one
     `PVTRegion` per `PVTNUM` region:
@@ -1433,19 +1437,19 @@ def load_pvt_regions(
         logger.debug(
             "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s, salinity=%.0f ppm",
             pvtnum,
-            "PVTO"
+            "`PVTO`"
             if pvto_all and region_idx < len(pvto_all)
-            else "PVDO"
+            else "`PVDO`"
             if pvdo_all and region_idx < len(pvdo_all)
-            else "PVCO"
+            else "`PVCO`"
             if pvco_all and region_idx < len(pvco_all)
             else "none",
-            "PVTG"
+            "`PVTG`"
             if pvtg_all and region_idx < len(pvtg_all)
-            else "PVDG"
+            else "`PVDG`"
             if pvdg_all and region_idx < len(pvdg_all)
             else "none",
-            "PVTW" if pvtw_all and region_idx < len(pvtw_all) else "none",
+            "`PVTW`" if pvtw_all and region_idx < len(pvtw_all) else "none",
             salinity,
         )
     return regions

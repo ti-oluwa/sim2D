@@ -342,10 +342,10 @@ class PVTDataSet(StoreSerializable):
     ```python
     # Build and persist raw data
     dataset = PVTDataSet(oil=oil_data, gas=gas_data, water=water_data)
-    dataset.save("run/pvt_data.h5")
+    dataset.save("run/pvt.h5")
 
     # Reload and build tables with a specific interpolation config
-    dataset = PVTDataSet.load("run/pvt_data.h5")
+    dataset = PVTDataSet.load("run/pvt.h5")
     tables = PVTTables.from_dataset(dataset, interpolation_method="cubic")
     ```
     """

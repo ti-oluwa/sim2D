@@ -21,7 +21,7 @@ class BlackOilModelState(Serializable):
     reservoir: ReservoirState
     wells: typing.Optional[WellsStates] = None
     time: Number = 0.0
-    """Simulation time this state corresponds to (days)."""
+    """Simulation time this state corresponds to (in `unit_system`)."""
 
     def __attrs_post_init__(self) -> None:
         if (

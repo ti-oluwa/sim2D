@@ -74,7 +74,7 @@ Sw, So, Sg = bores.build_saturation_grids(
 )
 
 perm_grid = bores.build_uniform_grid(grid_shape, value=150.0)
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 model = bores.reservoir_model(
     grid_shape=grid_shape,
@@ -104,7 +104,7 @@ The setup is similar to the first tutorial with a few differences. The oil visco
 
 We use `build_saturation_grids()` to compute physically consistent initial saturations from the fluid contact depths. The GOC is placed above the reservoir (no gas cap) and the OWC near the bottom, giving us an oil-filled reservoir with connate water. This approach ensures $S_o + S_w + S_g = 1.0$ in every cell and uses the correct residual saturations for each zone.
 
-Note that we pass only the x-direction permeability to `RockPermeability`. BORES automatically copies it to y and z, giving us isotropic permeability with less code.
+Note that we pass only the x-direction permeability to `Permeability`. BORES automatically copies it to y and z, giving us isotropic permeability with less code.
 
 ---
 

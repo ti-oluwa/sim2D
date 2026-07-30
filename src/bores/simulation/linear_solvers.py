@@ -224,12 +224,10 @@ def make_polynomial_preconditioner(
     def matvec(x: npt.NDArray) -> npt.NDArray:
         """Apply polynomial preconditioner: (I + αA + α²A² + ...) x"""
         result = terms[0] * x  # Identity term
-
         A_x = x
         for i in range(1, degree + 1):
             A_x = A_csr @ A_x
             result = result + terms[i] * A_x
-
         return result
 
     return LinearOperator(shape=A_csr.shape, matvec=matvec)  # type: ignore[arg-type]
@@ -610,7 +608,6 @@ class CachedPreconditionerFactory:
         :return: Preconditioner (cached or newly built)
         """
         should_rebuild = self._should_recompute(A_csr)
-
         if should_rebuild:
             logger.debug(
                 f"Rebuilding {self._name} preconditioner (call #{self._call_count}, "
@@ -1130,9 +1127,9 @@ def scale_linear_system(
             abs_diagonal if abs_diagonal is not None else np.abs(J.diagonal())
         )
         abs_diagonal[abs_diagonal < epsilon] = 1.0
-        inverse_diag_scale = 1.0 / abs_diagonal
+        inverse_diagional_scale = 1.0 / abs_diagonal
 
-        J = J @ diags(inverse_diag_scale)
-        column_scaling_vector = inverse_diag_scale
+        J = J @ diags(inverse_diagional_scale)
+        column_scaling_vector = inverse_diagional_scale
 
     return J, R, column_scaling_vector  # type: ignore[return-value]  # ty:ignore[invalid-return-type]

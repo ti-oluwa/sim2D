@@ -1,4 +1,4 @@
-"""Base API for reservoir fluids."""
+"""Base API for Black-oil physics based fluid."""
 
 import logging
 import typing
@@ -44,7 +44,7 @@ def _validate_pseudo_pressure_phase(
 @attrs.frozen(slots=True)
 class Fluid(StoreSerializable):
     """
-    Base class for all reservoir fluids.
+    Black-oil physics based fluid.
 
     Carries phase identity and optional PVT / pseudo-pressure tables.
     """
@@ -76,7 +76,7 @@ class Fluid(StoreSerializable):
         validator=attrs.validators.optional(_validate_pseudo_pressure_phase),
     )
     """
-    Optional pre-built gas pseudo-pressure table.  **Gas phase only.**
+    Optional pre-built gas pseudo-pressure table. **Gas phase only.**
 
     If `None`, `get_pseudo_pressure_table` builds a table automatically
     from `pvt` interpolators (preferred) or from correlations
@@ -99,11 +99,11 @@ class Fluid(StoreSerializable):
         pvt_hash: typing.Optional[tuple] = None
         if self.pvt is not None:
             bounds = getattr(self.pvt, "_extrapolation_bounds", {})
-            p_b = bounds.get("pressure", (0.0, 0.0))
-            t_b = bounds.get("temperature", (0.0, 0.0))
+            pressure_bound = bounds.get("pressure", (0.0, 0.0))
+            temperature_bound = bounds.get("temperature", (0.0, 0.0))
             pvt_hash = (
-                (round(p_b[0], 2), round(p_b[1], 2)),
-                (round(t_b[0], 2), round(t_b[1], 2)),
+                (round(pressure_bound[0], 2), round(pressure_bound[1], 2)),
+                (round(temperature_bound[0], 2), round(temperature_bound[1], 2)),
                 getattr(self.pvt, "interpolation_method", None),
                 self.pvt.exists("compressibility_factor"),
                 self.pvt.exists("viscosity"),
@@ -115,11 +115,11 @@ class Fluid(StoreSerializable):
             gas_table = getattr(pvt_tables, "gas", None)
             if gas_table is not None:
                 bounds = getattr(gas_table, "_extrapolation_bounds", {})
-                p_b = bounds.get("pressure", (0.0, 0.0))
-                t_b = bounds.get("temperature", (0.0, 0.0))
+                pressure_bound = bounds.get("pressure", (0.0, 0.0))
+                temperature_bound = bounds.get("temperature", (0.0, 0.0))
                 global_pvt_hash = (
-                    (round(p_b[0], 2), round(p_b[1], 2)),
-                    (round(t_b[0], 2), round(t_b[1], 2)),
+                    (round(pressure_bound[0], 2), round(pressure_bound[1], 2)),
+                    (round(temperature_bound[0], 2), round(temperature_bound[1], 2)),
                     getattr(gas_table, "interpolation_method", None),
                     gas_table.exists("compressibility_factor"),
                     gas_table.exists("viscosity"),
@@ -170,7 +170,7 @@ class Fluid(StoreSerializable):
            and `viscosity`) when the fluid carries its own PVT table.
         3. Build from `pvt_tables.gas` interpolators when a global
            `PVTTables` bundle is passed and its gas slot has the required
-           interpolators.  Useful when the fluid itself has no `pvt`
+           interpolators. Useful when the fluid itself has no `pvt`
            but the simulator holds a shared bundle.
         4. Fall back to DAK Z-factor / Lee-Kesler viscosity correlations using
            `self.specific_gravity` (available on `WellFluid` subclasses).
@@ -184,7 +184,7 @@ class Fluid(StoreSerializable):
         :param pressure_range: `(p_min, p_max)` for table construction (psi).
         :param points: Number of integration points (default 200).
         :param pvt_tables: Optional global `PVTTables`
-            bundle.  Its `gas` slot is consulted when `self.pvt` is
+            bundle. Its `gas` slot is consulted when `self.pvt` is
             `None` or lacks the required interpolators.
         :param use_cache: Use global pseudo-pressure table cache.
         :return: `PseudoPressureTable`.

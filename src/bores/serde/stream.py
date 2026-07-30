@@ -38,7 +38,8 @@ _stop_io = 0  # Signal for stopping I/O thread
 
 class DataStream(typing.Generic[SerializableT]):
     """
-    Memory-efficient stream for iterating any `Serializable` item with optional persistence.
+    Memory-efficient stream for iterating any `Serializable` item
+    with optional persistence in a `DataStore`.
 
     Wraps a generator/iterator of `SerializableT` items and optionally persists them to
     a `DataStore` as they're yielded, immediately freeing memory. Supports batching for

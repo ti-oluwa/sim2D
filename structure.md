@@ -5,17 +5,19 @@ Reservoir
 ├── Grid
 ├── Rock
 ├── Faults
-├── ReservoirRegions
+├── Regions
 └── Geometry
 
 BlackOil
 ├── PVT
-└── SaturationFunction
+└── SatFunc
 
-Simulation
-├── model
-├── schedule
-└── summary
+Simulation[ModelT, StateT]
+├── ModelT
+├── Spec
+├── Timer
+├── Schedule[ModelT, StateT]
+└── Summary[ModelT, StateT]
 ```
 
 SolverWorkspace -for reducing allocations for every iteration
@@ -36,4 +38,4 @@ So my naming convention would be:
 
 Physical/property fields: singular (porosity, pressure, temperature)
 Region-number fields: singular (pvt_region, rock_region, equilibrium_region)
-Collections of tables: plural (PVTTables, SatFuncTables, RockCompressibilityRegions)
+Collections of tables: plural (PVTTables, SatFuncTables, RockCompressibilityTables)

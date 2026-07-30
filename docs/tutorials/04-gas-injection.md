@@ -74,7 +74,7 @@ Sw, So, Sg = bores.build_saturation_grids(
 )
 
 perm_grid = bores.build_uniform_grid(grid_shape, value=150.0)
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 model = bores.reservoir_model(
     grid_shape=grid_shape,

@@ -83,7 +83,7 @@ depth = bores.build_depth_grid(thickness, datum=5000.0)  # Top at 5000 ft
 
 # Isotropic permeability: 100 mD
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 # Build the reservoir model
 model = bores.reservoir_model(

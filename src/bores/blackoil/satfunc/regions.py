@@ -23,10 +23,10 @@ from bores.typing import Spacing, UnitSystem
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["SatFuncRegions"]
+__all__ = ["SatFunc"]
 
 
-class SatFuncRegions(StoreSerializable):
+class SatFunc(StoreSerializable):
     """
     Multi-region saturation-function tables keyed by 1-based `SATNUM` region index.
 
@@ -49,7 +49,7 @@ class SatFuncRegions(StoreSerializable):
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Build a `SatFuncRegions` from a pre-built regions dict.
+        Build a `SatFunc` from a pre-built regional tables dict.
 
         :param tables: Mapping from 1-based SATNUM index to `SatFuncTables`.
         :param unit_system: Expected unit system for all tables. If omitted,
@@ -108,7 +108,7 @@ class SatFuncRegions(StoreSerializable):
         Convenience factory for the common single-region case.
 
         :param tables: `SatFuncTables` instance.
-        :returns: `SatFuncRegions` with one entry at key 1.
+        :returns: `SatFunc` with one entry at key 1.
         """
         return cls(tables={1: tables})
 
@@ -120,13 +120,13 @@ class SatFuncRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `SatFuncRegions` with capillary pressure in every
+        Return a new `SatFunc` with capillary pressure in every
         region rescaled to *target*.
 
         Relative permeability is dimensionless and is unaffected.
 
         :param target: Target `UnitSystem`.
-        :returns: New `SatFuncRegions` in *target* units.
+        :returns: New `SatFunc` in *target* units.
         """
         return self.__class__(
             tables={
@@ -179,7 +179,7 @@ class SatFuncRegions(StoreSerializable):
             the capillary pressure table for each region. When `False`, skip
             capillary pressure entirely (useful for runs that ignore Pc).
         :param dtype: Array dtype shared by every region's tables.
-        :returns: `SatFuncRegions` keyed by 1-based SATNUM index.
+        :returns: `SatFunc` keyed by 1-based SATNUM index.
         :raises ValidationError: If no recognised saturation-function keywords
             are found.
         """
@@ -198,7 +198,7 @@ class SatFuncRegions(StoreSerializable):
         if n_regions == 0:
             raise ValidationError(
                 "No recognised saturation-function keywords found in the DeckFile. "
-                "Expected one of: SWOF, SGOF (first family) or SWFN, SGFN "
+                "Expected one of: `SWOF`, `SGOF` (first family) or `SWFN`, `SGFN` "
                 "(second family)."
             )
 
@@ -236,7 +236,7 @@ class SatFuncRegions(StoreSerializable):
                 capillary_pressure=capillary_pressure,
             )
             logger.debug(
-                "Built rock-fluid tables for SATNUM region %d (capillary_pressure=%s)",
+                "Built rock-fluid tables for `SATNUM` region %d (capillary_pressure=%s)",
                 satnum,
                 include_capillary_pressure,
             )

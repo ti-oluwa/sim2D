@@ -14,12 +14,12 @@ import warnings
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.pvt.regions import PVTRegions
+from bores.blackoil.pvt.regions import PVT
 from bores.blackoil.pvt.tables import PVTTable
 from bores.blackoil.satfunc.capillary_pressure.tables import (
     CapillaryPressureTable,
 )
-from bores.blackoil.satfunc.regions import SatFuncRegions
+from bores.blackoil.satfunc.regions import SatFunc
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -758,11 +758,11 @@ def _initialize_tilted_subdivision_equilibrium(
 
 def initialize_equilibrium_arrays(
     reservoir: Reservoir,
-    pvt: PVTRegions,
+    pvt: PVT,
     equilibrium: EquilibriumRegions,
     temperature: CellArray,
     *,
-    satfunc: typing.Optional[SatFuncRegions] = None,
+    satfunc: typing.Optional[SatFunc] = None,
     depth_step: Number = 1.0,
     dtype: npt.DTypeLike = None,
     saturation_samples: int = N_SATURATION_SAMPLES,
@@ -773,7 +773,7 @@ def initialize_equilibrium_arrays(
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
 
-    :param satfunc: Optional `SatFuncRegions`; when given, saturations
+    :param satfunc: Optional `SatFunc`; when given, saturations
         are computed via capillary-pressure inversion instead of a sharp
         contact (see `_get_saturations_from_capillary_pressure`). Doing so
         requires a `SATNUM` region per cell to select the right
@@ -963,7 +963,7 @@ def _get_temperature_array_from_regions(
 ) -> CellArray:
     """
     Evaluate a `Temperature` at every cell's depth, grouped by `PVTNUM` (the
-    same grain `PVTRegions.from_deck` resolves `Temperature` against, so PVT
+    same grain `PVT.from_deck` resolves `Temperature` against, so PVT
     tables and this array stay consistent).
 
     Duck-types each region's spec: a bare number is broadcast, anything
@@ -1026,11 +1026,11 @@ def _resolve_temperature(
 
 def initialize_reservoir_state(
     reservoir: Reservoir,
-    pvt: PVTRegions,
+    pvt: PVT,
     *,
     deck_file: typing.Optional[DeckFile] = None,
     equilibrium: typing.Optional[EquilibriumRegions] = None,
-    satfunc: typing.Optional[SatFuncRegions] = None,
+    satfunc: typing.Optional[SatFunc] = None,
     temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
     water_saturation: typing.Optional[CellArray] = None,
@@ -1071,7 +1071,7 @@ def initialize_reservoir_state(
     :param deck_file: Optional `DeckFile` to read explicit arrays from.
     :param equilibrium: Optional `EquilibriumRegions` for any fields not covered by an
         explicit array/keyword.
-    :param satfunc: Optional `SatFuncRegions` for capillary-pressure-based
+    :param satfunc: Optional `SatFunc` for capillary-pressure-based
         saturations instead of a sharp contact. If supplied and
         `reservoir.regions.saturation_region` (SATNUM) is unavailable, every
         cell defaults to saturation region 1 and a `UserWarning` is raised

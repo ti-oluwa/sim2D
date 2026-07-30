@@ -8,7 +8,7 @@ Construct realistic reservoir models with heterogeneous properties, anisotropic 
 
 In the [previous tutorial](01-first-simulation.md), you built a homogeneous reservoir with uniform properties everywhere. Real reservoirs are never that simple. Rock properties vary from layer to layer due to depositional history, permeability is typically lower in the vertical direction than horizontal, and the reservoir surface may be tilted (dipping) rather than perfectly flat.
 
-This tutorial teaches you how to construct models that capture these geological complexities using BORES's grid-building utilities. You will create layered porosity and permeability distributions, set up anisotropic permeability using `RockPermeability`, apply structural dip with `apply_structural_dip()`, and visualize the resulting model in 3D before running any simulation.
+This tutorial teaches you how to construct models that capture these geological complexities using BORES's grid-building utilities. You will create layered porosity and permeability distributions, set up anisotropic permeability using `Permeability`, apply structural dip with `apply_structural_dip()`, and visualize the resulting model in 3D before running any simulation.
 
 Building a realistic model is the foundation of any meaningful simulation study. The quality of your results depends directly on how well your model captures the key geological features that control fluid flow. Even when you are working with simplified models for screening studies, understanding how to introduce heterogeneity helps you assess whether your simplifications are reasonable.
 
@@ -89,10 +89,10 @@ kz_grid = bores.build_layered_grid(
     grid_shape=grid_shape, layer_values=kz_values, orientation="z"
 )
 
-permeability = bores.RockPermeability(x=kx_grid, y=ky_grid, z=kz_grid)
+permeability = bores.Permeability(x=kx_grid, y=ky_grid, z=kz_grid)
 ```
 
-The `RockPermeability` object holds separate permeability grids for each direction. Here, horizontal permeability (kx and ky) ranges from 50 mD in the tight zone to 300 mD in the best sand, while vertical permeability (kz) is set to 10% of horizontal in each layer. This 10:1 anisotropy ratio is a common starting assumption for sandstones, though real ratios can range from 2:1 in clean sands to 1000:1 in thinly laminated sequences.
+The `Permeability` object holds separate permeability grids for each direction. Here, horizontal permeability (kx and ky) ranges from 50 mD in the tight zone to 300 mD in the best sand, while vertical permeability (kz) is set to 10% of horizontal in each layer. This 10:1 anisotropy ratio is a common starting assumption for sandstones, though real ratios can range from 2:1 in clean sands to 1000:1 in thinly laminated sequences.
 
 The anisotropy has important implications for fluid flow. Water or gas injected at one location will spread more easily in the horizontal plane than it will migrate vertically between layers. This affects sweep efficiency, breakthrough times, and ultimate recovery.
 
@@ -287,7 +287,7 @@ When transitioning from tutorial models to real-world applications, keep these g
 
 1. **`build_layered_grid()`** creates grids with property values that vary along a specified axis, which is the natural way to represent geological layering.
 
-2. **`RockPermeability(x=..., y=..., z=...)`** defines anisotropic permeability, which is essential for realistic vertical flow modeling. Vertical permeability is typically 10-100x lower than horizontal.
+2. **`Permeability(x=..., y=..., z=...)`** defines anisotropic permeability, which is essential for realistic vertical flow modeling. Vertical permeability is typically 10-100x lower than horizontal.
 
 3. **Structural dip** (`dip_angle` and `dip_azimuth` in `reservoir_model()`) introduces gravity-driven flow that affects gas migration, water drainage, and well placement strategy.
 

@@ -21,7 +21,7 @@ from bores.reservoir import (
     BlackOil,
     FluidProperties,
     HysteresisState,
-    RockPermeability,
+    Permeability,
     RockProperties,
 )
 from bores.serde.base import Serializable
@@ -229,7 +229,7 @@ def validate_state(
                 )
             elif field.name == "absolute_permeability":
                 perm = value
-                rock_dict[field.name] = RockPermeability(
+                rock_dict[field.name] = Permeability(
                     x=_validate_array(
                         model_shape=model_shape,
                         grid=perm.x,

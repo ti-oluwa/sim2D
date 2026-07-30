@@ -22,7 +22,7 @@ import typing
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.pvt.regions import PVTRegions
+from bores.blackoil.pvt.regions import PVT
 from bores.precision import get_dtype
 from bores.typing import BooleanArray, CellArray, IntCellArray
 
@@ -153,7 +153,7 @@ def compute_pvt_cache(
     temperature: CellArray,
     solution_gas_oil_ratio: CellArray,
     pvt_region: IntCellArray,
-    pvt: PVTRegions,
+    pvt: PVT,
     salinity: typing.Optional[CellArray] = None,
     out: typing.Optional[PVTCache] = None,
     dtype: npt.DTypeLike = None,
@@ -190,8 +190,8 @@ def compute_pvt_cache(
     :param pvt_region: Shape `(n_cells,)` 1-based PVTNUM per cell, e.g.
         `reservoir.regions.pvt_region` (falls back to all-ones there when
         the deck had no `PVTNUM` keyword - pass that fallback through
-        yourself if calling this directly without going through `ReservoirRegions`).
-    :param pvt: `PVTRegions` to evaluate against - `bores.blackoil.
+        yourself if calling this directly without going through `Regions`).
+    :param pvt: `PVT` to evaluate against - `bores.blackoil.
         fluid.BlackOil.pvt`.
     :param salinity: Optional shape `(n_cells,)` water salinity (ppm NaCl).
         `None` uses each table's own default salinity throughout.

@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "RockCompressibility",
     "RockCompressibilityTable",
-    "RockCompressibilityRegions",
-    "load_rock_compressibility_regions",
+    "RockCompressibilityTables",
+    "load_rock_compressibility_tables",
 ]
 
 
@@ -422,7 +422,7 @@ class RockCompressibilityTable(StoreSerializable):
             validate=False,  # already validated at construction
         )
 
-    def to_rock_compressibility(
+    def get_compressibility(
         self,
         pressure: CellArray,
         unit_system: typing.Optional[UnitSystem] = None,
@@ -728,13 +728,13 @@ class RockCompressibilityTable(StoreSerializable):
         )
 
 
-class RockCompressibilityRegions(StoreSerializable):
+class RockCompressibilityTables(StoreSerializable):
     """
     Multi-region rock compressibility tables keyed by 1-based `ROCKNUM` index.
 
-    All tables in a `RockCompressibilityRegions` instance (should) share the same
+    All tables in a `RockCompressibilityTables` instance (should) share the same
     `unit_system` and `dtype` (enforced at construction by `from_deck`
-    and `load_rock_compressibility_regions`).
+    and `load_rock_compressibility_tables`).
     """
 
     __abstract_serializable__ = True
@@ -747,7 +747,7 @@ class RockCompressibilityRegions(StoreSerializable):
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Build a `RockCompressibilityRegions` from a pre-built regions dict.
+        Build a `RockCompressibilityTables` from a pre-built regions dict.
 
         :param tables: Mapping from 1-based `ROCKNUM` index to table.
         :param unit_system: Expected unit system for all tables. If omitted,
@@ -803,7 +803,7 @@ class RockCompressibilityRegions(StoreSerializable):
         Wrap a single `RockCompressibilityTable` as region 1.
 
         :param table: `RockCompressibilityTable` instance.
-        :returns: `RockCompressibilityRegions` with one entry at key 1.
+        :returns: `RockCompressibilityTables` with one entry at key 1.
         """
         return cls(tables={1: table})
 
@@ -825,17 +825,17 @@ class RockCompressibilityRegions(StoreSerializable):
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param dtype: Array dtype; defaults to `get_dtype()`.
-        :returns: `RockCompressibilityRegions` keyed by 1-based ROCKNUM index.
+        :returns: `RockCompressibilityTables` keyed by 1-based ROCKNUM index.
         :raises ValidationError: If neither `ROCK` nor `ROCKTAB` is found.
         """
-        tables = load_rock_compressibility_regions(
+        tables = load_rock_compressibility_tables(
             deck_file=deck_file,
             interpolation_method=interpolation_method,
             dtype=dtype,
         )
         return cls(tables=tables)
 
-    def to_rock_compressibility(
+    def get_compressibility(
         self,
         pressure: CellArray,
         rock_region: typing.Optional[IntCellArray] = None,
@@ -843,7 +843,7 @@ class RockCompressibilityRegions(StoreSerializable):
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
         """
-        Derive per-cell `RockCompressibility` from this `RockCompressibilityRegions`.
+        Derive per-cell `RockCompressibility` from this `RockCompressibilityTables`.
 
         For each cell, evaluates the effective compressibility at the cell's
         current pressure from its region's table:
@@ -923,10 +923,10 @@ class RockCompressibilityRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `RockCompressibilityRegions` with all region tables converted to *target*.
+        Return a new `RockCompressibilityTables` with all region tables converted to *target*.
 
         :param target: Target `UnitSystem`.
-        :returns: New `RockCompressibilityRegions` in *target* units.
+        :returns: New `RockCompressibilityTables` in *target* units.
         """
         return self.__class__(
             tables={
@@ -972,7 +972,7 @@ class RockCompressibilityRegions(StoreSerializable):
         )
 
 
-def load_rock_compressibility_regions(
+def load_rock_compressibility_tables(
     deck_file: DeckFile,
     *,
     interpolation_method: InterpolationMethod = "linear",

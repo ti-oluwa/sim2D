@@ -8,7 +8,7 @@ import typing
 import numpy as np
 import numpy.typing as npt
 
-from bores.blackoil.satfunc.regions import SatFuncRegions
+from bores.blackoil.satfunc.regions import SatFunc
 from bores.precision import get_dtype
 from bores.typing import CellArray, IntCellArray
 
@@ -88,7 +88,7 @@ def compute_satfunc_cache(
     oil_saturation: CellArray,
     gas_saturation: CellArray,
     saturation_region: IntCellArray,
-    satfunc: SatFuncRegions,
+    satfunc: SatFunc,
     irreducible_water_saturation: typing.Optional[CellArray] = None,
     residual_oil_saturation_water: typing.Optional[CellArray] = None,
     residual_oil_saturation_gas: typing.Optional[CellArray] = None,
@@ -116,8 +116,8 @@ def compute_satfunc_cache(
         cell, e.g. `reservoir.regions.saturation_region` (falls back to
         all-ones there when the deck had no `SATNUM` keyword - pass that
         fallback through yourself if calling this directly without going
-        through `ReservoirRegions`).
-    :param satfunc: `SatFuncRegions` to
+        through `Regions`).
+    :param satfunc: `SatFunc` to
         evaluate against usually `BlackOil.satfunc`.
     :param irreducible_water_saturation: Shape `(n_cells,)` current `swc` -
         dynamic, per-cell hysteresis state from reservoir state, not

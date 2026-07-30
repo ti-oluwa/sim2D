@@ -108,7 +108,7 @@ kz_grid = bores.layered_grid(
     layer_values=kz_values,
     orientation=bores.Orientation.Z,
 )
-absolute_permeability = bores.RockPermeability(x=kx_grid, y=ky_grid, z=kz_grid)
+absolute_permeability = bores.Permeability(x=kx_grid, y=ky_grid, z=kz_grid)
 
 net_to_gross_grid = bores.uniform_grid(grid_shape=grid_shape, value=1.0)
 

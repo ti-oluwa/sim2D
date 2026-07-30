@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
-from bores.blackoil.satfunc.regions import SatFuncRegions
+from bores.blackoil.satfunc.regions import SatFunc
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -15,7 +15,7 @@ from bores.precision import get_dtype
 from bores.reservoir.regions import _load_region_array
 from bores.reservoir.rock.compressibility import (
     RockCompressibility,
-    RockCompressibilityRegions,
+    RockCompressibilityTables,
 )
 from bores.serde.stores import StoreSerializable
 from bores.typing import (
@@ -27,7 +27,7 @@ from bores.typing import (
 )
 from bores.utils import scale
 
-__all__ = ["RockPermeability", "Rock"]
+__all__ = ["Permeability", "Rock"]
 
 
 def _load_cell_array(
@@ -47,7 +47,7 @@ def _load_cell_array(
 
 
 @attrs.frozen(slots=True)
-class RockPermeability(StoreSerializable):
+class Permeability(StoreSerializable):
     """
     Absolute permeability tensor stored as three orthogonal components.
 
@@ -112,7 +112,8 @@ class RockPermeability(StoreSerializable):
         """Return a new instance with all components multiplied by *factor*."""
         if factor == 1.0:
             return self
-        return self.__class__(
+        return attrs.evolve(
+            self,
             x=scale(self.x, factor),
             y=scale(self.y, factor),
             z=scale(self.z, factor),
@@ -128,14 +129,14 @@ class RockPermeability(StoreSerializable):
         factor: typing.Optional[Number] = None,
     ) -> Self:
         """
-        Return a new `RockPermeability` with all quantities rescaled
+        Return a new `Permeability` with all quantities rescaled
         to *target*.
 
         Conversion factors are sourced from `get_conversion_factors`.
 
         :param target: Desired `UnitSystem`.
         :param table: Optional custom conversion table; `None` uses the default.
-        :returns: New `RockPermeability` in *target* units.
+        :returns: New `Permeability` in *target* units.
         """
         if target == self.unit_system:
             return self
@@ -146,7 +147,8 @@ class RockPermeability(StoreSerializable):
         if factor == 1.0:
             return self
 
-        return self.__class__(
+        return attrs.evolve(
+            self,
             x=scale(self.x, factor),
             y=scale(self.y, factor),
             z=scale(self.z, factor),
@@ -201,7 +203,7 @@ class Rock(StoreSerializable):
     Used to compute pore volume: PV = φ x NTG x V_cell.
     """
 
-    absolute_permeability: RockPermeability
+    absolute_permeability: Permeability
     """
     Absolute permeability tensor.
 
@@ -255,7 +257,7 @@ class Rock(StoreSerializable):
     Gas is immobile below this saturation when water or liquid displaces gas.
     """
 
-    compressibility_regions: typing.Optional[RockCompressibilityRegions] = None
+    compressibility: typing.Optional[RockCompressibilityTables] = None
     """
     Formation compressibility tables - one per `ROCKNUM` region in `unit_system`.
 
@@ -272,12 +274,12 @@ class Rock(StoreSerializable):
 
     def __attrs_post_init__(self) -> None:
         if (
-            self.compressibility_regions is not None
-            and self.compressibility_regions.unit_system != self.unit_system
+            self.compressibility is not None
+            and self.compressibility.unit_system != self.unit_system
         ):
             raise ValidationError(
-                "`compressibility_regions.unit_system does` not match `unit_system`: "
-                f"{self.compressibility_regions.unit_system} != {self.unit_system}"
+                "`compressibility.unit_system does` not match `unit_system`: "
+                f"{self.compressibility.unit_system} != {self.unit_system}"
             )
 
     def get_compressibility(
@@ -297,7 +299,7 @@ class Rock(StoreSerializable):
             unit_system if unit_system is not None else self.unit_system
         )
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-        if self.compressibility_regions is None:
+        if self.compressibility is None:
             return RockCompressibility(
                 reference_pressure=pressure,
                 compressibility=typing.cast(
@@ -306,7 +308,7 @@ class Rock(StoreSerializable):
                 unit_system=target_unit_system,
             )
 
-        compressibility = self.compressibility_regions.to_rock_compressibility(
+        compressibility = self.compressibility.get_compressibility(
             pressure=pressure,
             rock_region=rock_region,
             unit_system=target_unit_system,
@@ -336,16 +338,15 @@ class Rock(StoreSerializable):
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        return self.__class__(
+        return attrs.evolve(
+            self,
             porosity=self.porosity,
             absolute_permeability=self.absolute_permeability.scale(
                 factors["permeability"]
             ),
             net_to_gross=self.net_to_gross,
-            compressibility_regions=self.compressibility_regions.convert(
-                target, table=table
-            )
-            if self.compressibility_regions is not None
+            compressibility=self.compressibility.convert(target, table=table)
+            if self.compressibility is not None
             else None,
             connate_water_saturation=self.connate_water_saturation,
             irreducible_water_saturation=self.irreducible_water_saturation,
@@ -357,7 +358,7 @@ class Rock(StoreSerializable):
 
     @staticmethod
     def _get_saturation_endpoints_from_tables(
-        satfunc: SatFuncRegions,
+        satfunc: SatFunc,
         saturation_region: IntCellArray,
         n_cells: int,
         dtype: npt.DTypeLike,
@@ -413,7 +414,7 @@ class Rock(StoreSerializable):
         *,
         grid: Grid,
         rock_region: typing.Optional[IntCellArray] = None,
-        satfunc: typing.Optional[SatFuncRegions] = None,
+        satfunc: typing.Optional[SatFunc] = None,
         saturation_region: typing.Optional[IntCellArray] = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
@@ -438,7 +439,7 @@ class Rock(StoreSerializable):
         :param deck_file: Parsed `DeckFile` containing PROPS/GRID keywords.
         :param grid: Already-loaded `Grid` (provides `n_cells` and cell
             centroid depths for temperature interpolation).
-        :param satfunc: Optional `SatFuncRegions`, used to derive any
+        :param satfunc: Optional `SatFunc`, used to derive any
             of the five saturation-endpoint arrays not explicitly present
             in `deck_file`, from each cell's SATNUM saturation-function
             table. Strongly recommended. Without it, any endpoint the deck
@@ -482,12 +483,10 @@ class Rock(StoreSerializable):
                 return table_derived[field]
             return np.zeros(n_cells, dtype=dtype)
 
-        permeability = RockPermeability.from_deck(
-            deck_file, n_cells=n_cells, dtype=dtype
-        )
-        compressibility_regions: typing.Optional[RockCompressibilityRegions] = None
+        permeability = Permeability.from_deck(deck_file, n_cells=n_cells, dtype=dtype)
+        compressibility: typing.Optional[RockCompressibilityTables] = None
         if deck_file.has("ROCK") or deck_file.has("ROCKTAB"):
-            compressibility_regions = RockCompressibilityRegions.from_deck(
+            compressibility = RockCompressibilityTables.from_deck(
                 deck_file, interpolation_method=interpolation_method, dtype=dtype
             )
 
@@ -516,7 +515,7 @@ class Rock(StoreSerializable):
             porosity=_required("PORO"),
             absolute_permeability=permeability,
             net_to_gross=_optional("NTG", 1.0),
-            compressibility_regions=compressibility_regions,
+            compressibility=compressibility,
             connate_water_saturation=_saturation_endpoint(
                 "SWCON", "connate_water_saturation", table_derived_endpoints
             ),

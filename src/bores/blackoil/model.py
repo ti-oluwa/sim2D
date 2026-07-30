@@ -4,7 +4,7 @@ import typing
 
 from typing_extensions import Self
 
-from bores.blackoil.fluid import BlackOil
+from bores.blackoil.fluids.model import BlackOil
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.reservoir.boundary.conditions import BoundaryConditions

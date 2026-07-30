@@ -55,10 +55,10 @@ grid_shape = (20, 20, 5)
 perm_grid = bores.build_uniform_grid(grid_shape, value=100.0)  # 100 mD
 
 # Option 1: Just pass x, BORES copies to y and z
-permeability = bores.RockPermeability(x=perm_grid)
+permeability = bores.Permeability(x=perm_grid)
 
 # Option 2: Explicitly set all directions
-permeability = bores.RockPermeability(x=perm_grid, y=perm_grid, z=perm_grid)
+permeability = bores.Permeability(x=perm_grid, y=perm_grid, z=perm_grid)
 ```
 
 ### Anisotropic Permeability
@@ -74,7 +74,7 @@ kx = bores.build_uniform_grid(grid_shape, value=200.0)   # 200 mD horizontal
 ky = bores.build_uniform_grid(grid_shape, value=200.0)   # Same in y
 kz = bores.build_uniform_grid(grid_shape, value=20.0)    # 20 mD vertical (kv/kh = 0.1)
 
-permeability = bores.RockPermeability(x=kx, y=ky, z=kz)
+permeability = bores.Permeability(x=kx, y=ky, z=kz)
 ```
 
 Anisotropy has a major impact on vertical sweep efficiency. Low vertical permeability limits gravity override in gas injection and reduces water coning near production wells.
@@ -104,7 +104,7 @@ kx = kx * noise
 # Apply kv/kh ratio
 kz = kx * 0.1
 
-permeability = bores.RockPermeability(x=kx, y=kx, z=kz)
+permeability = bores.Permeability(x=kx, y=kx, z=kz)
 ```
 
 !!! info "Permeability Range"
@@ -165,7 +165,7 @@ base_perm = bores.build_layered_grid(
 )
 noise = np.exp(rng.normal(0, 0.25, grid_shape)).astype(np.float32)
 kx = base_perm * noise
-permeability = bores.RockPermeability(x=kx, y=kx, z=kx * 0.1)
+permeability = bores.Permeability(x=kx, y=kx, z=kx * 0.1)
 
 # Other properties
 thickness = bores.build_uniform_grid(grid_shape, value=15.0)

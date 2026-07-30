@@ -1,15 +1,15 @@
 import pyvista as pv
 import rich
 
-from bores.blackoil.fluid import BlackOil
+from bores.blackoil.fluids.model import BlackOil
 from bores.blackoil.model import BlackOilModel
-from bores.blackoil.pvt import PVTRegions
-from bores.blackoil.satfunc import SatFuncRegions
+from bores.blackoil.pvt import PVT
+from bores.blackoil.satfunc import SatFunc
 from bores.deck import DeckFile
 from bores.grids import Grid
 from bores.grids.utils import as_pyvista_grid
 from bores.initialization import initialize_reservoir_state
-from bores.reservoir import Reservoir, ReservoirRegions, Temperature
+from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import EquilibriumRegions
 from bores.typing import UnitSystem
@@ -20,8 +20,8 @@ df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
 # Load reservoir model
 grid = Grid.from_deck(df)
-regions = ReservoirRegions.from_deck(df, n_cells=grid.n_cells, use_default=True)
-satfunc = SatFuncRegions.from_deck(df, mixing_rule="eclipse_rule")
+regions = Regions.from_deck(df, n_cells=grid.n_cells, use_default=True)
+satfunc = SatFunc.from_deck(df, mixing_rule="eclipse_rule")
 rock = Rock.from_deck(
     df,
     grid=grid,
@@ -33,7 +33,7 @@ reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 
 # Define fluid
 temperature = Temperature(200)
-pvt = PVTRegions.from_deck(df, temperature=temperature)
+pvt = PVT.from_deck(df, temperature=temperature)
 blackoil = BlackOil(pvt=pvt, satfunc=satfunc)
 table = pvt.region(1).tables.gas
 assert table is not None, "`table` should not be None"

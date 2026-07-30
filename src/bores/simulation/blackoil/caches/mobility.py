@@ -75,9 +75,9 @@ CACHE_FIELDS: typing.Tuple[str, ...] = MobilityCache._fields
 
 
 def make_new_cache(n_cells: int, dtype: npt.DTypeLike) -> MobilityCache:
-    return MobilityCache(**{
-        name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS
-    })
+    return MobilityCache(
+        **{name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS}
+    )
 
 
 @numba.njit(cache=True, parallel=True)
