@@ -11,7 +11,7 @@ from bores.grids.utils import as_pyvista_grid
 from bores.initialization import initialize_reservoir_state
 from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
-from bores.reservoir.state import EquilibriumRegions
+from bores.reservoir.state import Equilibrium
 from bores.typing import UnitSystem
 from bores.wells import WellSystem
 from bores.wells.hydraulics.mechanistic import MechanisticWellbore
@@ -40,7 +40,7 @@ assert table is not None, "`table` should not be None"
 print(table.viscosity([4700, 200, 3456, 10000, 4000], 400))
 
 # Load initial state
-equilibrium = EquilibriumRegions.from_deck(df)
+equilibrium = Equilibrium.from_deck(df)
 initial_state = initialize_reservoir_state(
     reservoir=reservoir,
     pvt=pvt,

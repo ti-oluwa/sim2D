@@ -22,8 +22,8 @@ from bores.typing import (
 __all__ = [
     "DepthTable",
     "EquilibriumRegion",
-    "EquilibriumRegions",
-    "load_equilibrium_infos",
+    "Equilibrium",
+    "load_equilibrium_regions",
 ]
 
 
@@ -345,31 +345,32 @@ class EquilibriumRegion(StoreSerializable):
             )
         return typing.cast(
             Self,
-            _build_equilibrium_region_from_record(
+            _load_equilibrium_region_from_record(
                 records[eqlnum - 1], eqlnum, deck_file.unit_system
             ),
         )
 
 
-class EquilibriumRegions(StoreSerializable):
+class Equilibrium(StoreSerializable):
     """
     Container mapping 1-based `EQLNUM` region index to `EquilibriumRegion`.
 
-    Responsibilities: map EQLNUM -> `EquilibriumRegion`, provide lookup and
-    iteration, support (de)serialization and Eclipse loading. Use
-    `region(eqlnum)` to retrieve a region's data, and `from_deck`
+    Maps EQLNUM -> `EquilibriumRegion`, provides lookup and
+    iteration, supports (de)serialization and Eclipse loading. 
+    
+    Use `region(eqlnum)` to retrieve a region's data, and `from_deck`
     to construct from a deck.
 
     Example:
 
     ```python
-    equilibrium = EquilibriumRegions.from_deck(deck_file)
+    equilibrium = Equilibrium.from_deck(deck_file)
     region = equilibrium.region(eqlnum_array[cell_idx])
     ```
     """
 
     __abstract_serializable__ = True
-    __slots__ = ("_regions", "rsvd_tables", "rvvd_tables", "unit_system")
+    __slots__ = ("regions", "rsvd_tables", "rvvd_tables", "unit_system")
 
     def __init__(
         self,
@@ -380,7 +381,7 @@ class EquilibriumRegions(StoreSerializable):
         unit_system: typing.Optional[UnitSystem] = None,
     ) -> None:
         """
-        Create a new `EquilibriumRegions` container.
+        Create a new `Equilibrium` container.
 
         :param regions: Mapping from 1-based EQLNUM index to that region's
             `EquilibriumRegion`.
@@ -448,16 +449,16 @@ class EquilibriumRegions(StoreSerializable):
                     f"{ {k: v.value for k, v in table_mismatched.items()} }."
                 )
 
-        self._regions = regions
+        self.regions = regions
         self.rsvd_tables = rsvd_tables
         self.rvvd_tables = rvvd_tables
         self.unit_system = expected_unit_system
 
     def __dump__(self) -> typing.Dict[str, typing.Any]:
-        """Serialize EquilibriumRegions to a dictionary."""
+        """Serialize `Equilibrium` to a dictionary."""
         return {
             "regions": {
-                str(num): region.dump() for num, region in self._regions.items()
+                str(num): region.dump() for num, region in self.regions.items()
             },
             "rsvd_tables": {
                 str(num): table.dump()
@@ -476,9 +477,8 @@ class EquilibriumRegions(StoreSerializable):
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        """Deserialize EquilibriumRegions from a dictionary."""
+        """Deserialize `Equilibrium` from a dictionary."""
         unit_system = UnitSystem(data["unit_system"])
-
         regions = {
             int(num): EquilibriumRegion.load(region_data)
             for num, region_data in data["regions"].items()
@@ -507,7 +507,7 @@ class EquilibriumRegions(StoreSerializable):
     @property
     def n_regions(self) -> int:
         """Number of equilibration regions."""
-        return len(self._regions)
+        return len(self.regions)
 
     def region(self, eqlnum: int) -> EquilibriumRegion:
         """
@@ -517,21 +517,21 @@ class EquilibriumRegions(StoreSerializable):
         :returns: `EquilibriumRegion` for that region.
         :raises KeyError: If the region index does not exist.
         """
-        region = self._regions.get(eqlnum)
+        region = self.regions.get(eqlnum)
         if region is None:
             raise KeyError(
-                f"EQLNUM {eqlnum} not found. Available regions: {sorted(self._regions)}."
+                f"EQLNUM {eqlnum} not found. Available regions: {sorted(self.regions)}."
             )
         return region
 
     def __iter__(self) -> typing.Iterator[int]:
-        return iter(self._regions)
+        return iter(self.regions)
 
     def __len__(self) -> int:
-        return len(self._regions)
+        return len(self.regions)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._regions
+        return key in self.regions
 
     def convert(
         self,
@@ -541,19 +541,19 @@ class EquilibriumRegions(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Return a new `EquilibriumRegions` with every region converted to
+        Return a new `Equilibrium` with every region converted to
         *target*.
 
         :param target: Target `UnitSystem`.
         :param table: Optional custom conversion table.
-        :returns: New `EquilibriumRegions` in *target* units.
+        :returns: New `Equilibrium` in *target* units.
         """
         if target == self.unit_system:
             return self
         return self.__class__(
             regions={
                 num: region.convert(target, table=table)
-                for num, region in self._regions.items()
+                for num, region in self.regions.items()
             },
             rsvd_tables={
                 num: depth_table.convert(target, table=table)
@@ -573,21 +573,21 @@ class EquilibriumRegions(StoreSerializable):
     @classmethod
     def from_deck(cls, deck_file: DeckFile) -> Self:
         """
-        Build `EquilibriumRegions` from a parsed `DeckFile`.
+        Build `Equilibrium` from a parsed `DeckFile`.
 
-        Delegates to `load_equilibrium_infos` for the `EQUIL` records so
+        Delegates to `load_equilibrium_regions` for the `EQUIL` records so
         that parsing logic lives in exactly one place, shared with
         `EquilibriumRegion.from_deck`. Also loads `RSVD`/`RVVD` tables
         (see `bores.deck.keywords.solution`) if present in the deck.
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
-        :returns: `EquilibriumRegions` keyed by 1-based EQLNUM index.
+        :returns: `Equilibrium` keyed by 1-based EQLNUM index.
         :raises ValidationError: If `EQUIL` is absent from the deck, or an
             `EquilibriumRegion` references an `RSVD`/`RVVD` table number that
             isn't present in the deck.
         """
-        mapping = load_equilibrium_infos(deck_file)
+        regions = load_equilibrium_regions(deck_file)
         unit_system = deck_file.unit_system
         # Eclipse reports Rs in Mscf/STB under FIELD units; internally we standardize on SCF/STB.
         # Also it reports Rv in STB/Mscf under FIELD units; internally we standardize on STB/SCF.
@@ -601,14 +601,14 @@ class EquilibriumRegions(StoreSerializable):
             deck_file, "RVVD", "rv", value_multiplier=scf_to_mscf
         )
         return cls(
-            regions=mapping,
+            regions=regions,
             rsvd_tables=rsvd_tables,
             rvvd_tables=rvvd_tables,
             unit_system=unit_system,
         )
 
 
-def _build_equilibrium_region_from_record(
+def _load_equilibrium_region_from_record(
     record: typing.Mapping[str, typing.Any],
     eqlnum: int,
     unit_system: UnitSystem,
@@ -617,7 +617,7 @@ def _build_equilibrium_region_from_record(
     Build one `EquilibriumRegion` from a single parsed `EQUIL` record dict.
 
     The single field-mapping implementation shared by
-    `EquilibriumRegion.from_deck` and `load_equilibrium_infos`, so the
+    `EquilibriumRegion.from_deck` and `load_equilibrium_regions`, so the
     two call sites can never drift out of sync on how raw record fields
     map onto `EquilibriumRegion` fields.
 
@@ -645,7 +645,9 @@ def _build_equilibrium_region_from_record(
         raise ValidationError(f"EQUIL record {eqlnum}: {exc}") from exc
 
 
-def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumRegion]:
+def load_equilibrium_regions(
+    deck_file: DeckFile,
+) -> typing.Dict[int, EquilibriumRegion]:
     """
     Parse every `EQUIL` record in *deck_file* into `EquilibriumRegion`
     objects, keyed by 1-based EQLNUM index.
@@ -661,12 +663,12 @@ def load_equilibrium_infos(deck_file: DeckFile) -> typing.Dict[int, EquilibriumR
         raise ValidationError(
             "No `EQUIL` keyword found in the DeckFile. Supply equilibration "
             "data explicitly via `EquilibriumRegion(...)` / "
-            "`EquilibriumRegions(regions={...})`, or add an `EQUIL` block "
+            "`Equilibrium(regions={...})`, or add an `EQUIL` block "
             "to the deck."
         )
 
     unit_system = deck_file.unit_system
     return {
-        idx + 1: _build_equilibrium_region_from_record(record, idx + 1, unit_system)
+        idx + 1: _load_equilibrium_region_from_record(record, idx + 1, unit_system)
         for idx, record in enumerate(records)
     }

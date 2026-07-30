@@ -30,7 +30,7 @@ from bores.reservoir.state.base import Hysteresis, ReservoirState
 from bores.reservoir.state.equilibrium import (
     DepthTable,
     EquilibriumRegion,
-    EquilibriumRegions,
+    Equilibrium,
 )
 from bores.reservoir.temperature import (
     Temperature,
@@ -580,12 +580,9 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(
-        **{
-            name: _average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def _get_dip_aware_top_bottom_faces(
@@ -748,18 +745,16 @@ def _initialize_tilted_subdivision_equilibrium(
             np.sum(field_2d * area_weights, axis=1) / np.sum(area_weights, axis=1),
         )
 
-    return EquilibriumArrays(
-        **{
-            name: _weighted_average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _weighted_average(getattr(sub_arrays, name))
+        for name in EquilibriumArrays._fields
+    })
 
 
 def initialize_equilibrium_arrays(
     reservoir: Reservoir,
     pvt: PVT,
-    equilibrium: EquilibriumRegions,
+    equilibrium: Equilibrium,
     temperature: CellArray,
     *,
     satfunc: typing.Optional[SatFunc] = None,
@@ -1029,7 +1024,7 @@ def initialize_reservoir_state(
     pvt: PVT,
     *,
     deck_file: typing.Optional[DeckFile] = None,
-    equilibrium: typing.Optional[EquilibriumRegions] = None,
+    equilibrium: typing.Optional[Equilibrium] = None,
     satfunc: typing.Optional[SatFunc] = None,
     temperature: typing.Optional[typing.Union[Temperature, Number]] = None,
     pressure: typing.Optional[CellArray] = None,
@@ -1069,7 +1064,7 @@ def initialize_reservoir_state(
     :param reservoir: Reservoir geometry and rock properties.
     :param pvt: PVT tables for all regions.
     :param deck_file: Optional `DeckFile` to read explicit arrays from.
-    :param equilibrium: Optional `EquilibriumRegions` for any fields not covered by an
+    :param equilibrium: Optional `Equilibrium` for any fields not covered by an
         explicit array/keyword.
     :param satfunc: Optional `SatFunc` for capillary-pressure-based
         saturations instead of a sharp contact. If supplied and
@@ -1171,7 +1166,7 @@ def initialize_reservoir_state(
     if any(value is None for value in explicit.values()):
         if equilibrium is None:
             if deck_file is not None and deck_file.get("EQUIL"):
-                equilibrium = EquilibriumRegions.from_deck(deck_file)
+                equilibrium = Equilibrium.from_deck(deck_file)
             else:
                 missing = [field for field, value in explicit.items() if value is None]
                 raise ValidationError(
