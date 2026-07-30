@@ -13,8 +13,8 @@ from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import Equilibrium
 from bores.typing import UnitSystem
-from bores.wells import WellSystem
 from bores.wells.hydraulics.mechanistic import MechanisticWellbore
+from bores.wells.model import WellSystem
 
 df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
 
