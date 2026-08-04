@@ -271,6 +271,7 @@ class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         record = deck.first_record_for(self.name)
         if record is None:

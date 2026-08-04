@@ -29,8 +29,8 @@ from bores.reservoir.model import Reservoir
 from bores.reservoir.state.base import Hysteresis, ReservoirState
 from bores.reservoir.state.equilibrium import (
     DepthTable,
-    EquilibriumRegion,
     Equilibrium,
+    EquilibriumRegion,
 )
 from bores.reservoir.temperature import (
     Temperature,
@@ -580,9 +580,12 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(**{
-        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
-    })
+    return EquilibriumArrays(
+        **{
+            name: _average(getattr(sub_arrays, name))
+            for name in EquilibriumArrays._fields
+        }
+    )
 
 
 def _get_dip_aware_top_bottom_faces(
@@ -745,10 +748,12 @@ def _initialize_tilted_subdivision_equilibrium(
             np.sum(field_2d * area_weights, axis=1) / np.sum(area_weights, axis=1),
         )
 
-    return EquilibriumArrays(**{
-        name: _weighted_average(getattr(sub_arrays, name))
-        for name in EquilibriumArrays._fields
-    })
+    return EquilibriumArrays(
+        **{
+            name: _weighted_average(getattr(sub_arrays, name))
+            for name in EquilibriumArrays._fields
+        }
+    )
 
 
 def initialize_equilibrium_arrays(

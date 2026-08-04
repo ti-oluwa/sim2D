@@ -1,5 +1,6 @@
 """Eclipse / GRDECL deck core: scanning, tokenisation, and grid dimensions."""
 
+import datetime
 import re
 import typing
 import warnings

@@ -356,8 +356,8 @@ class Equilibrium(StoreSerializable):
     Container mapping 1-based `EQLNUM` region index to `EquilibriumRegion`.
 
     Maps EQLNUM -> `EquilibriumRegion`, provides lookup and
-    iteration, supports (de)serialization and Eclipse loading. 
-    
+    iteration, supports (de)serialization and Eclipse loading.
+
     Use `region(eqlnum)` to retrieve a region's data, and `from_deck`
     to construct from a deck.
 

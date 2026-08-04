@@ -81,6 +81,7 @@ class SummaryVectorKeyword(Keyword[typing.List[str]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[str]]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -161,6 +162,7 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Optional[int]]]:
         record = deck.first_record_for(self.name)
         if record is None:

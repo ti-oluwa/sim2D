@@ -16,7 +16,7 @@ from bores.typing import UnitSystem
 from bores.wells.hydraulics.mechanistic import MechanisticWellbore
 from bores.wells.model import WellSystem
 
-df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8")
+df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8", unit_system=UnitSystem.METRIC)
 
 # Load reservoir model
 grid = Grid.from_deck(df)

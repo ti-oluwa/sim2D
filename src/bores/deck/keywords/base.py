@@ -13,6 +13,7 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 
+from bores.constants import c
 from bores.datastructures import GridDimensions
 from bores.deck.core import (
     Deck,
@@ -145,6 +146,7 @@ class Keyword(typing.Generic[T], abc.ABC):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[T]:
         """
         Parse this keyword's value out of `deck`.
@@ -212,6 +214,7 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.Dict[str, typing.Optional[T]]]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -257,6 +260,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[typing.Dict[str, typing.Optional[T]]]]:
         records = deck.records_for(self.name)
         if not records:
@@ -363,6 +367,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[FloatArray[OneDimension]]:
         """
         Parse and return the resolved per-cell array.
@@ -499,6 +504,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
                                 raise DeckParseError(
                                     f"{self.name} contains a non-numeric value: {exc}"
                                 ) from exc
+
                     if not broadcast_ok:
                         expected_desc = f"1 or {dims.n_cells}"
                         if self.column_shape is not None:
@@ -715,6 +721,7 @@ class FlagKeyword(Keyword[bool]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> bool:
         """
         :returns: `True` if the keyword is present in the deck,
@@ -740,6 +747,7 @@ class DateKeyword(Keyword[datetime.date]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[datetime.date]:
         record = deck.first_record_for(self.name)
         if record is None:
@@ -776,6 +784,7 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[datetime.date]]:
         records = deck.records_for(self.name)
         if not records:
@@ -852,6 +861,7 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[PVTTable[Number]]]:
         records = deck.records_for(self.name)
         if not records:
@@ -986,3 +996,110 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         if current_table:
             tables.append(current_table)
         return tables
+
+
+DATE_FIELD = Field(
+    "date",
+    lambda v: _parse_date(tokenize(v, expand_repeats=True), "DATES"),
+    required=True,
+)
+
+TimeUnit = typing.Literal["days", "hours", "seconds"]
+
+
+def timedelta_to_timeunit(delta: datetime.timedelta, time_unit: TimeUnit) -> int:
+    if time_unit in ("days", "seconds"):
+        return getattr(delta, time_unit)
+    return delta.days * c.HOURS_PER_DAY
+
+
+def get_schedule_times(
+    deck: Deck, time_unit: TimeUnit = "days"
+) -> typing.Dict[int, float]:
+    """
+    One linear pass over `deck.records` (already in file order), mapping
+    each record's `.start` offset to the elapsed-time clock value in effect
+    at that point.
+
+    `TSTEP` advances the clock by the sum of its values; `DATES` jumps the
+    clock to that calendar date's elapsed-time-since-start. Both keywords'
+    own records get the *new* clock value (they're the transition point).
+    Records before the first `TSTEP`/`DATES` get `0.0`.
+
+    :param deck: Scanned deck.
+    :returns: `{record.start: elapsed_time}` for every record in `deck`.
+    """
+    times: typing.Dict[int, float] = {}
+    current_time = 0.0
+    start_date: typing.Optional[datetime.date] = None
+
+    for record in deck.records:
+        if record.keyword == "TSTEP":
+            body = record.body.split("/", 1)[0]
+            current_time += sum(
+                float(token) for token in tokenize(body, expand_repeats=True) if token
+            )
+        elif record.keyword == "DATES":
+            body = record.body.split("/", 1)[0]
+            tokens = tokenize(body, expand_repeats=True)
+            parsed_date = DATE_FIELD.parse(" ".join(tokens), "DATES")
+            if parsed_date is not None:
+                if start_date is None:
+                    start_date = parsed_date
+                    current_time = 0.0
+                else:
+                    current_time = float(
+                        timedelta_to_timeunit((parsed_date - start_date), time_unit)
+                    )
+        times[record.start] = current_time
+    return times
+
+
+class ScheduledRecordKeyword(RepeatedRecordKeyword[typing.Union[T, float]]):
+    """
+    A `RepeatedRecordKeyword` whose parsed records are also stamped with
+    `"schedule_time"`
+
+    `"schedule_time"` elapsed time in the deck's unit system (days/hours/seconds)
+    since simulation start.
+
+    Expects `schedule_times` (from `DeckFile._schedule_times`, computed once per
+    file, same lifecycle as `operations`) to be passed in by the caller.
+    Falls back to computing it fresh from `deck` if called directly without
+    one, so this still works standalone, just less efficiently.
+    """
+
+    def parse(
+        self,
+        deck: Deck,
+        dims: typing.Optional[GridDimensions],
+        *,
+        operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
+        time_unit: TimeUnit = "days",
+    ) -> typing.Optional[
+        typing.List[typing.Dict[str, typing.Optional[typing.Union[T, float]]]]
+    ]:
+        records = deck.records_for(self.name)
+        if not records:
+            return None
+
+        times = (
+            schedule_times
+            if schedule_times is not None
+            else get_schedule_times(deck, time_unit)
+        )
+        results: typing.List[
+            typing.Dict[str, typing.Optional[typing.Union[T, float]]]
+        ] = []
+        for record in records:
+            schedule_time = times.get(record.start, 0.0)
+            for line in record.body.split("/"):
+                tokens = tokenize(line, expand_repeats=True)
+                if not tokens:
+                    continue
+
+                parsed = self._parse_tokens(tokens)
+                parsed["schedule_time"] = schedule_time
+                results.append(parsed)
+        return results or None

@@ -13,7 +13,7 @@ from bores.deck.core import (
     resolve_source,
     strip_comments,
 )
-from bores.deck.keywords.base import Keyword
+from bores.deck.keywords.base import Keyword, get_schedule_times
 from bores.deck.keywords.grid import (
     ACTNUM,
     COORD,
@@ -325,6 +325,7 @@ class DeckFile:
         "_registry",
         "_cache",
         "_operations",
+        "_schedule_times",
         "dimensions",
         "unit_system",
     )
@@ -374,6 +375,15 @@ class DeckFile:
             else None
         )
 
+        time_unit = "days"
+        if deck_unit_system == UnitSystem.LAB:
+            time_unit = "hours"
+        elif deck_unit_system == UnitSystem.SI:
+            time_unit = "seconds"
+        self._schedule_times: typing.Dict[int, float] = get_schedule_times(
+            self._deck, time_unit=time_unit
+        )
+
     def _resolve_dimensions(self) -> typing.Optional[GridDimensions]:
         """
         Resolve grid extent from `SPECGRID` (preferred) or `DIMENS`.
@@ -413,6 +423,7 @@ class DeckFile:
             ("METRIC", UnitSystem.METRIC),
             ("LAB", UnitSystem.LAB),
             ("FIELD", UnitSystem.FIELD),
+            ("SI", UnitSystem.SI),
         ):
             if self._deck.has(name):
                 return unit_system
@@ -475,6 +486,7 @@ class DeckFile:
                     self._deck,
                     self.dimensions,
                     operations=self._operations,
+                    schedule_times=self._schedule_times,
                 )
             except (ValueError, TypeError) as exc:
                 raise DeckParseError(
@@ -493,6 +505,7 @@ class DeckFile:
                 self._deck,
                 self.dimensions,
                 operations=self._operations,
+                schedule_times=self._schedule_times,
             )
         except (ValueError, TypeError) as exc:
             raise DeckParseError(f"Could not parse keyword `{key}`: {exc}") from exc

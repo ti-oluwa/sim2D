@@ -19,7 +19,7 @@ from bores.deck.keywords.base import (
     RepeatedRecordKeyword,
 )
 from bores.deck.operators import Operation
-from bores.typing import FloatArray, ThreeDimensions
+from bores.typing import FloatArray, Integer, ThreeDimensions
 
 __all__ = [
     "SPECGRID",
@@ -100,6 +100,7 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
             raise DeckParseError("COORD requires grid dimensions (SPECGRID/DIMENS).")
@@ -144,6 +145,7 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
             raise DeckParseError("ZCORN requires grid dimensions (SPECGRID/DIMENS).")
@@ -296,7 +298,7 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
     def __init__(
         self,
         name: str,
-        axis_extent: typing.Callable[[GridDimensions], int],
+        axis_extent: typing.Callable[[GridDimensions], Integer],
     ) -> None:
         super().__init__(name)
         self._axis_extent = axis_extent
@@ -307,6 +309,7 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[np.float64]]:
         if dims is None:
             raise DeckParseError(
@@ -453,6 +456,7 @@ class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
         dims: typing.Optional[GridDimensions],
         *,
         operations: typing.Optional[typing.List[Operation]] = None,
+        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
         records = super().parse(deck, dims)
         if records is None:
