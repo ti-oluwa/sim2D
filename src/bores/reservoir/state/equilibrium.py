@@ -383,8 +383,7 @@ class Equilibrium(StoreSerializable):
         """
         Create a new `Equilibrium` container.
 
-        :param regions: Mapping from 1-based EQLNUM index to that region's
-            `EquilibriumRegion`.
+        :param regions: Mapping from 1-based EQLNUM index to `EquilibriumRegion`.
         :param rsvd_tables: `{rsvd_table number: DepthTable}`, keyed by
             `EquilibriumRegion.rsvd_table` (not by EQLNUM - multiple regions may
             share one `RSVD` table number). `None` if no region uses `RSVD`.

@@ -82,8 +82,8 @@ class SatFuncTables(StoreSerializable):
         """
         if self.capillary_pressure is None:
             return self
-        return self.__class__(
-            relative_permeability=self.relative_permeability,
+        return attrs.evolve(
+            self,
             capillary_pressure=self.capillary_pressure.convert(target, table=table),
         )
 

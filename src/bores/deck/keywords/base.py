@@ -998,12 +998,6 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         return tables
 
 
-DATE_FIELD = Field(
-    "date",
-    lambda v: _parse_date(tokenize(v, expand_repeats=True), "DATES"),
-    required=True,
-)
-
 TimeUnit = typing.Literal["days", "hours", "seconds"]
 
 
@@ -1021,37 +1015,74 @@ def get_schedule_times(
     each record's `.start` offset to the elapsed-time clock value in effect
     at that point.
 
-    `TSTEP` advances the clock by the sum of its values; `DATES` jumps the
-    clock to that calendar date's elapsed-time-since-start. Both keywords'
-    own records get the *new* clock value (they're the transition point).
-    Records before the first `TSTEP`/`DATES` get `0.0`.
+    `TSTEP` advances the clock by the sum of its step values.
+    `DATES` jumps the clock to each listed calendar date in order; the
+    record's `.start` is assigned the time of the **last** date in the
+    block (since all subsequent records come after all those dates have
+    elapsed).
+
+    Both keywords' own records get the *new* clock value (they are the
+    transition point). Records before the first `TSTEP`/`DATES` get
+    `0.0`.
 
     :param deck: Scanned deck.
+    :param time_unit: Time unit for elapsed time values (`"days"`,
+        `"hours"`, or `"seconds"`). Defaults to `"days"`.
     :returns: `{record.start: elapsed_time}` for every record in `deck`.
     """
+    # Resolve the simulation start date from `START` keyword, if present.
+    # This makes sure `DATES`-based elapsed time is correct even when the first `DATES`
+    # entry is not the same as `START`.
+    start_record = deck.first_record_for("START")
+    start_date: typing.Optional[datetime.date] = None
+    if start_record is not None:
+        start_body = start_record.body.split("/", 1)[0]
+        start_tokens = tokenize(start_body, expand_repeats=True)
+        if len(start_tokens) >= 3:
+            try:
+                start_date = _parse_date(start_tokens, "START")
+            except DeckParseError:
+                pass  # Malformed `START`. Fall back to lazy discovery
+
     times: typing.Dict[int, float] = {}
     current_time = 0.0
-    start_date: typing.Optional[datetime.date] = None
 
     for record in deck.records:
         if record.keyword == "TSTEP":
             body = record.body.split("/", 1)[0]
-            current_time += sum(
+            step_sum = sum(
                 float(token) for token in tokenize(body, expand_repeats=True) if token
             )
+            current_time += step_sum
+            times[record.start] = current_time
+
         elif record.keyword == "DATES":
-            body = record.body.split("/", 1)[0]
-            tokens = tokenize(body, expand_repeats=True)
-            parsed_date = DATE_FIELD.parse(" ".join(tokens), "DATES")
-            if parsed_date is not None:
+            # A single `DATES` block may carry multiple date entries, each
+            # terminated by its own '/'.  Walk every segment that has tokens.
+            for segment in record.body.split("/"):
+                tokens = tokenize(segment, expand_repeats=True)
+                if not tokens:
+                    continue
+                try:
+                    parsed_date = _parse_date(tokens, "DATES")
+                except DeckParseError:
+                    continue  # Skip malformed segments gracefully
+
                 if start_date is None:
+                    # First `DATES` seen with no `START`. We treat it as time-zero.
                     start_date = parsed_date
                     current_time = 0.0
                 else:
-                    current_time = float(
-                        timedelta_to_timeunit((parsed_date - start_date), time_unit)
-                    )
-        times[record.start] = current_time
+                    delta = parsed_date - start_date
+                    current_time = float(timedelta_to_timeunit(delta, time_unit))
+
+            # Stamp the record with the time of the *last* date in the block.
+            # All records that follow in the deck occur after every date listed
+            # here has elapsed.
+            times[record.start] = current_time
+
+        else:
+            times[record.start] = current_time
     return times
 
 

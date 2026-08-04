@@ -44,6 +44,7 @@ import numpy as np
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck, DeckParseError, tokenize
 from bores.deck.keywords.base import (
+    DateKeyword,
     DatesKeyword,
     Field,
     Keyword,

@@ -1,4 +1,4 @@
-"""Reservoir characterization and an assembly of grid, rock, faults, regions, boundary conditions."""
+"""Reservoir characterization and an assembly of grid, rock, faults, and regions."""
 
 import typing
 
