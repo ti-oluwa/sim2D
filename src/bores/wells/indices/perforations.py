@@ -14,6 +14,7 @@ from bores.serde.base import Serializable
 from bores.typing import (
     Boolean,
     IntArray,
+    Integer,
     Number,
     NumberArray,
     OneDimension,
@@ -37,7 +38,7 @@ class PerforationIndex(Serializable):
     """One resolved (perforation, cell) pair - a connection."""
 
     perforation: typing.Union[Perforation, MDPerforation]
-    cell_index: int
+    cell_index: Integer
     partial_penetration_fraction: Number
     representative_depth: Number
     """Midpoint true vertical depth of the overlap between `perforation`'s
@@ -191,6 +192,7 @@ def _point_on_segment(
     segment_length = math.hypot(x2 - x1, y2 - y1)
     if segment_length < tolerance:
         return math.hypot(px - x1, py - y1) < tolerance
+
     cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
     if abs(cross) / segment_length > tolerance:
         return False
@@ -219,8 +221,8 @@ def _point_in_polygon_2d(
     inside = False
     j = n - 1
     for i in range(n):
-        xi, yi = float(polygon_xy[i, 0]), float(polygon_xy[i, 1])
-        xj, yj = float(polygon_xy[j, 0]), float(polygon_xy[j, 1])
+        xi, yi = polygon_xy[i, 0], polygon_xy[i, 1]
+        xj, yj = polygon_xy[j, 0], polygon_xy[j, 1]
         if _point_on_segment(x, y, xi, yi, xj, yj, tolerance):
             return True
         if (yi > y) != (yj > y):
@@ -297,7 +299,6 @@ def _compute_local_vertical_extent_exact(
     """
     crossings: typing.List[float] = []
     for face_idx in grid.get_cell_face_indices(cell_index):
-        face_idx = int(face_idx)
         normal = grid.get_face_normal_for_cell(face_idx, cell_index)
         normal_z = normal[2]
         if abs(normal_z) < 1e-9:
@@ -444,7 +445,7 @@ def resolve_perforations_indices(
 
 def _check_cell_contains_point(
     grid: Grid,
-    cell_index: int,
+    cell_index: Integer,
     point: typing.Tuple[Number, Number, Number],
     tolerance: Number = 1e-6,
 ) -> bool:
@@ -460,7 +461,6 @@ def _check_cell_contains_point(
     :returns: `True` if inside.
     """
     for face_idx in grid.get_cell_face_indices(cell_index):
-        face_idx = int(face_idx)
         normal = grid.get_face_normal_for_cell(face_idx, cell_index)
         centroid = grid.face_centroids[face_idx]
         signed_distance = (
@@ -475,7 +475,7 @@ def _check_cell_contains_point(
 
 def _locate_cell(
     grid: Grid, point: typing.Tuple[Number, Number, Number], search_radius: Number
-) -> typing.Optional[int]:
+) -> typing.Optional[Integer]:
     """
     Find the grid cell containing `point`.
 
@@ -492,7 +492,7 @@ def _locate_cell(
     :returns: Containing cell index, or `None` if not found within the
         search budget (point outside the grid, or resolution too coarse).
     """
-    nearest = int(grid.find_nearest_cell(*point))
+    nearest = grid.find_nearest_cell(*point)
     if _check_cell_contains_point(grid, nearest, point):
         return nearest
 
@@ -500,7 +500,6 @@ def _locate_cell(
     for _ in range(6):
         candidates = grid.find_cells_in_radius(point[0], point[1], point[2], radius)
         for candidate in candidates:
-            candidate = int(candidate)
             if _check_cell_contains_point(grid, candidate, point):
                 return candidate
         radius *= 2.0
@@ -511,8 +510,8 @@ def _get_segment_face_intersection(
     start: typing.Tuple[Number, Number, Number],
     direction: typing.Tuple[Number, Number, Number],
     grid: Grid,
-    face_index: int,
-    cell_index: int,
+    face_index: Integer,
+    cell_index: Integer,
 ) -> typing.Optional[Number]:
     """
     Get a parameter `t` (`point = start + t * direction`) at which the ray from
@@ -562,7 +561,7 @@ def _walk_segment_through_grid(
     start_md: Number,
     end_md: Number,
     search_radius: Number,
-) -> typing.List[typing.Tuple[int, Number, Number]]:
+) -> typing.List[typing.Tuple[Integer, Number, Number]]:
     """
     Walk the straight 3-D segment from `start` to `end` through `grid`,
     cell by cell.
@@ -593,16 +592,15 @@ def _walk_segment_through_grid(
     if current_cell is None:
         return []
 
-    results: typing.List[typing.Tuple[int, Number, Number]] = []
+    results: typing.List[typing.Tuple[Integer, Number, Number]] = []
     current_t = 0.0
     md_span = end_md - start_md
     max_visits = 4 * grid.n_cells + 64
 
     for _ in range(max_visits):
         best_t: typing.Optional[Number] = None
-        best_face: typing.Optional[int] = None
+        best_face: typing.Optional[Integer] = None
         for face_idx in grid.get_cell_face_indices(current_cell):
-            face_idx = int(face_idx)
             t = _get_segment_face_intersection(
                 start=start,
                 direction=direction,
@@ -616,24 +614,20 @@ def _walk_segment_through_grid(
                 best_t, best_face = t, face_idx
 
         if best_t is None or best_face is None:
-            # Segment ends inside current_cell without crossing another face.
-            results.append(
-                (
-                    current_cell,
-                    start_md + current_t * md_span,
-                    start_md + 1.0 * md_span,
-                )
-            )
+            # Segment ends inside `current_cell` without crossing another face.
+            results.append((
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + 1.0 * md_span,
+            ))
             break
 
         exit_t = min(best_t, 1.0)
-        results.append(
-            (
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + exit_t * md_span,
-            )
-        )
+        results.append((
+            current_cell,
+            start_md + current_t * md_span,
+            start_md + exit_t * md_span,
+        ))
         if best_t >= 1.0 - 1e-9:
             break
 
@@ -643,7 +637,7 @@ def _walk_segment_through_grid(
         )
         next_cell = neighbour if owner == current_cell else owner
         if next_cell < 0:
-            break  # boundary face - segment leaves the active grid domain
+            break  # boundary `face - segment` leaves the active grid domain
 
         current_cell = next_cell
         current_t = best_t

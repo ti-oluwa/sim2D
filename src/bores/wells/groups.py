@@ -32,6 +32,8 @@ class WellGroup(Serializable):
     """One node in the group hierarchy - deck `GRUPTREE` child/parent link."""
 
     name: str
+    """Group name"""
+    
     parent: typing.Optional[str] = None
     """
     `None` only for the implicit root (`name == "FIELD"`); every other

@@ -24,6 +24,7 @@ from bores.wells.trajectory import WellTrajectory
 __all__ = [
     "WellType",
     "CompletionStatus",
+    "WellStatus",
     "Perforation",
     "MDPerforation",
     "Well",
@@ -71,6 +72,41 @@ class CompletionStatus(enum.Enum):
         return cls(str(value).lower())
 
 
+class WellStatus(enum.Enum):
+    """
+    Schedule-activation status for a well or perforation under the
+    load-once compiled architecture.
+
+    Orthogonal to both `CompletionStatus` (a perforation's static,
+    deck-authored intent to ever flow) and `WellState.is_open` (a well's
+    runtime operational open/shut state, driven by control/limit resolution
+    during simulation). `WellStatus` answers a third, independent question:
+    has the schedule clock reached the point in the deck where this well or
+    perforation's defining record (`WELSPECS`/`COMPDAT`) takes effect yet?
+
+    Exists for the "load the full roster once" architecture: every well and
+    perforation that will ever appear across the whole schedule is loaded
+    up front into the compiled arrays as `PENDING`, then flipped to
+    `ACTIVE` in place as the schedule clock passes each entity's
+    introduction point, rather than reallocating compiled structures
+    mid-run. Every solver kernel skips `PENDING` rows entirely, the same
+    way it already skips `CompletionStatus.SHUT` perforations.
+    """
+
+    PENDING = "pending"
+    """Declared somewhere in the deck but not yet reached by the schedule clock."""
+
+    ACTIVE = "active"
+    """Reached by the schedule clock; subject to normal processing."""
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
+
 @attrs.frozen(kw_only=True, slots=True)
 class Perforation(Serializable):
     """
@@ -105,6 +141,15 @@ class Perforation(Serializable):
 
     status: CompletionStatus = CompletionStatus.OPEN
     """See `CompletionStatus`."""
+
+    schedule_status: WellStatus = WellStatus.ACTIVE
+    """
+    See `WellStatus`. Independent of `status`: a perforation added by a
+    `COMPDAT` record later in the schedule can be `WellStatus.PENDING`
+    while every already-active sibling perforation on the same well is
+    `ACTIVE`, and a `WellStatus.PENDING` perforation can still carry
+    `CompletionStatus.SHUT` for when it does activate.
+    """
 
     saturation_region: typing.Optional[int] = None
 
@@ -162,6 +207,11 @@ class Perforation(Serializable):
         return self.top_depth == self.bottom_depth
 
     @property
+    def is_active(self) -> bool:
+        """`True` if `schedule_status is WellStatus.ACTIVE`."""
+        return self.schedule_status is WellStatus.ACTIVE
+
+    @property
     def length(self) -> Number:
         """`bottom_depth - top_depth`. Zero for a point perforation."""
         return self.bottom_depth - self.top_depth
@@ -203,6 +253,15 @@ class MDPerforation(Serializable):
 
     status: CompletionStatus = CompletionStatus.OPEN
     """See `CompletionStatus`."""
+
+    schedule_status: WellStatus = WellStatus.ACTIVE
+    """
+    See `WellStatus`. Independent of `status`: a perforation added by a
+    `COMPDAT` record later in the schedule can be `WellStatus.PENDING`
+    while every already-active sibling perforation on the same well is
+    `ACTIVE`, and a `WellStatus.PENDING` perforation can still carry
+    `CompletionStatus.SHUT` for when it does activate.
+    """
 
     saturation_region: typing.Optional[int] = None
 
@@ -250,6 +309,11 @@ class MDPerforation(Serializable):
     def is_point_perforation(self) -> bool:
         """`True` if `top_md == bottom_md` (no completion length)."""
         return self.top_md == self.bottom_md
+
+    @property
+    def is_active(self) -> bool:
+        """`True` if `schedule_status is WellStatus.ACTIVE`."""
+        return self.schedule_status is WellStatus.ACTIVE
 
     @property
     def length(self) -> Number:
@@ -316,6 +380,16 @@ class Well(Serializable):
 
     unit_system: UnitSystem = UnitSystem.FIELD
 
+    schedule_status: WellStatus = WellStatus.ACTIVE
+    """
+    See `WellStatus`. Under the load-once roster architecture, `Wells.from_deck`
+    constructs every well the schedule will ever introduce up front; a well
+    whose `WELSPECS` hasn't been reached yet by the schedule clock is
+    `WellStatus.PENDING`, and is flipped to `ACTIVE` in place once it is.
+    A `Well` built directly (not via schedule loading) defaults to `ACTIVE`,
+    matching current/pre-schedule-aware behavior.
+    """
+
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
     """Free-form, mirrors `Grid.metadata`."""
 
@@ -376,6 +450,20 @@ class Well(Serializable):
             for perforation in self.perforations
             if perforation.status is CompletionStatus.OPEN
         )
+
+    @property
+    def active_perforations(self) -> typing.Tuple[AnyPerforation, ...]:
+        """Perforations with `WellStatus.ACTIVE` only."""
+        return tuple(
+            perforation
+            for perforation in self.perforations
+            if perforation.schedule_status is WellStatus.ACTIVE
+        )
+
+    @property
+    def is_active(self) -> bool:
+        """`True` if `schedule_status is WellStatus.ACTIVE`."""
+        return self.schedule_status is WellStatus.ACTIVE
 
     @property
     def min_perforation_depth(self) -> Number:
@@ -553,6 +641,16 @@ class Wells(
         return tuple(
             well for well in self.wells.values() if well.well_type is WellType.INJECTOR
         )
+
+    @property
+    def active(self) -> typing.Tuple[Well, ...]:
+        """All wells with `schedule_status is WellStatus.ACTIVE`."""
+        return tuple(well for well in self.wells.values() if well.is_active)
+
+    @property
+    def pending(self) -> typing.Tuple[Well, ...]:
+        """All wells with `schedule_status is WellStatus.PENDING`."""
+        return tuple(well for well in self.wells.values() if not well.is_active)
 
     @classmethod
     def from_deck(cls, deck_file: DeckFile, *, grid: Grid) -> Self:

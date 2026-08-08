@@ -5,6 +5,6 @@ from .groups import *
 from .hydraulics import *
 from .indices import *
 from .model import *
-from .perforations import *
+from .indices.perforations import *
 from .states import *
 from .trajectory import *

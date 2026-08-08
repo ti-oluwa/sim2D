@@ -361,7 +361,7 @@ class EconomicLimit(Limit):
         factor = (
             factors["gas_oil_ratio"]
             if self.quantity is EconomicQuantity.GOR
-            else factors["oil_gas_ratio"]  # WATER_GAS_RATIO: water is dimensionally
+            else factors["oil_gas_ratio"]  # `WATER_GAS_RATIO`: water is dimensionally
         )  # identical to oil (liquid_surface_volume)
         return attrs.evolve(self, max_value=self.max_value * factor, unit_system=target)
 

@@ -28,7 +28,7 @@ from bores.wells.controls import (
     RateQuantity,
 )
 from bores.wells.hydraulics.base import SurfaceFluidProperties, Wellbore
-from bores.wells.perforations import PerforationIndex
+from bores.wells.indices.perforations import PerforationIndex
 from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
 from bores.wells.states import ConnectionSample
 

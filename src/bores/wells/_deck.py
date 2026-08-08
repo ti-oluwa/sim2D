@@ -96,13 +96,23 @@ def load_well_from_records(
             "Only the standard inflow equation (STD) is currently supported."
         )
 
+    whole_well_multiplier: typing.Optional[float] = None
+    multiplier_by_ijk: typing.Dict[typing.Tuple[int, int, int, int], float] = {}
     if wpimult_records:
-        multiplier_by_ijk = {
-            (record["i"], record["j"], record["k1"], record["k2"]): record["multiplier"]
-            for record in wpimult_records
-        }
-    else:
-        multiplier_by_ijk = {}
+        for record in wpimult_records:
+            i, j = record.get("i", 0), record.get("j", 0)
+            k1, k2 = record.get("k1", 0), record.get("k2", 0)
+            if i == 0 and j == 0 and k1 == 0 and k2 == 0:
+                # WPIMULT's own schema defaults I/J/K1/K2 to 0, meaning
+                # "every connection on this well" - that key would never
+                # match any COMPDAT's real (nonzero) indices below, so a
+                # whole-well multiplier (the common case) needs its own
+                # fallback slot rather than living in multiplier_by_ijk.
+                # Later WPIMULT reissues overwrite earlier ones, matching
+                # this file's other reissue semantics (WCONPROD/WCONINJE).
+                whole_well_multiplier = record["multiplier"]
+            else:
+                multiplier_by_ijk[(i, j, k1, k2)] = record["multiplier"]
 
     for record in compdat_records:
         # Minus 1, to move from 1-based to 0-based indexing used internally
@@ -131,7 +141,9 @@ def load_well_from_records(
                 status=status,
                 saturation_region=saturation_region,
                 connection_factor_override=record.get("connection_factor"),
-                connection_factor_multiplier=multiplier_by_ijk.get(multiplier_key),
+                connection_factor_multiplier=multiplier_by_ijk.get(
+                    multiplier_key, whole_well_multiplier
+                ),
                 direction=DIRECTION_MAP.get(direction) if direction else None,
             )
         )

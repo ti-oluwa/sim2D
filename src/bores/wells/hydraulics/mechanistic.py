@@ -28,7 +28,7 @@ from bores.wells.hydraulics.base import (
     static_mixture_density,
     wellbore_type,
 )
-from bores.wells.perforations import PerforationIndex
+from bores.wells.indices.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
 
 __all__ = ["MechanisticWellbore"]

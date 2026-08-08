@@ -49,7 +49,6 @@ def make_producer(
     min_bhp: typing.Optional[Number] = None,
     max_rate: typing.Optional[Number] = None,
     wellbore_radius: Number = 0.25,
-    tubing_inner_diameter: typing.Optional[Number] = None,
     skin: Number = 0.0,
     group: typing.Optional[str] = None,
 ) -> typing.Tuple[Well, ProducerControl]:
@@ -96,7 +95,6 @@ def make_producer(
                 skin=skin,
             ),
         ),
-        tubing_inner_diameter=tubing_inner_diameter,
         group=group,
     )
 
@@ -133,7 +131,6 @@ def make_injector(
     target_bhp: typing.Optional[Number] = None,
     max_bhp: typing.Optional[Number] = None,
     wellbore_radius: Number = 0.25,
-    tubing_inner_diameter: typing.Optional[Number] = None,
     skin: Number = 0.0,
     group: typing.Optional[str] = None,
 ) -> typing.Tuple[Well, InjectorControl]:
@@ -177,7 +174,6 @@ def make_injector(
                 skin=skin,
             ),
         ),
-        tubing_inner_diameter=tubing_inner_diameter,
         group=group,
     )
 

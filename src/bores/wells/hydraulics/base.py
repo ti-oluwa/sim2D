@@ -21,7 +21,7 @@ from bores.typing import (
     UnitSystem,
 )
 from bores.wells.base import Well
-from bores.wells.perforations import PerforationIndex
+from bores.wells.indices.perforations import PerforationIndex
 from bores.wells.states import ConnectionSample
 
 __all__ = [

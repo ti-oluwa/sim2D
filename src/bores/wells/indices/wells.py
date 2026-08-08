@@ -24,6 +24,7 @@ from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
 from bores.typing import (
+    Integer,
     Number,
     NumberArray,
     NumberOrArray,
@@ -33,7 +34,7 @@ from bores.typing import (
     UnitSystem,
 )
 from bores.wells.base import AnyPerforation, MDPerforation, Perforation, Wells
-from bores.wells.perforations import (
+from bores.wells.indices.perforations import (
     PerforationIndex,
     resolve_md_perforations_indices,
     resolve_perforations_indices,
@@ -114,7 +115,7 @@ class WellIndex(Serializable):
 
 
 def resolve_well_index_direction(
-    perforation: Perforation, grid: Grid, cell_index: int
+    perforation: Perforation, grid: Grid, cell_index: Integer
 ) -> Orientation:
     """
     Resolve which axis a Peaceman-style well index should treat as the
@@ -144,7 +145,9 @@ def resolve_well_index_direction(
     return min(lengths, key=lengths.get)  # type: ignore[arg-type]
 
 
-def is_locally_cartesian(grid: Grid, cell_index: int, tolerance: Number = 0.05) -> bool:
+def is_locally_cartesian(
+    grid: Grid, cell_index: Integer, tolerance: Number = 0.05
+) -> bool:
     """
     Decide whether `cell_index` is "Cartesian-like enough" for Peaceman's
     formula to be valid, vs. requiring the equivalent-radius fallback.
@@ -342,7 +345,7 @@ def compute_equivalent_radius_well_index(
 def _resolve_connection_factor(
     perforation: AnyPerforation,
     grid: Grid,
-    cell_index: int,
+    cell_index: Integer,
     partial_penetration_fraction: Number,
     wellbore_radius: Number,
     permeabilities: typing.Mapping[Orientation, Number],
@@ -469,7 +472,6 @@ def build_wells_indices(
         )
 
     result: typing.Dict[str, WellIndex] = {}
-
     for name in wells:
         well = wells[name]
         if well.trajectory is None:
