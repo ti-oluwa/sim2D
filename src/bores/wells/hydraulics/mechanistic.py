@@ -1,246 +1,76 @@
-"""No-slip homogeneous mixture wellbore hydraulics."""
+"""No-slip mixture wellbore hydraulics."""
 
 import typing
 
-import attrs
+import numba
 import numpy as np
-from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
-from bores.errors import ValidationError
 from bores.typing import (
-    FluidPhase,
     Number,
     NumberArray,
     OneDimension,
     UnitConversionTable,
     UnitSystem,
 )
-from bores.wells.base import Well
 from bores.wells.hydraulics.base import (
+    PressureDrop,
     SurfaceFluidProperties,
-    Wellbore,
+    compute_hydrostatic_pressure,
     compute_mixture_density,
     compute_mixture_velocity,
     compute_mixture_viscosity,
     compute_segment_pressure_drop,
     compute_static_hydrostatic_drop,
+    compute_surface_mixture_density,
+    compute_surface_mixture_viscosity,
+    get_unit_system_constant,
     static_mixture_density,
-    wellbore_type,
 )
-from bores.wells.indices.perforations import PerforationIndex
-from bores.wells.states import ConnectionSample
+from bores.wells.states import ConnectionSample, PhaseValues
 
-__all__ = ["MechanisticWellbore"]
+__all__ = [
+    "MechanisticModel",
+    "mechanistic_model",
+    "compute_segment_drop",
+    "compute_perforation_pressures",
+    "compute_tubing_head_pressure",
+]
 
 
-@wellbore_type
-@attrs.frozen(kw_only=True, slots=True)
-class MechanisticWellbore(Wellbore):
-    """
-    No-slip mixture `Wellbore`.
-
-    One segment per (reference_depth -> connection) pair,
-    no intermediate discretization.
-    """
-
-    __type__ = "mechanistic"
+class MechanisticModel(typing.NamedTuple):
+    """Configuration for the mechanistic (no-slip mixture) wellbore hydraulics model."""
 
     tubing_inner_diameter: Number
+    """Tubing inner diameter."""
 
-    tubing_roughness: typing.Optional[Number] = None
-    """
-    Absolute roughness, same length unit as `unit_system`. `None` means
-    use a smooth-pipe assumption.
-    """
+    tubing_roughness: Number
+    """Absolute pipe roughness. `NaN` for a smooth pipe."""
 
-    friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
+    friction_method: int
+    """Which friction-factor correlation to use: `0` for the simplified
+    correlation, `1` for Colebrook."""
 
-    unit_system: UnitSystem = UnitSystem.FIELD
+    gravitational_acceleration: Number
+    """Acceleration due to gravity, in this model's unit system."""
 
-    gravitational_acceleration: typing.Optional[Number] = None
-    """
-    Resolved on post initialization if left `None`. 
-    
-    Once resolved, this field always holds a real number and not `None` after construction.
-    """
+    laminar_reynolds_limit: Number
+    """Reynolds number below which flow is treated as laminar."""
 
-    laminar_reynolds_limit: typing.Optional[Number] = None
-    """
-    `c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None` - dimensionless
-    (a Reynolds number).
-    """
+    turbulent_reynolds_limit: Number
+    """Reynolds number above which flow is treated as fully turbulent."""
 
-    turbulent_reynolds_limit: typing.Optional[Number] = None
-    """
-    `c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`. Dimensionless,
-    same as `laminar_reynolds_limit`.
-    """
+    friction_max_iterations: int
+    """Maximum iterations for the Colebrook friction-factor calculation."""
 
-    friction_max_iterations: typing.Optional[int] = None
-    """
-    `c.COLEBROOK_MAX_ITERATIONS` if `None`. An iteration count, not
-    unit-system-dependent.
-    """
+    friction_tolerance: Number
+    """Convergence tolerance for the Colebrook friction-factor calculation."""
 
-    friction_tolerance: typing.Optional[Number] = None
-    """
-    `c.COLEBROOK_TOLERANCE` if `None`. A dimensionless convergence
-    tolerance, not unit-system-dependent.
-    """
+    hydrostatic_scale: Number
+    """Unit-conversion factor applied to the hydrostatic pressure term."""
 
-    def __attrs_post_init__(self) -> None:
-        if self.tubing_inner_diameter <= 0:
-            raise ValidationError("`tubing_inner_diameter` must be positive.")
-
-        if self.gravitational_acceleration is None:
-            field_gravitational_acceleration = (
-                c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-            )
-            if self.unit_system is UnitSystem.FIELD:
-                resolved_gravitational_acceleration = field_gravitational_acceleration
-            else:
-                length_factor = get_conversion_factors(
-                    UnitSystem.FIELD, self.unit_system
-                )["length"]
-                resolved_gravitational_acceleration = (
-                    field_gravitational_acceleration * length_factor
-                )
-            object.__setattr__(
-                self,
-                "gravitational_acceleration",
-                resolved_gravitational_acceleration,
-            )
-
-        if self.laminar_reynolds_limit is None:
-            object.__setattr__(
-                self, "laminar_reynolds_limit", c.WELLBORE_LAMINAR_REYNOLDS_LIMIT
-            )
-        if self.turbulent_reynolds_limit is None:
-            object.__setattr__(
-                self, "turbulent_reynolds_limit", c.WELLBORE_TURBULENT_REYNOLDS_LIMIT
-            )
-        if self.friction_max_iterations is None:
-            object.__setattr__(
-                self, "friction_max_iterations", c.COLEBROOK_MAX_ITERATIONS
-            )
-        if self.friction_tolerance is None:
-            object.__setattr__(self, "friction_tolerance", c.COLEBROOK_TOLERANCE)
-
-    def compute_perforation_pressures(
-        self,
-        well: Well,
-        reference_pressure: Number,
-        phase_rates: typing.Mapping[FluidPhase, Number],
-        perforation_indices: typing.Sequence[PerforationIndex],
-        connection_samples: typing.Sequence[ConnectionSample],
-        is_injector: bool,
-    ) -> NumberArray[OneDimension]:
-        if len(connection_samples) != len(perforation_indices):
-            raise ValidationError(
-                f"len(connection_samples)={len(connection_samples)} != "
-                f"len(perforation_indices)={len(perforation_indices)} for "
-                f"well {well.name!r}."
-            )
-        assert self.gravitational_acceleration is not None
-        total_rate = sum(phase_rates.values())
-        pressures = np.empty(len(perforation_indices), dtype=float)
-        friction_sign = -1.0 if is_injector else 1.0
-
-        for i, (pidx, sample) in enumerate(
-            zip(perforation_indices, connection_samples)
-        ):
-            dz = pidx.representative_depth - well.reference_depth
-            geometric_sign = 1.0 if dz >= 0 else -1.0
-
-            if total_rate == 0.0:
-                drop = compute_static_hydrostatic_drop(
-                    mixture_density=static_mixture_density(sample),
-                    length=abs(dz),
-                    gravitational_acceleration=self.gravitational_acceleration,
-                    unit_system=self.unit_system,
-                )
-                pressures[i] = reference_pressure + geometric_sign * drop.total
-                continue
-
-            mixture_density = compute_mixture_density(
-                phase_rates, sample.phase_densities
-            )
-            mixture_viscosity = compute_mixture_viscosity(
-                phase_rates, sample.phase_viscosities
-            )
-            velocity = compute_mixture_velocity(phase_rates, self.tubing_inner_diameter)
-            drop = compute_segment_pressure_drop(
-                length=abs(dz),
-                inclination_from_vertical=pidx.inclination_from_vertical,
-                tubing_inner_diameter=self.tubing_inner_diameter,
-                tubing_roughness=self.tubing_roughness,
-                mixture_density=mixture_density,
-                mixture_viscosity=mixture_viscosity,
-                mixture_velocity_in=velocity,
-                mixture_velocity_out=velocity,
-                gravitational_acceleration=self.gravitational_acceleration,
-                unit_system=self.unit_system,
-                friction_method=self.friction_method,
-                laminar_reynolds_limit=self.laminar_reynolds_limit,
-                turbulent_reynolds_limit=self.turbulent_reynolds_limit,
-                friction_max_iterations=self.friction_max_iterations,
-                friction_tolerance=self.friction_tolerance,
-            )
-            pressures[i] = (
-                reference_pressure
-                + geometric_sign * (drop.hydrostatic + drop.acceleration)
-                + friction_sign * drop.friction
-            )
-        return pressures
-
-    def compute_tubing_head_pressure(
-        self,
-        well: Well,
-        reference_pressure: Number,
-        phase_rates: typing.Mapping[FluidPhase, Number],
-        surface_fluid_properties: SurfaceFluidProperties,
-        is_injector: bool,
-    ) -> Number:
-        assert self.gravitational_acceleration is not None
-        dz = 0.0 - well.reference_depth
-        total_rate = sum(phase_rates.values())
-        friction_sign = -1.0 if is_injector else 1.0
-        mixture_density = surface_fluid_properties.get_mixture_density(phase_rates)
-
-        if total_rate == 0.0:
-            drop = compute_static_hydrostatic_drop(
-                mixture_density=mixture_density,
-                length=abs(dz),
-                gravitational_acceleration=self.gravitational_acceleration,
-                unit_system=self.unit_system,
-            )
-            return reference_pressure - drop.total
-
-        mixture_viscosity = surface_fluid_properties.get_mixture_viscosity(phase_rates)
-        velocity = compute_mixture_velocity(phase_rates, self.tubing_inner_diameter)
-        drop = compute_segment_pressure_drop(
-            length=abs(dz),
-            inclination_from_vertical=0.0,  # Surface tubing is always vertical
-            tubing_inner_diameter=self.tubing_inner_diameter,
-            tubing_roughness=self.tubing_roughness,
-            mixture_density=mixture_density,
-            mixture_viscosity=mixture_viscosity,
-            mixture_velocity_in=velocity,
-            mixture_velocity_out=velocity,
-            gravitational_acceleration=self.gravitational_acceleration,
-            unit_system=self.unit_system,
-            friction_method=self.friction_method,
-            laminar_reynolds_limit=self.laminar_reynolds_limit,
-            turbulent_reynolds_limit=self.turbulent_reynolds_limit,
-            friction_max_iterations=self.friction_max_iterations,
-            friction_tolerance=self.friction_tolerance,
-        )
-        return (
-            reference_pressure
-            - (drop.hydrostatic + drop.acceleration)
-            - friction_sign * drop.friction
-        )
+    unit_system: UnitSystem
+    """This model's unit system."""
 
     def convert(
         self,
@@ -248,30 +78,290 @@ class MechanisticWellbore(Wellbore):
         /,
         *,
         table: typing.Optional[UnitConversionTable] = None,
-    ) -> Self:
+    ) -> "MechanisticModel":
         """
-        Returns a new `MechanisticWellbore` in the *target* unit system.
+        Converts this model to a different unit system.
 
         :param target: Target unit system.
-        :param table: Optional custom conversion table.
-        :returns: New model with `gravitational_acceleration` converted to
-            `target`. `laminar_reynolds_limit`/`turbulent_reynolds_limit`/
-            `friction_max_iterations`/`friction_tolerance` are dimensionless
-            and unchanged.
+        :param table: Optional custom unit-conversion table.
+        :returns: This model, converted to `target`.
         """
         if target == self.unit_system:
             return self
 
-        assert self.gravitational_acceleration is not None
-        length_factor = get_conversion_factors(self.unit_system, target, table=table)[
-            "length"
-        ]
-        return attrs.evolve(
-            self,
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        length_factor = factors["length"]
+        return self._replace(
             tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
-            tubing_roughness=self.tubing_roughness * length_factor
-            if self.tubing_roughness is not None
-            else None,
+            tubing_roughness=self.tubing_roughness * length_factor,
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
+            hydrostatic_scale=1.0
+            / (
+                get_unit_system_constant(
+                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
+                )
+                * get_unit_system_constant(
+                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
+                )
+            ),
             unit_system=target,
         )
+
+
+def mechanistic_model(
+    *,
+    tubing_inner_diameter: Number,
+    tubing_roughness: typing.Optional[Number] = None,
+    friction_method: typing.Literal["simplified", "colebrook"] = "simplified",
+    unit_system: UnitSystem = UnitSystem.FIELD,
+    gravitational_acceleration: typing.Optional[Number] = None,
+    laminar_reynolds_limit: typing.Optional[Number] = None,
+    turbulent_reynolds_limit: typing.Optional[Number] = None,
+    friction_max_iterations: typing.Optional[int] = None,
+    friction_tolerance: typing.Optional[Number] = None,
+) -> MechanisticModel:
+    """
+    Builds a `MechanisticModel`.
+
+    :param tubing_inner_diameter: Tubing inner diameter.
+    :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
+    :param friction_method: Which friction-factor correlation to use.
+    :param unit_system: This model's unit system.
+    :param gravitational_acceleration: Acceleration due to gravity. Resolved
+        from `unit_system`'s standard gravity if not given.
+    :param laminar_reynolds_limit: Reynolds number below which flow is
+        treated as laminar. `c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if not given.
+    :param turbulent_reynolds_limit: Reynolds number above which flow is
+        treated as fully turbulent. `c.WELLBORE_TURBULENT_REYNOLDS_LIMIT`
+        if not given.
+    :param friction_max_iterations: Maximum Colebrook iterations.
+        `c.COLEBROOK_MAX_ITERATIONS` if not given.
+    :param friction_tolerance: Colebrook convergence tolerance.
+        `c.COLEBROOK_TOLERANCE` if not given.
+    :returns: A fully configured `MechanisticModel`.
+    """
+    if gravitational_acceleration is None:
+        gravitational_acceleration = typing.cast(
+            Number, c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
+        )
+        if unit_system != UnitSystem.FIELD:
+            factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
+            gravitational_acceleration = gravitational_acceleration * factors["length"]
+
+    return MechanisticModel(
+        tubing_inner_diameter=tubing_inner_diameter,
+        tubing_roughness=tubing_roughness
+        if tubing_roughness is not None
+        else float("nan"),
+        friction_method=1 if friction_method == "colebrook" else 0,
+        gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
+        laminar_reynolds_limit=(
+            laminar_reynolds_limit
+            if laminar_reynolds_limit is not None
+            else c.WELLBORE_LAMINAR_REYNOLDS_LIMIT
+        ),
+        turbulent_reynolds_limit=(
+            turbulent_reynolds_limit
+            if turbulent_reynolds_limit is not None
+            else c.WELLBORE_TURBULENT_REYNOLDS_LIMIT
+        ),
+        friction_max_iterations=(
+            friction_max_iterations
+            if friction_max_iterations is not None
+            else c.COLEBROOK_MAX_ITERATIONS
+        ),
+        friction_tolerance=(
+            friction_tolerance
+            if friction_tolerance is not None
+            else c.COLEBROOK_TOLERANCE
+        ),
+        hydrostatic_scale=1.0
+        / (
+            get_unit_system_constant(
+                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
+            )
+            * get_unit_system_constant(
+                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
+            )
+        ),
+        unit_system=unit_system,
+    )
+
+
+@numba.njit(cache=True)
+def compute_segment_drop(
+    model: MechanisticModel,
+    length: Number,
+    inclination_from_vertical: Number,
+    mixture_density: Number,
+    mixture_viscosity: Number,
+    mixture_velocity_in: Number,
+    mixture_velocity_out: Number,
+) -> PressureDrop:
+    """
+    Computes the pressure drop across one tubing segment.
+
+    :param model: This well's `MechanisticModel`.
+    :param length: Along-wellbore segment length.
+    :param inclination_from_vertical: Segment inclination, in radians. `0` is vertical.
+    :param mixture_density: No-slip mixture density for this segment.
+    :param mixture_viscosity: No-slip mixture viscosity for this segment.
+    :param mixture_velocity_in: Superficial mixture velocity entering the segment.
+    :param mixture_velocity_out: Superficial mixture velocity leaving the segment.
+    :returns: Pressure drop for this segment.
+    """
+    return compute_segment_pressure_drop(
+        length=length,
+        inclination_from_vertical=inclination_from_vertical,
+        tubing_inner_diameter=model.tubing_inner_diameter,
+        tubing_roughness=model.tubing_roughness,
+        mixture_density=mixture_density,
+        mixture_viscosity=mixture_viscosity,
+        mixture_velocity_in=mixture_velocity_in,
+        mixture_velocity_out=mixture_velocity_out,
+        gravitational_acceleration=model.gravitational_acceleration,
+        hydrostatic_scale=model.hydrostatic_scale,
+        method_tag=model.friction_method,
+        laminar_reynolds_limit=model.laminar_reynolds_limit,
+        turbulent_reynolds_limit=model.turbulent_reynolds_limit,
+        friction_max_iterations=model.friction_max_iterations,
+        friction_tolerance=model.friction_tolerance,
+    )
+
+
+def compute_perforation_pressures(
+    model: MechanisticModel,
+    reference_depth: Number,
+    reference_pressure: Number,
+    phase_rates: PhaseValues,
+    representative_depths: NumberArray[OneDimension],
+    inclinations_from_vertical: NumberArray[OneDimension],
+    connection_samples: typing.Sequence[ConnectionSample],
+    is_injector: bool,
+) -> NumberArray[OneDimension]:
+    """
+    Computes flowing pressure at each perforation connection.
+
+    :param model: This well's `MechanisticModel`.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param reference_pressure: Pressure at `reference_depth`.
+    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param representative_depths: One depth per connection, same order as `connection_samples`.
+    :param inclinations_from_vertical: One inclination per connection, in
+        radians, same order as `connection_samples`.
+    :param connection_samples: Reservoir conditions at each connection.
+    :param is_injector: Whether this well is an injector.
+    :returns: Pressure at each connection, same order as `connection_samples`.
+    :raises ValueError: If `representative_depths`, `inclinations_from_vertical`,
+        and `connection_samples` don't all have the same length.
+    """
+    n = len(connection_samples)
+    if not (len(representative_depths) == len(inclinations_from_vertical) == n):
+        raise ValueError(
+            "representative_depths, inclinations_from_vertical, and "
+            "connection_samples must all have the same length."
+        )
+
+    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
+    pressures = np.empty(n, dtype=np.float64)
+    friction_sign = -1.0 if is_injector else 1.0
+
+    for i in range(n):
+        sample = connection_samples[i]
+        dz = representative_depths[i] - reference_depth
+        geometric_sign = 1.0 if dz >= 0 else -1.0
+
+        if total_rate == 0.0:
+            drop = compute_static_hydrostatic_drop(
+                mixture_density=static_mixture_density(
+                    phase_saturations=sample.phase_saturations,
+                    phase_densities=sample.phase_densities,
+                ),
+                length=abs(dz),
+                gravitational_acceleration=model.gravitational_acceleration,
+                unit_system=model.unit_system,
+            )
+            pressures[i] = reference_pressure + geometric_sign * drop.total
+            continue
+
+        mixture_density = compute_mixture_density(
+            phase_rates=phase_rates, phase_densities=sample.phase_densities
+        )
+        mixture_viscosity = compute_mixture_viscosity(
+            phase_rates=phase_rates, phase_viscosities=sample.phase_viscosities
+        )
+        velocity = compute_mixture_velocity(
+            phase_rates=phase_rates, tubing_inner_diameter=model.tubing_inner_diameter
+        )
+        drop = compute_segment_drop(
+            model=model,
+            length=abs(dz),
+            inclination_from_vertical=inclinations_from_vertical[i],
+            mixture_density=mixture_density,
+            mixture_viscosity=mixture_viscosity,
+            mixture_velocity_in=velocity,
+            mixture_velocity_out=velocity,
+        )
+        pressures[i] = (
+            reference_pressure
+            + geometric_sign * (drop.hydrostatic + drop.acceleration)
+            + friction_sign * drop.friction
+        )
+    return pressures
+
+
+def compute_tubing_head_pressure(
+    model: MechanisticModel,
+    reference_depth: Number,
+    reference_pressure: Number,
+    phase_rates: PhaseValues,
+    surface_fluid_properties: SurfaceFluidProperties,
+    is_injector: bool,
+) -> Number:
+    """
+    Computes tubing head pressure at surface.
+
+    :param model: This well's `MechanisticModel`.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param reference_pressure: Pressure at `reference_depth`.
+    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param surface_fluid_properties: Fluid properties at surface conditions.
+    :param is_injector: Whether this well is an injector.
+    :returns: Tubing head pressure.
+    """
+    dz = 0.0 - reference_depth
+    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
+    friction_sign = -1.0 if is_injector else 1.0
+    mixture_density = compute_surface_mixture_density(
+        properties=surface_fluid_properties, phase_rates=phase_rates
+    )
+
+    if total_rate == 0.0:
+        drop = compute_static_hydrostatic_drop(
+            mixture_density=mixture_density,
+            length=abs(dz),
+            gravitational_acceleration=model.gravitational_acceleration,
+            unit_system=model.unit_system,
+        )
+        return reference_pressure - drop.total
+
+    mixture_viscosity = compute_surface_mixture_viscosity(
+        properties=surface_fluid_properties, phase_rates=phase_rates
+    )
+    velocity = compute_mixture_velocity(
+        phase_rates=phase_rates, tubing_inner_diameter=model.tubing_inner_diameter
+    )
+    drop = compute_segment_drop(
+        model=model,
+        length=abs(dz),
+        inclination_from_vertical=0.0,
+        mixture_density=mixture_density,
+        mixture_viscosity=mixture_viscosity,
+        mixture_velocity_in=velocity,
+        mixture_velocity_out=velocity,
+    )
+    return (
+        reference_pressure
+        - (drop.hydrostatic + drop.acceleration)
+        - friction_sign * drop.friction
+    )

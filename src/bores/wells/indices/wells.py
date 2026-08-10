@@ -43,11 +43,13 @@ from bores.wells.indices.perforations import (
 __all__ = [
     "WellIndex",
     "resolve_well_index_direction",
+    "is_locally_cartesian",
     "compute_peaceman_well_index",
     "compute_3D_effective_drainage_radius",
     "compute_2D_effective_drainage_radius",
     "compute_effective_permeability_for_well",
     "compute_equivalent_radius_well_index",
+    "resolve_connection_factor",
     "build_wells_indices",
 ]
 
@@ -57,9 +59,16 @@ class WellIndex(Serializable):
     """Computed well indices for all perforations of a single well."""
 
     well_name: str
+    """Name of the well these indices belong to."""
+
     perforations: typing.Tuple[PerforationIndex, ...] = attrs.field(converter=tuple)
+    """Resolved connection factor for each of this well's open perforations."""
+
     total_well_index: Number
+    """Sum of every perforation's well index."""
+
     unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system these indices are expressed in."""
 
     def __attrs_post_init__(self) -> None:
         mismatched = [
@@ -74,11 +83,22 @@ class WellIndex(Serializable):
             )
 
     def get_allocation_fraction(self, perforation: PerforationIndex) -> Number:
-        """Get the fraction of `total_well_index` contributed by one `perforation`."""
+        """
+        Gets the fraction of the well's total connection factor a given
+        perforation contributes.
+
+        :param perforation: One of this well's perforations.
+        :returns: `perforation.well_index / total_well_index`, or `1.0` if
+            `total_well_index` isn't positive.
+        :raises ValidationError: If `perforation.well_index` hasn't been resolved.
+        """
         if self.total_well_index <= 0:
             return 1.0
         if perforation.well_index is None:
-            raise ValidationError()
+            raise ValidationError(
+                "`perforation.well_index` is None - this PerforationIndex "
+                "hasn't been resolved by build_wells_indices yet."
+            )
         return perforation.well_index / self.total_well_index
 
     def __iter__(self) -> typing.Iterator[PerforationIndex]:
@@ -342,7 +362,7 @@ def compute_equivalent_radius_well_index(
     )
 
 
-def _resolve_connection_factor(
+def resolve_connection_factor(
     perforation: AnyPerforation,
     grid: Grid,
     cell_index: Integer,
@@ -353,8 +373,7 @@ def _resolve_connection_factor(
     net_to_gross: float = 1.0,
 ) -> Number:
     """
-    Single entry point `build_wells_indices` calls per (perforation, cell)
-    pair.
+    Resolves the connection factor for one (perforation, cell) pair.
 
     Resolution order: `perforation.connection_factor_override` if set;
     otherwise Peaceman (`compute_peaceman_well_index`) if `is_locally_cartesian`;
@@ -369,6 +388,8 @@ def _resolve_connection_factor(
         well default).
     :param permeabilities: Per-axis permeability at `cell_index`, keyed by
         `Orientation.X`/`Y`/`Z`.
+    :param regime_constant: Forwarded to `compute_peaceman_well_index`.
+    :param net_to_gross: Forwarded to `compute_peaceman_well_index`.
     :returns: Connection factor / well index for this (perforation, cell) pair.
     """
     if perforation.connection_factor_override is not None:
@@ -476,11 +497,11 @@ def build_wells_indices(
         well = wells[name]
         if well.trajectory is None:
             perforation_indices = resolve_perforations_indices(
-                grid, well, **resolve_kwargs
+                grid=grid, well=well, **resolve_kwargs
             )
         else:
             perforation_indices = resolve_md_perforations_indices(
-                grid, well, **resolve_kwargs
+                grid=grid, well=well, **resolve_kwargs
             )
 
         resolved: typing.List[PerforationIndex] = []
@@ -495,7 +516,7 @@ def build_wells_indices(
             cell_net_to_gross = (
                 net_to_gross[cell_idx] if isinstance(net_to_gross, np.ndarray) else 1.0
             )
-            well_index = _resolve_connection_factor(
+            well_index = resolve_connection_factor(
                 perforation=perforation,
                 grid=grid,
                 cell_index=cell_idx,

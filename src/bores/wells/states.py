@@ -13,36 +13,58 @@ from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
-__all__ = ["ConnectionSample", "PerforationState", "WellState", "WellsStates"]
+__all__ = [
+    "PhaseValues",
+    "ConnectionSample",
+    "PerforationState",
+    "WellState",
+    "WellsStates",
+]
 
 
-@attrs.frozen(kw_only=True, slots=True)
-class ConnectionSample(Serializable):
-    """Reservoir conditions at one connected cell"""
+class PhaseValues(typing.NamedTuple):
+    """A value for each of the three fluid phases."""
+
+    oil: Number
+    """The value for the oil phase."""
+
+    water: Number
+    """The value for the water phase."""
+
+    gas: Number
+    """The value for the gas phase."""
+
+
+class ConnectionSample(typing.NamedTuple):
+    """Reservoir conditions at one connected cell."""
 
     cell_index: int
-    pressure: Number
-    temperature: Number
-    phase_saturations: typing.Mapping[FluidPhase, Number]
-    phase_mobilities: typing.Mapping[FluidPhase, Number]
-    phase_densities: typing.Mapping[FluidPhase, Number]
-    phase_viscosities: typing.Mapping[FluidPhase, Number]
-    gas_liquid_surface_tension: Number
-    phase_formation_volume_factors: typing.Mapping[FluidPhase, Number] = attrs.field(
-        factory=dict
-    )
-    """
-    Reservoir volume per surface volume, per phase, at this
-    connection's current pressure. A phase missing from this mapping is
-    treated as having a formation volume factor of 1 - correct for a
-    RESERVOIR-condition target (no conversion needed there) but wrong for
-    a surface-condition target (ORAT/WRAT/GRAT/LRAT) if the phase's real
-    formation volume factor differs from 1; not silently assumed correct.
-    """
+    """Index of the connected grid cell."""
 
-    def __attrs_post_init__(self) -> None:
-        if self.cell_index < 0:
-            raise ValidationError(f"`cell_index` must be >= 0; got {self.cell_index}.")
+    pressure: Number
+    """Reservoir pressure at the connected cell."""
+
+    temperature: Number
+    """Reservoir temperature at the connected cell."""
+
+    phase_saturations: PhaseValues
+    """Saturation of each phase at the connected cell."""
+
+    phase_mobilities: PhaseValues
+    """Mobility of each phase at the connected cell."""
+
+    phase_densities: PhaseValues
+    """Density of each phase at the connected cell."""
+
+    phase_viscosities: PhaseValues
+    """Viscosity of each phase at the connected cell."""
+
+    gas_liquid_surface_tension: Number
+    """Surface tension between the gas and liquid phases."""
+
+    phase_formation_volume_factors: PhaseValues
+    """Reservoir volume per surface volume of each phase, at this
+    connection's current pressure."""
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -50,10 +72,19 @@ class PerforationState(StoreSerializable):
     """Per-perforation dynamic snapshot for one timestep."""
 
     perforation: AnyPerforation
+    """The perforation this snapshot is for."""
+
     cell_index: int
+    """The grid cell this perforation connects to."""
+
     flowing_pressure: Number
+    """Flowing bottomhole pressure at this perforation."""
+
     phase_rates: typing.Mapping[FluidPhase, Number]
+    """Rate of each phase at this perforation."""
+
     unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system this snapshot's dimensioned fields are expressed in."""
 
     def __attrs_post_init__(self) -> None:
         if self.cell_index < 0:
@@ -67,10 +98,12 @@ class PerforationState(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
+        Converts this snapshot to a different unit system.
+
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New `PerforationState` with `flowing_pressure` and every
-            entry in `phase_rates` converted to target.
+        :returns: This snapshot, with `flowing_pressure` and every entry
+            in `phase_rates` converted to `target`.
         """
         if target == self.unit_system:
             return self
@@ -93,14 +126,31 @@ class WellState(StoreSerializable):
     """Per-well dynamic snapshot for one timestep."""
 
     well_name: str
+    """Name of the well this snapshot is for."""
+
     is_open: bool
+    """Whether the well is currently flowing."""
+
     active_control: WellControl
+    """The control currently governing this well."""
+
     bhp: Number
+    """Current bottomhole pressure."""
+
     perforation_states: typing.Tuple[PerforationState, ...]
+    """Snapshot for each of this well's open perforations. Empty if `is_open` is `False`."""
+
     phase_rates: typing.Mapping[FluidPhase, Number]
+    """Rate of each phase for the whole well."""
+
     active_limit: typing.Optional[Limit] = None
+    """The limit currently constraining the well, if any."""
+
     thp: typing.Optional[Number] = None
+    """Current tubing head pressure, if computed."""
+
     unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system this snapshot's dimensioned fields are expressed in."""
 
     def __attrs_post_init__(self) -> None:
         if not self.well_name:
@@ -129,7 +179,7 @@ class WellState(StoreSerializable):
 
     @property
     def total_liquid_rate(self) -> Number:
-        """`phase_rates[OIL] + phase_rates[WATER]`, 0 for missing phases."""
+        """Combined oil and water rate for the well. Missing phases count as zero."""
         return self.phase_rates.get(FluidPhase.OIL, 0.0) + self.phase_rates.get(
             FluidPhase.WATER, 0.0
         )
@@ -158,13 +208,13 @@ class WellState(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Returns a  new `WellState` in the *target* unit system.
+        Converts this snapshot to a different unit system.
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New `WellState` with bhp, thp, phase_rates,
-            `perforation_states`, `active_control`, and `active_limit` (if set)
-            all converted to target.
+        :returns: This snapshot, with `bhp`, `thp`, `phase_rates`,
+            `perforation_states`, `active_control`, and `active_limit` (if
+            set) converted to `target`.
         """
         if target == self.unit_system:
             return self

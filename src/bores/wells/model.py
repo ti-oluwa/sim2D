@@ -13,7 +13,7 @@ from bores.typing import UnitConversionTable, UnitSystem
 from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
-from bores.wells.hydraulics.base import Wellbore
+from bores.wells.hydraulics.base import WellBoreModel
 from bores.wells.resolution.base import ControlResolverSpec
 
 __all__ = ["WellSystem"]
@@ -21,20 +21,29 @@ __all__ = ["WellSystem"]
 
 @attrs.frozen(kw_only=True, slots=True)
 class WellSystem(StoreSerializable):
-    """The wells sub-system"""
+    """A complete wells sub-system: wells, controls, hydraulics, and groups."""
 
     wells: Wells
+    """Every well in the system."""
+
     well_controls: WellControls
-    default_wellbore: Wellbore
-    wellbore_overrides: typing.Mapping[str, Wellbore] = attrs.field(factory=dict)
-    """
-    Per-well hydraulics override (e.g. a gas well on Beggs-Brill while
-    every oil well uses the mechanistic no-slip model). Falls back to
-    `default_wellbore` for any well not listed here.
-    """
+    """Current control target for each well."""
+
+    default_wellbore: WellBoreModel
+    """Hydraulics model used by any well without an entry in `wellbore_overrides`."""
+
+    wellbore_overrides: typing.Mapping[str, WellBoreModel] = attrs.field(factory=dict)
+    """Per-well hydraulics override - e.g. a gas well on Beggs-Brill while
+    every oil well uses the mechanistic no-slip model."""
+
     groups: typing.Optional[WellGroups] = None
+    """The well-group hierarchy, if the deck defined one."""
+
     group_controls: typing.Optional[GroupControls] = None
+    """Current control target for each group, if the deck defined any."""
+
     resolver_spec: ControlResolverSpec = attrs.field(factory=ControlResolverSpec)
+    """Configuration for how well controls are resolved during simulation."""
 
     def __attrs_post_init__(self) -> None:
         if self.well_controls.unit_system != self.wells.unit_system:
@@ -56,24 +65,25 @@ class WellSystem(StoreSerializable):
         """Unit system shared by `wells`/`well_controls`/`group_controls`."""
         return self.wells.unit_system
 
-    def get_wellbore_model(self, well_name: str) -> Wellbore:
+    def get_wellbore_model(self, well_name: str) -> WellBoreModel:
         """
-        The `Wellbore` to use for `well_name`.
+        Gets the hydraulics model to use for a well.
 
-        Uses `wellbore_overrides[well_name]` if present, else `default_wellbore`.
+        :param well_name: Name of the well.
+        :returns: `wellbore_overrides[well_name]` if present, else `default_wellbore`.
         """
         return self.wellbore_overrides.get(well_name, self.default_wellbore)
 
     def get_wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
         """
-        Returns every well name whose `group == group_name` or any group
-        under it (recursively, via `self.groups`).
+        Gets every well belonging to a group or any group under it.
 
-        :raises ValidationError: If `self.groups` is `None`.
+        :param group_name: Name of the group.
+        :returns: Names of every well whose group is `group_name` or a
+            descendant of it, per `groups`.
+        :raises ValidationError: If `groups` is `None`.
         """
         if self.groups is None:
-            from bores.errors import ValidationError
-
             raise ValidationError(
                 "`get_wells_in_group` requires `groups` to be set on this WellSystem."
             )
@@ -84,19 +94,19 @@ class WellSystem(StoreSerializable):
 
     @classmethod
     def from_deck(
-        cls, deck_file: DeckFile, *, grid: Grid, default_wellbore: Wellbore
+        cls, deck_file: DeckFile, *, grid: Grid, default_wellbore: WellBoreModel
     ) -> Self:
         """
-        Load a `WellSystem` from a parsed `DeckFile`.
+        Builds a `WellSystem` from a parsed deck.
 
         :param deck_file: Parsed deck.
         :param grid: `Grid` built from the same deck.
-        :param default_wellbore: `Wellbore` that describes the wells' hydraulics.
-            Defaults to `MechanisticWellbore` if not provided.
-        :param well_kwargs: Forwarded to `Wells.from_deck`.
+        :param default_wellbore: Hydraulics model for every well - build
+            one via `wells.hydraulics.mechanistic.mechanistic_model()` or
+            `wells.hydraulics.beggs_brill.beggs_and_brill()`.
         :returns: `WellSystem` built from every well/control/group keyword
-            present in the deck. groups/group_controls are None if the
-            deck has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.
+            in the deck. `groups`/`group_controls` are `None` if the deck
+            has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.
         """
         groups = WellGroups.from_deck(deck_file) if deck_file.has("GRUPTREE") else None
         group_controls = (
@@ -120,13 +130,14 @@ class WellSystem(StoreSerializable):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
-        Returns a  new `WellSystem` in the *target* unit system.
+        Converts this system to a different unit system.
+
+        `groups` (a pure hierarchy, with no dimensioned data) is unchanged.
 
         :param target: Target unit system.
-        :param table: Optional custom conversion table.
-        :returns: New `WellsModel` with wells/well_controls/group_controls
-            converted to target. groups (pure hierarchy, no dimensioned
-            data) and the wellbore models are unchanged.
+        :param table: Optional custom unit-conversion table.
+        :returns: This system, with `wells`/`well_controls`/`default_wellbore`/
+            `wellbore_overrides`/`group_controls` converted to `target`.
         """
         if target == self.unit_system:
             return self

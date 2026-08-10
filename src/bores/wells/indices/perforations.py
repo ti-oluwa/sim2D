@@ -38,8 +38,15 @@ class PerforationIndex(Serializable):
     """One resolved (perforation, cell) pair - a connection."""
 
     perforation: typing.Union[Perforation, MDPerforation]
+    """The perforation this connection belongs to."""
+
     cell_index: Integer
+    """The grid cell this connection resolves to."""
+
     partial_penetration_fraction: Number
+    """Fraction of the cell's completion-direction length that `perforation`
+    actually overlaps, in `(0, 1]`."""
+
     representative_depth: Number
     """Midpoint true vertical depth of the overlap between `perforation`'s
     interval and this cell."""
@@ -50,7 +57,9 @@ class PerforationIndex(Serializable):
     that package derives an inclination itself."""
     well_index: typing.Optional[Number] = None
     """Connection factor for this connection. `None` until computed."""
+
     unit_system: UnitSystem = UnitSystem.FIELD
+    """Unit system this connection's dimensioned fields are expressed in."""
 
     def convert(
         self,

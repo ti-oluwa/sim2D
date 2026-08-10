@@ -1,168 +1,257 @@
-"""
-Beggs & Brill (1973) two-phase wellbore hydraulics.
-
-Closed-form flow-pattern-dependent liquid holdup and friction correction.
-
-Reference: Beggs, H.D. and Brill, J.P., "A Study of Two-Phase Flow in
-Inclined Pipes", Journal of Petroleum Technology, May 1973.
-"""
+"""Beggs & Brill (1973) two-phase slip wellbore hydraulics."""
 
 import math
 import typing
 
-import attrs
+import numba
 import numpy as np
-from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
-from bores.errors import ValidationError
 from bores.typing import (
-    FluidPhase,
     Number,
     NumberArray,
     OneDimension,
     UnitConversionTable,
     UnitSystem,
 )
-from bores.wells.base import Well
 from bores.wells.hydraulics.base import (
+    PressureDrop,
     SurfaceFluidProperties,
-    Wellbore,
-    compute_friction_factor,
-    compute_mixture_velocity,
     compute_static_hydrostatic_drop,
+    get_unit_system_constant,
     static_mixture_density,
-    wellbore_type,
 )
-from bores.wells.indices.perforations import PerforationIndex
-from bores.wells.states import ConnectionSample
+from bores.wells.states import ConnectionSample, PhaseValues
 
-__all__ = ["FlowPattern", "compute_beggs_brill_holdup", "BeggsBrillWellbore"]
+__all__ = [
+    "BeggsBrillModel",
+    "beggs_and_brill",
+    "flow_pattern_tag",
+    "horizontal_holdup",
+    "compute_beggs_brill_holdup",
+    "compute_two_phase_friction_factor",
+    "compute_segment_drop",
+    "compute_perforation_pressures",
+    "compute_tubing_head_pressure",
+]
 
 
-class FlowPattern(typing.NamedTuple):
-    """Result of the Beggs-Brill horizontal flow-pattern classification."""
+class BeggsBrillModel(typing.NamedTuple):
+    """Configuration for the Beggs & Brill two-phase slip wellbore hydraulics model."""
 
-    name: typing.Literal["segregated", "transition", "intermittent", "distributed"]
-    no_slip_holdup: Number
-    froude_number: Number
+    tubing_inner_diameter: Number
+    """Tubing inner diameter."""
+
+    tubing_roughness: Number
+    """Absolute pipe roughness. `NaN` for a smooth pipe."""
+
+    friction_method: int
+    """Which single-phase friction-factor correlation the two-phase
+    correction is applied to: `0` for the simplified correlation, `1` for
+    Colebrook."""
+
+    gravitational_acceleration: Number
+    """Acceleration due to gravity, in this model's unit system."""
+
+    laminar_reynolds_limit: Number
+    """Reynolds number below which flow is treated as laminar."""
+
+    turbulent_reynolds_limit: Number
+    """Reynolds number above which flow is treated as fully turbulent."""
+
+    friction_max_iterations: int
+    """Maximum iterations for the Colebrook friction-factor calculation."""
+
+    friction_tolerance: Number
+    """Convergence tolerance for the Colebrook friction-factor calculation."""
+
+    hydrostatic_scale: Number
+    """Unit-conversion factor applied to the hydrostatic pressure term."""
+
+    unit_system: UnitSystem
+    """This model's unit system."""
+
+    def convert(
+        self,
+        target: UnitSystem,
+        /,
+        *,
+        table: typing.Optional[UnitConversionTable] = None,
+    ) -> "BeggsBrillModel":
+        """
+        Converts this model to a different unit system.
+
+        :param target: Target unit system.
+        :param table: Optional custom unit-conversion table.
+        :returns: This model, converted to `target`.
+        """
+        if target == self.unit_system:
+            return self
+
+        factors = get_conversion_factors(self.unit_system, target, table=table)
+        length_factor = factors["length"]
+        return self._replace(
+            tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
+            tubing_roughness=self.tubing_roughness * length_factor,
+            gravitational_acceleration=self.gravitational_acceleration * length_factor,
+            hydrostatic_scale=1.0
+            / (
+                get_unit_system_constant(
+                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
+                )
+                * get_unit_system_constant(
+                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
+                )
+            ),
+            unit_system=target,
+        )
 
 
-def _get_flow_pattern_boundaries(
-    no_slip_holdup: Number,
-) -> typing.Tuple[Number, Number, Number, Number]:
+def beggs_and_brill(
+    *,
+    tubing_inner_diameter: Number,
+    tubing_roughness: typing.Optional[Number] = None,
+    friction_method: typing.Literal["simplified", "colebrook"] = "simplified",
+    unit_system: UnitSystem = UnitSystem.FIELD,
+    gravitational_acceleration: typing.Optional[Number] = None,
+    laminar_reynolds_limit: typing.Optional[Number] = None,
+    turbulent_reynolds_limit: typing.Optional[Number] = None,
+    friction_max_iterations: typing.Optional[int] = None,
+    friction_tolerance: typing.Optional[Number] = None,
+) -> BeggsBrillModel:
     """
-    `(L1, L2, L3, L4)` Froude-number flow-pattern boundaries at this
-    `no_slip_holdup` (`lambda_l`).
+    Builds a `BeggsBrillModel`.
+
+    :param tubing_inner_diameter: Tubing inner diameter.
+    :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
+    :param friction_method: Which single-phase friction-factor correlation
+        the two-phase correction is applied to.
+    :param unit_system: This model's unit system.
+    :param gravitational_acceleration: Acceleration due to gravity. Resolved
+        from `unit_system`'s standard gravity if not given.
+    :param laminar_reynolds_limit: Reynolds number below which flow is
+        treated as laminar. `c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if not given.
+    :param turbulent_reynolds_limit: Reynolds number above which flow is
+        treated as fully turbulent. `c.WELLBORE_TURBULENT_REYNOLDS_LIMIT`
+        if not given.
+    :param friction_max_iterations: Maximum Colebrook iterations.
+        `c.COLEBROOK_MAX_ITERATIONS` if not given.
+    :param friction_tolerance: Colebrook convergence tolerance.
+        `c.COLEBROOK_TOLERANCE` if not given.
+    :returns: A fully configured `BeggsBrillModel`.
+    """
+    if gravitational_acceleration is None:
+        gravitational_acceleration = typing.cast(
+            Number, c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
+        )
+        if unit_system != UnitSystem.FIELD:
+            factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
+            gravitational_acceleration = gravitational_acceleration * factors["length"]
+
+    return BeggsBrillModel(
+        tubing_inner_diameter=tubing_inner_diameter,
+        tubing_roughness=tubing_roughness
+        if tubing_roughness is not None
+        else float("nan"),
+        friction_method=1 if friction_method == "colebrook" else 0,
+        gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
+        laminar_reynolds_limit=(
+            laminar_reynolds_limit
+            if laminar_reynolds_limit is not None
+            else c.WELLBORE_LAMINAR_REYNOLDS_LIMIT
+        ),
+        turbulent_reynolds_limit=(
+            turbulent_reynolds_limit
+            if turbulent_reynolds_limit is not None
+            else c.WELLBORE_TURBULENT_REYNOLDS_LIMIT
+        ),
+        friction_max_iterations=(
+            friction_max_iterations
+            if friction_max_iterations is not None
+            else c.COLEBROOK_MAX_ITERATIONS
+        ),
+        friction_tolerance=(
+            friction_tolerance
+            if friction_tolerance is not None
+            else c.COLEBROOK_TOLERANCE
+        ),
+        hydrostatic_scale=1.0
+        / (
+            get_unit_system_constant(
+                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
+            )
+            * get_unit_system_constant(
+                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
+            )
+        ),
+        unit_system=unit_system,
+    )
+
+
+@numba.njit(cache=True)
+def flow_pattern_tag(no_slip_holdup: Number, froude_number: Number) -> int:
+    """
+    Classifies two-phase flow pattern per Beggs & Brill (1973).
+
+    :param no_slip_holdup: No-slip liquid holdup.
+    :param froude_number: Mixture Froude number.
+    :returns: `0` for segregated, `1` for transition, `2` for intermittent, `3` for distributed.
     """
     l1 = 316.0 * no_slip_holdup**0.302
     l2 = 0.0009252 * no_slip_holdup**-2.4684
     l3 = 0.10 * no_slip_holdup**-1.4516
     l4 = 0.5 * no_slip_holdup**-6.738
-    return l1, l2, l3, l4
 
-
-def _classify_flow_pattern(
-    no_slip_holdup: Number, froude_number: Number
-) -> FlowPattern:
-    """
-    Classify horizontal flow pattern from `no_slip_holdup` (`lambda_l`)
-    and `froude_number` against the Beggs-Brill boundaries.
-
-    :param no_slip_holdup: `v_sl / (v_sl + v_sg)`.
-    :param froude_number: `v_m**2 / (g * d)`.
-    :returns: `FlowPattern` with `name` one of `"segregated"`,
-        `"transition"`, `"intermittent"`, `"distributed"`.
-    """
-    l1, l2, l3, l4 = _get_flow_pattern_boundaries(no_slip_holdup)
     if (no_slip_holdup < 0.01 and froude_number < l1) or (
         no_slip_holdup >= 0.01 and froude_number < l2
     ):
-        pattern_name = "segregated"
-    elif no_slip_holdup >= 0.01 and l2 <= froude_number <= l3:
-        pattern_name = "transition"
-    elif (0.01 <= no_slip_holdup < 0.4 and l3 < froude_number <= l1) or (
+        return 0  # segregated
+    if no_slip_holdup >= 0.01 and l2 <= froude_number <= l3:
+        return 1  # transition
+    if (0.01 <= no_slip_holdup < 0.4 and l3 < froude_number <= l1) or (
         no_slip_holdup >= 0.4 and l3 < froude_number <= l4
     ):
-        pattern_name = "intermittent"
-    else:
-        pattern_name = "distributed"
-
-    return FlowPattern(
-        name=pattern_name,
-        no_slip_holdup=no_slip_holdup,
-        froude_number=froude_number,
-    )
+        return 2  # intermittent
+    return 3  # distributed
 
 
-HORIZONTAL_HOLDUP_COEFFICIENTS: typing.Dict[
-    str, typing.Tuple[Number, Number, Number]
-] = {
-    # (a, b, c) in H_L(0) = a * lambda_l**b / Fr**c
-    "segregated": (0.98, 0.4846, 0.0868),
-    "intermittent": (0.845, 0.5351, 0.0173),
-    "distributed": (1.065, 0.5824, 0.0609),
-}
-
-_InclinationCoefficients = typing.Tuple[Number, Number, Number, Number]
-
-INCLINATION_COEFFICIENTS_UPHILL: typing.Dict[
-    str, typing.Optional[_InclinationCoefficients]
-] = {
-    # (d, e, f, g) in C = (1 - lambda_l) * ln(d * lambda_l**e * Nlv**f * Fr**g)
-    "segregated": (0.011, -3.768, 3.539, -1.614),
-    "intermittent": (2.96, 0.305, -0.4473, 0.0978),
-    "distributed": None,  # no correction: C = 0, psi = 1
-}
-INCLINATION_COEFFICIENTS_DOWNHILL: _InclinationCoefficients = (
-    4.70,
-    -0.3692,
-    0.1244,
-    -0.5056,
-)
-
-
-def _compute_horizontal_holdup(pattern: FlowPattern) -> Number:
+@numba.njit(cache=True)
+def horizontal_holdup(
+    pattern_tag: int, no_slip_holdup: Number, froude_number: Number
+) -> Number:
     """
-    `H_L(0)`, the flow-pattern-dependent horizontal liquid holdup, clipped
-    to `>= no_slip_holdup` (holdup can't physically fall below the
-    no-slip/input liquid fraction).
+    Computes horizontal (zero-inclination) liquid holdup for a given flow pattern.
 
-    Interpolates between the segregated and intermittent results for
-    `pattern.name == "transition"`, per Beggs & Brill (1973).
+    A `pattern_tag` of `1` (transition) interpolates between the
+    segregated and intermittent correlations.
+
+    :param pattern_tag: Flow pattern, from `flow_pattern_tag`.
+    :param no_slip_holdup: No-slip liquid holdup.
+    :param froude_number: Mixture Froude number.
+    :returns: Horizontal liquid holdup.
     """
-    if pattern.name == "transition":
-        _, l2, l3, _ = _get_flow_pattern_boundaries(pattern.no_slip_holdup)
-        a_segregated, b_segregated, c_segregated = HORIZONTAL_HOLDUP_COEFFICIENTS[
-            "segregated"
-        ]
-        a_intermittent, b_intermittent, c_intermittent = HORIZONTAL_HOLDUP_COEFFICIENTS[
-            "intermittent"
-        ]
-        hl_segregated = (
-            a_segregated
-            * pattern.no_slip_holdup**b_segregated
-            / pattern.froude_number**c_segregated
-        )
-        hl_intermittent = (
-            a_intermittent
-            * pattern.no_slip_holdup**b_intermittent
-            / pattern.froude_number**c_intermittent
-        )
-        interpolation_weight = (l3 - pattern.froude_number) / (l3 - l2)
+    if pattern_tag == 1:
+        l2 = 0.0009252 * no_slip_holdup**-2.4684
+        l3 = 0.10 * no_slip_holdup**-1.4516
+        hl_segregated = 0.98 * no_slip_holdup**0.4846 / froude_number**0.0868
+        hl_intermittent = 0.845 * no_slip_holdup**0.5351 / froude_number**0.0173
+        interpolation_weight = (l3 - froude_number) / (l3 - l2)
         holdup = (
             interpolation_weight * hl_segregated
             + (1.0 - interpolation_weight) * hl_intermittent
         )
+    elif pattern_tag == 0:
+        holdup = 0.98 * no_slip_holdup**0.4846 / froude_number**0.0868
+    elif pattern_tag == 2:
+        holdup = 0.845 * no_slip_holdup**0.5351 / froude_number**0.0173
     else:
-        a, b, cc = HORIZONTAL_HOLDUP_COEFFICIENTS[pattern.name]
-        holdup = a * pattern.no_slip_holdup**b / pattern.froude_number**cc
+        holdup = 1.065 * no_slip_holdup**0.5824 / froude_number**0.0609
 
-    return max(holdup, pattern.no_slip_holdup)
+    return max(holdup, no_slip_holdup)
 
 
+@numba.njit(cache=True)
 def compute_beggs_brill_holdup(
-    *,
     superficial_liquid_velocity: Number,
     superficial_gas_velocity: Number,
     liquid_density: Number,
@@ -173,36 +262,21 @@ def compute_beggs_brill_holdup(
     gravitational_acceleration: Number,
 ) -> Number:
     """
-    In-situ liquid holdup `H_L(theta)` by the Beggs & Brill (1973)
-    correlation.
+    Computes in-situ liquid holdup per Beggs & Brill (1973), including the
+    inclination correction. A well in the transition flow pattern uses the
+    intermittent pattern's inclination-correction coefficients.
 
-    Determines the horizontal flow pattern (segregated/transition/
-    intermittent/distributed) from the no-slip holdup and Froude number,
-    reads the flow-pattern-dependent horizontal holdup `H_L(0)`, then
-    applies the inclination correction factor `psi` using the uphill
-    coefficient set when flow moves from lower to higher elevation
-    (a producer) and the downhill set when it moves from higher to lower
-    (an injector), regardless of the segment's own geometric orientation.
-
-    :param superficial_liquid_velocity: `v_sl = q_l / A`.
-    :param superficial_gas_velocity: `v_sg = q_g / A`.
-    :param liquid_density: Liquid-phase density.
+    :param superficial_liquid_velocity: Liquid rate divided by cross-sectional area.
+    :param superficial_gas_velocity: Gas rate divided by cross-sectional area.
+    :param liquid_density: Combined oil-and-water density.
     :param liquid_surface_tension: Gas-liquid surface tension.
     :param tubing_inner_diameter: Tubing inner diameter.
-    :param inclination_from_vertical: `0` = vertical, `pi/2` = horizontal.
-    :param is_injector: Selects the uphill/downhill inclination
-        coefficient set - see above.
-    :param gravitational_acceleration: For the Froude number.
-    :returns: `H_L(theta)`, clipped to `[no_slip_holdup, 1.0]`.
-    :raises ValidationError: If both superficial velocities are zero.
+    :param inclination_from_vertical: Segment inclination, in radians. `0` is vertical.
+    :param is_injector: Whether this well is an injector.
+    :param gravitational_acceleration: Acceleration due to gravity, already unit-resolved.
+    :returns: In-situ liquid holdup.
     """
     mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
-    if mixture_velocity <= 0.0:
-        raise ValidationError(
-            "`compute_beggs_brill_holdup` requires a positive mixture velocity; "
-            "use `compute_static_hydrostatic_drop` for the no-flow case instead."
-        )
-
     no_slip_holdup = superficial_liquid_velocity / mixture_velocity
     froude_number = mixture_velocity**2 / (
         gravitational_acceleration * tubing_inner_diameter
@@ -213,13 +287,18 @@ def compute_beggs_brill_holdup(
         * (liquid_density / liquid_surface_tension) ** 0.25
     )
 
-    pattern = _classify_flow_pattern(no_slip_holdup, froude_number)
-    horizontal_holdup = _compute_horizontal_holdup(pattern)
-
+    pattern_tag = flow_pattern_tag(
+        no_slip_holdup=no_slip_holdup, froude_number=froude_number
+    )
+    holdup_at_horizontal = horizontal_holdup(
+        pattern_tag=pattern_tag,
+        no_slip_holdup=no_slip_holdup,
+        froude_number=froude_number,
+    )
     theta_from_horizontal = (math.pi / 2.0) - inclination_from_vertical
 
     if is_injector:
-        d_coef, e_coef, f_coef, g_coef = INCLINATION_COEFFICIENTS_DOWNHILL
+        d_coef, e_coef, f_coef, g_coef = 4.7, -0.3692, 0.1244, -0.5056
         correction_argument = (
             d_coef
             * no_slip_holdup**e_coef
@@ -230,11 +309,13 @@ def compute_beggs_brill_holdup(
             0.0, (1.0 - no_slip_holdup) * math.log(correction_argument)
         )
     else:
-        uphill_coefficients = INCLINATION_COEFFICIENTS_UPHILL[pattern.name]
-        if uphill_coefficients is None:  # distributed: no correction
+        if pattern_tag == 3:  # distributed: no correction
             correction_coefficient = 0.0
         else:
-            d_coef, e_coef, f_coef, g_coef = uphill_coefficients
+            if pattern_tag == 0:  # segregated
+                d_coef, e_coef, f_coef, g_coef = 0.011, -3.768, 3.539, -1.614
+            else:  # intermittent or transition
+                d_coef, e_coef, f_coef, g_coef = 2.96, 0.305, -0.4473, 0.0978
             correction_argument = (
                 d_coef
                 * no_slip_holdup**e_coef
@@ -249,46 +330,66 @@ def compute_beggs_brill_holdup(
         math.sin(1.8 * theta_from_horizontal)
         - (1.0 / 3.0) * math.sin(1.8 * theta_from_horizontal) ** 3
     )
-    in_situ_holdup = horizontal_holdup * psi
+    in_situ_holdup = holdup_at_horizontal * psi
     return min(max(in_situ_holdup, no_slip_holdup), 1.0)
 
 
-def _compute_two_phase_friction_factor(
-    *,
+@numba.njit(cache=True)
+def compute_two_phase_friction_factor(
     no_slip_holdup: Number,
     in_situ_holdup: Number,
     no_slip_reynolds_number: Number,
     relative_roughness: Number,
-    friction_method: typing.Literal["simplified", "colebrook"],
-    laminar_reynolds_limit: typing.Optional[Number],
-    turbulent_reynolds_limit: typing.Optional[Number],
-    friction_max_iterations: typing.Optional[int],
-    friction_tolerance: typing.Optional[Number],
+    method_tag: int,
+    laminar_reynolds_limit: Number,
+    turbulent_reynolds_limit: Number,
+    friction_max_iterations: int,
+    friction_tolerance: Number,
 ) -> Number:
     """
-    Two-phase Darcy friction factor: the no-slip friction factor corrected
-    by the Beggs-Brill ratio `f_tp / f_ns = exp(S)`.
+    Computes the two-phase Darcy friction factor: the single-phase
+    (no-slip) friction factor, scaled by Beggs & Brill's holdup-ratio correction.
 
-    :param no_slip_holdup: `lambda_l`.
-    :param in_situ_holdup: `H_L(theta)` from `compute_beggs_brill_holdup`.
-    :param no_slip_reynolds_number: `rho_ns * v_m * d / mu_ns`.
-    :param relative_roughness: `tubing_roughness / tubing_inner_diameter`.
-    :param friction_method: Forwarded to `compute_friction_factor` for `f_ns`.
-    :param laminar_reynolds_limit: Forwarded to `compute_friction_factor`.
-    :param turbulent_reynolds_limit: Forwarded to `compute_friction_factor`.
-    :param friction_max_iterations: Forwarded to `compute_friction_factor`.
-    :param friction_tolerance: Forwarded to `compute_friction_factor`.
+    :param no_slip_holdup: No-slip liquid holdup.
+    :param in_situ_holdup: In-situ liquid holdup, from `compute_beggs_brill_holdup`.
+    :param no_slip_reynolds_number: No-slip Reynolds number of the mixture.
+    :param relative_roughness: Tubing roughness divided by tubing inner diameter.
+    :param method_tag: `0` for the simplified correlation, `1` for Colebrook.
+    :param laminar_reynolds_limit: Reynolds number below which flow is
+        treated as laminar. Only used by the simplified correlation.
+    :param turbulent_reynolds_limit: Reynolds number above which flow is
+        treated as fully turbulent. Only used by the simplified correlation.
+    :param friction_max_iterations: Maximum iterations. Only used by Colebrook.
+    :param friction_tolerance: Convergence tolerance. Only used by Colebrook.
     :returns: Two-phase Darcy friction factor.
     """
-    no_slip_friction_factor = compute_friction_factor(
-        reynolds_number=no_slip_reynolds_number,
-        relative_roughness=relative_roughness,
-        method=friction_method,
-        laminar_reynolds_limit=laminar_reynolds_limit,
-        turbulent_reynolds_limit=turbulent_reynolds_limit,
-        max_iterations=friction_max_iterations,
-        tolerance=friction_tolerance,
-    )
+    if method_tag == 0:
+        if no_slip_reynolds_number < laminar_reynolds_limit:
+            no_slip_friction_factor = 64.0 / no_slip_reynolds_number
+        elif no_slip_reynolds_number < turbulent_reynolds_limit:
+            no_slip_friction_factor = 0.316 * no_slip_reynolds_number**-0.25
+        else:
+            no_slip_friction_factor = (
+                0.25
+                / (
+                    math.log10(
+                        relative_roughness / 3.7 + 5.74 / no_slip_reynolds_number**0.9
+                    )
+                )
+                ** 2
+            )
+    else:
+        no_slip_friction_factor = 0.02
+        for _ in range(friction_max_iterations):
+            rhs = -2.0 * math.log10(
+                relative_roughness / 3.7
+                + 2.51 / (no_slip_reynolds_number * math.sqrt(no_slip_friction_factor))
+            )
+            updated = 1.0 / rhs**2
+            if abs(updated - no_slip_friction_factor) < friction_tolerance:
+                no_slip_friction_factor = updated
+                break
+            no_slip_friction_factor = updated
 
     y = no_slip_holdup / in_situ_holdup**2
     if 1.0 < y < 1.2:
@@ -299,383 +400,318 @@ def _compute_two_phase_friction_factor(
     return no_slip_friction_factor * math.exp(s)
 
 
-@wellbore_type
-@attrs.frozen(kw_only=True, slots=True)
-class BeggsBrillWellbore(Wellbore):
+@numba.njit(cache=True)
+def compute_segment_drop(
+    model: BeggsBrillModel,
+    length: Number,
+    inclination_from_vertical: Number,
+    superficial_liquid_velocity: Number,
+    superficial_gas_velocity: Number,
+    liquid_density: Number,
+    gas_density: Number,
+    liquid_viscosity: Number,
+    gas_viscosity: Number,
+    liquid_surface_tension: Number,
+    is_injector: bool,
+) -> PressureDrop:
     """
-    Beggs & Brill (1973) `Wellbore`.
+    Computes the pressure drop across one tubing segment.
 
-    Implements flow-pattern-dependent liquid holdup (in-situ mixture
-    density differs from the no-slip/rate-weighted density
-    `MechanisticWellbore` uses) and a corrected two-phase friction
-    factor.
-
-    One segment per (reference_depth -> connection) pair, same as
-    `MechanisticWellbore`. Inclination comes from
-    `PerforationIndex.inclination_from_vertical` and is populated by
-    `wells.perforations` from `Perforation.direction` (vertical/horizontal
-    only) for a well with no trajectory, or from the trajectory's local
-    tangent for one with a trajectory.
+    :param model: This well's `BeggsBrillModel`.
+    :param length: Along-wellbore segment length.
+    :param inclination_from_vertical: Segment inclination, in radians. `0` is vertical.
+    :param superficial_liquid_velocity: Liquid rate divided by cross-sectional area.
+    :param superficial_gas_velocity: Gas rate divided by cross-sectional area.
+    :param liquid_density: Combined oil-and-water density.
+    :param gas_density: Gas density.
+    :param liquid_viscosity: Combined oil-and-water viscosity.
+    :param gas_viscosity: Gas viscosity.
+    :param liquid_surface_tension: Gas-liquid surface tension.
+    :param is_injector: Whether this well is an injector.
+    :returns: Pressure drop for this segment.
     """
+    in_situ_holdup = compute_beggs_brill_holdup(
+        superficial_liquid_velocity=superficial_liquid_velocity,
+        superficial_gas_velocity=superficial_gas_velocity,
+        liquid_density=liquid_density,
+        liquid_surface_tension=liquid_surface_tension,
+        tubing_inner_diameter=model.tubing_inner_diameter,
+        inclination_from_vertical=inclination_from_vertical,
+        is_injector=is_injector,
+        gravitational_acceleration=model.gravitational_acceleration,
+    )
+    in_situ_density = liquid_density * in_situ_holdup + gas_density * (
+        1.0 - in_situ_holdup
+    )
+    vertical_length = length * math.cos(inclination_from_vertical)
+    hydrostatic_drop = (
+        in_situ_density
+        * model.gravitational_acceleration
+        * vertical_length
+        * model.hydrostatic_scale
+    )
 
-    __type__ = "beggs_brill"
+    mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
+    no_slip_holdup = superficial_liquid_velocity / mixture_velocity
+    no_slip_density = liquid_density * no_slip_holdup + gas_density * (
+        1.0 - no_slip_holdup
+    )
+    no_slip_viscosity = liquid_viscosity * no_slip_holdup + gas_viscosity * (
+        1.0 - no_slip_holdup
+    )
+    relative_roughness = (
+        0.0
+        if math.isnan(model.tubing_roughness)
+        else model.tubing_roughness / model.tubing_inner_diameter
+    )
+    no_slip_reynolds_number = (
+        no_slip_density
+        * mixture_velocity
+        * model.tubing_inner_diameter
+        / no_slip_viscosity
+    )
+    friction_factor = compute_two_phase_friction_factor(
+        no_slip_holdup=no_slip_holdup,
+        in_situ_holdup=in_situ_holdup,
+        no_slip_reynolds_number=no_slip_reynolds_number,
+        relative_roughness=relative_roughness,
+        method_tag=model.friction_method,
+        laminar_reynolds_limit=model.laminar_reynolds_limit,
+        turbulent_reynolds_limit=model.turbulent_reynolds_limit,
+        friction_max_iterations=model.friction_max_iterations,
+        friction_tolerance=model.friction_tolerance,
+    )
+    friction_drop = (
+        friction_factor
+        * (length / model.tubing_inner_diameter)
+        * (no_slip_density * mixture_velocity**2 / 2.0)
+    )
 
-    tubing_inner_diameter: Number
+    # This model doesn't vary velocity within one segment, so this is
+    # always 0.0 - see compute_perforation_pressures.
+    acceleration_drop = (
+        no_slip_density * (mixture_velocity**2 - mixture_velocity**2) / 2.0
+    )
+    return PressureDrop(
+        hydrostatic=hydrostatic_drop,
+        friction=friction_drop,
+        acceleration=acceleration_drop,
+    )
 
-    tubing_roughness: typing.Optional[Number] = None
+
+def _split_liquid_gas(
+    phase_rates: PhaseValues,
+    phase_densities: PhaseValues,
+    phase_viscosities: PhaseValues,
+) -> typing.Tuple[Number, Number, Number, Number, Number, Number]:
     """
-    Absolute roughness, same length unit as `unit_system`. `None` means
-    use a smooth-pipe assumption.
+    Pools oil and water into a combined liquid phase for the two-phase
+    Beggs & Brill correlation, which doesn't distinguish oil from water.
+
+    :param phase_rates: Rate of each phase.
+    :param phase_densities: Density of each phase, at the same condition as `phase_rates`.
+    :param phase_viscosities: Viscosity of each phase, at the same condition as `phase_rates`.
+    :returns: `(liquid_rate, gas_rate, liquid_density, gas_density, liquid_viscosity, gas_viscosity)`.
     """
-    friction_method: typing.Literal["simplified", "colebrook"] = "simplified"
+    liquid_rate = phase_rates.oil + phase_rates.water
+    gas_rate = phase_rates.gas
+    if liquid_rate > 0.0:
+        liquid_density = (
+            phase_rates.oil * phase_densities.oil
+            + phase_rates.water * phase_densities.water
+        ) / liquid_rate
+        liquid_viscosity = (
+            phase_rates.oil * phase_viscosities.oil
+            + phase_rates.water * phase_viscosities.water
+        ) / liquid_rate
+    else:
+        liquid_density = phase_densities.oil
+        liquid_viscosity = phase_viscosities.oil
+    return (
+        liquid_rate,
+        gas_rate,
+        liquid_density,
+        phase_densities.gas,
+        liquid_viscosity,
+        phase_viscosities.gas,
+    )
 
-    unit_system: UnitSystem = UnitSystem.FIELD
 
-    gravitational_acceleration: typing.Optional[Number] = None
+def compute_perforation_pressures(
+    model: BeggsBrillModel,
+    reference_depth: Number,
+    reference_pressure: Number,
+    phase_rates: PhaseValues,
+    representative_depths: NumberArray[OneDimension],
+    inclinations_from_vertical: NumberArray[OneDimension],
+    connection_samples: typing.Sequence[ConnectionSample],
+    is_injector: bool,
+) -> NumberArray[OneDimension]:
     """
-    Resolved on post initialization if left `None`. 
-    
-    Once resolved, this field always holds a real number and not `None` after construction.
+    Computes flowing pressure at each perforation connection.
+
+    :param model: This well's `BeggsBrillModel`.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param reference_pressure: Pressure at `reference_depth`.
+    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param representative_depths: One depth per connection, same order as `connection_samples`.
+    :param inclinations_from_vertical: One inclination per connection, in
+        radians, same order as `connection_samples`.
+    :param connection_samples: Reservoir conditions at each connection.
+    :param is_injector: Whether this well is an injector.
+    :returns: Pressure at each connection, same order as `connection_samples`.
+    :raises ValueError: If `representative_depths`, `inclinations_from_vertical`,
+        and `connection_samples` don't all have the same length.
     """
-
-    laminar_reynolds_limit: typing.Optional[Number] = None
-    """
-    `c.WELLBORE_LAMINAR_REYNOLDS_LIMIT` if `None` - dimensionless
-    (a Reynolds number), so no unit conversion applies regardless of
-    `unit_system`.
-    """
-
-    turbulent_reynolds_limit: typing.Optional[Number] = None
-    """
-    `c.WELLBORE_TURBULENT_REYNOLDS_LIMIT` if `None`. Dimensionless,
-    same as `laminar_reynolds_limit`.
-    """
-
-    friction_max_iterations: typing.Optional[int] = None
-    """`c.COLEBROOK_MAX_ITERATIONS` if `None`. An iteration count, not
-    unit-system-dependent."""
-
-    friction_tolerance: typing.Optional[Number] = None
-    """`c.COLEBROOK_TOLERANCE` if `None`. A dimensionless convergence
-    tolerance, not unit-system-dependent."""
-
-    def __attrs_post_init__(self) -> None:
-        if self.tubing_inner_diameter <= 0:
-            raise ValidationError("`tubing_inner_diameter` must be positive.")
-
-        if self.gravitational_acceleration is None:
-            field_gravitational_acceleration = (
-                c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
-            )
-            if self.unit_system is UnitSystem.FIELD:
-                resolved_gravitational_acceleration = field_gravitational_acceleration
-            else:
-                length_factor = get_conversion_factors(
-                    UnitSystem.FIELD, self.unit_system
-                )["length"]
-                resolved_gravitational_acceleration = (
-                    field_gravitational_acceleration * length_factor
-                )
-            object.__setattr__(
-                self,
-                "gravitational_acceleration",
-                resolved_gravitational_acceleration,
-            )
-
-        if self.laminar_reynolds_limit is None:
-            object.__setattr__(
-                self, "laminar_reynolds_limit", c.WELLBORE_LAMINAR_REYNOLDS_LIMIT
-            )
-        if self.turbulent_reynolds_limit is None:
-            object.__setattr__(
-                self, "turbulent_reynolds_limit", c.WELLBORE_TURBULENT_REYNOLDS_LIMIT
-            )
-        if self.friction_max_iterations is None:
-            object.__setattr__(
-                self, "friction_max_iterations", c.COLEBROOK_MAX_ITERATIONS
-            )
-        if self.friction_tolerance is None:
-            object.__setattr__(self, "friction_tolerance", c.COLEBROOK_TOLERANCE)
-
-    def _get_segment_drop(
-        self,
-        *,
-        length: Number,
-        inclination_from_vertical: Number,
-        phase_rates: typing.Mapping[FluidPhase, Number],
-        phase_densities: typing.Mapping[FluidPhase, Number],
-        phase_viscosities: typing.Mapping[FluidPhase, Number],
-        gas_liquid_surface_tension: Number,
-        tubing_inner_diameter: Number,
-        tubing_roughness: typing.Optional[Number],
-        is_injector: bool,
-    ) -> typing.Tuple[Number, Number]:
-        """
-        Return `(hydrostatic, friction)` for one segment, using Beggs-Brill
-        in-situ holdup for the hydrostatic term and two-phase-corrected
-        friction for the friction term.
-
-        Liquid/gas split: `FluidPhase.GAS` is the gas phase; every other
-        phase present (oil, water) is pooled into "liquid" - Beggs-Brill
-        is a two-phase (liquid/gas) correlation and doesn't distinguish
-        oil from water within the liquid phase.
-        """
-        assert self.gravitational_acceleration is not None
-        cross_sectional_area = math.pi * (tubing_inner_diameter / 2.0) ** 2
-
-        gas_rate = phase_rates.get(FluidPhase.GAS, 0.0)
-        liquid_rate = sum(
-            rate for phase, rate in phase_rates.items() if phase != FluidPhase.GAS
+    n = len(connection_samples)
+    if not (len(representative_depths) == len(inclinations_from_vertical) == n):
+        raise ValueError(
+            "representative_depths, inclinations_from_vertical, and "
+            "connection_samples must all have the same length."
         )
-        superficial_gas_velocity = gas_rate / cross_sectional_area
-        superficial_liquid_velocity = liquid_rate / cross_sectional_area
 
-        liquid_phases = [phase for phase in phase_rates if phase != FluidPhase.GAS]
-        if liquid_rate > 0.0:
-            liquid_density = (
-                sum(
-                    phase_rates[phase] * phase_densities[phase]
-                    for phase in liquid_phases
-                    if phase_rates[phase] != 0.0
-                )
-                / liquid_rate
-            )
-            liquid_viscosity = (
-                sum(
-                    phase_rates[phase] * phase_viscosities[phase]
-                    for phase in liquid_phases
-                    if phase_rates[phase] != 0.0
-                )
-                / liquid_rate
-            )
-        else:
-            liquid_density = phase_densities.get(FluidPhase.OIL, 0.0)
-            liquid_viscosity = phase_viscosities.get(FluidPhase.OIL, 0.0)
+    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
+    pressures = np.empty(n, dtype=np.float64)
+    friction_sign = -1.0 if is_injector else 1.0
+    cross_sectional_area = math.pi * (model.tubing_inner_diameter / 2.0) ** 2
 
-        gas_density = phase_densities.get(FluidPhase.GAS, 0.0)
-        gas_viscosity = phase_viscosities.get(FluidPhase.GAS, 0.0)
-
-        in_situ_holdup = compute_beggs_brill_holdup(
-            superficial_liquid_velocity=superficial_liquid_velocity,
-            superficial_gas_velocity=superficial_gas_velocity,
-            liquid_density=liquid_density,
-            liquid_surface_tension=gas_liquid_surface_tension,
-            tubing_inner_diameter=tubing_inner_diameter,
-            inclination_from_vertical=inclination_from_vertical,
-            is_injector=is_injector,
-            gravitational_acceleration=self.gravitational_acceleration,
-        )
-        in_situ_density = (liquid_density * in_situ_holdup) + gas_density * (
-            1.0 - in_situ_holdup
-        )
-        hydrostatic_drop = in_situ_density * self.gravitational_acceleration * length
-
-        mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
-        no_slip_holdup = superficial_liquid_velocity / mixture_velocity
-        no_slip_density = (liquid_density * no_slip_holdup) + gas_density * (
-            1.0 - no_slip_holdup
-        )
-        no_slip_viscosity = (liquid_viscosity * no_slip_holdup) + gas_viscosity * (
-            1.0 - no_slip_holdup
-        )
-        relative_roughness = (
-            tubing_roughness / tubing_inner_diameter
-            if tubing_roughness is not None
-            else 0.0
-        )
-        no_slip_reynolds_number = (
-            no_slip_density
-            * mixture_velocity
-            * tubing_inner_diameter
-            / no_slip_viscosity
-        )
-        friction_factor = _compute_two_phase_friction_factor(
-            no_slip_holdup=no_slip_holdup,
-            in_situ_holdup=in_situ_holdup,
-            no_slip_reynolds_number=no_slip_reynolds_number,
-            relative_roughness=relative_roughness,
-            friction_method=self.friction_method,
-            laminar_reynolds_limit=self.laminar_reynolds_limit,
-            turbulent_reynolds_limit=self.turbulent_reynolds_limit,
-            friction_max_iterations=self.friction_max_iterations,
-            friction_tolerance=self.friction_tolerance,
-        )
-        friction_drop = (
-            friction_factor
-            * (length / tubing_inner_diameter)
-            * (no_slip_density * mixture_velocity**2 / 2.0)
-        )
-        return hydrostatic_drop, friction_drop
-
-    def compute_perforation_pressures(
-        self,
-        well: Well,
-        reference_pressure: Number,
-        phase_rates: typing.Mapping[FluidPhase, Number],
-        perforation_indices: typing.Sequence[PerforationIndex],
-        connection_samples: typing.Sequence[ConnectionSample],
-        is_injector: bool,
-    ) -> NumberArray[OneDimension]:
-        if len(connection_samples) != len(perforation_indices):
-            raise ValidationError(
-                f"len(connection_samples)={len(connection_samples)} != "
-                f"len(perforation_indices)={len(perforation_indices)} for "
-                f"well {well.name!r}."
-            )
-        assert self.gravitational_acceleration is not None
-
-        total_rate = sum(phase_rates.values())
-        pressures = np.empty(len(perforation_indices), dtype=np.float64)
-        friction_sign = -1.0 if is_injector else 1.0
-
-        for i, (pidx, sample) in enumerate(
-            zip(perforation_indices, connection_samples)
-        ):
-            dz = pidx.representative_depth - well.reference_depth
-            geometric_sign = 1.0 if dz >= 0 else -1.0
-
-            if total_rate == 0.0:
-                drop = compute_static_hydrostatic_drop(
-                    mixture_density=static_mixture_density(sample),
-                    length=abs(dz),
-                    gravitational_acceleration=self.gravitational_acceleration,
-                    unit_system=self.unit_system,
-                )
-                pressures[i] = reference_pressure + geometric_sign * drop.total
-                continue
-
-            hydrostatic_drop, friction_drop = self._get_segment_drop(
-                length=abs(dz),
-                inclination_from_vertical=pidx.inclination_from_vertical,
-                phase_rates=phase_rates,
-                phase_densities=sample.phase_densities,
-                phase_viscosities=sample.phase_viscosities,
-                gas_liquid_surface_tension=sample.gas_liquid_surface_tension,
-                tubing_inner_diameter=self.tubing_inner_diameter,
-                tubing_roughness=self.tubing_roughness,
-                is_injector=is_injector,
-            )
-            pressures[i] = (
-                reference_pressure
-                + (geometric_sign * hydrostatic_drop)
-                + (friction_sign * friction_drop)
-            )
-        return pressures
-
-    def compute_tubing_head_pressure(
-        self,
-        well: Well,
-        reference_pressure: Number,
-        phase_rates: typing.Mapping[FluidPhase, Number],
-        surface_fluid_properties: SurfaceFluidProperties,
-        is_injector: bool,
-    ) -> Number:
-        """
-        Uses a real Beggs-Brill surface-condition holdup and two-phase
-        friction for this segment when `surface_fluid_properties` carries
-        `phase_densities`/`phase_viscosities`/`gas_liquid_surface_tension`;
-        falls back to a no-slip mixture otherwise. The surface segment
-        (reference_depth -> surface) is always treated as vertical either
-        way - tubing above the last connection isn't part of any
-        trajectory this package resolves.
-        """
-        assert self.gravitational_acceleration is not None
-        dz = 0.0 - well.reference_depth
-        total_rate = sum(phase_rates.values())
-        friction_sign = -1.0 if is_injector else 1.0
-        mixture_density = surface_fluid_properties.get_mixture_density(phase_rates)
+    for i in range(n):
+        sample = connection_samples[i]
+        dz = representative_depths[i] - reference_depth
+        geometric_sign = 1.0 if dz >= 0 else -1.0
 
         if total_rate == 0.0:
             drop = compute_static_hydrostatic_drop(
-                mixture_density=mixture_density,
+                mixture_density=static_mixture_density(
+                    phase_saturations=sample.phase_saturations,
+                    phase_densities=sample.phase_densities,
+                ),
                 length=abs(dz),
-                gravitational_acceleration=self.gravitational_acceleration,
-                unit_system=self.unit_system,
+                gravitational_acceleration=model.gravitational_acceleration,
+                unit_system=model.unit_system,
             )
-            return reference_pressure - drop.total
+            pressures[i] = reference_pressure + geometric_sign * drop.total
+            continue
 
-        has_full_surface_properties = (
-            surface_fluid_properties.phase_densities is not None
-            and surface_fluid_properties.phase_viscosities is not None
-            and surface_fluid_properties.gas_liquid_surface_tension is not None
+        (
+            liquid_rate,
+            gas_rate,
+            liquid_density,
+            gas_density,
+            liquid_viscosity,
+            gas_viscosity,
+        ) = _split_liquid_gas(
+            phase_rates=phase_rates,
+            phase_densities=sample.phase_densities,
+            phase_viscosities=sample.phase_viscosities,
         )
-        tubing_inner_diameter = self.tubing_inner_diameter
-        if has_full_surface_properties:
-            assert surface_fluid_properties.phase_densities is not None
-            assert surface_fluid_properties.phase_viscosities is not None
-            assert surface_fluid_properties.gas_liquid_surface_tension is not None
-            hydrostatic_drop, friction_drop = self._get_segment_drop(
-                length=abs(dz),
-                inclination_from_vertical=0.0,
-                phase_rates=phase_rates,
+        drop = compute_segment_drop(
+            model=model,
+            length=abs(dz),
+            inclination_from_vertical=inclinations_from_vertical[i],
+            superficial_liquid_velocity=liquid_rate / cross_sectional_area,
+            superficial_gas_velocity=gas_rate / cross_sectional_area,
+            liquid_density=liquid_density,
+            gas_density=gas_density,
+            liquid_viscosity=liquid_viscosity,
+            gas_viscosity=gas_viscosity,
+            liquid_surface_tension=sample.gas_liquid_surface_tension,
+            is_injector=is_injector,
+        )
+        pressures[i] = (
+            reference_pressure
+            + geometric_sign * (drop.hydrostatic + drop.acceleration)
+            + friction_sign * drop.friction
+        )
+    return pressures
+
+
+def compute_tubing_head_pressure(
+    model: BeggsBrillModel,
+    reference_depth: Number,
+    reference_pressure: Number,
+    phase_rates: PhaseValues,
+    surface_fluid_properties: SurfaceFluidProperties,
+    is_injector: bool,
+) -> Number:
+    """
+    Computes tubing head pressure at surface.
+
+    :param model: This well's `BeggsBrillModel`.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param reference_pressure: Pressure at `reference_depth`.
+    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param surface_fluid_properties: Fluid properties at surface conditions.
+        `phase_densities`, `phase_viscosities`, and `gas_liquid_surface_tension`
+        are all required - a two-phase correlation needs a real liquid/gas
+        split, not just a single mixture value.
+    :param is_injector: Whether this well is an injector.
+    :returns: Tubing head pressure.
+    :raises ValueError: If `phase_densities`, `phase_viscosities`, or
+        `gas_liquid_surface_tension` isn't set on `surface_fluid_properties`.
+    """
+    if surface_fluid_properties.phase_densities is None:
+        raise ValueError(
+            "SurfaceFluidProperties.phase_densities is required for the beggs_brill "
+            "wellbore model."
+        )
+    if surface_fluid_properties.phase_viscosities is None:
+        raise ValueError(
+            "SurfaceFluidProperties.phase_viscosities is required for the beggs_brill "
+            "wellbore model."
+        )
+    if surface_fluid_properties.gas_liquid_surface_tension is None:
+        raise ValueError(
+            "SurfaceFluidProperties.gas_liquid_surface_tension is required for the "
+            "beggs_brill wellbore model."
+        )
+
+    dz = 0.0 - reference_depth
+    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
+    friction_sign = -1.0 if is_injector else 1.0
+    cross_sectional_area = math.pi * (model.tubing_inner_diameter / 2.0) ** 2
+
+    if total_rate == 0.0:
+        drop = compute_static_hydrostatic_drop(
+            mixture_density=static_mixture_density(
+                phase_saturations=PhaseValues(
+                    oil=phase_rates.oil, water=phase_rates.water, gas=phase_rates.gas
+                ),
                 phase_densities=surface_fluid_properties.phase_densities,
-                phase_viscosities=surface_fluid_properties.phase_viscosities,
-                gas_liquid_surface_tension=surface_fluid_properties.gas_liquid_surface_tension,
-                tubing_inner_diameter=tubing_inner_diameter,
-                tubing_roughness=self.tubing_roughness,
-                is_injector=is_injector,
-            )
-            return (
-                reference_pressure - hydrostatic_drop - (friction_sign * friction_drop)
-            )
+            ),
+            length=abs(dz),
+            gravitational_acceleration=model.gravitational_acceleration,
+            unit_system=model.unit_system,
+        )
+        return reference_pressure - drop.total
 
-        mixture_viscosity = surface_fluid_properties.get_mixture_viscosity(phase_rates)
-        velocity = compute_mixture_velocity(phase_rates, tubing_inner_diameter)
-        relative_roughness = (
-            self.tubing_roughness / tubing_inner_diameter
-            if self.tubing_roughness is not None
-            else 0.0
-        )
-        reynolds_number = (
-            mixture_density * velocity * tubing_inner_diameter / mixture_viscosity
-        )
-        friction_factor = compute_friction_factor(
-            reynolds_number=reynolds_number,
-            relative_roughness=relative_roughness,
-            method=self.friction_method,
-            laminar_reynolds_limit=self.laminar_reynolds_limit,
-            turbulent_reynolds_limit=self.turbulent_reynolds_limit,
-            max_iterations=self.friction_max_iterations,
-            tolerance=self.friction_tolerance,
-        )
-        hydrostatic_drop = mixture_density * self.gravitational_acceleration * abs(dz)
-        friction_drop = (
-            friction_factor
-            * (abs(dz) / tubing_inner_diameter)
-            * (mixture_density * velocity**2 / 2.0)
-        )
-        return reference_pressure - hydrostatic_drop - (friction_sign * friction_drop)
-
-    def convert(
-        self,
-        target: UnitSystem,
-        /,
-        *,
-        table: typing.Optional[UnitConversionTable] = None,
-    ) -> Self:
-        """
-        Returns a new `BeggsBrillWellbore` in the *target* unit system.
-
-        :param target: Target unit system.
-        :param table: Optional custom conversion table.
-        :returns: New model with `gravitational_acceleration` converted to
-            `target`. `laminar_reynolds_limit`/`turbulent_reynolds_limit`/
-            `friction_max_iterations`/`friction_tolerance` are dimensionless
-            and unchanged.
-        """
-        if target == self.unit_system:
-            return self
-
-        assert self.gravitational_acceleration is not None
-        length_factor = get_conversion_factors(self.unit_system, target, table=table)[
-            "length"
-        ]
-        return attrs.evolve(
-            self,
-            tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
-            tubing_roughness=self.tubing_roughness * length_factor
-            if self.tubing_roughness is not None
-            else None,
-            gravitational_acceleration=self.gravitational_acceleration * length_factor,
-            unit_system=target,
-        )
+    (
+        liquid_rate,
+        gas_rate,
+        liquid_density,
+        gas_density,
+        liquid_viscosity,
+        gas_viscosity,
+    ) = _split_liquid_gas(
+        phase_rates=phase_rates,
+        phase_densities=surface_fluid_properties.phase_densities,
+        phase_viscosities=surface_fluid_properties.phase_viscosities,
+    )
+    drop = compute_segment_drop(
+        model=model,
+        length=abs(dz),
+        inclination_from_vertical=0.0,
+        superficial_liquid_velocity=liquid_rate / cross_sectional_area,
+        superficial_gas_velocity=gas_rate / cross_sectional_area,
+        liquid_density=liquid_density,
+        gas_density=gas_density,
+        liquid_viscosity=liquid_viscosity,
+        gas_viscosity=gas_viscosity,
+        liquid_surface_tension=surface_fluid_properties.gas_liquid_surface_tension,
+        is_injector=is_injector,
+    )
+    return (
+        reference_pressure
+        - (drop.hydrostatic + drop.acceleration)
+        - friction_sign * drop.friction
+    )
