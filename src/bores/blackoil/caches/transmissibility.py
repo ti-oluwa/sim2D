@@ -13,8 +13,8 @@ import numpy.typing as npt
 from bores.constants import c, get_conversion_factors
 from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
-from bores.simulation.blackoil.caches.mobility import MobilityCache
-from bores.simulation.blackoil.caches.pvt import PVTCache
+from bores.blackoil.caches.mobility import MobilityCache
+from bores.blackoil.caches.pvt import PVTCache
 from bores.typing import CellArray, IntCellArray, UnitSystem
 
 __all__ = ["TransmissibilityCache", "compute_transmissibility_cache"]

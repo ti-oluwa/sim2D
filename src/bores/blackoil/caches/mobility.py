@@ -7,8 +7,8 @@ import numpy as np
 import numpy.typing as npt
 
 from bores.precision import get_dtype
-from bores.simulation.blackoil.caches.pvt import PVTCache
-from bores.simulation.blackoil.caches.satfunc import SatFuncCache
+from bores.blackoil.caches.pvt import PVTCache
+from bores.blackoil.caches.satfunc import SatFuncCache
 from bores.typing import CellArray
 
 __all__ = ["MobilityCache", "compute_mobility_cache"]
