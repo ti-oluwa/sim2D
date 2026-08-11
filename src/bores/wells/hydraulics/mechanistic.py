@@ -4,6 +4,7 @@ import typing
 
 import numba
 import numpy as np
+from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
 from bores.typing import (
@@ -16,7 +17,6 @@ from bores.typing import (
 from bores.wells.hydraulics.base import (
     PressureDrop,
     SurfaceFluidProperties,
-    compute_hydrostatic_pressure,
     compute_mixture_density,
     compute_mixture_velocity,
     compute_mixture_viscosity,
@@ -78,7 +78,7 @@ class MechanisticModel(typing.NamedTuple):
         /,
         *,
         table: typing.Optional[UnitConversionTable] = None,
-    ) -> "MechanisticModel":
+    ) -> Self:
         """
         Converts this model to a different unit system.
 

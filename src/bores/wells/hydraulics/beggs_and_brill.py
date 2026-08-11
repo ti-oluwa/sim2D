@@ -5,6 +5,7 @@ import typing
 
 import numba
 import numpy as np
+from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
 from bores.typing import (
@@ -24,7 +25,7 @@ from bores.wells.hydraulics.base import (
 from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = [
-    "BeggsBrillModel",
+    "BeggsAndBrillModel",
     "beggs_and_brill",
     "flow_pattern_tag",
     "horizontal_holdup",
@@ -36,7 +37,7 @@ __all__ = [
 ]
 
 
-class BeggsBrillModel(typing.NamedTuple):
+class BeggsAndBrillModel(typing.NamedTuple):
     """Configuration for the Beggs & Brill two-phase slip wellbore hydraulics model."""
 
     tubing_inner_diameter: Number
@@ -77,7 +78,7 @@ class BeggsBrillModel(typing.NamedTuple):
         /,
         *,
         table: typing.Optional[UnitConversionTable] = None,
-    ) -> "BeggsBrillModel":
+    ) -> Self:
         """
         Converts this model to a different unit system.
 
@@ -118,9 +119,9 @@ def beggs_and_brill(
     turbulent_reynolds_limit: typing.Optional[Number] = None,
     friction_max_iterations: typing.Optional[int] = None,
     friction_tolerance: typing.Optional[Number] = None,
-) -> BeggsBrillModel:
+) -> BeggsAndBrillModel:
     """
-    Builds a `BeggsBrillModel`.
+    Builds a `BeggsAndBrillModel`.
 
     :param tubing_inner_diameter: Tubing inner diameter.
     :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
@@ -138,7 +139,7 @@ def beggs_and_brill(
         `c.COLEBROOK_MAX_ITERATIONS` if not given.
     :param friction_tolerance: Colebrook convergence tolerance.
         `c.COLEBROOK_TOLERANCE` if not given.
-    :returns: A fully configured `BeggsBrillModel`.
+    :returns: A fully configured `BeggsAndBrillModel`.
     """
     if gravitational_acceleration is None:
         gravitational_acceleration = typing.cast(
@@ -148,7 +149,7 @@ def beggs_and_brill(
             factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
             gravitational_acceleration = gravitational_acceleration * factors["length"]
 
-    return BeggsBrillModel(
+    return BeggsAndBrillModel(
         tubing_inner_diameter=tubing_inner_diameter,
         tubing_roughness=tubing_roughness
         if tubing_roughness is not None
@@ -402,7 +403,7 @@ def compute_two_phase_friction_factor(
 
 @numba.njit(cache=True)
 def compute_segment_drop(
-    model: BeggsBrillModel,
+    model: BeggsAndBrillModel,
     length: Number,
     inclination_from_vertical: Number,
     superficial_liquid_velocity: Number,
@@ -417,7 +418,7 @@ def compute_segment_drop(
     """
     Computes the pressure drop across one tubing segment.
 
-    :param model: This well's `BeggsBrillModel`.
+    :param model: This well's `BeggsAndBrillModel`.
     :param length: Along-wellbore segment length.
     :param inclination_from_vertical: Segment inclination, in radians. `0` is vertical.
     :param superficial_liquid_velocity: Liquid rate divided by cross-sectional area.
@@ -538,7 +539,7 @@ def _split_liquid_gas(
 
 
 def compute_perforation_pressures(
-    model: BeggsBrillModel,
+    model: BeggsAndBrillModel,
     reference_depth: Number,
     reference_pressure: Number,
     phase_rates: PhaseValues,
@@ -550,7 +551,7 @@ def compute_perforation_pressures(
     """
     Computes flowing pressure at each perforation connection.
 
-    :param model: This well's `BeggsBrillModel`.
+    :param model: This well's `BeggsAndBrillModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
     :param phase_rates: Rate of each phase, at reservoir conditions.
@@ -627,7 +628,7 @@ def compute_perforation_pressures(
 
 
 def compute_tubing_head_pressure(
-    model: BeggsBrillModel,
+    model: BeggsAndBrillModel,
     reference_depth: Number,
     reference_pressure: Number,
     phase_rates: PhaseValues,
@@ -637,7 +638,7 @@ def compute_tubing_head_pressure(
     """
     Computes tubing head pressure at surface.
 
-    :param model: This well's `BeggsBrillModel`.
+    :param model: This well's `BeggsAndBrillModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
     :param phase_rates: Rate of each phase, at reservoir conditions.
@@ -652,18 +653,18 @@ def compute_tubing_head_pressure(
     """
     if surface_fluid_properties.phase_densities is None:
         raise ValueError(
-            "SurfaceFluidProperties.phase_densities is required for the beggs_brill "
+            "SurfaceFluidProperties.phase_densities is required for the Beggs & Brill "
             "wellbore model."
         )
     if surface_fluid_properties.phase_viscosities is None:
         raise ValueError(
-            "SurfaceFluidProperties.phase_viscosities is required for the beggs_brill "
+            "SurfaceFluidProperties.phase_viscosities is required for the Beggs & Brill "
             "wellbore model."
         )
     if surface_fluid_properties.gas_liquid_surface_tension is None:
         raise ValueError(
             "SurfaceFluidProperties.gas_liquid_surface_tension is required for the "
-            "beggs_brill wellbore model."
+            "Beggs & Brill wellbore model."
         )
 
     dz = 0.0 - reference_depth

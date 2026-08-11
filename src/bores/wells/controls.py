@@ -478,6 +478,8 @@ class ProducerControl(WellControl):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
+        Convert the control to the *target* unit system.
+        
         :param target: Target unit system.
         :param table: Optional custom conversion table.
         :returns: New `ProducerControl` with every rate/pressure field and
@@ -568,6 +570,8 @@ class InjectorControl(WellControl):
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
+        Convert the control to the *target* unit system.
+
         :param target: Target unit system.
         :param table: Optional custom conversion table.
         :returns: New `InjectorControl` with every rate/pressure field and
@@ -717,6 +721,8 @@ class WellControls(
         table: typing.Optional[UnitConversionTable] = None,
     ) -> Self:
         """
+        Convert every control in this `WellControls` to the *target* unit system.
+        
         :param target: Target unit system.
         :param table: Optional custom conversion table.
         :returns: New `WellControls` with every control converted to target.

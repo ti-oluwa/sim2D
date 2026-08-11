@@ -80,7 +80,7 @@ class PerforationState(StoreSerializable):
     flowing_pressure: Number
     """Flowing bottomhole pressure at this perforation."""
 
-    phase_rates: typing.Mapping[FluidPhase, Number]
+    phase_rates: PhaseValues
     """Rate of each phase at this perforation."""
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -102,21 +102,22 @@ class PerforationState(StoreSerializable):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: This snapshot, with `flowing_pressure` and every entry
-            in `phase_rates` converted to `target`.
+        :returns: This snapshot, with `flowing_pressure` and every phase-rate
+            value converted to `target`.
         """
         if target == self.unit_system:
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        reservoir_rate_factor = factors["reservoir_rate"]
+        rate_factor = factors["reservoir_rate"]
         return attrs.evolve(
             self,
             flowing_pressure=self.flowing_pressure * factors["pressure"],
-            phase_rates={
-                phase: rate * reservoir_rate_factor
-                for phase, rate in self.phase_rates.items()
-            },
+            phase_rates=PhaseValues(
+                oil=self.phase_rates.oil * rate_factor,
+                water=self.phase_rates.water * rate_factor,
+                gas=self.phase_rates.gas * rate_factor,
+            ),
             unit_system=target,
         )
 
@@ -140,7 +141,7 @@ class WellState(StoreSerializable):
     perforation_states: typing.Tuple[PerforationState, ...]
     """Snapshot for each of this well's open perforations. Empty if `is_open` is `False`."""
 
-    phase_rates: typing.Mapping[FluidPhase, Number]
+    phase_rates: PhaseValues
     """Rate of each phase for the whole well."""
 
     active_limit: typing.Optional[Limit] = None
@@ -158,7 +159,7 @@ class WellState(StoreSerializable):
 
         if not self.is_open and self.perforation_states:
             raise ValidationError(
-                f"WellState for {self.well_name!r} is shut (`is_open=False`) "
+                f"{self.__class__.__name__} for {self.well_name!r} is shut (`is_open=False`) "
                 "but has non-empty `perforation_states`; a shut well must "
                 "have an empty tuple."
             )
@@ -166,7 +167,7 @@ class WellState(StoreSerializable):
         if self.active_control.unit_system != self.unit_system:
             raise ValidationError(
                 f"`active_control.unit_system` ({self.active_control.unit_system.value}) "
-                f"!= this WellState's unit_system ({self.unit_system.value})."
+                f"!= this {self.__class__.__name__}'s unit_system ({self.unit_system.value})."
             )
         if (
             self.active_limit is not None
@@ -174,15 +175,13 @@ class WellState(StoreSerializable):
         ):
             raise ValidationError(
                 f"`active_limit.unit_system` ({self.active_limit.unit_system.value}) "
-                f"!= this WellState's unit_system ({self.unit_system.value})."
+                f"!= this {self.__class__.__name__}'s unit_system ({self.unit_system.value})."
             )
 
     @property
     def total_liquid_rate(self) -> Number:
-        """Combined oil and water rate for the well. Missing phases count as zero."""
-        return self.phase_rates.get(FluidPhase.OIL, 0.0) + self.phase_rates.get(
-            FluidPhase.WATER, 0.0
-        )
+        """Combined oil and water rate for the well."""
+        return self.phase_rates.oil + self.phase_rates.water
 
     def perforation_state_at(self, cell_index: int) -> PerforationState:
         """
@@ -220,17 +219,19 @@ class WellState(StoreSerializable):
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        reservoir_rate_factor = factors["reservoir_rate"]
+        rate_factor = factors["reservoir_rate"]
         return attrs.evolve(
             self,
             bhp=self.bhp * factors["pressure"],
             thp=self.thp * factors["pressure"] if self.thp is not None else None,
-            phase_rates={
-                phase: rate * reservoir_rate_factor
-                for phase, rate in self.phase_rates.items()
-            },
+            phase_rates=PhaseValues(
+                oil=self.phase_rates.oil * rate_factor,
+                water=self.phase_rates.water * rate_factor,
+                gas=self.phase_rates.gas * rate_factor,
+            ),
             perforation_states=tuple(
-                ps.convert(target, table=table) for ps in self.perforation_states
+                perforation_state.convert(target, table=table)
+                for perforation_state in self.perforation_states
             ),
             active_control=self.active_control.convert(target, table=table),
             active_limit=self.active_limit.convert(target, table=table)
@@ -315,14 +316,14 @@ class WellsStates(
         self.states[state.well_name] = state
 
     @property
-    def open_wells(self) -> typing.Tuple[WellState, ...]:
+    def open_wells(self) -> typing.Generator[WellState]:
         """Returns Every WellState with is_open=True."""
-        return tuple(state for state in self.states.values() if state.is_open)
+        return (state for state in self.states.values() if state.is_open)
 
     @property
-    def shut_wells(self) -> typing.Tuple[WellState, ...]:
+    def shut_wells(self) -> typing.Generator[WellState]:
         """Returns every `WellState` with is_open=False."""
-        return tuple(state for state in self.states.values() if not state.is_open)
+        return (state for state in self.states.values() if not state.is_open)
 
     def __getitem__(self, well_name: str) -> WellState:
         """

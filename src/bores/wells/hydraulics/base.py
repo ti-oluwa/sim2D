@@ -4,6 +4,7 @@ import math
 import typing
 
 import numba
+from typing_extensions import Self
 
 from bores.constants import c
 from bores.typing import Number, UnitConversionTable, UnitSystem
@@ -83,7 +84,7 @@ class WellBoreModel(typing.NamedTuple):
         /,
         *,
         table: typing.Optional[UnitConversionTable] = None,
-    ) -> "WellBoreModel":
+    ) -> Self:
         """
         Converts this model to a different unit system.
 
@@ -163,7 +164,7 @@ def compute_mixture_velocity(
     :raises ValueError: If `tubing_inner_diameter` isn't positive.
     """
     if tubing_inner_diameter <= 0.0:
-        raise ValueError("tubing_inner_diameter must be positive")
+        raise ValueError("`tubing_inner_diameter` must be positive")
     cross_sectional_area = math.pi * (tubing_inner_diameter / 2.0) ** 2
     return (
         phase_rates.oil + phase_rates.water + phase_rates.gas
@@ -456,7 +457,7 @@ def static_mixture_density(
     )
     if total_saturation == 0.0:
         raise ValueError(
-            "phase_saturations sums to zero; cannot derive a static density"
+            "`phase_saturations` sums to zero; cannot derive a static density"
         )
     return (
         phase_saturations.oil * phase_densities.oil

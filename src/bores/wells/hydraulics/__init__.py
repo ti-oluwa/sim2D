@@ -1,3 +1,3 @@
 from .base import *
-from .beggs_brill import *
+from .beggs_and_brill import *
 from .mechanistic import *

@@ -133,7 +133,7 @@ class TStepKeyword(Keyword[typing.List[float]]):
                     steps.append(float(token))
                 except ValueError as exc:
                     raise DeckParseError(
-                        f"TSTEP: non-numeric time-step value {token!r}: {exc}"
+                        f"{self.name}: non-numeric time-step value {token!r}: {exc}"
                     ) from exc
 
         return steps or None
