@@ -38,33 +38,51 @@ class SatFuncCache(typing.NamedTuple):
 
     # Relative permeabilities
     water_relative_permeability: CellArray
+    """Water relative permeability, $k_{rw}$."""
     oil_relative_permeability: CellArray
+    """Oil relative permeability, $k_{ro}$."""
     gas_relative_permeability: CellArray
+    """Gas relative permeability, $k_{rg}$."""
 
     # Relative permeability derivatives w.r.t. water saturation
     dkrw_dsw: CellArray
+    """Derivative of water relative permeability w.r.t. water saturation, $dk_{rw}/dS_w$."""
     dkro_dsw: CellArray
+    """Derivative of oil relative permeability w.r.t. water saturation, $dk_{ro}/dS_w$."""
     dkrg_dsw: CellArray
+    """Derivative of gas relative permeability w.r.t. water saturation, $dk_{rg}/dS_w$."""
 
     # ... w.r.t. oil saturation
     dkrw_dso: CellArray
+    """Derivative of water relative permeability w.r.t. oil saturation, $dk_{rw}/dS_o$."""
     dkro_dso: CellArray
+    """Derivative of oil relative permeability w.r.t. oil saturation, $dk_{ro}/dS_o$."""
     dkrg_dso: CellArray
+    """Derivative of gas relative permeability w.r.t. oil saturation, $dk_{rg}/dS_o$."""
 
     # ... w.r.t. gas saturation
     dkrw_dsg: CellArray
+    """Derivative of water relative permeability w.r.t. gas saturation, $dk_{rw}/dS_g$."""
     dkro_dsg: CellArray
+    """Derivative of oil relative permeability w.r.t. gas saturation, $dk_{ro}/dS_g$."""
     dkrg_dsg: CellArray
+    """Derivative of gas relative permeability w.r.t. gas saturation, $dk_{rg}/dS_g$."""
 
     # Capillary pressures: Pcow = Po - Pw, Pcgo = Pg - Po
     oil_water_capillary_pressure: CellArray
+    """Oil-water capillary pressure, $P_{cow} = P_o - P_w$."""
     gas_oil_capillary_pressure: CellArray
+    """Gas-oil capillary pressure, $P_{cgo} = P_g - P_o$."""
 
     # Capillary pressure derivatives
     dpcow_dsw: CellArray
+    """Derivative of oil-water capillary pressure w.r.t. water saturation, $dP_{cow}/dS_w$."""
     dpcow_dso: CellArray
+    """Derivative of oil-water capillary pressure w.r.t. oil saturation, $dP_{cow}/dS_o$."""
     dpcgo_dso: CellArray
+    """Derivative of gas-oil capillary pressure w.r.t. oil saturation, $dP_{cgo}/dS_o$."""
     dpcgo_dsg: CellArray
+    """Derivative of gas-oil capillary pressure w.r.t. gas saturation, $dP_{cgo}/dS_g$."""
 
     saturation_region: IntCellArray
     """The 1-based SATNUM each cell was evaluated against."""

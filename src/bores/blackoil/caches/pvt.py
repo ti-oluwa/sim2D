@@ -24,7 +24,7 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVT
 from bores.precision import get_dtype
-from bores.typing import BooleanArray, CellArray, IntCellArray
+from bores.typing import BooleanCellArray, CellArray, IntCellArray
 
 __all__ = ["PVTCache", "compute_pvt_cache"]
 
@@ -42,35 +42,56 @@ class PVTCache(typing.NamedTuple):
 
     # Formation volume factors
     oil_formation_volume_factor: CellArray
+    """Oil formation volume factor, $B_o$."""
     dbo_dp: CellArray
+    """Pressure derivative of oil formation volume factor, $dB_o/dP$."""
     water_formation_volume_factor: CellArray
+    """Water formation volume factor, $B_w$."""
     dbw_dp: CellArray
+    """Pressure derivative of water formation volume factor, $dB_w/dP$."""
     gas_formation_volume_factor: CellArray
+    """Gas formation volume factor, $B_g$."""
     dbg_dp: CellArray
+    """Pressure derivative of gas formation volume factor, $dB_g/dP$."""
 
     # Viscosities
     oil_viscosity: CellArray
+    """Oil viscosity, $\mu_o$."""
     dμo_dp: CellArray
+    """Pressure derivative of oil viscosity, $d\mu_o/dP$."""
     water_viscosity: CellArray
+    """Water viscosity, $\mu_w$."""
     dμw_dp: CellArray
+    """Pressure derivative of water viscosity, $d\mu_w/dP$."""
     gas_viscosity: CellArray
+    """Gas viscosity, $\mu_g$."""
     dμg_dp: CellArray
+    """Pressure derivative of gas viscosity, $d\mu_g/dP$."""
 
     # Densities
     oil_density: CellArray
+    """Oil density, $\rho_o$."""
     dρo_dp: CellArray
+    """Pressure derivative of oil density, $d\rho_o/dP$."""
     water_density: CellArray
+    """Water density, $\rho_w$."""
     dρw_dp: CellArray
+    """Pressure derivative of water density, $d\rho_w/dP$."""
     gas_density: CellArray
+    """Gas density, $\rho_g$."""
     dρg_dp: CellArray
+    """Pressure derivative of gas density, $d\rho_g/dP$."""
 
     # Compressibilities (value only - c = -(1/B)(dB/dP) for oil/water,
     # 1/P - (1/z)(dz/dP) for gas; already what dB/dP-based Jacobian entries
     # would derive from, kept here mainly for output/diagnostics and timestep
     # heuristics rather than as a required Jacobian input)
     oil_compressibility: CellArray
+    """Oil compressibility, $c_o$."""
     water_compressibility: CellArray
+    """Water compressibility, $c_w$."""
     gas_compressibility: CellArray
+    """Gas compressibility, $c_g$."""
 
     # Dissolved/vaporised composition
     solution_gas_oil_ratio: CellArray
@@ -83,46 +104,52 @@ class PVTCache(typing.NamedTuple):
     """
     drs_dp: CellArray
     """
-    `dRs/dP` along the bubble curve. Only meaningful for saturated cells -
-    `Rs` isn't a function of `P` alone in the undersaturated regime (it's the
-    independent primary variable there), so this is `NaN` where
-    `is_saturated[i] == False`.
+    Pressure derivative of solution gas-oil ratio, $dR_s/dP$. `dRs/dP` along
+    the bubble curve. Only meaningful for saturated cells - `Rs` isn't a
+    function of `P` alone in the undersaturated regime (it's the independent
+    primary variable there), so this is `NaN` where `is_saturated[i] ==
+    False`.
     """
     vaporized_oil_gas_ratio: CellArray
     """
-    `Rv`, evaluated along the dew curve (`PVTTable.vaporized_oil_ratio`).
-    Unlike `Rs`, the underlying table has no separate undersaturated-wet-gas
-    correction exposed for `Bg`/`mu_g` - this is always the dew-curve value,
-    not a primary-variable override. `NaN` for dry-gas models with no `Rv`
-    table.
+    Vaporized oil-gas ratio, $R_v$. `Rv`, evaluated along the dew curve
+    (`PVTTable.vaporized_oil_ratio`). Unlike `Rs`, the underlying table has no
+    separate undersaturated-wet-gas correction exposed for `Bg`/`mu_g` - this
+    is always the dew-curve value, not a primary-variable override. `NaN` for
+    dry-gas models with no `Rv` table.
     """
     drv_dp: CellArray
+    """Pressure derivative of vaporized oil-gas ratio, $dR_v/dP$."""
     water_gas_solubility_ratio: CellArray
     """`Rsw` - gas solubility in water. `NaN` unless the deck models it."""
     drsw_dp: CellArray
+    """Pressure derivative of water-gas solubility ratio, $dR_{sw}/dP$."""
 
     # Bubble/dew point
     bubble_point_pressure: CellArray
     """
-    `Pb`, evaluated at each cell's current `Rs` (`solution_gor=`, not the
-    reported `solution_gas_oil_ratio` output - see `compute_pvt_cache`). For a
-    saturated cell this equals the cell's own pressure; for an undersaturated
-    one it's below it.
+    Bubble-point pressure, $P_b$. `Pb`, evaluated at each cell's current `Rs`
+    (`solution_gor=`, not the reported `solution_gas_oil_ratio` output - see
+    `compute_pvt_cache`). For a saturated cell this equals the cell's own
+    pressure; for an undersaturated one it's below it.
     """
     dpb_drs: CellArray
     """
-    `dPb/dRs`. Only defined for a 2-D (`Rs`-dependent) bubble-point table -
-    `NaN` for a 1-D `Pb(T)` table or non-oil cells.
+    Derivative of bubble-point pressure w.r.t. solution gas-oil ratio,
+    $dP_b/dR_s$. `dPb/dRs`. Only defined for a 2-D (`Rs`-dependent)
+    bubble-point table - `NaN` for a 1-D `Pb(T)` table or non-oil cells.
     """
     dew_point_pressure: CellArray
-    """`Pdew(T)`. `NaN` for dry-gas models."""
+    """Dew-point pressure, $P_{dew}(T)$. `NaN` for dry-gas models."""
 
     # Gas compressibility factor
     gas_compressibility_factor: CellArray
+    """Gas compressibility factor, $z$."""
     dz_dp: CellArray
+    """Pressure derivative of gas compressibility factor, $dz/dP$."""
 
     # Regime / bookkeeping
-    is_saturated: BooleanArray
+    is_saturated: BooleanCellArray
     """
     Per-cell oil regime: `True` = saturated (free gas present, `Sg` is the
     natural primary variable, `Rs` is bubble-curve-determined), `False` =

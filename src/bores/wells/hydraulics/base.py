@@ -24,7 +24,7 @@ __all__ = [
     "compute_hydrostatic_pressure",
     "compute_segment_pressure_drop",
     "compute_static_hydrostatic_drop",
-    "static_mixture_density",
+    "compute_static_mixture_density",
 ]
 
 
@@ -187,7 +187,7 @@ def compute_surface_mixture_density(
     if properties.density is not None:
         return properties.density
     if properties.phase_densities is None:
-        raise ValueError("`SurfaceFluidProperties` needs density or phase_densities")
+        raise ValueError("`SurfaceFluidProperties` needs density or `phase_densities`")
     return compute_mixture_density(
         phase_rates=phase_rates, phase_densities=properties.phase_densities
     )
@@ -209,7 +209,9 @@ def compute_surface_mixture_viscosity(
     if properties.viscosity is not None:
         return properties.viscosity
     if properties.phase_viscosities is None:
-        raise ValueError("`SurfaceFluidProperties` needs viscosity or phase_viscosities")
+        raise ValueError(
+            "`SurfaceFluidProperties` needs viscosity or `phase_viscosities`"
+        )
     return compute_mixture_viscosity(
         phase_rates=phase_rates, phase_viscosities=properties.phase_viscosities
     )
@@ -243,7 +245,7 @@ def compute_friction_factor(
     :raises ValueError: If `reynolds_number` isn't positive.
     """
     if reynolds_number <= 0.0:
-        raise ValueError("reynolds_number must be positive")
+        raise ValueError("`reynolds_number` must be positive")
 
     if method_tag == 0:
         if reynolds_number < laminar_reynolds_limit:
@@ -441,7 +443,7 @@ def compute_static_hydrostatic_drop(
 
 
 @numba.njit(cache=True)
-def static_mixture_density(
+def compute_static_mixture_density(
     phase_saturations: PhaseValues, phase_densities: PhaseValues
 ) -> Number:
     """

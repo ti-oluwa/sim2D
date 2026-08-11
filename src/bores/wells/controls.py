@@ -479,7 +479,7 @@ class ProducerControl(WellControl):
     ) -> Self:
         """
         Convert the control to the *target* unit system.
-        
+
         :param target: Target unit system.
         :param table: Optional custom conversion table.
         :returns: New `ProducerControl` with every rate/pressure field and
@@ -722,7 +722,7 @@ class WellControls(
     ) -> Self:
         """
         Convert every control in this `WellControls` to the *target* unit system.
-        
+
         :param target: Target unit system.
         :param table: Optional custom conversion table.
         :returns: New `WellControls` with every control converted to target.

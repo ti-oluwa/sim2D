@@ -5,11 +5,12 @@ import typing
 
 import attrs
 import numpy as np
+import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.base import Grid
+from bores.precision import get_dtype
 from bores.typing import (
-    FloatArray,
     FluidPhase,
     IntArray,
     Integer,
@@ -59,7 +60,7 @@ __all__ = [
     "CompiledGroupControls",
     "CompiledWellSystem",
     "compile_perforations",
-    "compile_limits",
+    "_compile_limits",
     "compile_well_controls",
     "compile_group_controls",
     "compile_well_system",
@@ -171,7 +172,7 @@ class FluidPhaseTag(enum.IntEnum):
     GAS = 2
 
 
-_PRODUCER_MODE_TAG = {
+PRODUCER_MODE_TAG = {
     ProducerControlMode.ORAT: ProducerControlModeTag.ORAT,
     ProducerControlMode.WRAT: ProducerControlModeTag.WRAT,
     ProducerControlMode.GRAT: ProducerControlModeTag.GRAT,
@@ -182,7 +183,7 @@ _PRODUCER_MODE_TAG = {
     ProducerControlMode.GRUP: ProducerControlModeTag.GRUP,
     ProducerControlMode.UNSET: ProducerControlModeTag.UNSET,
 }
-_INJECTOR_MODE_TAG = {
+INJECTOR_MODE_TAG = {
     InjectorControlMode.RATE: InjectorControlModeTag.RATE,
     InjectorControlMode.RESV: InjectorControlModeTag.RESV,
     InjectorControlMode.BHP: InjectorControlModeTag.BHP,
@@ -190,7 +191,7 @@ _INJECTOR_MODE_TAG = {
     InjectorControlMode.GRUP: InjectorControlModeTag.GRUP,
     InjectorControlMode.UNSET: InjectorControlModeTag.UNSET,
 }
-_GROUP_PRODUCER_MODE_TAG = {
+GROUP_PRODUCER_MODE_TAG = {
     GroupProducerControlMode.ORAT: GroupProducerControlModeTag.ORAT,
     GroupProducerControlMode.WRAT: GroupProducerControlModeTag.WRAT,
     GroupProducerControlMode.GRAT: GroupProducerControlModeTag.GRAT,
@@ -199,26 +200,26 @@ _GROUP_PRODUCER_MODE_TAG = {
     GroupProducerControlMode.FLD: GroupProducerControlModeTag.FLD,
     GroupProducerControlMode.NONE: GroupProducerControlModeTag.NONE,
 }
-_GROUP_INJECTOR_MODE_TAG = {
+GROUP_INJECTOR_MODE_TAG = {
     GroupInjectorControlMode.RATE: GroupInjectorControlModeTag.RATE,
     GroupInjectorControlMode.RESV: GroupInjectorControlModeTag.RESV,
     GroupInjectorControlMode.VREP: GroupInjectorControlModeTag.VREP,
     GroupInjectorControlMode.REIN: GroupInjectorControlModeTag.REIN,
     GroupInjectorControlMode.FLD: GroupInjectorControlModeTag.FLD,
 }
-_RATE_QUANTITY_TAG = {
+RATE_QUANTITY_TAG = {
     RateQuantity.OIL: RateQuantityTag.OIL,
     RateQuantity.WATER: RateQuantityTag.WATER,
     RateQuantity.GAS: RateQuantityTag.GAS,
     RateQuantity.LIQUID: RateQuantityTag.LIQUID,
     RateQuantity.RESERVOIR: RateQuantityTag.RESERVOIR,
 }
-_ECONOMIC_QUANTITY_TAG = {
+ECONOMIC_QUANTITY_TAG = {
     EconomicQuantity.WATER_CUT: EconomicQuantityTag.WATER_CUT,
     EconomicQuantity.GOR: EconomicQuantityTag.GOR,
     EconomicQuantity.WATER_GAS_RATIO: EconomicQuantityTag.WATER_GAS_RATIO,
 }
-_FLUID_PHASE_TAG = {
+FLUID_PHASE_TAG = {
     FluidPhase.OIL: FluidPhaseTag.OIL,
     FluidPhase.WATER: FluidPhaseTag.WATER,
     FluidPhase.GAS: FluidPhaseTag.GAS,
@@ -233,39 +234,39 @@ class CompiledPerforations(typing.NamedTuple):
     absent one, so a later status change never needs to re-resolve geometry.
     """
 
-    well_offsets: IntArray
+    well_offsets: IntArray[OneDimension]
     """Shape `(n_wells + 1,)`. Well `w`'s rows are `well_offsets[w]:well_offsets[w + 1]`."""
 
-    cell_indices: IntArray
+    cell_indices: IntArray[OneDimension]
     """Shape `(n_rows,)`. The grid cell each connection resolves to."""
 
-    well_indices: FloatArray
+    well_indices: NumberArray[OneDimension]
     """Shape `(n_rows,)`. Each connection's connection factor."""
 
-    wellbore_radii: FloatArray
+    wellbore_radii: NumberArray[OneDimension]
     """Shape `(n_rows,)`."""
 
-    skins: FloatArray
+    skins: NumberArray[OneDimension]
     """Shape `(n_rows,)`."""
 
-    partial_penetration_fractions: FloatArray
+    partial_penetration_fractions: NumberArray[OneDimension]
     """Shape `(n_rows,)`."""
 
-    representative_depths: FloatArray
+    representative_depths: NumberArray[OneDimension]
     """Shape `(n_rows,)`. For the hydrostatic term in wellbore pressure-drop."""
 
-    inclinations_from_vertical: FloatArray
+    inclinations_from_vertical: NumberArray[OneDimension]
     """Shape `(n_rows,)`, radians. For `wells.hydraulics`."""
 
-    completion_statuses: IntArray
+    completion_statuses: IntArray[OneDimension]
     """Shape `(n_rows,)`. `1` for `CompletionStatus.OPEN`, `0` for `SHUT`."""
 
-    schedule_statuses: IntArray
+    schedule_statuses: IntArray[OneDimension]
     """Shape `(n_rows,)`. `1` for `WellStatus.ACTIVE`, `0` for `PENDING`.
     A row with either this or `completion_statuses` at `0` is skipped by
     every solver kernel."""
 
-    saturation_regions: IntArray
+    saturation_regions: IntArray[OneDimension]
     """Shape `(n_rows,)`. Per-connection SATNUM override; `-1` means use the cell's own region."""
 
 
@@ -276,20 +277,20 @@ class CompiledLimits(typing.NamedTuple):
     limits has an empty row range.
     """
 
-    well_offsets: IntArray
+    well_offsets: IntArray[OneDimension]
     """Shape `(n_wells + 1,)`."""
 
-    kinds: IntArray
+    kinds: IntArray[OneDimension]
     """Shape `(n_rows,)`."""
 
-    quantity_tags: IntArray
+    quantity_tags: IntArray[OneDimension]
     """Shape `(n_rows,)`. A `RateQuantityTag` on a `RATE` row, an
     `EconomicQuantityTag` on an `ECONOMIC` row, `UNSET_INT` otherwise."""
 
-    min_values: FloatArray
+    min_values: NumberArray[OneDimension]
     """Shape `(n_rows,)`. `NaN` where this limit has no floor."""
 
-    max_values: FloatArray
+    max_values: NumberArray[OneDimension]
     """Shape `(n_rows,)`. `NaN` where this limit has no ceiling."""
 
 
@@ -297,32 +298,32 @@ class CompiledWellControls(typing.NamedTuple):
     """Every well's current control target, one row per well, positionally
     aligned with `CompiledWellSystem`."""
 
-    well_kinds: IntArray
+    well_kinds: IntArray[OneDimension]
     """Shape `(n_wells,)`."""
 
-    control_modes: IntArray
+    control_modes: IntArray[OneDimension]
     """Shape `(n_wells,)`. A `ProducerControlModeTag` on a `PRODUCER` row,
     an `InjectorControlModeTag` on an `INJECTOR` row - check `well_kinds`
     first. `UNSET` for a well with no control yet."""
 
-    injected_phases: IntArray
+    injected_phases: IntArray[OneDimension]
     """Shape `(n_wells,)`. A `FluidPhaseTag` on an `INJECTOR` row with a
     control set; `UNSET_INT` otherwise."""
 
-    target_rates: FloatArray
+    target_rates: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where unset. Whichever rate `control_modes`
     currently selects."""
 
-    target_bhps: FloatArray
+    target_bhps: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where unset."""
 
-    target_thps: FloatArray
+    target_thps: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where unset."""
 
-    efficiency_factors: FloatArray
+    efficiency_factors: NumberArray[OneDimension]
     """Shape `(n_wells,)`."""
 
-    guide_rates: FloatArray
+    guide_rates: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where unset."""
 
     limits: CompiledLimits
@@ -334,18 +335,18 @@ class CompiledGroupControls(typing.NamedTuple):
     names: typing.Tuple[str, ...]
     """Shape `(n_groups,)`."""
 
-    group_kinds: IntArray
+    group_kinds: IntArray[OneDimension]
     """Shape `(n_groups,)`."""
 
-    control_modes: IntArray
+    control_modes: IntArray[OneDimension]
     """Shape `(n_groups,)`. A `GroupProducerControlModeTag` on a
     `PRODUCER` row, a `GroupInjectorControlModeTag` on an `INJECTOR` row -
     check `group_kinds` first."""
 
-    injected_phases: IntArray
+    injected_phases: IntArray[OneDimension]
     """Shape `(n_groups,)`. A `FluidPhaseTag` on an `INJECTOR` row; `UNSET_INT` otherwise."""
 
-    target_rates: FloatArray
+    target_rates: NumberArray[OneDimension]
     """Shape `(n_groups,)`. `NaN` where unset."""
 
 
@@ -360,15 +361,15 @@ class CompiledWellSystem(typing.NamedTuple):
     names: typing.Tuple[str, ...]
     """Shape `(n_wells,)`. Every other array here is positional against this order."""
 
-    well_kinds: IntArray
+    well_kinds: IntArray[OneDimension]
     """Shape `(n_wells,)`. Duplicated from `controls.well_kinds`, kept in
     lockstep by construction, for a kernel that needs well identity
     without threading `controls` through too."""
 
-    schedule_statuses: IntArray
+    schedule_statuses: IntArray[OneDimension]
     """Shape `(n_wells,)`."""
 
-    reference_depths: FloatArray
+    reference_depths: NumberArray[OneDimension]
     """Shape `(n_wells,)`."""
 
     perforations: CompiledPerforations
@@ -453,6 +454,7 @@ def compile_perforations(
     wells: Wells,
     grid: Grid,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
+    dtype: npt.DTypeLike = None,
     **resolve_kwargs: typing.Any,
 ) -> CompiledPerforations:
     """
@@ -508,26 +510,46 @@ def compile_perforations(
             )
         well_offsets.append(len(cell_indices))
 
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     return CompiledPerforations(
-        well_offsets=np.asarray(well_offsets, dtype=np.int64),
-        cell_indices=np.asarray(cell_indices, dtype=np.int64),
-        well_indices=np.asarray(well_indices, dtype=np.float64),
-        wellbore_radii=np.asarray(wellbore_radii, dtype=np.float64),
-        skins=np.asarray(skins, dtype=np.float64),
-        partial_penetration_fractions=np.asarray(
-            partial_penetration_fractions, dtype=np.float64
+        well_offsets=typing.cast(
+            IntArray[OneDimension], np.asarray(well_offsets, dtype=np.int64)
         ),
-        representative_depths=np.asarray(representative_depths, dtype=np.float64),
-        inclinations_from_vertical=np.asarray(
-            inclinations_from_vertical, dtype=np.float64
+        cell_indices=typing.cast(
+            IntArray[OneDimension], np.asarray(cell_indices, dtype=np.int64)
         ),
-        completion_statuses=np.asarray(completion_statuses, dtype=np.int64),
-        schedule_statuses=np.asarray(schedule_statuses, dtype=np.int64),
-        saturation_regions=np.asarray(saturation_regions, dtype=np.int64),
+        well_indices=typing.cast(
+            NumberArray[OneDimension], np.asarray(well_indices, dtype=dtype)
+        ),
+        wellbore_radii=typing.cast(
+            NumberArray[OneDimension], np.asarray(wellbore_radii, dtype=dtype)
+        ),
+        skins=typing.cast(NumberArray[OneDimension], np.asarray(skins, dtype=dtype)),
+        partial_penetration_fractions=typing.cast(
+            NumberArray[OneDimension],
+            np.asarray(partial_penetration_fractions, dtype=dtype),
+        ),
+        representative_depths=typing.cast(
+            NumberArray[OneDimension], np.asarray(representative_depths, dtype=dtype)
+        ),
+        inclinations_from_vertical=typing.cast(
+            NumberArray[OneDimension],
+            np.asarray(inclinations_from_vertical, dtype=dtype),
+        ),
+        completion_statuses=typing.cast(
+            IntArray[OneDimension],
+            np.asarray(completion_statuses, dtype=np.int32),
+        ),
+        schedule_statuses=typing.cast(
+            IntArray[OneDimension], np.asarray(schedule_statuses, dtype=np.int32)
+        ),
+        saturation_regions=typing.cast(
+            IntArray[OneDimension], np.asarray(saturation_regions, dtype=np.int32)
+        ),
     )
 
 
-def compile_limits(
+def _compile_limits(
     limits: typing.Sequence[Limit],
 ) -> typing.Tuple[
     typing.List[Integer], typing.List[Integer], typing.List[Number], typing.List[Number]
@@ -565,12 +587,12 @@ def compile_limits(
             )
         elif isinstance(limit, RateLimit):
             kinds.append(LimitKind.RATE)
-            quantity_tags.append(_RATE_QUANTITY_TAG[limit.quantity])
+            quantity_tags.append(RATE_QUANTITY_TAG[limit.quantity])
             min_values.append(np.nan)
             max_values.append(limit.max_value)
         elif isinstance(limit, EconomicLimit):
             kinds.append(LimitKind.ECONOMIC)
-            quantity_tags.append(_ECONOMIC_QUANTITY_TAG[limit.quantity])
+            quantity_tags.append(ECONOMIC_QUANTITY_TAG[limit.quantity])
             min_values.append(np.nan)
             max_values.append(limit.max_value)
         else:
@@ -580,7 +602,10 @@ def compile_limits(
 
 
 def compile_well_controls(
-    names: typing.Sequence[str], controls: WellControls, wells: Wells
+    names: typing.Sequence[str],
+    controls: WellControls,
+    wells: Wells,
+    dtype: npt.DTypeLike = None,
 ) -> CompiledWellControls:
     """
     Builds `CompiledWellControls` for a set of wells, in order.
@@ -654,15 +679,15 @@ def compile_well_controls(
         target_rates.append(target_rate if target_rate is not None else np.nan)
 
         if isinstance(control, InjectorControl):
-            control_modes.append(_INJECTOR_MODE_TAG[control.mode])
-            injected_phases.append(_FLUID_PHASE_TAG[control.injected_phase])
+            control_modes.append(INJECTOR_MODE_TAG[control.mode])
+            injected_phases.append(FLUID_PHASE_TAG[control.injected_phase])
         elif isinstance(control, ProducerControl):
-            control_modes.append(_PRODUCER_MODE_TAG[control.mode])
+            control_modes.append(PRODUCER_MODE_TAG[control.mode])
             injected_phases.append(UNSET_INT)
         else:
             raise ValidationError(f"Unknown WellControl type: {type(control)!r}.")
 
-        kinds, quantity_tags, min_values, max_values = compile_limits(
+        kinds, quantity_tags, min_values, max_values = _compile_limits(
             limits=control_limits
         )
         limits_kinds.extend(kinds)
@@ -671,28 +696,55 @@ def compile_well_controls(
         limits_max_values.extend(max_values)
         limits_well_offsets.append(len(limits_kinds))
 
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     limits = CompiledLimits(
-        well_offsets=np.asarray(limits_well_offsets, dtype=np.int64),
-        kinds=np.asarray(limits_kinds, dtype=np.int64),
-        quantity_tags=np.asarray(limits_quantity_tags, dtype=np.int64),
-        min_values=np.asarray(limits_min_values, dtype=np.float64),
-        max_values=np.asarray(limits_max_values, dtype=np.float64),
+        well_offsets=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_well_offsets, dtype=np.int64)
+        ),
+        kinds=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_kinds, dtype=np.int32)
+        ),
+        quantity_tags=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_quantity_tags, dtype=np.int32)
+        ),
+        min_values=typing.cast(
+            NumberArray[OneDimension], np.asarray(limits_min_values, dtype=dtype)
+        ),
+        max_values=typing.cast(
+            NumberArray[OneDimension], np.asarray(limits_max_values, dtype=dtype)
+        ),
     )
     return CompiledWellControls(
-        well_kinds=np.asarray(well_kinds, dtype=np.int64),
-        control_modes=np.asarray(control_modes, dtype=np.int64),
-        injected_phases=np.asarray(injected_phases, dtype=np.int64),
-        target_rates=np.asarray(target_rates, dtype=np.float64),
-        target_bhps=np.asarray(target_bhps, dtype=np.float64),
-        target_thps=np.asarray(target_thps, dtype=np.float64),
-        efficiency_factors=np.asarray(efficiency_factors, dtype=np.float64),
-        guide_rates=np.asarray(guide_rates, dtype=np.float64),
+        well_kinds=typing.cast(
+            IntArray[OneDimension], np.asarray(well_kinds, dtype=np.int32)
+        ),
+        control_modes=typing.cast(
+            IntArray[OneDimension], np.asarray(control_modes, dtype=np.int32)
+        ),
+        injected_phases=typing.cast(
+            IntArray[OneDimension], np.asarray(injected_phases, dtype=np.int32)
+        ),
+        target_rates=typing.cast(
+            NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)
+        ),
+        target_bhps=typing.cast(
+            NumberArray[OneDimension], np.asarray(target_bhps, dtype=dtype)
+        ),
+        target_thps=typing.cast(
+            NumberArray[OneDimension], np.asarray(target_thps, dtype=dtype)
+        ),
+        efficiency_factors=typing.cast(
+            NumberArray[OneDimension], np.asarray(efficiency_factors, dtype=dtype)
+        ),
+        guide_rates=typing.cast(
+            NumberArray[OneDimension], np.asarray(guide_rates, dtype=dtype)
+        ),
         limits=limits,
     )
 
 
 def compile_group_controls(
-    group_controls: typing.Optional[GroupControls],
+    group_controls: typing.Optional[GroupControls], dtype: npt.DTypeLike = None
 ) -> typing.Optional[CompiledGroupControls]:
     """
     Builds `CompiledGroupControls` from a `GroupControls`.
@@ -721,15 +773,15 @@ def compile_group_controls(
         control = group_controls.controls[name]
         if isinstance(control.mode, GroupInjectorControlMode):
             group_kinds.append(GroupKind.INJECTOR)
-            control_modes.append(_GROUP_INJECTOR_MODE_TAG[control.mode])
+            control_modes.append(GROUP_INJECTOR_MODE_TAG[control.mode])
             injected_phases.append(
-                _FLUID_PHASE_TAG[control.injected_phase]
+                FLUID_PHASE_TAG[control.injected_phase]
                 if control.injected_phase is not None
                 else UNSET_INT
             )
         elif isinstance(control.mode, GroupProducerControlMode):
             group_kinds.append(GroupKind.PRODUCER)
-            control_modes.append(_GROUP_PRODUCER_MODE_TAG[control.mode])
+            control_modes.append(GROUP_PRODUCER_MODE_TAG[control.mode])
             injected_phases.append(UNSET_INT)
         else:
             raise ValidationError(
@@ -739,12 +791,21 @@ def compile_group_controls(
             control.target_rate if control.target_rate is not None else np.nan
         )
 
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     return CompiledGroupControls(
         names=tuple(names),
-        group_kinds=np.asarray(group_kinds, dtype=np.int64),
-        control_modes=np.asarray(control_modes, dtype=np.int64),
-        injected_phases=np.asarray(injected_phases, dtype=np.int64),
-        target_rates=np.asarray(target_rates, dtype=np.float64),
+        group_kinds=typing.cast(
+            IntArray[OneDimension], np.asarray(group_kinds, dtype=np.int32)
+        ),
+        control_modes=typing.cast(
+            IntArray[OneDimension], np.asarray(control_modes, dtype=np.int32)
+        ),
+        injected_phases=typing.cast(
+            IntArray[OneDimension], np.asarray(injected_phases, dtype=np.int32)
+        ),
+        target_rates=typing.cast(
+            NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)
+        ),
     )
 
 
@@ -754,6 +815,7 @@ def compile_well_system(
     grid: Grid,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
     group_controls: typing.Optional[GroupControls] = None,
+    dtype: npt.DTypeLike = None,
     **resolve_kwargs: typing.Any,
 ) -> CompiledWellSystem:
     """
@@ -782,22 +844,33 @@ def compile_well_system(
             "to the same unit system before compiling."
         )
 
+    dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     names = wells.names
     perforations = compile_perforations(
         names=names,
         wells=wells,
         grid=grid,
         permeabilities=permeabilities,
+        dtype=dtype,
         **resolve_kwargs,
     )
-    well_controls = compile_well_controls(names=names, controls=controls, wells=wells)
-
-    schedule_statuses = np.asarray(
-        [get_well_status_tag(status=wells[name].schedule_status) for name in names],
-        dtype=np.int64,
+    well_controls = compile_well_controls(
+        names=names,
+        controls=controls,
+        wells=wells,
+        dtype=dtype,
     )
-    reference_depths = np.asarray(
-        [wells[name].reference_depth for name in names], dtype=np.float64
+
+    schedule_statuses = typing.cast(
+        IntArray[OneDimension],
+        np.asarray(
+            [get_well_status_tag(status=wells[name].schedule_status) for name in names],
+            dtype=np.int32,
+        ),
+    )
+    reference_depths = typing.cast(
+        NumberArray[OneDimension],
+        np.asarray([wells[name].reference_depth for name in names], dtype=dtype),
     )
     return CompiledWellSystem(
         names=tuple(names),
@@ -806,6 +879,8 @@ def compile_well_system(
         reference_depths=reference_depths,
         perforations=perforations,
         controls=well_controls,
-        group_controls=compile_group_controls(group_controls=group_controls),
+        group_controls=compile_group_controls(
+            group_controls=group_controls, dtype=dtype
+        ),
         unit_system=wells.unit_system,
     )

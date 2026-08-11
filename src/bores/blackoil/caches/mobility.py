@@ -6,9 +6,9 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
-from bores.precision import get_dtype
 from bores.blackoil.caches.pvt import PVTCache
 from bores.blackoil.caches.satfunc import SatFuncCache
+from bores.precision import get_dtype
 from bores.typing import CellArray
 
 __all__ = ["MobilityCache", "compute_mobility_cache"]
@@ -38,37 +38,60 @@ class MobilityCache(typing.NamedTuple):
     """
 
     water_mobility: CellArray
+    """Water-phase mobility, lambda_w = k_rw / mu_w."""
     oil_mobility: CellArray
+    """Oil-phase mobility, lambda_o = k_ro / mu_o."""
     gas_mobility: CellArray
+    """Gas-phase mobility, lambda_g = k_rg / mu_g."""
     total_mobility: CellArray
+    """Total mobility, lambda_T = lambda_w + lambda_o + lambda_g."""
 
     water_fractional_flow: CellArray
+    """Water fractional flow, f_w = lambda_w / lambda_T."""
     oil_fractional_flow: CellArray
+    """Oil fractional flow, f_o = lambda_o / lambda_T."""
     gas_fractional_flow: CellArray
+    """Gas fractional flow, f_g = lambda_g / lambda_T."""
 
     dʎw_dP: CellArray
+    """Pressure derivative of water mobility, d(lambda_w)/dP."""
     dʎo_dP: CellArray
+    """Pressure derivative of oil mobility, d(lambda_o)/dP."""
     dʎg_dP: CellArray
+    """Pressure derivative of gas mobility, d(lambda_g)/dP."""
     dʎT_dP: CellArray
+    """Pressure derivative of total mobility, d(lambda_T)/dP."""
 
     # d(phase mobility)/d(water saturation)
     dʎw_dsw: CellArray
+    """Derivative of water mobility w.r.t. water saturation, d(lambda_w)/dS_w."""
     dʎo_dsw: CellArray
+    """Derivative of oil mobility w.r.t. water saturation, d(lambda_o)/dS_w."""
     dʎg_dsw: CellArray
+    """Derivative of gas mobility w.r.t. water saturation, d(lambda_g)/dS_w."""
 
     # d(phase mobility)/d(oil saturation)
     dʎw_dso: CellArray
+    """Derivative of water mobility w.r.t. oil saturation, d(lambda_w)/dS_o."""
     dʎo_dso: CellArray
+    """Derivative of oil mobility w.r.t. oil saturation, d(lambda_o)/dS_o."""
     dʎg_dso: CellArray
+    """Derivative of gas mobility w.r.t. oil saturation, d(lambda_g)/dS_o."""
 
     # d(phase mobility)/d(gas saturation)
     dʎw_dsg: CellArray
+    """Derivative of water mobility w.r.t. gas saturation, d(lambda_w)/dS_g."""
     dʎo_dsg: CellArray
+    """Derivative of oil mobility w.r.t. gas saturation, d(lambda_o)/dS_g."""
     dʎg_dsg: CellArray
+    """Derivative of gas mobility w.r.t. gas saturation, d(lambda_g)/dS_g."""
 
     dʎT_dsw: CellArray
+    """Derivative of total mobility w.r.t. water saturation, d(lambda_T)/dS_w."""
     dʎT_dso: CellArray
+    """Derivative of total mobility w.r.t. oil saturation, d(lambda_T)/dS_o."""
     dʎT_dsg: CellArray
+    """Derivative of total mobility w.r.t. gas saturation, d(lambda_T)/dS_g."""
 
 
 CACHE_FIELDS: typing.Tuple[str, ...] = MobilityCache._fields

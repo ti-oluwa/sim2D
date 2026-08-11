@@ -33,7 +33,7 @@ class WellGroup(Serializable):
 
     name: str
     """Group name"""
-    
+
     parent: typing.Optional[str] = None
     """
     `None` only for the implicit root (`name == "FIELD"`); every other

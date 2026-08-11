@@ -50,11 +50,13 @@ class PerforationIndex(Serializable):
     representative_depth: Number
     """Midpoint true vertical depth of the overlap between `perforation`'s
     interval and this cell."""
+
     inclination_from_vertical: Number
     """Angle in radians between this connection's local wellbore direction
     and vertical - `0` for a straight-down connection, `pi/2` for a
     horizontal one. `wells.hydraulics` reads this directly; nothing in
     that package derives an inclination itself."""
+
     well_index: typing.Optional[Number] = None
     """Connection factor for this connection. `None` until computed."""
 
@@ -624,19 +626,23 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside `current_cell` without crossing another face.
-            results.append((
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + 1.0 * md_span,
-            ))
+            results.append(
+                (
+                    current_cell,
+                    start_md + current_t * md_span,
+                    start_md + 1.0 * md_span,
+                )
+            )
             break
 
         exit_t = min(best_t, 1.0)
-        results.append((
-            current_cell,
-            start_md + current_t * md_span,
-            start_md + exit_t * md_span,
-        ))
+        results.append(
+            (
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + exit_t * md_span,
+            )
+        )
         if best_t >= 1.0 - 1e-9:
             break
 

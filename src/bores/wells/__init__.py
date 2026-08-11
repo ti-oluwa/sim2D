@@ -4,7 +4,7 @@ from .controls import *
 from .groups import *
 from .hydraulics import *
 from .indices import *
-from .model import *
 from .indices.perforations import *
+from .model import *
 from .states import *
 from .trajectory import *

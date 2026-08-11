@@ -316,12 +316,12 @@ class WellsStates(
         self.states[state.well_name] = state
 
     @property
-    def open_wells(self) -> typing.Generator[WellState]:
+    def open_wells(self) -> typing.Iterator[WellState]:
         """Returns Every WellState with is_open=True."""
         return (state for state in self.states.values() if state.is_open)
 
     @property
-    def shut_wells(self) -> typing.Generator[WellState]:
+    def shut_wells(self) -> typing.Iterator[WellState]:
         """Returns every `WellState` with is_open=False."""
         return (state for state in self.states.values() if not state.is_open)
 

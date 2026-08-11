@@ -4,9 +4,11 @@ import typing
 
 import numba
 import numpy as np
+import numpy.typing as npt
 from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
+from bores.precision import get_dtype
 from bores.typing import (
     Number,
     NumberArray,
@@ -22,10 +24,10 @@ from bores.wells.hydraulics.base import (
     compute_mixture_viscosity,
     compute_segment_pressure_drop,
     compute_static_hydrostatic_drop,
+    compute_static_mixture_density,
     compute_surface_mixture_density,
     compute_surface_mixture_viscosity,
     get_unit_system_constant,
-    static_mixture_density,
 )
 from bores.wells.states import ConnectionSample, PhaseValues
 
@@ -238,6 +240,8 @@ def compute_perforation_pressures(
     inclinations_from_vertical: NumberArray[OneDimension],
     connection_samples: typing.Sequence[ConnectionSample],
     is_injector: bool,
+    out: typing.Optional[NumberArray[OneDimension]] = None,
+    dtype: npt.DTypeLike = None,
 ) -> NumberArray[OneDimension]:
     """
     Computes flowing pressure at each perforation connection.
@@ -251,11 +255,18 @@ def compute_perforation_pressures(
         radians, same order as `connection_samples`.
     :param connection_samples: Reservoir conditions at each connection.
     :param is_injector: Whether this well is an injector.
+    :param out: Optional preallocated output array. If given, must have the same
+        length as `connection_samples`.
+    :param dtype: Optional output array data type. Ignored if `out` is given.
     :returns: Pressure at each connection, same order as `connection_samples`.
     :raises ValueError: If `representative_depths`, `inclinations_from_vertical`,
         and `connection_samples` don't all have the same length.
     """
     n = len(connection_samples)
+    if out is not None and len(out) != n:
+        raise ValueError(
+            "If given, `out` must have the same length as `connection_samples`."
+        )
     if not (len(representative_depths) == len(inclinations_from_vertical) == n):
         raise ValueError(
             "representative_depths, inclinations_from_vertical, and "
@@ -263,7 +274,12 @@ def compute_perforation_pressures(
         )
 
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
-    pressures = np.empty(n, dtype=np.float64)
+    if out is not None:
+        pressures = out
+    else:
+        dtype = np.dtype(dtype) if dtype is not None else get_dtype()
+        pressures = np.empty(n, dtype=dtype)
+
     friction_sign = -1.0 if is_injector else 1.0
 
     for i in range(n):
@@ -273,7 +289,7 @@ def compute_perforation_pressures(
 
         if total_rate == 0.0:
             drop = compute_static_hydrostatic_drop(
-                mixture_density=static_mixture_density(
+                mixture_density=compute_static_mixture_density(
                     phase_saturations=sample.phase_saturations,
                     phase_densities=sample.phase_densities,
                 ),

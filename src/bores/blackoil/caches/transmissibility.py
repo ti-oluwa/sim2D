@@ -10,11 +10,11 @@ import numba
 import numpy as np
 import numpy.typing as npt
 
+from bores.blackoil.caches.mobility import MobilityCache
+from bores.blackoil.caches.pvt import PVTCache
 from bores.constants import c, get_conversion_factors
 from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
-from bores.blackoil.caches.mobility import MobilityCache
-from bores.blackoil.caches.pvt import PVTCache
 from bores.typing import CellArray, IntCellArray, UnitSystem
 
 __all__ = ["TransmissibilityCache", "compute_transmissibility_cache"]
@@ -42,8 +42,11 @@ class TransmissibilityCache(typing.NamedTuple):
     """
 
     water_upstream_cell: IntCellArray
+    """Global cell index of the upstream cell for the water phase."""
     oil_upstream_cell: IntCellArray
+    """Global cell index of the upstream cell for the oil phase."""
     gas_upstream_cell: IntCellArray
+    """Global cell index of the upstream cell for the gas phase."""
 
     water_potential_difference: CellArray
     """Owner-minus-neighbour gravity-adjusted potential difference, water phase."""
@@ -53,18 +56,18 @@ class TransmissibilityCache(typing.NamedTuple):
     """Owner-minus-neighbour gravity-adjusted potential difference, gas phase."""
 
     water_face_density: CellArray
-    """Upstream-cell density, water phase."""
+    """Upstream-cell density for the water phase."""
     oil_face_density: CellArray
-    """Upstream-cell density, oil phase."""
+    """Upstream-cell density for the oil phase."""
     gas_face_density: CellArray
-    """Upstream-cell density, gas phase."""
+    """Upstream-cell density for the gas phase."""
 
     water_face_viscosity: CellArray
-    """Upstream-cell viscosity, water phase."""
+    """Upstream-cell viscosity for the water phase."""
     oil_face_viscosity: CellArray
-    """Upstream-cell viscosity, water phase."""
+    """Upstream-cell viscosity for the oil phase."""
     gas_face_viscosity: CellArray
-    """Upstream-cell viscosity, water phase."""
+    """Upstream-cell viscosity for the gas phase."""
 
     water_transmissibility: CellArray
     """`geometric_transmissibility * water_mobility[water_upstream_cell]`."""
@@ -76,18 +79,30 @@ class TransmissibilityCache(typing.NamedTuple):
     """Sum of the three phase transmissibilities."""
 
     dTw_dP: CellArray
+    """Pressure derivative of the water transmissibility."""
     dTo_dP: CellArray
+    """Pressure derivative of the oil transmissibility."""
     dTg_dP: CellArray
+    """Pressure derivative of the gas transmissibility."""
 
     dTw_dsw: CellArray
+    """Water-transmissibility derivative w.r.t. water saturation."""
     dTo_dsw: CellArray
+    """Oil-transmissibility derivative w.r.t. water saturation."""
     dTg_dsw: CellArray
+    """Gas-transmissibility derivative w.r.t. water saturation."""
     dTw_dso: CellArray
+    """Water-transmissibility derivative w.r.t. oil saturation."""
     dTo_dso: CellArray
+    """Oil-transmissibility derivative w.r.t. oil saturation."""
     dTg_dso: CellArray
+    """Gas-transmissibility derivative w.r.t. oil saturation."""
     dTw_dsg: CellArray
+    """Water-transmissibility derivative w.r.t. gas saturation."""
     dTo_dsg: CellArray
+    """Oil-transmissibility derivative w.r.t. gas saturation."""
     dTg_dsg: CellArray
+    """Gas-transmissibility derivative w.r.t. gas saturation."""
 
 
 CACHE_INT_FIELDS = ("water_upstream_cell", "oil_upstream_cell", "gas_upstream_cell")

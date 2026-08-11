@@ -297,14 +297,14 @@ def compute_2D_effective_drainage_radius(
 @numba.njit(cache=True, inline="always")
 def _geometric_mean(values: typing.Sequence[Number]) -> Number:
     """Geometric mean of `values`, clamping any negative input to zero."""
-    prod = 1.0
+    product = 1.0
     n = 0
     for v in values:
-        prod *= max(v, 0.0)
+        product *= max(v, 0.0)
         n += 1
     if n == 0:
         raise ValidationError("No permeability values provided")
-    return prod ** (1.0 / n)
+    return product ** (1.0 / n)
 
 
 @numba.njit(cache=True)

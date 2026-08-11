@@ -7,7 +7,6 @@ import typing
 import attrs
 
 from bores.constants import c
-from bores.datastructures import GridDimensions
 from bores.deck.core import DeckParseError
 from bores.deck.file import DeckFile
 from bores.errors import NotSupportedError, ValidationError
@@ -36,20 +35,6 @@ from bores.wells.groups import (
 )
 
 DIRECTION_MAP = {"X": Orientation.X, "Y": Orientation.Y, "Z": Orientation.Z}
-
-
-def _cell_index(dims: GridDimensions, i: int, j: int, k: int) -> int:
-    """
-    0-based flat cell index for one-based Eclipse (I, J, K).
-
-    :param dims: Resolved grid dimensions (deck_file.dimensions).
-    :param i: One-based I index.
-    :param j: One-based J index.
-    :param k: One-based K index.
-    :returns: 0-based flat cell index, Eclipse i-fastest order - matches
-        how `ArrayKeyword` (PORO/PERMX/etc.) and `Grid` both index cells.
-    """
-    return (i - 1) + (j - 1) * dims.nx + (k - 1) * dims.nx * dims.ny
 
 
 def load_well_from_records(

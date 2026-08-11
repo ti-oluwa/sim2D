@@ -684,7 +684,9 @@ class Wells(
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        wells = {name: Well.load(wll_data) for name, wll_data in data["wells"].items()}
+        wells = {
+            name: Well.load(well_data) for name, well_data in data["wells"].items()
+        }
         return cls(wells=wells)
 
     def convert(

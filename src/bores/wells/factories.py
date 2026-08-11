@@ -59,7 +59,7 @@ def make_producer(
     target_thp: typing.Optional[Number] = None,
     min_bhp: typing.Optional[Number] = None,
     max_rate: typing.Optional[Number] = None,
-    limits: typing.Sequence[Limit] = (),
+    limits: typing.Optional[typing.Sequence[Limit]] = None,
     efficiency_factor: Number = 1.0,
     guide_rate: typing.Optional[Number] = None,
     wellbore_radius: Number = 0.25,
@@ -151,7 +151,8 @@ def make_producer(
         resolved_limits.append(BHPLimit(min_value=min_bhp))
     if max_rate is not None:
         resolved_limits.append(RateLimit(quantity=rate_quantity, max_value=max_rate))
-    resolved_limits.extend(limits)
+    if limits:
+        resolved_limits.extend(limits)
 
     if target_bhp is not None:
         control = ProducerControl(
@@ -196,7 +197,7 @@ def make_injector(
     target_thp: typing.Optional[Number] = None,
     max_bhp: typing.Optional[Number] = None,
     max_rate: typing.Optional[Number] = None,
-    limits: typing.Sequence[Limit] = (),
+    limits: typing.Optional[typing.Sequence[Limit]] = None,
     efficiency_factor: Number = 1.0,
     guide_rate: typing.Optional[Number] = None,
     wellbore_radius: Number = 0.25,
@@ -288,7 +289,8 @@ def make_injector(
         resolved_limits.append(
             RateLimit(quantity=PHASE_RATE_QUANTITY[injected_phase], max_value=max_rate)
         )
-    resolved_limits.extend(limits)
+    if limits:
+        resolved_limits.extend(limits)
 
     if target_bhp is not None:
         control = InjectorControl(
