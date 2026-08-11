@@ -76,7 +76,7 @@ class WellBoreModel(typing.NamedTuple):
 
     options: typing.Any
     """This correlation's configuration: a `wells.hydraulics.mechanistic.MechanisticModel`
-    or a `wells.hydraulics.beggs_brill.BeggsBrillModel`."""
+    or a `wells.hydraulics.beggs_and_brill.BeggsAndBrillModel`."""
 
     def convert(
         self,
@@ -187,7 +187,7 @@ def compute_surface_mixture_density(
     if properties.density is not None:
         return properties.density
     if properties.phase_densities is None:
-        raise ValueError("SurfaceFluidProperties needs density or phase_densities")
+        raise ValueError("`SurfaceFluidProperties` needs density or phase_densities")
     return compute_mixture_density(
         phase_rates=phase_rates, phase_densities=properties.phase_densities
     )
@@ -209,7 +209,7 @@ def compute_surface_mixture_viscosity(
     if properties.viscosity is not None:
         return properties.viscosity
     if properties.phase_viscosities is None:
-        raise ValueError("SurfaceFluidProperties needs viscosity or phase_viscosities")
+        raise ValueError("`SurfaceFluidProperties` needs viscosity or phase_viscosities")
     return compute_mixture_viscosity(
         phase_rates=phase_rates, phase_viscosities=properties.phase_viscosities
     )
