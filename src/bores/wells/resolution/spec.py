@@ -5,34 +5,11 @@ import attrs
 from bores.constants import c
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import FluidPhase, Number
+from bores.typing import FluidPhase, Integer, Number
 from bores.wells.controls import Limit
+from bores.wells.states import PhaseValues
 
-__all__ = ["ControlResolution", "ControlResolverSpec"]
-
-
-@attrs.frozen(kw_only=True, slots=True)
-class ControlResolution(Serializable):
-    """Result of resolving one well's control for one timestep."""
-
-    bhp: Number
-
-    phase_rates: typing.Mapping[FluidPhase, Number]
-
-    active_limit: typing.Optional[Limit] = None
-    """
-    Which `Limit` from the spec's `limits` tuple is currently binding,
-    `None` if the primary target is achieved without hitting any limit.
-    """
-
-    economic_shutin: bool = False
-    """
-    True if an `EconomicLimit` was violated. `phase_rates` are zeroed in
-    that case. The caller (simulation loop) decides whether/how to act on
-    this (e.g. set WellState.is_open=False for the next timestep).
-    """
-
-    thp: typing.Optional[Number] = None
+__all__ = ["ControlResolverSpec"]
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -43,9 +20,9 @@ class ControlResolverSpec(Serializable):
     Solver tunables for well control resolution.
     """
 
-    max_fixed_point_iterations: typing.Optional[int] = None
+    max_fixed_point_iterations: typing.Optional[Integer] = None
     rate_convergence_tolerance: typing.Optional[Number] = None
-    max_bisection_iterations: typing.Optional[int] = None
+    max_bisection_iterations: typing.Optional[Integer] = None
     producer_bhp_floor: typing.Optional[Number] = None
     injector_bhp_bracket_multiplier: typing.Optional[Number] = None
 

@@ -1,122 +1,104 @@
-"""
-Secondary-limit enforcement for a resolved well control.
-
-`apply_limits` is called once, by `wells.control.engine.resolve_control`,
-after a mode solver in `wells.control.solvers` has already produced a
-*nominal* `ControlResolution` (the well operating exactly at its primary
-target, ignoring `control.limits` entirely).
-
-This module's job is simple as is as follows:
-
-Given a nominal resolution, decide whether any `Limit` in `control.limits`
-is violated, and if so, which one actually governs.
-
-**"Most restrictive wins", not "first in list wins":** every `Limit` type
-here (`BHPLimit`, `RateLimit`, `THPLimit`) ultimately reduces to "the BHP
-that exactly satisfies this limit". A scalar on the same axis every mode
-solver already searches. Because total rate and THP are both monotonic in
-BHP (see `wells.control.solvers.bisect_bhp`), the *single* most extreme
-required BHP among every violated limit automatically satisfies every
-other violated limit too.
-
-A producer's BHP floor set by picking the
-highest required BHP is, by definition, at least as restrictive as every
-lower BHP a less-binding limit would have asked for (the injector case is
-the mirror image: lowest required BHP wins). No outer iteration is needed;
-evaluating each limit once and taking the extreme is exact, not a heuristic.
-"""
+"""Secondary-limit enforcement for a resolved well control."""
 
 import math
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import FluidPhase, Number
-from bores.wells.base import Well
-from bores.wells.controls import (
-    BHPLimit,
-    EconomicLimit,
-    EconomicQuantity,
-    Limit,
-    RateLimit,
-    RateQuantity,
-    THPLimit,
-    WellControl,
+from bores.typing import Integer, Number
+from bores.wells.compile import (
+    UNSET_INT,
+    CompiledLimits,
+    EconomicQuantityTag,
+    LimitKind,
+    RateQuantityTag,
 )
-from bores.wells.hydraulics.base import SurfaceFluidProperties, Wellbore
-from bores.wells.indices.perforations import PerforationIndex
-from bores.wells.resolution.base import ControlResolution, ControlResolverSpec
+from bores.wells.hydraulics.base import SurfaceFluidProperties, WellBoreModel
+from bores.wells.resolution.compiled import (
+    CompiledControlResolverSpec,
+    PerforationWorkspace,
+)
 from bores.wells.resolution.solvers import (
     RATE_QUANTITY_PHASES,
     bisect_bhp,
-    compute_full_phase_rates_at,
-    iterate_perforation_pressures_and_rates,
+    compute_phase_rates,
+    compute_tubing_head_pressure,
+    solve_connection_pressures_and_rates,
 )
-from bores.wells.states import ConnectionSample
+from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = ["apply_limits"]
 
 
 def _bhp_bound(
-    limit: BHPLimit, resolution: ControlResolution, *, is_injector: bool
+    *, min_value: Number, max_value: Number, bhp: Number, is_injector: bool
 ) -> typing.Optional[Number]:
-    """Bounding BHP if `limit` is violated by `resolution.bhp`, else `None`."""
+    """
+    Gets the bounding BHP for a `BHPLimit` row, if violated.
+
+    :param min_value: The limit row's `min_value`. `NaN` means no floor.
+    :param max_value: The limit row's `max_value`. `NaN` means no ceiling.
+    :param bhp: The nominal resolution's BHP.
+    :param is_injector: Whether this well is an injector.
+    :returns: The violated bound's value, or `None` if not violated.
+    """
     if is_injector:
-        if limit.max_value is not None and resolution.bhp > limit.max_value:
-            return limit.max_value
+        if not math.isnan(max_value) and bhp > max_value:
+            return max_value
         return None
-    if limit.min_value is not None and resolution.bhp < limit.min_value:
-        return limit.min_value
+    if not math.isnan(min_value) and bhp < min_value:
+        return min_value
     return None
 
 
 def _rate_bound(
-    limit: RateLimit,
-    resolution: ControlResolution,
     *,
-    well: Well,
-    perforation_indices: typing.Sequence[PerforationIndex],
+    quantity_tag: Integer,
+    max_value: Number,
+    bhp: Number,
+    wellbore: WellBoreModel,
+    reference_depth: Number,
+    workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore: Wellbore,
     is_injector: bool,
     min_pressure: Number,
     max_pressure: Number,
-    resolver_spec: ControlResolverSpec,
+    resolver_spec: CompiledControlResolverSpec,
 ) -> typing.Optional[Number]:
     """
-    Bounding BHP if `limit` is violated by `resolution.phase_rates`, else `None`.
+    Gets the bounding BHP for a `RateLimit` row, if violated.
 
-    Found by bisecting BHP against `limit.max_value` as a rate target -
-    against the reservoir-condition total for a RESERVOIR-quantity limit,
-    the surface-condition total otherwise. The initial violation check
-    recomputes whichever total is relevant at `resolution.bhp` rather than
-    reading `resolution.phase_rates` directly, since that field is always
-    reservoir-condition and a RateLimit on a surface quantity would
-    otherwise be checked against the wrong condition.
+    Found by bisecting BHP against `max_value` as a rate target - against
+    the reservoir-condition total for a `RESERVOIR`-quantity limit, the
+    surface-condition total otherwise. The violation check itself
+    recomputes whichever total is relevant at `bhp` rather than relying on
+    an already-computed reservoir-condition total, since a `RateLimit` on
+    a surface quantity needs the surface-condition total to check correctly.
 
-    :param limit: The `RateLimit` being checked.
-    :param resolution: Resolution to check `limit` against.
-    :param well: Static well data.
-    :param perforation_indices: Connections, `well_index.perforations` order.
-    :param connection_samples: Reservoir samples, same order as `perforation_indices`.
-    :param wellbore: Hydraulics strategy for this well.
-    :param is_injector: Selects the drawdown sign convention.
+    :param quantity_tag: `RateQuantityTag` value.
+    :param max_value: The limit row's `max_value`.
+    :param bhp: The nominal resolution's BHP.
+    :param wellbore: Hydraulics correlation for this well.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param workspace: This well's `PerforationWorkspace`.
+    :param connection_samples: Reservoir samples, same order as `workspace`'s arrays.
+    :param is_injector: Whether this well is an injector.
     :param min_pressure: Lower bisection bracket bound.
     :param max_pressure: Upper bisection bracket bound.
     :param resolver_spec: Solver tunables.
     :returns: Bounding BHP, or `None` if not violated.
     """
-    quantity_phases = RATE_QUANTITY_PHASES[limit.quantity]
+    quantity_phases = RATE_QUANTITY_PHASES[quantity_tag]
     target_rate_condition: typing.Literal["surface", "reservoir"] = (
-        "reservoir" if limit.quantity is RateQuantity.RESERVOIR else "surface"
+        "reservoir" if quantity_tag == RateQuantityTag.RESERVOIR else "surface"
     )
 
     _, reservoir_condition_rates, surface_condition_rates = (
-        iterate_perforation_pressures_and_rates(
-            well=well,
-            perforation_indices=perforation_indices,
-            connection_samples=connection_samples,
+        solve_connection_pressures_and_rates(
             wellbore=wellbore,
-            reference_pressure=resolution.bhp,
+            reference_depth=reference_depth,
+            workspace=workspace,
+            connection_samples=connection_samples,
+            reference_pressure=bhp,
             relevant_phases=quantity_phases,
             is_injector=is_injector,
             resolver_spec=resolver_spec,
@@ -127,18 +109,18 @@ def _rate_bound(
         if target_rate_condition == "reservoir"
         else surface_condition_rates
     )
-    current = sum(rates_to_check.get(phase, 0.0) for phase in quantity_phases)
-    if current <= limit.max_value:
+    current = rates_to_check.oil + rates_to_check.water + rates_to_check.gas
+    if current <= max_value:
         return None
 
     bound_bhp, _, _ = bisect_bhp(
-        well=well,
-        perforation_indices=perforation_indices,
-        connection_samples=connection_samples,
         wellbore=wellbore,
+        reference_depth=reference_depth,
+        workspace=workspace,
+        connection_samples=connection_samples,
         relevant_phases=quantity_phases,
         is_injector=is_injector,
-        target=limit.max_value,
+        target=max_value,
         min_pressure=min_pressure,
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
@@ -149,48 +131,67 @@ def _rate_bound(
 
 
 def _thp_bound(
-    limit: THPLimit,
-    resolution: ControlResolution,
     *,
-    well: Well,
-    perforation_indices: typing.Sequence[PerforationIndex],
+    min_value: Number,
+    max_value: Number,
+    bhp: Number,
+    phase_rates: PhaseValues,
+    wellbore: WellBoreModel,
+    reference_depth: Number,
+    workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore: Wellbore,
-    relevant_phases: typing.Sequence[FluidPhase],
+    relevant_phases: PhaseValues,
     is_injector: bool,
     min_pressure: Number,
     max_pressure: Number,
-    resolver_spec: ControlResolverSpec,
+    resolver_spec: CompiledControlResolverSpec,
     surface_fluid_properties: SurfaceFluidProperties,
 ) -> typing.Optional[Number]:
     """
-    Bounding BHP if `limit` is violated by `resolution`'s implied THP, else `None`.
+    Gets the bounding BHP for a `THPLimit` row, if violated.
 
-    Checked in the forward direction only (candidate BHP -> `wellbore.tubing_head_pressure`),
-    bisected against `limit.min_value`/`max_value` as a target.
+    Checked in the forward direction only (candidate BHP -> tubing head
+    pressure), bisected against `min_value`/`max_value` as a target.
+
+    :param min_value: The limit row's `min_value`. `NaN` means no floor.
+    :param max_value: The limit row's `max_value`. `NaN` means no ceiling.
+    :param bhp: The nominal resolution's BHP.
+    :param phase_rates: The nominal resolution's reservoir-condition phase rates.
+    :param wellbore: Hydraulics correlation for this well.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param workspace: This well's `PerforationWorkspace`.
+    :param connection_samples: Reservoir samples, same order as `workspace`'s arrays.
+    :param relevant_phases: Mask the `"rate"` metric would sum over
+        (unused for the THP check itself; forwarded to `bisect_bhp`).
+    :param is_injector: Whether this well is an injector.
+    :param min_pressure: Lower bisection bracket bound.
+    :param max_pressure: Upper bisection bracket bound.
+    :param resolver_spec: Solver tunables.
+    :param surface_fluid_properties: Fluid properties at surface conditions.
+    :returns: Bounding BHP, or `None` if not violated.
     """
-    current_thp = wellbore.compute_tubing_head_pressure(
-        well,
-        resolution.bhp,
-        resolution.phase_rates,
-        surface_fluid_properties,
-        is_injector,
+    current_thp = compute_tubing_head_pressure(
+        wellbore=wellbore,
+        reference_depth=reference_depth,
+        reference_pressure=bhp,
+        phase_rates=phase_rates,
+        surface_fluid_properties=surface_fluid_properties,
+        is_injector=is_injector,
     )
     if is_injector:
-        violated = limit.max_value is not None and current_thp > limit.max_value
-        target = limit.max_value
+        violated = not math.isnan(max_value) and current_thp > max_value
+        target = max_value
     else:
-        violated = limit.min_value is not None and current_thp < limit.min_value
-        target = limit.min_value
+        violated = not math.isnan(min_value) and current_thp < min_value
+        target = min_value
     if not violated:
         return None
 
-    assert target is not None
     bound_bhp, _, _ = bisect_bhp(
-        well=well,
-        perforation_indices=perforation_indices,
-        connection_samples=connection_samples,
         wellbore=wellbore,
+        reference_depth=reference_depth,
+        workspace=workspace,
+        connection_samples=connection_samples,
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         target=target,
@@ -204,103 +205,142 @@ def _thp_bound(
 
 
 def _check_economic_violation(
-    control: WellControl, phase_rates: typing.Mapping[FluidPhase, Number]
-) -> typing.Optional[EconomicLimit]:
+    *,
+    limits: CompiledLimits,
+    limits_start: Integer,
+    limits_end: Integer,
+    phase_rates: PhaseValues,
+) -> Integer:
     """
-    First `EconomicLimit` in `control.limits` whose ratio is exceeded.
+    Finds the first `ECONOMIC` limit row in `[limits_start, limits_end)`
+    whose ratio is exceeded.
 
-    :param control: Control whose `limits` are checked.
+    :param limits: The full system's `CompiledLimits`.
+    :param limits_start: First row of this well's limit range.
+    :param limits_end: One past the last row of this well's limit range.
     :param phase_rates: Well-total phase rates to compute ratios from.
-    :returns: The violated `EconomicLimit`, or `None`.
+    :returns: The violated row's index, or `UNSET_INT` if none is violated.
     """
-    oil = phase_rates.get(FluidPhase.OIL, 0.0)
-    water = phase_rates.get(FluidPhase.WATER, 0.0)
-    gas = phase_rates.get(FluidPhase.GAS, 0.0)
+    oil, water, gas = phase_rates.oil, phase_rates.water, phase_rates.gas
 
-    for limit in control.limits:
-        if not isinstance(limit, EconomicLimit):
+    for row in range(limits_start, limits_end):
+        if limits.kinds[row] != LimitKind.ECONOMIC:
             continue
-        if limit.quantity is EconomicQuantity.WATER_CUT:
+        quantity_tag = limits.quantity_tags[row]
+        if quantity_tag == EconomicQuantityTag.WATER_CUT:
             ratio = water / (oil + water) if (oil + water) > 0 else 0.0
-        elif limit.quantity is EconomicQuantity.GOR:
+        elif quantity_tag == EconomicQuantityTag.GOR:
             ratio = (gas / oil) if oil > 0 else (math.inf if gas > 0 else 0.0)
         else:
             ratio = (water / gas) if gas > 0 else (math.inf if water > 0 else 0.0)
-        if ratio > limit.max_value:
-            return limit
-    return None
+        if ratio > limits.max_values[row]:
+            return row
+    return UNSET_INT
 
 
 def apply_limits(
     *,
-    control: WellControl,
-    well: Well,
-    perforation_indices: typing.Sequence[PerforationIndex],
+    limits: CompiledLimits,
+    limits_start: Integer,
+    limits_end: Integer,
+    wellbore: WellBoreModel,
+    reference_depth: Number,
+    workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
-    wellbore: Wellbore,
-    relevant_phases: typing.Sequence[FluidPhase],
+    relevant_phases: PhaseValues,
     is_injector: bool,
-    resolution: ControlResolution,
+    bhp: Number,
+    phase_rates: PhaseValues,
     min_pressure: Number,
     max_pressure: Number,
-    resolver_spec: ControlResolverSpec,
+    resolver_spec: CompiledControlResolverSpec,
     surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
-) -> ControlResolution:
+) -> typing.Tuple[Number, PhaseValues, Integer, bool]:
     """
-    Evaluate every `Limit` in `control.limits` against `resolution`. If one or
-    more are violated, re-resolve at whichever implies the most
-    restrictive BHP and return that as the governing resolution with
-    `active_limit` set to whichever `Limit` produced it (ties broken by
-    `control.limits` order).
+    Evaluates every limit row in `[limits_start, limits_end)` against a
+    nominal resolution. If one or more are violated, re-resolves at
+    whichever implies the most restrictive BHP and returns that as the
+    governing resolution.
 
-    Returns `resolution` unchanged if none are violated.
+    "Most restrictive wins", not "first in list wins": every limit kind
+    here reduces to "the BHP that exactly satisfies this limit", a scalar
+    on the same axis every mode solver already searches. Because total
+    rate and THP are both monotonic in BHP, the single most extreme
+    required BHP among every violated limit automatically satisfies every
+    other violated limit too - no outer iteration needed.
 
-    Called for every control mode (rate and BHP alike) as a well held at a
+    Returns `(bhp, phase_rates, UNSET_INT, False)` unchanged if nothing is violated.
+
+    Called for every control mode (rate and BHP alike) - a well held at a
     fixed BHP can still violate a `RateLimit`/`THPLimit` configured
     alongside that BHP target, so this isn't skipped for BHP-mode resolutions.
 
-    :param relevant_phases: `wells.control.solvers.ALL_PHASES` for a
-        producer; `(control.injected_phase,)` for an injector.
-    :param surface_fluid_properties: Required if `control.limits` contains a
-        `THPLimit`; unused otherwise.
-    :raises ValidationError: If `control.limits` contains a `THPLimit` but
+    :param limits: The full system's `CompiledLimits`.
+    :param limits_start: First row of this well's limit range.
+    :param limits_end: One past the last row of this well's limit range.
+    :param wellbore: Hydraulics correlation for this well.
+    :param reference_depth: The well's BHP/THP reporting datum.
+    :param workspace: This well's `PerforationWorkspace`.
+    :param connection_samples: Reservoir samples, same order as `workspace`'s arrays.
+    :param relevant_phases: `solvers.ALL_PHASES` for a producer;
+        `solvers.phase_mask(injected_phase)` for an injector.
+    :param is_injector: Whether this well is an injector.
+    :param bhp: The nominal resolution's BHP.
+    :param phase_rates: The nominal resolution's reservoir-condition phase rates.
+    :param min_pressure: Lower bisection bracket bound.
+    :param max_pressure: Upper bisection bracket bound.
+    :param resolver_spec: Solver tunables.
+    :param surface_fluid_properties: Required if any row in range is a `THPLimit`.
+    :returns: `(bhp, phase_rates, active_limit_row, economic_shutin)`.
+        `active_limit_row` is `UNSET_INT` if nothing is binding.
+        `phase_rates` is zeroed if `economic_shutin` is `True`.
+    :raises ValidationError: If a `THPLimit` row is present but
         `surface_fluid_properties` wasn't supplied.
     """
-    candidates: typing.List[typing.Tuple[Number, Limit]] = []
+    candidates: typing.List[typing.Tuple[Number, Integer]] = []
 
-    for limit in control.limits:
-        if isinstance(limit, EconomicLimit):
+    for row in range(limits_start, limits_end):
+        kind = limits.kinds[row]
+        if kind == LimitKind.ECONOMIC:
             continue
-        if isinstance(limit, BHPLimit):
-            bound = _bhp_bound(limit, resolution, is_injector=is_injector)
-        elif isinstance(limit, RateLimit):
+
+        if kind == LimitKind.BHP:
+            bound = _bhp_bound(
+                min_value=limits.min_values[row],
+                max_value=limits.max_values[row],
+                bhp=bhp,
+                is_injector=is_injector,
+            )
+        elif kind == LimitKind.RATE:
             bound = _rate_bound(
-                limit,
-                resolution,
-                well=well,
-                perforation_indices=perforation_indices,
-                connection_samples=connection_samples,
+                quantity_tag=limits.quantity_tags[row],
+                max_value=limits.max_values[row],
+                bhp=bhp,
                 wellbore=wellbore,
+                reference_depth=reference_depth,
+                workspace=workspace,
+                connection_samples=connection_samples,
                 is_injector=is_injector,
                 min_pressure=min_pressure,
                 max_pressure=max_pressure,
                 resolver_spec=resolver_spec,
             )
-        elif isinstance(limit, THPLimit):
+        elif kind == LimitKind.THP:
             if surface_fluid_properties is None:
                 raise ValidationError(
-                    f"Well {well.name!r}'s control spec has a THPLimit but no "
-                    "`surface_fluid_properties` was supplied to `apply_limits`/"
-                    "`resolve_control`. THP limits can't be evaluated without it."
+                    "A THP limit is present but no `surface_fluid_properties` "
+                    "was supplied to `apply_limits`. THP limits can't be "
+                    "evaluated without it."
                 )
-
             bound = _thp_bound(
-                limit,
-                resolution,
-                well=well,
-                perforation_indices=perforation_indices,
-                connection_samples=connection_samples,
+                min_value=limits.min_values[row],
+                max_value=limits.max_values[row],
+                bhp=bhp,
+                phase_rates=phase_rates,
                 wellbore=wellbore,
+                reference_depth=reference_depth,
+                workspace=workspace,
+                connection_samples=connection_samples,
                 relevant_phases=relevant_phases,
                 is_injector=is_injector,
                 min_pressure=min_pressure,
@@ -309,44 +349,44 @@ def apply_limits(
                 surface_fluid_properties=surface_fluid_properties,
             )
         else:
-            raise ValidationError(f"Unknown Limit type: {type(limit)!r}.")
+            raise ValidationError(f"Unknown LimitKind: {kind!r}.")
 
         if bound is not None:
-            candidates.append((bound, limit))
+            candidates.append((bound, row))
 
     if not candidates:
-        return resolution
+        return bhp, phase_rates, UNSET_INT, False
 
     # Most restrictive: highest bounding BHP for a producer (lowest
     # resulting rate), lowest bounding BHP for an injector (lowest
     # resulting injection rate).
-    governing_bhp, governing_limit = (
+    governing_bhp, governing_row = (
         min(candidates, key=lambda pair: pair[0])
         if is_injector
         else max(candidates, key=lambda pair: pair[0])
     )
 
-    phase_rates = compute_full_phase_rates_at(
-        well=well,
-        perforation_indices=perforation_indices,
-        connection_samples=connection_samples,
+    governing_phase_rates = compute_phase_rates(
         wellbore=wellbore,
+        reference_depth=reference_depth,
+        workspace=workspace,
+        connection_samples=connection_samples,
         reference_pressure=governing_bhp,
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         resolver_spec=resolver_spec,
     )
-    governing = ControlResolution(
-        bhp=governing_bhp,
-        phase_rates=phase_rates,
-        active_limit=governing_limit,
+    violated_row = _check_economic_violation(
+        limits=limits,
+        limits_start=limits_start,
+        limits_end=limits_end,
+        phase_rates=governing_phase_rates,
     )
-    violated = _check_economic_violation(control, governing.phase_rates)
-    if violated is not None:
-        return ControlResolution(
-            bhp=governing.bhp,
-            phase_rates={phase: 0.0 for phase in governing.phase_rates},
-            active_limit=violated,
-            economic_shutin=True,
+    if violated_row != UNSET_INT:
+        return (
+            governing_bhp,
+            PhaseValues(oil=0.0, water=0.0, gas=0.0),
+            violated_row,
+            True,
         )
-    return governing
+    return governing_bhp, governing_phase_rates, governing_row, False

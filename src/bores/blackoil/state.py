@@ -48,7 +48,7 @@ class BlackOilModelState(Serializable):
         """
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New BlackOilModelState with reservoir and wells (if set)
+        :returns: New `BlackOilModelState` with reservoir and wells (if set)
             converted to target.
         """
         if target == self.unit_system:

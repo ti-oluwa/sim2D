@@ -14,7 +14,7 @@ from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
 from bores.wells.hydraulics.base import WellBoreModel
-from bores.wells.resolution.base import ControlResolverSpec
+from bores.wells.resolution.spec import ControlResolverSpec
 
 __all__ = ["WellSystem"]
 

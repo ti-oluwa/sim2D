@@ -1297,7 +1297,7 @@ def build_unit_conversion_table(
     stored in the constants registry so no magic numbers are hard-coded
     here.
     """
-    con = constants or c
+    con = constants if constants is not None else c
 
     # Primitive conversion factors from the constants registry
     psi_to_pa: float = con.PSI_TO_PASCAL  # 6894.757 Pa/psi
@@ -1350,10 +1350,6 @@ def build_unit_conversion_table(
     # SCF -> m³: scf_to_m3
     # SCF -> cm³:
     scf_to_cm3: float = scf_to_m3 * m3_to_cm3
-    # Sm³ -> SCF:
-    sm3_to_scf: float = 1.0 / scf_to_m3
-    # Sm³ -> STB:
-    sm3_to_stb: float = 1.0 / stb_to_m3
     # Sm³ -> scc:
     sm3_to_scc: float = m3_to_cm3
     # scc -> Sm³:
@@ -1391,27 +1387,27 @@ def build_unit_conversion_table(
     # between rb/STB and rm³/Sm³ is:
     #   (rb -> rm³) / (STB -> Sm³) = (stb_to_m3) / (stb_to_m3) = 1.0
     # Similarly rcf/SCF -> rm³/Sm³ = (ft3_to_m3) / (scf_to_m3)
-    liq_fvf_field_to_metric: float = 1.0  # rb/STB -> rm³/Sm³
-    liq_fvf_field_to_lab: float = 1.0  # rb/STB -> rcc/scc
-    liq_fvf_field_to_si: float = 1.0  # rb/STB -> rm³/Sm³
+    liquid_fvf_field_to_metric: float = 1.0  # rb/STB -> rm³/Sm³
+    liquid_fvf_field_to_lab: float = 1.0  # rb/STB -> rcc/scc
+    liquid_fvf_field_to_si: float = 1.0  # rb/STB -> rm³/Sm³
     gas_fvf_field_to_metric: float = ft3_to_m3 / scf_to_m3  # rcf/SCF -> rm³/Sm³
     gas_fvf_field_to_lab: float = ft3_to_cm3 / scf_to_cm3  # rcf/SCF -> rcc/scc
     gas_fvf_metric_to_field: float = 1.0 / gas_fvf_field_to_metric
     gas_fvf_lab_to_field: float = 1.0 / gas_fvf_field_to_lab
 
     # Surface liquid rates: STB/day -> Sm³/day, scc/hr, Sm³/s
-    liq_rate_field_to_metric: float = stb_to_m3  # STB/day -> Sm³/day
-    liq_rate_field_to_lab: float = stb_to_cm3 / hours_per_day  # STB/day -> scc/hr
-    liq_rate_field_to_si: float = stb_to_m3 / seconds_per_day  # STB/day -> Sm³/s
-    liq_rate_metric_to_field: float = 1.0 / liq_rate_field_to_metric
-    liq_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
-    liq_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
-    liq_rate_lab_to_field: float = 1.0 / liq_rate_field_to_lab
-    liq_rate_lab_to_metric: float = 1.0 / liq_rate_metric_to_lab
-    liq_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
-    liq_rate_si_to_field: float = 1.0 / liq_rate_field_to_si
-    liq_rate_si_to_metric: float = 1.0 / liq_rate_metric_to_si
-    liq_rate_si_to_lab: float = 1.0 / liq_rate_lab_to_si
+    liquid_rate_field_to_metric: float = stb_to_m3  # STB/day -> Sm³/day
+    liquid_rate_field_to_lab: float = stb_to_cm3 / hours_per_day  # STB/day -> scc/hr
+    liquid_rate_field_to_si: float = stb_to_m3 / seconds_per_day  # STB/day -> Sm³/s
+    liquid_rate_metric_to_field: float = 1.0 / liquid_rate_field_to_metric
+    liquid_rate_metric_to_lab: float = m3_to_cm3 / hours_per_day  # Sm³/day -> scc/hr
+    liquid_rate_metric_to_si: float = days_per_second  # Sm³/day -> Sm³/s
+    liquid_rate_lab_to_field: float = 1.0 / liquid_rate_field_to_lab
+    liquid_rate_lab_to_metric: float = 1.0 / liquid_rate_metric_to_lab
+    liquid_rate_lab_to_si: float = cm3_to_m3 * seconds_per_hour  # scc/hr -> Sm³/s
+    liquid_rate_si_to_field: float = 1.0 / liquid_rate_field_to_si
+    liquid_rate_si_to_metric: float = 1.0 / liquid_rate_metric_to_si
+    liquid_rate_si_to_lab: float = 1.0 / liquid_rate_lab_to_si
 
     # Surface gas rates: SCF/day -> Sm³/day, scc/hr, Sm³/s
     gas_rate_field_to_metric: float = scf_to_m3  # SCF/day -> Sm³/day
@@ -1471,11 +1467,11 @@ def build_unit_conversion_table(
             compressibility=_inverse(psi_to_bar),
             liquid_surface_volume=stb_to_m3,
             gas_surface_volume=scf_to_m3,
-            liquid_fvf=liq_fvf_field_to_metric,
+            liquid_fvf=liquid_fvf_field_to_metric,
             gas_fvf=gas_fvf_field_to_metric,
             gas_oil_ratio=gor_field_to_metric,
             oil_gas_ratio=ogr_field_to_metric,
-            liquid_surface_rate=liq_rate_field_to_metric,
+            liquid_surface_rate=liquid_rate_field_to_metric,
             gas_surface_rate=gas_rate_field_to_metric,
             reservoir_rate=res_rate_field_to_metric,
         ),
@@ -1494,11 +1490,11 @@ def build_unit_conversion_table(
             compressibility=_inverse(psi_to_pa),
             liquid_surface_volume=stb_to_m3,
             gas_surface_volume=scf_to_m3,
-            liquid_fvf=liq_fvf_field_to_si,
+            liquid_fvf=liquid_fvf_field_to_si,
             gas_fvf=gas_fvf_field_to_metric,  # rcf/SCF -> rm³/Sm³ same as metric
             gas_oil_ratio=gor_field_to_metric,
             oil_gas_ratio=ogr_field_to_metric,
-            liquid_surface_rate=liq_rate_field_to_si,
+            liquid_surface_rate=liquid_rate_field_to_si,
             gas_surface_rate=gas_rate_field_to_si,
             reservoir_rate=res_rate_field_to_si,
         ),
@@ -1517,11 +1513,11 @@ def build_unit_conversion_table(
             compressibility=_inverse(psi_to_atm),
             liquid_surface_volume=stb_to_cm3,
             gas_surface_volume=scf_to_cm3,
-            liquid_fvf=liq_fvf_field_to_lab,
+            liquid_fvf=liquid_fvf_field_to_lab,
             gas_fvf=gas_fvf_field_to_lab,
             gas_oil_ratio=gor_field_to_lab,
             oil_gas_ratio=ogr_field_to_lab,
-            liquid_surface_rate=liq_rate_field_to_lab,
+            liquid_surface_rate=liquid_rate_field_to_lab,
             gas_surface_rate=gas_rate_field_to_lab,
             reservoir_rate=res_rate_field_to_lab,
         ),
@@ -1543,11 +1539,11 @@ def build_unit_conversion_table(
             compressibility=psi_to_bar,
             liquid_surface_volume=_inverse(stb_to_m3),
             gas_surface_volume=_inverse(scf_to_m3),
-            liquid_fvf=_inverse(liq_fvf_field_to_metric),
+            liquid_fvf=_inverse(liquid_fvf_field_to_metric),
             gas_fvf=gas_fvf_metric_to_field,
             gas_oil_ratio=gor_metric_to_field,
             oil_gas_ratio=ogr_metric_to_field,
-            liquid_surface_rate=liq_rate_metric_to_field,
+            liquid_surface_rate=liquid_rate_metric_to_field,
             gas_surface_rate=gas_rate_metric_to_field,
             reservoir_rate=res_rate_metric_to_field,
         ),
@@ -1570,7 +1566,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=1.0,
             oil_gas_ratio=1.0,
-            liquid_surface_rate=liq_rate_metric_to_si,
+            liquid_surface_rate=liquid_rate_metric_to_si,
             gas_surface_rate=gas_rate_metric_to_si,
             reservoir_rate=res_rate_metric_to_si,
         ),
@@ -1593,7 +1589,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=gor_metric_to_lab,
             oil_gas_ratio=ogr_metric_to_lab,
-            liquid_surface_rate=liq_rate_metric_to_lab,
+            liquid_surface_rate=liquid_rate_metric_to_lab,
             gas_surface_rate=gas_rate_metric_to_lab,
             reservoir_rate=res_rate_metric_to_lab,
         ),
@@ -1615,11 +1611,11 @@ def build_unit_conversion_table(
             compressibility=psi_to_pa,
             liquid_surface_volume=_inverse(stb_to_m3),
             gas_surface_volume=_inverse(scf_to_m3),
-            liquid_fvf=_inverse(liq_fvf_field_to_si),
+            liquid_fvf=_inverse(liquid_fvf_field_to_si),
             gas_fvf=_inverse(gas_fvf_field_to_metric),
             gas_oil_ratio=gor_metric_to_field,
             oil_gas_ratio=ogr_metric_to_field,
-            liquid_surface_rate=liq_rate_si_to_field,
+            liquid_surface_rate=liquid_rate_si_to_field,
             gas_surface_rate=gas_rate_si_to_field,
             reservoir_rate=res_rate_si_to_field,
         ),
@@ -1642,7 +1638,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=1.0,
             oil_gas_ratio=1.0,
-            liquid_surface_rate=liq_rate_si_to_metric,
+            liquid_surface_rate=liquid_rate_si_to_metric,
             gas_surface_rate=gas_rate_si_to_metric,
             reservoir_rate=res_rate_si_to_metric,
         ),
@@ -1665,7 +1661,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=gor_metric_to_lab,
             oil_gas_ratio=ogr_metric_to_lab,
-            liquid_surface_rate=liq_rate_si_to_lab,
+            liquid_surface_rate=liquid_rate_si_to_lab,
             gas_surface_rate=gas_rate_si_to_lab,
             reservoir_rate=res_rate_si_to_lab,
         ),
@@ -1687,11 +1683,11 @@ def build_unit_conversion_table(
             compressibility=psi_to_atm,
             liquid_surface_volume=_inverse(stb_to_cm3),
             gas_surface_volume=_inverse(scf_to_cm3),
-            liquid_fvf=_inverse(liq_fvf_field_to_lab),
+            liquid_fvf=_inverse(liquid_fvf_field_to_lab),
             gas_fvf=gas_fvf_lab_to_field,
             gas_oil_ratio=gor_lab_to_field,
             oil_gas_ratio=ogr_lab_to_field,
-            liquid_surface_rate=liq_rate_lab_to_field,
+            liquid_surface_rate=liquid_rate_lab_to_field,
             gas_surface_rate=gas_rate_lab_to_field,
             reservoir_rate=res_rate_lab_to_field,
         ),
@@ -1714,7 +1710,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=gor_lab_to_metric,
             oil_gas_ratio=ogr_lab_to_metric,
-            liquid_surface_rate=liq_rate_lab_to_metric,
+            liquid_surface_rate=liquid_rate_lab_to_metric,
             gas_surface_rate=gas_rate_lab_to_metric,
             reservoir_rate=res_rate_lab_to_metric,
         ),
@@ -1737,7 +1733,7 @@ def build_unit_conversion_table(
             gas_fvf=1.0,
             gas_oil_ratio=gor_lab_to_metric,
             oil_gas_ratio=ogr_lab_to_metric,
-            liquid_surface_rate=liq_rate_lab_to_si,
+            liquid_surface_rate=liquid_rate_lab_to_si,
             gas_surface_rate=gas_rate_lab_to_si,
             reservoir_rate=res_rate_lab_to_si,
         ),

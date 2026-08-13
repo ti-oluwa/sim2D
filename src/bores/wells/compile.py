@@ -405,7 +405,7 @@ def get_completion_status_tag(status: CompletionStatus) -> Integer:
     return 1 if status is CompletionStatus.OPEN else 0
 
 
-def _resolve_all_perforation_geometry(
+def _resolve_perforations_geometry(
     grid: Grid,
     well: Well,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
@@ -443,7 +443,10 @@ def _resolve_all_perforation_geometry(
     shadow_wells = Wells(wells={well.name: shadow_well})
 
     result = build_wells_indices(
-        grid=grid, wells=shadow_wells, permeabilities=permeabilities, **resolve_kwargs
+        grid=grid,
+        wells=shadow_wells,
+        permeabilities=permeabilities,
+        **resolve_kwargs,
     )
     well_index = result[well.name]
     return well_index.perforations, original_by_id
@@ -462,9 +465,9 @@ def compile_perforations(
 
     :param names: Well names, in the row order `CompiledWellSystem` will use.
     :param wells: Source `Wells`.
-    :param grid: Forwarded to `_resolve_all_perforation_geometry`.
-    :param permeabilities: Forwarded to `_resolve_all_perforation_geometry`.
-    :param resolve_kwargs: Forwarded to `_resolve_all_perforation_geometry`.
+    :param grid: Forwarded to `_resolve_perforations_geometry`.
+    :param permeabilities: Forwarded to `_resolve_perforations_geometry`.
+    :param resolve_kwargs: Forwarded to `_resolve_perforations_geometry`.
     :returns: `CompiledPerforations`, one row per (well, perforation, cell) triple.
     """
     well_offsets = [0]
@@ -481,8 +484,11 @@ def compile_perforations(
 
     for name in names:
         well = wells[name]
-        perforation_indices, original_by_id = _resolve_all_perforation_geometry(
-            grid=grid, well=well, permeabilities=permeabilities, **resolve_kwargs
+        perforation_indices, original_by_id = _resolve_perforations_geometry(
+            grid=grid,
+            well=well,
+            permeabilities=permeabilities,
+            **resolve_kwargs,
         )
         for connection in perforation_indices:
             original = original_by_id[id(connection.perforation)]

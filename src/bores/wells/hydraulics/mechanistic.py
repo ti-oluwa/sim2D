@@ -269,8 +269,8 @@ def compute_perforation_pressures(
         )
     if not (len(representative_depths) == len(inclinations_from_vertical) == n):
         raise ValueError(
-            "representative_depths, inclinations_from_vertical, and "
-            "connection_samples must all have the same length."
+            "`representative_depths`, `inclinations_from_vertical`, and "
+            "`connection_samples` must all have the same length."
         )
 
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas

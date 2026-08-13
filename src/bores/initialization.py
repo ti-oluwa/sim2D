@@ -3,6 +3,7 @@ Utilities for reservoir equilibrium state initialization from EQUIL, explicit de
 arrays.
 
 Precedence per field is:
+
 ```
 RESTART (not yet supported but planned) -> explicit array/keyword -> EQUIL
 ```
@@ -1043,7 +1044,7 @@ def initialize_reservoir_state(
     saturation_samples: int = N_SATURATION_SAMPLES,
 ) -> ReservoirState:
     """
-    Build a complete `ReservoirState` from equilibration data (e.g EQUIL) and/or explicit arrays.
+    Build a complete `ReservoirState` from equilibration data (e.g `EQUIL`) and/or explicit arrays.
 
     "Explicit array/keyword" means either the corresponding kwarg here, or
     (if the kwarg is `None`) the matching `PRESSURE`/`SWAT`/`SGAS`/`RS`/`RV`
@@ -1053,8 +1054,8 @@ def initialize_reservoir_state(
     `1 - water_saturation - gas_saturation`, never taken from an explicit array.
 
     `oil_bubble_point_pressure` and `gas_dew_point_pressure` are taken from
-    equilibration when it runs. Otherwise (fully explicit arrays, no EQUIL
-    involved), each PVTNUM region's own PVT tables are queried per-cell -
+    equilibration when it runs. Otherwise (fully explicit arrays, no `EQUIL`
+    involved), each `PVTNUM` region's own PVT tables are queried per-cell -
     `oil_bubble_point_pressure` from `PVTTable.bubble_point_pressure(temperature,
     solution_gor)` on the oil table, `gas_dew_point_pressure` from
     `PVTTable.dew_point_pressure(temperature)` on the gas table - and only
@@ -1082,8 +1083,7 @@ def initialize_reservoir_state(
     :param water_saturation: Optional explicit water saturation array (overrides `SWAT` keyword).
     :param gas_saturation: Optional explicit gas saturation array (overrides `SGAS` keyword).
     :param solution_gor: Optional explicit solution GOR array (overrides `RS` keyword).
-    :param vaporized_oil_ratio: Optional explicit vaporized oil ratio array (overrides
-        `RV` keyword).
+    :param vaporized_oil_ratio: Optional explicit vaporized oil ratio array (overrides `RV` keyword).
     :param depth_step: Step size for hydrostatic integration in equilibration.
     :param with_hysteresis: If `True`, initialize hysteresis state from the
         resolved saturations (`Hysteresis.from_initial_saturation`) for
@@ -1102,10 +1102,10 @@ def initialize_reservoir_state(
         (when supplied) don't share that same unit system, or if
         saturations are physically inconsistent.
     :warns UserWarning: If `satfunc` is supplied but
-        `reservoir.regions.saturation_region` (SATNUM) is unavailable; see
+        `reservoir.regions.saturation_region` (`SATNUM`) is unavailable; see
         `initialize_equilibrium_arrays`. Also if exactly one of
         `pressure`/`solution_gor` (or `pressure`/`vaporized_oil_ratio`) is
-        explicit while the other is equilibration-derived, since EQUIL
+        explicit while the other is equilibration-derived, since `EQUIL`
         derives `solution_gor`/`vaporized_oil_ratio` from its own
         internally-integrated hydrostatic pressure profile, not from an
         explicit `pressure` override - the two may end up off the oil

@@ -111,7 +111,7 @@ def resolve_perforation_orientation(perforation: Perforation) -> Orientation:
     return Orientation.Z
 
 
-def _default_horizontal_tolerance(grid: Grid, x: Number, y: Number) -> Number:
+def get_default_horizontal_tolerance(grid: Grid, x: Number, y: Number) -> Number:
     """
     Derive a default horizontal search radius for `resolve_perforations_indices`.
 
@@ -379,7 +379,7 @@ def resolve_perforations_indices(
     tolerance = (
         horizontal_tolerance
         if horizontal_tolerance is not None
-        else _default_horizontal_tolerance(grid, x, y)
+        else get_default_horizontal_tolerance(grid, x, y)
     )
     candidates = _get_vertical_column_candidates(grid, x, y, tolerance)
     extent_func = (
@@ -626,23 +626,19 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside `current_cell` without crossing another face.
-            results.append(
-                (
-                    current_cell,
-                    start_md + current_t * md_span,
-                    start_md + 1.0 * md_span,
-                )
-            )
+            results.append((
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + 1.0 * md_span,
+            ))
             break
 
         exit_t = min(best_t, 1.0)
-        results.append(
-            (
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + exit_t * md_span,
-            )
-        )
+        results.append((
+            current_cell,
+            start_md + current_t * md_span,
+            start_md + exit_t * md_span,
+        ))
         if best_t >= 1.0 - 1e-9:
             break
 
@@ -709,7 +705,7 @@ def resolve_md_perforations_indices(
     radius = (
         search_radius
         if search_radius is not None
-        else _default_horizontal_tolerance(grid, x, y)
+        else get_default_horizontal_tolerance(grid, x, y)
     )
 
     results: typing.List[PerforationIndex] = []

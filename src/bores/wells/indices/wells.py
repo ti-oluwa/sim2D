@@ -295,7 +295,7 @@ def compute_2D_effective_drainage_radius(
 
 
 @numba.njit(cache=True, inline="always")
-def _geometric_mean(values: typing.Sequence[Number]) -> Number:
+def compute_geometric_mean(values: typing.Sequence[Number]) -> Number:
     """Geometric mean of `values`, clamping any negative input to zero."""
     product = 1.0
     n = 0
@@ -326,7 +326,7 @@ def compute_effective_permeability_for_well(
         return np.sqrt(max(ky, 0.0) * max(kz, 0.0))
     elif orientation == Orientation.Y:
         return np.sqrt(max(kx, 0.0) * max(kz, 0.0))
-    return _geometric_mean((kx, ky, kz))
+    return compute_geometric_mean((kx, ky, kz))
 
 
 @numba.njit(cache=True)
@@ -403,7 +403,7 @@ def resolve_connection_factor(
         # No discrete axis to run Peaceman against so we always use isotropic
         # equivalent-radius, using the geometric-mean permeability and this
         # connection's true (MD-fraction-scaled) length within the cell.
-        effective_permeability = _geometric_mean((kx, ky, kz))
+        effective_permeability = compute_geometric_mean((kx, ky, kz))
         completion_length = partial_penetration_fraction * perforation.length
         assert grid.cell_volumes is not None
         well_index = compute_equivalent_radius_well_index(
