@@ -390,7 +390,19 @@ class Deck:
         return list(self._keyword_records.keys())
 
     def has(self, keyword: str) -> bool:
-        """Return whether `keyword` occurs anywhere in the deck."""
+        """
+        Return whether `keyword` has a literal record of its own in the
+        deck (i.e. appears as its own keyword line).
+
+        This does not know about `BOX`/`EQUALS`/`ADD`/`MULTIPLY`/`COPY`/
+        `MAXVALUE`/`MINVALUE` operator targets. A keyword set purely via
+        e.g. `EQUALS 'DZ' ... /` has no record of its own and this
+        returns `False` for it, even though its value is fully resolvable.
+        
+        `Deck` is a pure scan of literal text; operator-target resolution
+        needs `GridDimensions` (not yet known at this point) and lives one
+        layer up, in `bores.deck.file.DeckFile.has`, which checks both.
+        """
         return keyword.upper() in self._keyword_records
 
     def __hash__(self) -> int:

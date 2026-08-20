@@ -321,6 +321,7 @@ class DeckFile:
         "_registry",
         "_cache",
         "_operations",
+        "_operation_targets",
         "_schedule_times",
         "dimensions",
         "unit_system",
@@ -369,6 +370,11 @@ class DeckFile:
             resolve_operations(self._deck, self.dimensions)
             if self.dimensions is not None
             else None
+        )
+        self._operation_targets: typing.FrozenSet[str] = (
+            frozenset(operation.target for operation in self._operations)
+            if self._operations
+            else frozenset()
         )
 
         time_unit = "days"
@@ -430,8 +436,18 @@ class DeckFile:
 
     @property
     def keywords(self) -> typing.List[str]:
-        """Return every unique keyword in the deck, in file order."""
-        return self._deck.keywords
+        """
+        Return every unique keyword in the deck, in file order, including
+        keywords with no record of their own that are nonetheless resolvable
+        because an operator (`EQUALS`/`ADD`/`MULTIPLY`/`COPY`/`MAXVALUE`/
+        `MINVALUE`) targets them (e.g. `DZ` set purely via `EQUALS`).
+
+        Operator-only names are appended after the literal ones, sorted,
+        since they have no single file position of their own to order by.
+        """
+        literal = self._deck.keywords
+        operator_only = sorted(self._operation_targets - set(literal))
+        return literal + operator_only
 
     def add_keywords(self, *keywords: Keyword[typing.Any]) -> None:
         """
@@ -447,10 +463,17 @@ class DeckFile:
             self._cache.pop(keyword.name, None)
 
     def has(self, k: typing.Union[str, Keyword[typing.Any]], /) -> bool:
-        """Return whether `k` occurs anywhere in the deck."""
-        if isinstance(k, Keyword):
-            return self._deck.has(k.name)
-        return self._deck.has(k)
+        """
+        Return whether `k` occurs anywhere in the deck. Either as an
+        explicit record of its own, or as the target of a `BOX`/`EQUALS`/
+        `ADD`/`MULTIPLY`/`COPY`/`MAXVALUE`/`MINVALUE` operator record.
+
+        A keyword like `DZ` set purely via `EQUALS 'DZ' ... /` never appears
+        as its own record line, but `ArrayKeyword.parse` can still fully
+        resolve it from the operator timeline alone, so it counts as present.
+        """
+        name = k.name if isinstance(k, Keyword) else k.upper()
+        return self._deck.has(name) or name in self._operation_targets
 
     @typing.overload
     def get(self, k: Keyword[T], /, *, use_cache: bool = ...) -> typing.Optional[T]: ...
