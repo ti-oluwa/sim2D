@@ -1,7 +1,9 @@
 """
 **BORES**
 
-3D 3-Phase Black-Oil Reservoir Modelling and Simulation Framework.
+3D 3-Phase Black-Oil Reservoir Simulation Framework.
+
+@Author - Daniel T. Afolayan (ti-oluwa)
 """
 
 # import logging
