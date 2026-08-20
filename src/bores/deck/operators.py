@@ -191,7 +191,7 @@ def _parse_operator_records(
         if op == "COPY":
             if len(tokens) < 2:
                 warnings.warn(
-                    f"COPY record {tokens!r} needs a source and target "
+                    f"`COPY` record {tokens!r} needs a source and target "
                     "keyword; skipping.",
                     stacklevel=6,
                 )

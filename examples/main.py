@@ -13,10 +13,14 @@ from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import Equilibrium
 from bores.typing import UnitSystem
-from bores.wells.hydraulics.mechanistic import MechanisticWellbore
+from bores.wells.hydraulics.mechanistic import mechanistic_model
 from bores.wells.model import WellSystem
 
-df = DeckFile("data/SPE1CASE1.DATA", encoding="utf-8", unit_system=UnitSystem.METRIC)
+df = DeckFile(
+    "/home/tioluwa/Downloads/NigerDelta UGH1 Composite Field.DATA",
+    encoding="utf-8",
+    unit_system=UnitSystem.METRIC,
+)
 
 # Load reservoir model
 grid = Grid.from_deck(df)
@@ -54,7 +58,7 @@ initial_state = initialize_reservoir_state(
 wells = WellSystem.from_deck(
     df,
     grid=grid,
-    default_wellbore=MechanisticWellbore(tubing_inner_diameter=0.5),
+    default_wellbore=mechanistic_model(tubing_inner_diameter=0.5),
 )
 # rich.print(wells.dump())
 

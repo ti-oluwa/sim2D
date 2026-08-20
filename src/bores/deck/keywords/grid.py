@@ -29,7 +29,6 @@ __all__ = [
     "MAPAXES",
     "GRIDUNIT",
     "MAPUNITS",
-    "MAPUNIT",
     "PINCHOUT",
     "PINCH",
     "TOPS",
@@ -103,21 +102,21 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
-            raise DeckParseError("COORD requires grid dimensions (SPECGRID/DIMENS).")
+            raise DeckParseError("`COORD` requires grid dimensions (SPECGRID/DIMENS).")
 
         record = deck.first_record_for(self.name)
         if record is None:
             return None
 
         # `record.body` spans up to the next keyword line (some
-        # keywords need multiple internal `/` segments); COORD is a
+        # keywords need multiple internal `/` segments); `COORD` is a
         # single `/`-terminated block, so take only the first one.
         body = record.body.split("/", 1)[0]
         tokens = tokenize(body)
         expected = (dims.nx + 1) * (dims.ny + 1) * 6
         if len(tokens) != expected:
             raise DeckParseError(
-                f"COORD expected {expected} values for a {dims.nx}x{dims.ny} "
+                f"`COORD` expected {expected} values for a {dims.nx}x{dims.ny} "
                 f"grid; got {len(tokens)}."
             )
 
@@ -148,7 +147,7 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         schedule_times: typing.Optional[typing.Dict[int, float]] = None,
     ) -> typing.Optional[FloatArray[ThreeDimensions]]:
         if dims is None:
-            raise DeckParseError("ZCORN requires grid dimensions (SPECGRID/DIMENS).")
+            raise DeckParseError("`ZCORN` requires grid dimensions (`SPECGRID`/`DIMENS`).")
 
         record = deck.first_record_for(self.name)
         if record is None:
@@ -159,11 +158,11 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         expected = dims.nx * dims.ny * dims.nz * 8
         if len(tokens) != expected:
             raise DeckParseError(
-                f"ZCORN expected {expected} values for a "
+                f"`ZCORN` expected {expected} values for a "
                 f"{dims.nx}x{dims.ny}x{dims.nz} grid; got {len(tokens)}."
             )
 
-        # Eclipse writes ZCORN in Fortran order with i varying fastest, then j, then k varying slowest,
+        # Eclipse writes `ZCORN` in Fortran order with i varying fastest, then j, then k varying slowest,
         # hence in the corresponding shape in C-order with i-fastest is (nz*2, ny*2, nx*2)
         # Access: zcorn[2*k, 2*j, 2*i] for cell (i, j, k)
         return np.array(tokens, dtype=np.float64).reshape(
@@ -209,19 +208,8 @@ GRIDUNIT = RecordKeyword[str](
 """`GRIDUNIT 'UNIT' ['TYPE'] /` - geometry length unit declaration."""
 
 MAPUNITS = RecordKeyword[str]("MAPUNITS", fields=[Field("unit", str)])
-"""`MAPUNITS 'UNIT' /` - map coordinate unit declaration."""
-
-
-MAPUNIT = RecordKeyword[str]("MAPUNIT", fields=[Field("unit", str)])
 """
-`MAPUNIT 'UNIT' /` - map coordinate unit declaration.
- 
-Note:
-    Some Eclipse documentation and decks use `MAPUNIT` (singular);
-    others use `MAPUNITS`. Both spellings are registered as separate
-    `Keyword` objects with identical shape (`grid.MAPUNITS` already
-    exists) so either form found in a deck parses correctly; only one
-    will ever be present in a well-formed deck.
+`MAPUNITS 'UNIT' /` - map coordinate unit declaration.
 """
 
 PINCHOUT = FlagKeyword("PINCHOUT")
@@ -314,7 +302,7 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
         if dims is None:
             raise DeckParseError(
                 f"Cannot parse {self.name!r} without resolved grid "
-                "dimensions (SPECGRID/DIMENS not found)."
+                "dimensions (`SPECGRID`/`DIMENS` not found)."
             )
 
         record = deck.first_record_for(self.name)

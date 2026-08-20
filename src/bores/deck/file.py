@@ -27,7 +27,6 @@ from bores.deck.keywords.grid import (
     FAULTS,
     GRIDUNIT,
     MAPAXES,
-    MAPUNIT,
     MAPUNITS,
     MULTFLT,
     MULTX,
@@ -149,140 +148,137 @@ __all__ = ["DeckFile"]
 
 T = TypeVar("T")
 
-_DIMENSION_KEYWORDS: typing.Tuple[str, ...] = ("SPECGRID", "DIMENS")
+DIMENSION_KEYWORDS = ("SPECGRID", "DIMENS")
 
-DEFAULT_KEYWORDS: typing.FrozenSet[Keyword[typing.Any]] = frozenset(
-    {
-        ### RUNSPEC ###
-        DISGAS,
-        EQLDIMS,
-        FIELD,
-        GAS,
-        LAB,
-        METRIC,
-        NOSIM,
-        OIL,
-        REGDIMS,
-        START,
-        TABDIMS,
-        TITLE,
-        UNIFIN,
-        UNIFOUT,
-        VAPOIL,
-        WATER,
-        WELLDIMS,
-        ### GRID ###
-        ACTNUM,
-        COORD,
-        DIMENS,
-        DX,
-        DXV,
-        DY,
-        DYV,
-        DZ,
-        DZV,
-        FAULTS,
-        GRIDUNIT,
-        MAPAXES,
-        MAPUNIT,
-        MAPUNITS,
-        MULTFLT,
-        MULTX,
-        MULTX_MINUS,
-        MULTY,
-        MULTY_MINUS,
-        MULTZ,
-        MULTZ_MINUS,
-        NNC,
-        NTG,
-        PERMX,
-        PERMY,
-        PERMZ,
-        PINCH,
-        PINCHOUT,
-        PORO,
-        PORV,
-        SPECGRID,
-        TOPS,
-        ZCORN,
-        ### REGIONS ###
-        EQLNUM,
-        FIPNUM,
-        IMBNUM,
-        PVTNUM,
-        ROCKNUM,
-        SATNUM,
-        ### PROPS ###
-        DENSITY,
-        PVCO,
-        PVDG,
-        PVDO,
-        PVTG,
-        PVTO,
-        PVTW,
-        ROCK,
-        ROCKTAB,
-        SGFN,
-        SGOF,
-        SOF2,
-        SOF3,
-        SWFN,
-        SWOF,
-        ### SOLUTION ###
-        EQUIL,
-        PRESSURE,
-        RESTART,
-        RS,
-        RV,
-        SGAS,
-        SOIL,
-        SWAT,
-        RTEMP,
-        RTEMPVD,
-        TEMPVD,
-        RSVD,
-        RVVD,
-        ### SCHEDULE ###
-        COMPDAT,
-        DATES,
-        GCONINJE,
-        GCONPROD,
-        GRUPTREE,
-        TSTEP,
-        WECON,
-        WELOPEN,
-        WELSPECS,
-        WELTARG,
-        WCONINJE,
-        WCONPROD,
-        WPIMULT,
-        WTEST,
-        WGRUPCON,
-        GECON,
-        WELPI,
-        WPAVE,
-        WCONHIST,
-        WCONINJH,
-        WDFAC,
-        ### SUMMARY ###
-        FGPR,
-        FGPT,
-        FOPR,
-        FOPT,
-        FWPR,
-        FWPT,
-        RGIP,
-        ROIP,
-        RPTRST,
-        RPTSCHED,
-        RWIP,
-        WBHP,
-        WGPR,
-        WOPR,
-        WTHP,
-        WWPR,
-    }
-)
+DEFAULT_KEYWORDS = frozenset({
+    ### RUNSPEC ###
+    DISGAS,
+    EQLDIMS,
+    FIELD,
+    GAS,
+    LAB,
+    METRIC,
+    NOSIM,
+    OIL,
+    REGDIMS,
+    START,
+    TABDIMS,
+    TITLE,
+    UNIFIN,
+    UNIFOUT,
+    VAPOIL,
+    WATER,
+    WELLDIMS,
+    ### GRID ###
+    ACTNUM,
+    COORD,
+    DIMENS,
+    DX,
+    DXV,
+    DY,
+    DYV,
+    DZ,
+    DZV,
+    FAULTS,
+    GRIDUNIT,
+    MAPAXES,
+    MAPUNITS,
+    MULTFLT,
+    MULTX,
+    MULTX_MINUS,
+    MULTY,
+    MULTY_MINUS,
+    MULTZ,
+    MULTZ_MINUS,
+    NNC,
+    NTG,
+    PERMX,
+    PERMY,
+    PERMZ,
+    PINCH,
+    PINCHOUT,
+    PORO,
+    PORV,
+    SPECGRID,
+    TOPS,
+    ZCORN,
+    ### REGIONS ###
+    EQLNUM,
+    FIPNUM,
+    IMBNUM,
+    PVTNUM,
+    ROCKNUM,
+    SATNUM,
+    ### PROPS ###
+    DENSITY,
+    PVCO,
+    PVDG,
+    PVDO,
+    PVTG,
+    PVTO,
+    PVTW,
+    ROCK,
+    ROCKTAB,
+    SGFN,
+    SGOF,
+    SOF2,
+    SOF3,
+    SWFN,
+    SWOF,
+    ### SOLUTION ###
+    EQUIL,
+    PRESSURE,
+    RESTART,
+    RS,
+    RV,
+    SGAS,
+    SOIL,
+    SWAT,
+    RTEMP,
+    RTEMPVD,
+    TEMPVD,
+    RSVD,
+    RVVD,
+    ### SCHEDULE ###
+    COMPDAT,
+    DATES,
+    GCONINJE,
+    GCONPROD,
+    GRUPTREE,
+    TSTEP,
+    WECON,
+    WELOPEN,
+    WELSPECS,
+    WELTARG,
+    WCONINJE,
+    WCONPROD,
+    WPIMULT,
+    WTEST,
+    WGRUPCON,
+    GECON,
+    WELPI,
+    WPAVE,
+    WCONHIST,
+    WCONINJH,
+    WDFAC,
+    ### SUMMARY ###
+    FGPR,
+    FGPT,
+    FOPR,
+    FOPT,
+    FWPR,
+    FWPT,
+    RGIP,
+    ROIP,
+    RPTRST,
+    RPTSCHED,
+    RWIP,
+    WBHP,
+    WGPR,
+    WOPR,
+    WTHP,
+    WWPR,
+})
 
 
 class DeckFile:
@@ -388,11 +384,11 @@ class DeckFile:
         """
         Resolve grid extent from `SPECGRID` (preferred) or `DIMENS`.
 
-        :returns: A `bores.deck.core.GridDimensions`, or `None`
+        :returns: A `GridDimensions`, or `None`
             if neither keyword is present (decks consisting only of e.g.
             PVT / relperm tables).
         """
-        for name in _DIMENSION_KEYWORDS:
+        for name in DIMENSION_KEYWORDS:
             record = self._deck.first_record_for(name)
             if record is None:
                 continue
@@ -403,9 +399,7 @@ class DeckFile:
             if parsed is None:
                 continue
             return GridDimensions(
-                nx=int(parsed["nx"]),
-                ny=int(parsed["ny"]),
-                nz=int(parsed["nz"]),
+                nx=int(parsed["nx"]), ny=int(parsed["ny"]), nz=int(parsed["nz"])
             )
         return None
 
@@ -479,7 +473,7 @@ class DeckFile:
             from the deck or not registered.
         """
         if isinstance(k, Keyword):
-            if not self._deck.has(k.name):
+            if not self.has(k.name):
                 return None
             try:
                 return k.parse(
@@ -494,7 +488,7 @@ class DeckFile:
                 ) from exc
 
         key = k.upper()
-        if key not in self._registry or not self._deck.has(key):
+        if key not in self._registry or not self.has(key):
             return None
 
         if use_cache and key in self._cache:

@@ -59,9 +59,9 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
         relative_path = (match.group(1) or match.group(2)).strip()
         if source_dir is None:
             warnings.warn(
-                f"INCLUDE directive for {relative_path!r} encountered in raw-text "
-                "input with no source directory; ignoring.  Load from a file path "
-                "to enable INCLUDE resolution.",
+                f"`INCLUDE` directive for {relative_path!r} encountered in raw-text "
+                "input with no source directory; ignoring. Load from a file path "
+                "to enable `INCLUDE` resolution.",
                 stacklevel=6,
             )
             return ""
@@ -69,13 +69,13 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
         include_path = source_dir / relative_path
         if not include_path.is_file():
             raise DeckParseError(
-                f"INCLUDE references {include_path!r}, which does not exist."
+                f"`INCLUDE` references {include_path!r}, which does not exist."
             )
         try:
             included_text = include_path.read_text(encoding="ascii", errors="replace")
         except OSError as exc:
             raise DeckParseError(
-                f"Cannot read INCLUDE file {include_path!r}: {exc}"
+                f"Cannot read `INCLUDE` file {include_path!r}: {exc}"
             ) from exc
         return _resolve_includes(included_text, include_path.parent)
 
@@ -261,7 +261,7 @@ _KEYWORD_LINE_RE = re.compile(
 # general "no slash before the next keyword line -> bare/nullary" rule would
 # (incorrectly) swallow their body as empty, since they never contain a
 # literal `/` in practice.
-_FREE_TEXT_KEYWORDS: typing.FrozenSet[str] = frozenset({"TITLE"})
+FREE_TEXT_KEYWORDS = frozenset({"TITLE"})
 
 
 class ScanResult(typing.NamedTuple):
@@ -314,7 +314,7 @@ class Deck:
         Scan `text` into an ordered list of `Record` objects together with an
         index mapping upper-cased keywords to all matching records.
 
-        :param text: Clean Eclipse text (no comments, no INCLUDE directives).
+        :param text: Clean Eclipse text (no comments, no `INCLUDE` directives).
         :returns: `ScanResult` containing records in file order and a keyword index.
         """
         keyword_lines = list(_KEYWORD_LINE_RE.finditer(text))
@@ -337,7 +337,7 @@ class Deck:
             slash_position = window.find("/")
 
             if slash_position == -1:
-                if keyword in _FREE_TEXT_KEYWORDS:
+                if keyword in FREE_TEXT_KEYWORDS:
                     # No `/` at all, and none expected - the free text
                     # itself runs until the next keyword line.
                     record = Record(

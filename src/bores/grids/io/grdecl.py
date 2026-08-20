@@ -8,8 +8,7 @@ most other reservoir simulators to describe/declare corner-point pillar grids.
 
 `SPECGRID`, `DIMENS`, `COORD`, `ZCORN`, `ACTNUM`, `GRIDUNIT`,
 `TOPS`, `DX`, `DY`, `DZ`, `DXV`, `DYV`, `DZV`,
-`MAPAXES`, `MAPUNITS`, `MAPUNIT`,
-`PINCH`, `PINCHOUT`, `NNC`, `FAULTS`, `MULTFLT`,
+`MAPAXES`, `MAPUNITS`, `PINCH`, `PINCHOUT`, `NNC`, `FAULTS`, `MULTFLT`,
 `MULTX`, `MULTY`, `MULTZ`, `MULTX-`, `MULTY-`, `MULTZ-`.
 
 **Supported keywords (write)**:
@@ -60,7 +59,7 @@ __all__ = ["load_grdecl", "dump_grdecl"]
 _PathOrStr = typing.Union[str, Path]
 _TextOrPath = typing.Union[str, bytes, Path]
 
-_UNITS_MAP: typing.Dict[str, UnitSystem] = {
+UNITS_MAP: typing.Dict[str, UnitSystem] = {
     "METRES": UnitSystem.METRIC,
     "METER": UnitSystem.METRIC,
     "M": UnitSystem.METRIC,
@@ -72,14 +71,14 @@ _UNITS_MAP: typing.Dict[str, UnitSystem] = {
 }
 
 
-_US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
+US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
     UnitSystem.FIELD: "FEET",
     UnitSystem.METRIC: "METRES",
     UnitSystem.LAB: "CM",
     UnitSystem.SI: "METRES",
 }
 
-_US_TO_MAPUNITS: typing.Dict[UnitSystem, str] = {
+US_TO_MAPUNITS: typing.Dict[UnitSystem, str] = {
     UnitSystem.FIELD: "FEET",
     UnitSystem.METRIC: "METRES",
     UnitSystem.LAB: "CM",
@@ -97,7 +96,7 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     gridunit = deck_file.get("GRIDUNIT")
     if gridunit is not None:
         unit_str = str(gridunit.get("unit", "")).strip().upper()
-        unit_system = _UNITS_MAP.get(unit_str)
+        unit_system = UNITS_MAP.get(unit_str)
         if unit_system is not None:
             return unit_system
 
@@ -118,10 +117,9 @@ def _build_map_axes(deck_file: DeckFile) -> typing.Optional[MapAxes]:
     if mapaxes is None:
         return None
 
-    # Honour both MAPUNITS and MAPUNIT (the latter is an Eclipse alias).
-    mapunits = deck_file.get("MAPUNITS") or deck_file.get("MAPUNIT")
+    mapunits = deck_file.get("MAPUNITS")
     map_unit_str = str(mapunits.get("unit", "")).strip().upper() if mapunits else ""
-    map_unit = _UNITS_MAP.get(map_unit_str, UnitSystem.FIELD)
+    map_unit = UNITS_MAP.get(map_unit_str, UnitSystem.FIELD)
     return MapAxes(  # type: ignore[arg-type]
         origin=np.array([mapaxes["origin_x"], mapaxes["origin_y"]], dtype=np.float64),  # type: ignore[arg-type]
         map_x_axis_point=np.array(  # type: ignore[arg-type]
@@ -308,7 +306,7 @@ def load_grdecl(
                          `DZ`, `DXV`, `DYV`, `DZV`
     * Activity:          `ACTNUM`
     * Units:             `GRIDUNIT`, `FIELD`, `METRIC`, `LAB`, `SI`
-    * Map CRS:           `MAPAXES`, `MAPUNITS`, `MAPUNIT`
+    * Map CRS:           `MAPAXES`, `MAPUNITS`
     * Pinchouts:         `PINCH`, `PINCHOUT`
     * Connections:       `NNC` (with transmissibilities)
     * Faults:            `FAULTS`, `MULTFLT`
@@ -338,7 +336,7 @@ def load_grdecl(
         except DeckParseError as exc:
             raise GridImportError(f"Failed to parse GRDECL deck: {exc}") from exc
 
-    grid = _assemble_grid(deck_file, metadata=metadata)
+    grid = assemble_grid(deck_file, metadata=metadata)
     return grid.convert(unit_system) if unit_system is not None else grid
 
 
@@ -378,7 +376,7 @@ def dump_grdecl(
     :raises GridExportError: If the grid cannot be serialised.
     """
     try:
-        text = _build_grdecl_text(grid, actnum=actnum)
+        text = build_grdecl_text(grid, actnum=actnum)
     except Exception as exc:
         raise GridExportError(f"Failed to serialise grid to GRDECL: {exc}") from exc
 
@@ -390,7 +388,7 @@ def dump_grdecl(
     return None
 
 
-def _assemble_grid(
+def assemble_grid(
     deck_file: DeckFile,
     metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
 ) -> Grid:
@@ -404,7 +402,7 @@ def _assemble_grid(
         has no grid-dimension keyword.
     """
     if deck_file.dimensions is None:
-        raise GridImportError("GRDECL file is missing the required SPECGRID keyword.")
+        raise GridImportError("GRDECL file is missing the required `SPECGRID` keyword.")
 
     dims = deck_file.dimensions
     nx, ny, nz = dims
@@ -432,9 +430,9 @@ def _assemble_grid(
 
     try:
         if has_coord:
-            return _assemble_corner_point(deck_file, nx, ny, nz, unit_system, meta)
+            return assemble_corner_point(deck_file, nx, ny, nz, unit_system, meta)
         if has_tops:
-            return _assemble_cartesian(deck_file, nx, ny, nz, unit_system, meta)
+            return assemble_cartesian(deck_file, nx, ny, nz, unit_system, meta)
     except GridImportError:
         raise
     except Exception as exc:
@@ -443,12 +441,12 @@ def _assemble_grid(
         ) from exc
 
     raise GridImportError(
-        "GRDECL file contains neither COORD (corner-point) nor TOPS / DX / DXV "
+        "GRDECL file contains neither `COORD` (corner-point) nor `TOPS` / `DX` / `DXV` "
         "(Cartesian) geometry keywords."
     )
 
 
-def _assemble_corner_point(
+def assemble_corner_point(
     deck_file: DeckFile,
     nx: Integer,
     ny: Integer,
@@ -471,11 +469,11 @@ def _assemble_corner_point(
     """
     coord = deck_file.get("COORD")
     if coord is None:
-        raise GridImportError("GRDECL file is missing the required COORD keyword.")
+        raise GridImportError("GRDECL file is missing the required `COORD` keyword.")
 
     zcorn = deck_file.get("ZCORN")
     if zcorn is None:
-        raise GridImportError("GRDECL file is missing the required ZCORN keyword.")
+        raise GridImportError("GRDECL file is missing the required `ZCORN` keyword.")
 
     actnum_flat = deck_file.get("ACTNUM")
     if actnum_flat is not None:
@@ -509,7 +507,7 @@ def _assemble_corner_point(
     )
 
 
-def _assemble_cartesian(
+def assemble_cartesian(
     deck_file: DeckFile,
     nx: Integer,
     ny: Integer,
@@ -547,8 +545,8 @@ def _assemble_cartesian(
         z_top = tops_col.min()
         if tops_col.max() - tops_col.min() > 1.0:
             warnings.warn(
-                "GRDECL TOPS values vary by more than 1 unit; the Cartesian factory "
-                "uses a flat top surface at the minimum TOPS value. Geometry may be "
+                "GRDECL `TOPS` values vary by more than 1 unit; the Cartesian factory "
+                "uses a flat top surface at the minimum `TOPS` value. Geometry may be "
                 "approximate for dipping grids.",
                 stacklevel=6,
             )
@@ -562,15 +560,15 @@ def _assemble_cartesian(
 
     if dx_1d is None:
         raise GridImportError(
-            "Cartesian GRDECL grid is missing required spacing keyword DX or DXV."
+            "Cartesian GRDECL grid is missing required spacing keyword `DX` or `DXV`."
         )
     if dy_1d is None:
         raise GridImportError(
-            "Cartesian GRDECL grid is missing required spacing keyword DY or DYV."
+            "Cartesian GRDECL grid is missing required spacing keyword `DY` or `DYV`."
         )
     if dz_1d is None:
         raise GridImportError(
-            "Cartesian GRDECL grid is missing required spacing keyword DZ or DZV."
+            "Cartesian GRDECL grid is missing required spacing keyword `DZ` or `DZV`."
         )
 
     actnum_flat = deck_file.get("ACTNUM")
@@ -609,30 +607,23 @@ def _assemble_cartesian(
     )
 
 
-_GRDECL_SOURCES: typing.FrozenSet[str] = frozenset(
-    {
-        "grdecl_corner_point",
-        "grdecl_cartesian",
-    }
-)
+GRDECL_SOURCES = frozenset({"grdecl_corner_point", "grdecl_cartesian"})
 
 
-def _build_grdecl_text(
-    grid: Grid,
-    *,
-    actnum: typing.Optional[ActNumArray] = None,
+def build_grdecl_text(
+    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
 ) -> str:
     meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
     source_format: str = meta.get("source_format", "")
-    if source_format not in _GRDECL_SOURCES:
+    if source_format not in GRDECL_SOURCES:
         raise GridExportError(
             f"Cannot export a `Grid` with `source_format={source_format!r}` to GRDECL. "
             "Only grids originally loaded by `load_grdecl()` support GRDECL export.  "
-            f"Supported source formats: {sorted(_GRDECL_SOURCES)}."
+            f"Supported source formats: {sorted(GRDECL_SOURCES)}."
         )
     if source_format == "grdecl_cartesian":
-        return _build_grdecl_cartesian_text(grid, actnum=actnum)
-    return _build_grdecl_corner_point_text(grid, actnum=actnum)
+        return build_grdecl_cartesian_text(grid, actnum=actnum)
+    return build_grdecl_corner_point_text(grid, actnum=actnum)
 
 
 def _emit_specgrid(
@@ -646,7 +637,7 @@ def _emit_specgrid(
 
 def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
     """Append a `GRIDUNIT` block."""
-    unit_str = _US_TO_GRIDUNIT.get(unit_system, "FEET")
+    unit_str = US_TO_GRIDUNIT.get(unit_system, "FEET")
     lines.append("GRIDUNIT")
     lines.append(f"  '{unit_str}  ' '        ' /")
     lines.append("")
@@ -659,7 +650,7 @@ def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
     o = map_axes.origin
     mx = map_axes.map_x_axis_point
 
-    unit_str = _US_TO_MAPUNITS.get(map_axes.unit_system, "FEET")
+    unit_str = US_TO_MAPUNITS.get(map_axes.unit_system, "FEET")
     lines.append("MAPUNITS")
     lines.append(f"  '{unit_str}' /")
     lines.append("")
@@ -708,7 +699,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64, copy=False)
+        np
+        .asarray(arr, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -950,7 +942,7 @@ def _emit_pinch(
 
 
 @numba.njit(cache=True, parallel=True)
-def _cell_bounds_from_vertices(
+def _compute_cell_bounds_from_vertices(
     local_vertices: NumberArray[TwoDimensions],
     cell_face_offsets: IntArray[OneDimension],
     cell_face_indices: IntArray[OneDimension],
@@ -1017,7 +1009,7 @@ def _cell_bounds_from_vertices(
     return cell_min, cell_max  # type: ignore[return-value]
 
 
-def _local_cartesian_cell_bounds(
+def _compute_local_cartesian_cell_bounds(
     grid: Grid, map_axes: MapAxes
 ) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
     """
@@ -1047,7 +1039,7 @@ def _local_cartesian_cell_bounds(
         map_axes=map_axes,
     )
     local_vertices = np.column_stack([local_xy, grid.vertex_coordinates[:, 2]])
-    return _cell_bounds_from_vertices(
+    return _compute_cell_bounds_from_vertices(
         local_vertices=local_vertices,  # type: ignore[arg-type]
         cell_face_offsets=grid.cell_face_offsets,
         cell_face_indices=grid.cell_face_indices,
@@ -1057,10 +1049,8 @@ def _local_cartesian_cell_bounds(
     )
 
 
-def _build_grdecl_cartesian_text(
-    grid: Grid,
-    *,
-    actnum: typing.Optional[ActNumArray] = None,
+def build_grdecl_cartesian_text(
+    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
 ) -> str:
     """
     Build a GRDECL text representation for a Cartesian grid.
@@ -1105,8 +1095,10 @@ def _build_grdecl_cartesian_text(
         _emit_mapaxes(lines, map_axes)
         # grid.cell_min_xyz/cell_max_xyz are in map space; TOPS/DXV/DYV/DZV
         # need local-space bounds so they stay consistent with the `MAPAXES`
-        # card just emitted above (see `_local_cartesian_cell_bounds`).
-        cell_min_xyz, cell_max_xyz = _local_cartesian_cell_bounds(grid, map_axes)
+        # card just emitted above (see `_compute_local_cartesian_cell_bounds`).
+        cell_min_xyz, cell_max_xyz = _compute_local_cartesian_cell_bounds(
+            grid, map_axes
+        )
     else:
         cell_min_xyz, cell_max_xyz = grid.cell_min_xyz, grid.cell_max_xyz
 
@@ -1157,10 +1149,8 @@ def _build_grdecl_cartesian_text(
     return "\n".join(lines)
 
 
-def _build_grdecl_corner_point_text(
-    grid: Grid,
-    *,
-    actnum: typing.Optional[ActNumArray] = None,
+def build_grdecl_corner_point_text(
+    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
 ) -> str:
     """
     Build a GRDECL text representation for a corner-point grid.

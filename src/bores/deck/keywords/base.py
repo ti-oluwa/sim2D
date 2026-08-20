@@ -767,7 +767,7 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
     Multiple `DATES` blocks in the same deck are concatenated in file
     order and returned as a single flat list.
 
-    `parse` returns a list o `datetime.date` objects, or
+    `parse` returns a list of `datetime.date` objects, or
     `None` when the keyword is absent.
 
     Example deck fragment:
@@ -1022,8 +1022,7 @@ def get_schedule_times(
     elapsed).
 
     Both keywords' own records get the *new* clock value (they are the
-    transition point). Records before the first `TSTEP`/`DATES` get
-    `0.0`.
+    transition point). Records before the first `TSTEP`/`DATES` get `0.0`.
 
     :param deck: Scanned deck.
     :param time_unit: Time unit for elapsed time values (`"days"`,
@@ -1088,8 +1087,7 @@ def get_schedule_times(
 
 class ScheduledRecordKeyword(RepeatedRecordKeyword[typing.Union[T, float]]):
     """
-    A `RepeatedRecordKeyword` whose parsed records are also stamped with
-    `"schedule_time"`
+    A `RepeatedRecordKeyword` whose parsed records are also stamped with `"schedule_time"`
 
     `"schedule_time"` elapsed time in the deck's unit system (days/hours/seconds)
     since simulation start.
