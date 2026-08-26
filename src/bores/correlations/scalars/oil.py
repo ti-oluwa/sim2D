@@ -75,8 +75,7 @@ def compute_oil_specific_gravity(
     delta_p = c.STANDARD_PRESSURE_IMPERIAL - pressure
     delta_t = c.STANDARD_TEMPERATURE_IMPERIAL - temperature
     correction_factor = np.exp(
-        (oil_compressibility * delta_p)
-        + (c.OIL_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL * delta_t)
+        (oil_compressibility * delta_p) + (c.OIL_THERMAL_EXPANSION_COEFFICIENT_IMPERIAL * delta_t)
     )
     # Avoid numerical issues with small/large values
     correction_factor = clip(correction_factor, 0.2, 2.0)
@@ -122,16 +121,14 @@ def compute_oil_formation_volume_factor_standing(
     if temperature < 32:
         raise ValidationError("Temperature seems unphysical (<32 °F). Check units.")
 
-    x = (gas_to_oil_ratio * (gas_gravity / oil_specific_gravity) ** 0.5) + (
-        1.25 * temperature
-    )
+    x = (gas_to_oil_ratio * (gas_gravity / oil_specific_gravity) ** 0.5) + (1.25 * temperature)
     oil_fvf = 0.972 + 0.000147 * (x**1.175)
     return oil_fvf
 
 
 def _get_vazquez_beggs_oil_fvf_coefficients(
     oil_api_gravity: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Returns the coefficients a1, a2, a3 for the Vazquez and Beggs oil FVF correlation based on oil API gravity.
     """
@@ -174,12 +171,7 @@ def compute_oil_formation_volume_factor_vazquez_and_beggs(
         1
         + (a1 * gas_to_oil_ratio)
         + (a2 * (temperature - 60) * (oil_specific_gravity / gas_gravity))
-        + (
-            a3
-            * (temperature - 60)
-            * gas_to_oil_ratio
-            * (oil_specific_gravity / gas_gravity)
-        )
+        + (a3 * (temperature - 60) * gas_to_oil_ratio * (oil_specific_gravity / gas_gravity))
     )
     return oil_fvf
 
@@ -280,7 +272,7 @@ def compute_oil_api_gravity(oil_specific_gravity: Number) -> Number:
 
 def _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(
     oil_api_gravity: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Returns the empirical coefficients (C₁, C₂, C₃) used in the Vazquez-Beggs
     bubble point pressure correlation based on oil API gravity.
@@ -341,9 +333,7 @@ def compute_oil_bubble_point_pressure(
     if gas_to_oil_ratio < 0:
         raise ValidationError("Gas-to-oil ratio must be non-negative.")
 
-    c1, c2, c3 = _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(
-        oil_api_gravity
-    )
+    c1, c2, c3 = _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(oil_api_gravity)
     temperature_rankine = temperature + 459.67
     pressure = (
         gas_to_oil_ratio
@@ -358,7 +348,7 @@ def compute_gas_to_oil_ratio(
     bubble_point_pressure: Number,
     gas_gravity: Number,
     oil_api_gravity: Number,
-    gor_at_bubble_point_pressure: typing.Optional[Number] = None,
+    gor_at_bubble_point_pressure: Number | None = None,
 ) -> Number:
     """
     Computes the solution gas-to-oil ratio (Solution-GOR) using the Vazquez-Beggs correlation.
@@ -398,9 +388,7 @@ def compute_gas_to_oil_ratio(
         raise ValidationError("Pressure must be greater than zero.")
 
     temperature_in_rankine = temperature + 459.67
-    c1, c2, c3 = _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(
-        oil_api_gravity
-    )
+    c1, c2, c3 = _get_vazquez_beggs_oil_bubble_point_pressure_coefficients(oil_api_gravity)
 
     def compute_gor_vasquez_beggs(pressure: Number) -> Number:
         """Implementation of the Vazquez-Beggs GOR correlation."""
@@ -432,9 +420,7 @@ def _compute_dead_oil_viscosity_modified_beggs(
     oil_specific_gravity = 141.5 / (131.5 + oil_api_gravity)
 
     log_viscosity = (
-        1.8653
-        - 0.025086 * oil_specific_gravity
-        - 0.5644 * np.log10(temperature_rankine)
+        1.8653 - 0.025086 * oil_specific_gravity - 0.5644 * np.log10(temperature_rankine)
     )
     viscosity = (10**log_viscosity) - 1
     return max(0.0, viscosity)
@@ -463,7 +449,7 @@ def compute_dead_oil_viscosity_modified_beggs(
     if not (5 <= oil_api_gravity <= 75):
         warnings.warn(
             f"API gravity {oil_api_gravity:.6f} is outside typical range [5, 75]. "
-            f"Dead oil viscosity may be inaccurate."
+            f"Dead oil viscosity may be inaccurate.", stacklevel=2
         )
     return _compute_dead_oil_viscosity_modified_beggs(temperature, oil_api_gravity)
 
@@ -681,9 +667,7 @@ def compute_oil_compressibility(
         or gas_gravity <= 0
         or oil_api_gravity <= 0
     ):
-        raise ValidationError(
-            "All input parameters (P, Pb, T, Gas SG, API) must be positive."
-        )
+        raise ValidationError("All input parameters (P, Pb, T, Gas SG, API) must be positive.")
 
     def compute_base_compressibility(pressure: Number) -> Number:
         current_gor = compute_gas_to_oil_ratio(
@@ -802,9 +786,9 @@ def compute_gas_to_oil_ratio_standing(
             "API gravity must be greater than or equal to 10 for Standing's correlation."
         )
 
-    gor = gas_gravity * (
-        (pressure / 18.2 + 1.4) * 10 ** (0.0125 * oil_api_gravity)
-    ) ** (1 / 1.2048)
+    gor = gas_gravity * ((pressure / 18.2 + 1.4) * 10 ** (0.0125 * oil_api_gravity)) ** (
+        1 / 1.2048
+    )
     return gor
 
 
@@ -901,9 +885,9 @@ def _compute_gas_to_oil_ratio_standing_internal(
     :param gas_gravity: Specific gravity of the gas (relative to air).
     :return: Solution gas-oil ratio (Rs) in (SCF/STB).
     """
-    gor = gas_gravity * (
-        (pressure / 18.2 + 1.4) * 10 ** (0.0125 * oil_api_gravity)
-    ) ** (1 / 1.2048)
+    gor = gas_gravity * ((pressure / 18.2 + 1.4) * 10 ** (0.0125 * oil_api_gravity)) ** (
+        1 / 1.2048
+    )
     return gor
 
 
@@ -1080,9 +1064,7 @@ def compute_hydrocarbon_in_place(
     :return: Free hydrocarbon/water in place (OIP/WIP in STB, and GIP in SCF).
     """
     if hydrocarbon_type not in {"oil", "gas", "water"}:
-        raise ValidationError(
-            "Hydrocarbon type must be either 'oil', 'gas', or 'water'."
-        )
+        raise ValidationError("Hydrocarbon type must be either 'oil', 'gas', or 'water'.")
     if area <= 0 or thickness <= 0:
         raise ValidationError("Area and thickness must be positive values.")
     if porosity < 0 or porosity > 1:
@@ -1229,10 +1211,7 @@ def compute_effective_todd_longstaff_omega(
     ```python
     # CO2 flood with MMP = 2000 psi
     compute_effective_todd_longstaff_omega(
-        pressure=2500,
-        base_omega=0.67,
-        minimum_miscibility_pressure=2000,
-        transition_width=500
+        pressure=2500, base_omega=0.67, minimum_miscibility_pressure=2000, transition_width=500
     )
     0.54  # Partial miscibility developed
     ```
@@ -1300,28 +1279,19 @@ def compute_todd_longstaff_effective_viscosity(
     ```python
     # Immiscible case (omega = 0)
     compute_todd_longstaff_effective_viscosity(
-        oil_viscosity=10.0,
-        solvent_viscosity=0.05,
-        solvent_concentration=0.3,
-        omega=0.0
+        oil_viscosity=10.0, solvent_viscosity=0.05, solvent_concentration=0.3, omega=0.0
     )
     0.147  # Harmonic mean - segregated flow
 
     # Fully miscible case (omega = 1)
     compute_todd_longstaff_effective_viscosity(
-        oil_viscosity=10.0,
-        solvent_viscosity=0.05,
-        solvent_concentration=0.3,
-        omega=1.0
+        oil_viscosity=10.0, solvent_viscosity=0.05, solvent_concentration=0.3, omega=1.0
     )
     7.015  # Arithmetic mean - fully mixed
 
     # Typical CO2 flood (omega = 0.67)
     compute_todd_longstaff_effective_viscosity(
-        oil_viscosity=10.0,
-        solvent_viscosity=0.05,
-        solvent_concentration=0.3,
-        omega=0.67
+        oil_viscosity=10.0, solvent_viscosity=0.05, solvent_concentration=0.3, omega=0.67
     )
     0.89  # Realistic mixture viscosity
     ```
@@ -1428,28 +1398,34 @@ def compute_todd_longstaff_effective_density(
     ```python
     # CO2 (light) displacing oil (heavy)
     compute_todd_longstaff_effective_density(
-        oil_density=50.0,        # lb/ft³
-        solvent_density=30.0,    # lb/ft³ (CO2 is lighter)
-        oil_viscosity=10.0,      # cP
+        oil_density=50.0,  # lb/ft³
+        solvent_density=30.0,  # lb/ft³ (CO2 is lighter)
+        oil_viscosity=10.0,  # cP
         solvent_viscosity=0.05,  # cP (CO2 is much less viscous)
         solvent_concentration=0.3,
-        omega=0.67
+        omega=0.67,
     )
     44.2  # Effective density between pure values
 
     # Fully segregated (omega=0): flow-weighted density
     compute_todd_longstaff_effective_density(
-        oil_density=50.0, solvent_density=30.0,
-        oil_viscosity=10.0, solvent_viscosity=0.05,
-        solvent_concentration=0.3, omega=0.0
+        oil_density=50.0,
+        solvent_density=30.0,
+        oil_viscosity=10.0,
+        solvent_viscosity=0.05,
+        solvent_concentration=0.3,
+        omega=0.0,
     )
     30.6  # Much closer to solvent (it flows more easily)
 
     # Fully mixed (omega=1): volume-weighted density
     compute_todd_longstaff_effective_density(
-        oil_density=50.0, solvent_density=30.0,
-        oil_viscosity=10.0, solvent_viscosity=0.05,
-        solvent_concentration=0.3, omega=1.0
+        oil_density=50.0,
+        solvent_density=30.0,
+        oil_viscosity=10.0,
+        solvent_viscosity=0.05,
+        solvent_concentration=0.3,
+        omega=1.0,
     )
     44.0  # Simple volume average: 0.3*30 + 0.7*50
     ```

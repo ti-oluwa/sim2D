@@ -13,7 +13,7 @@ from bores.typing import CellArray, IntArray, OneDimension, Side
 __all__ = ["as_pyvista_grid"]
 
 
-SIDE_ALIASES: typing.Dict[str, Side] = {
+SIDE_ALIASES: dict[str, Side] = {
     "left": Side.WEST,
     "right": Side.EAST,
     "front": Side.SOUTH,
@@ -22,14 +22,14 @@ SIDE_ALIASES: typing.Dict[str, Side] = {
     "down": Side.BOTTOM,
 }
 
-AXIS_SIDES: typing.Dict[int, typing.Tuple[Side, Side]] = {
+AXIS_SIDES: dict[int, tuple[Side, Side]] = {
     0: (Side.WEST, Side.EAST),
     1: (Side.SOUTH, Side.NORTH),
     2: (Side.TOP, Side.BOTTOM),
 }
 
 
-def resolve_side(side: typing.Union[Side, str]) -> Side:
+def resolve_side(side: Side | str) -> Side:
     """
     Resolve a `Side`, its `.value` string, or a common alias
     ('left'/'right'/'front'/'back'/'up'/'down') to a `Side` member.
@@ -51,7 +51,7 @@ def resolve_side(side: typing.Union[Side, str]) -> Side:
         raise ValidationError(f"Unknown side {side!r}. Valid values: {valid}.") from exc
 
 
-def classify_boundary_faces(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+def classify_boundary_faces(grid: Grid) -> dict[Side, IntArray[OneDimension]]:
     """
     Classify every boundary face of `grid` into one of the six `Side`s.
 
@@ -113,7 +113,7 @@ def classify_boundary_faces(grid: Grid) -> typing.Dict[Side, IntArray[OneDimensi
     dominant_sign[dominant_sign == 0.0] = 1.0
 
     positions = np.arange(len(boundary))
-    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    result: dict[Side, IntArray[OneDimension]] = {}
     for axis, (negative_side, positive_side) in AXIS_SIDES.items():
         on_axis = dominant_axis == axis
         result[negative_side] = positions[on_axis & (dominant_sign < 0.0)].astype(  # type: ignore[assignment]
@@ -125,7 +125,7 @@ def classify_boundary_faces(grid: Grid) -> typing.Dict[Side, IntArray[OneDimensi
     return result
 
 
-def classify_boundary_cells(grid: Grid) -> typing.Dict[Side, IntArray[OneDimension]]:
+def classify_boundary_cells(grid: Grid) -> dict[Side, IntArray[OneDimension]]:
     """
     Classify every boundary-adjacent cell of `grid` into one of the six
     `Side`s, derived from `classify_boundary_faces`.
@@ -143,7 +143,7 @@ def classify_boundary_cells(grid: Grid) -> typing.Dict[Side, IntArray[OneDimensi
     """
     faces_by_side = classify_boundary_faces(grid)
     boundary = grid.boundary_face_indices
-    result: typing.Dict[Side, IntArray[OneDimension]] = {}
+    result: dict[Side, IntArray[OneDimension]] = {}
     for side, face_positions in faces_by_side.items():
         if len(face_positions) == 0:
             result[side] = np.empty(0, dtype=np.int32)
@@ -156,9 +156,9 @@ def classify_boundary_cells(grid: Grid) -> typing.Dict[Side, IntArray[OneDimensi
 
 def cells_on_side(
     grid: Grid,
-    side: typing.Union[Side, str],
+    side: Side | str,
     *,
-    classified: typing.Optional[typing.Mapping[Side, IntArray[OneDimension]]] = None,
+    classified: typing.Mapping[Side, IntArray[OneDimension]] | None = None,
 ) -> IntArray[OneDimension]:
     """
     Global cell indices of every boundary-adjacent cell on one flank of `grid`.
@@ -225,9 +225,7 @@ def _count_cell_entries(
         n_verts_total = np.int64(0)
         for face_idx_local in range(face_start, face_end):
             face_idx = cell_face_indices[face_idx_local]
-            n_verts_total += (
-                face_vertex_offsets[face_idx + 1] - face_vertex_offsets[face_idx]
-            )
+            n_verts_total += face_vertex_offsets[face_idx + 1] - face_vertex_offsets[face_idx]
         # 1 (total_count) + 1 (n_faces) + n_faces (per-face counts) + n_verts_total
         counts[cell_idx] = np.int64(2) + np.int64(n_faces) + n_verts_total
     return counts
@@ -299,7 +297,7 @@ def _fill_cell_entries(
 def as_pyvista_grid(
     grid: Grid,
     *,
-    cell_data: typing.Optional[typing.Dict[str, CellArray]] = None,
+    cell_data: dict[str, CellArray] | None = None,
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `pyvista.UnstructuredGrid`.
@@ -419,8 +417,7 @@ def as_pyvista_grid(
             arr = np.asarray(array)
             if arr.shape[0] != n_cells:
                 raise ValueError(
-                    f"cell_data[{name!r}] has {arr.shape[0]} entries "
-                    f"but grid has {n_cells} cells."
+                    f"cell_data[{name!r}] has {arr.shape[0]} entries but grid has {n_cells} cells."
                 )
             pv_grid.cell_data[name] = arr[valid_cell_mask]
     return pv_grid

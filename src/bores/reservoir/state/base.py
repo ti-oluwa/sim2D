@@ -107,9 +107,7 @@ class Hysteresis(StoreSerializable):
             water_imbibition_flag=typing.cast(
                 BooleanCellArray, np.zeros(sw.shape, dtype=np.bool_)
             ),
-            gas_imbibition_flag=typing.cast(
-                BooleanCellArray, np.zeros(sg.shape, dtype=np.bool_)
-            ),
+            gas_imbibition_flag=typing.cast(BooleanCellArray, np.zeros(sg.shape, dtype=np.bool_)),
             water_reversal_saturation=typing.cast(CellArray, sw.copy()),
             gas_reversal_saturation=typing.cast(CellArray, sg.copy()),
         )
@@ -348,9 +346,7 @@ class ReservoirState(StoreSerializable):
     gas-condensate simulations.
     """
 
-    solvent_concentration: CellArray = attrs.field(
-        factory=lambda: np.zeros(0, dtype=get_dtype())
-    )
+    solvent_concentration: CellArray = attrs.field(factory=lambda: np.zeros(0, dtype=get_dtype()))
     """
     Shape (n_cells,) - solvent volume fraction in the oil-phase mixture
     (dimensionless, [0, 1]).
@@ -360,7 +356,7 @@ class ReservoirState(StoreSerializable):
     black-oil (zero memory cost).
     """
 
-    hysteresis: typing.Optional[Hysteresis] = None
+    hysteresis: Hysteresis | None = None
     """
     Optional `HysteresisState` for Killough scanning curves.
     `None` (default) for simulations without hysteresis.
@@ -387,9 +383,7 @@ class ReservoirState(StoreSerializable):
         """
         return typing.cast(
             CellArray,
-            self.free_gas_mass
-            + self.dissolved_gas_mass_in_oil
-            + self.dissolved_gas_mass_in_water,
+            self.free_gas_mass + self.dissolved_gas_mass_in_oil + self.dissolved_gas_mass_in_water,
         )
 
     @property
@@ -433,7 +427,7 @@ class ReservoirState(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ReservoirState` with all dimensional quantities rescaled
@@ -466,27 +460,17 @@ class ReservoirState(StoreSerializable):
             water_saturation=self.water_saturation,
             gas_saturation=self.gas_saturation,
             solution_gor=scale(self.solution_gor, gor_factor),
-            oil_bubble_point_pressure=scale(
-                self.oil_bubble_point_pressure, pressure_factor
-            ),
+            oil_bubble_point_pressure=scale(self.oil_bubble_point_pressure, pressure_factor),
             vaporized_oil_ratio=scale(self.vaporized_oil_ratio, gor_factor),
             gas_dew_point_pressure=scale(self.gas_dew_point_pressure, pressure_factor),
             gas_solubility_in_water=scale(self.gas_solubility_in_water, gor_factor),
-            water_bubble_point_pressure=scale(
-                self.water_bubble_point_pressure, pressure_factor
-            ),
+            water_bubble_point_pressure=scale(self.water_bubble_point_pressure, pressure_factor),
             oil_mass=scale(self.oil_mass, mass_factor),
             water_mass=scale(self.water_mass, mass_factor),
             free_gas_mass=scale(self.free_gas_mass, mass_factor),
-            dissolved_gas_mass_in_oil=scale(
-                self.dissolved_gas_mass_in_oil, mass_factor
-            ),
-            dissolved_gas_mass_in_water=scale(
-                self.dissolved_gas_mass_in_water, mass_factor
-            ),
-            vaporized_oil_mass_in_gas=scale(
-                self.vaporized_oil_mass_in_gas, mass_factor
-            ),
+            dissolved_gas_mass_in_oil=scale(self.dissolved_gas_mass_in_oil, mass_factor),
+            dissolved_gas_mass_in_water=scale(self.dissolved_gas_mass_in_water, mass_factor),
+            vaporized_oil_mass_in_gas=scale(self.vaporized_oil_mass_in_gas, mass_factor),
             solvent_concentration=self.solvent_concentration,
             hysteresis=self.hysteresis,
             unit_system=target,

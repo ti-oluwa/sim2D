@@ -5,7 +5,7 @@ import attrs
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import root_scalar
-from scipy.special import j0, j1, y0, y1
+from scipy.special import j1, y1
 from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
@@ -127,10 +127,7 @@ def _finite_dimensionless_pressure_derivative(
     for beta in betas:
         j1_beta_red = j1(beta * r_ed)
         series += (
-            -2.0
-            * np.exp(-(beta**2) * t_d)
-            * j1_beta_red**2
-            / (j1_beta_red**2 - j1(beta) ** 2)
+            -2.0 * np.exp(-(beta**2) * t_d) * j1_beta_red**2 / (j1_beta_red**2 - j1(beta) ** 2)
         )
     return first_term + series
 
@@ -269,32 +266,32 @@ class CarterTracyAquifer(BoundaryCondition):
     initial_pressure: Number
     """Initial aquifer / reservoir pressure in `unit_system` pressure units."""
 
-    aquifer_permeability: typing.Optional[Number] = attrs.field(default=None)
+    aquifer_permeability: Number | None = attrs.field(default=None)
     """Aquifer permeability. Physical mode only."""
 
-    aquifer_porosity: typing.Optional[Number] = attrs.field(default=None)
+    aquifer_porosity: Number | None = attrs.field(default=None)
     """Aquifer porosity (fraction). Physical mode only."""
 
-    aquifer_compressibility: typing.Optional[Number] = attrs.field(default=None)
+    aquifer_compressibility: Number | None = attrs.field(default=None)
     """Total aquifer compressibility. Physical mode only."""
 
-    water_viscosity: typing.Optional[Number] = attrs.field(default=None)
+    water_viscosity: Number | None = attrs.field(default=None)
     """Water viscosity at reservoir conditions. Physical mode only."""
 
-    inner_radius: typing.Optional[Number] = attrs.field(default=None)
+    inner_radius: Number | None = attrs.field(default=None)
     """Reservoir-aquifer contact radius. Physical mode only."""
 
-    outer_radius: typing.Optional[Number] = attrs.field(default=None)
+    outer_radius: Number | None = attrs.field(default=None)
     """
     Outer aquifer extent. Physical mode only. Always sets total aquifer
     storage capacity (via `r_e² - r_w²` in `aquifer_constant`); also sets
     the transient response's `r_eD = r_e/r_w` when `bounded_aquifer=True`.
     """
 
-    aquifer_thickness: typing.Optional[Number] = attrs.field(default=None)
+    aquifer_thickness: Number | None = attrs.field(default=None)
     """Aquifer thickness. Physical mode only."""
 
-    aquifer_constant: typing.Optional[Number] = attrs.field(default=None)
+    aquifer_constant: Number | None = attrs.field(default=None)
     """
     Pre-computed or history-matched aquifer constant aquifer_constant
     (reservoir volume / pressure in `unit_system`).
@@ -327,7 +324,7 @@ class CarterTracyAquifer(BoundaryCondition):
     physical mode) to get bounded behaviour.
     """
 
-    dimensionless_time_scale: typing.Optional[Number] = attrs.field(default=None)
+    dimensionless_time_scale: Number | None = attrs.field(default=None)
     """
     `tD / t` - dimensionless time per unit of `unit_system` time.
     Calibrated-constant mode only, optional but recommended. When set,
@@ -347,9 +344,7 @@ class CarterTracyAquifer(BoundaryCondition):
 
     # Derived scalars
 
-    _resolved_aquifer_constant: Number = attrs.field(
-        default=0.0, init=False, repr=False
-    )
+    _resolved_aquifer_constant: Number = attrs.field(default=0.0, init=False, repr=False)
     """
     Resolved aquifer constant aquifer_constant in [reservoir volume / pressure]
     in `unit_system` units. Set on initialization.
@@ -362,7 +357,7 @@ class CarterTracyAquifer(BoundaryCondition):
     Resolved `r_e / r_w`. Set on initialization.
     """
 
-    _bessel_beta_roots: typing.Optional[NumberArray[typing.Any]] = attrs.field(
+    _bessel_beta_roots: NumberArray[typing.Any] | None = attrs.field(
         default=None, init=False, repr=False
     )
     """
@@ -373,7 +368,7 @@ class CarterTracyAquifer(BoundaryCondition):
     Set on initialization.
     """
 
-    _hydraulic_diffusivity: typing.Optional[Number] = attrs.field(
+    _hydraulic_diffusivity: Number | None = attrs.field(
         default=None, init=False, repr=False
     )
     """
@@ -397,17 +392,13 @@ class CarterTracyAquifer(BoundaryCondition):
     `unit_system` pressure units. Initialised to `initial_pressure`.
     """
 
-    _previous_dimensionless_time: Number = attrs.field(
-        default=0.0, init=False, repr=False
-    )
+    _previous_dimensionless_time: Number = attrs.field(default=0.0, init=False, repr=False)
     """
     Dimensionless time `tD` at the previous `evaluate` call.
     Initialised to 0.0.
     """
 
-    _previous_cumulative_influx: Number = attrs.field(
-        default=0.0, init=False, repr=False
-    )
+    _previous_cumulative_influx: Number = attrs.field(default=0.0, init=False, repr=False)
     """
     Cumulative aquifer influx `We` at the previous `evaluate` call,
     in `unit_system` reservoir volume units. Initialised to 0.0.
@@ -449,9 +440,7 @@ class CarterTracyAquifer(BoundaryCondition):
             if self.inner_radius <= 0:
                 raise ValidationError("`inner_radius` must be positive.")
             if self.outer_radius <= self.inner_radius:
-                raise ValidationError(
-                    "`outer_radius` must be greater than `inner_radius`."
-                )
+                raise ValidationError("`outer_radius` must be greater than `inner_radius`.")
 
             # Convert inputs to FIELD for physics constants
             # 1.119 and 6.328e-3 are FIELD-unit constants from Carter & Tracy
@@ -462,9 +451,7 @@ class CarterTracyAquifer(BoundaryCondition):
                 r_w_ft = self.inner_radius * to_field["length"]
                 r_e_ft = self.outer_radius * to_field["length"]
                 height_ft = self.aquifer_thickness * to_field["length"]
-                compressibility_psi = (
-                    self.aquifer_compressibility * to_field["compressibility"]
-                )
+                compressibility_psi = self.aquifer_compressibility * to_field["compressibility"]
                 permeability_md = self.aquifer_permeability * to_field["permeability"]
                 viscosity_cp = self.water_viscosity * to_field["viscosity"]
                 from_field = get_conversion_factors(UnitSystem.FIELD, self.unit_system)
@@ -506,9 +493,7 @@ class CarterTracyAquifer(BoundaryCondition):
 
             if from_field is not None:
                 aquifer_constant = (
-                    aquifer_constant_ft3_per_psi
-                    * from_field["volume"]
-                    / from_field["pressure"]
+                    aquifer_constant_ft3_per_psi * from_field["volume"] / from_field["pressure"]
                 )
             else:
                 aquifer_constant = aquifer_constant_ft3_per_psi
@@ -540,9 +525,7 @@ class CarterTracyAquifer(BoundaryCondition):
 
         else:
             # Calibrated-constant mode: aquifer_constant supplied directly in unit_system
-            object.__setattr__(
-                self, "_resolved_aquifer_constant", self.aquifer_constant
-            )
+            object.__setattr__(self, "_resolved_aquifer_constant", self.aquifer_constant)
             object.__setattr__(
                 self,
                 "_resolved_dimensionless_radius_ratio",
@@ -676,20 +659,12 @@ class CarterTracyAquifer(BoundaryCondition):
         td_2 = t_d**2.0
         td_25 = t_d**2.5
         E = 716.441 + 46.7984 * sqrt_td + 270.038 * t_d + 71.0098 * td_15
-        F = (
-            1296.86 * sqrt_td
-            + 1204.73 * t_d
-            + 618.618 * td_15
-            + 538.072 * td_2
-            + 142.41 * td_25
-        )
+        F = 1296.86 * sqrt_td + 1204.73 * t_d + 618.618 * td_15 + 538.072 * td_2 + 142.41 * td_25
         if F == 0.0:
             return 0.0
         return E / F
 
-    def _compute_cumulative_influx(
-        self, current_t_d: Number, current_delta_p: Number
-    ) -> Number:
+    def _compute_cumulative_influx(self, current_t_d: Number, current_delta_p: Number) -> Number:
         """
         Apply the Carter-Tracy (1960) recurrence to compute cumulative influx
         at the current dimensionless time.
@@ -718,9 +693,7 @@ class CarterTracyAquifer(BoundaryCondition):
             >= _bounded_aquifer_threshold(self._resolved_dimensionless_radius_ratio)
         ):
             r_d = self._resolved_dimensionless_radius_ratio
-            current_p_d = _finite_dimensionless_pressure(
-                current_t_d, r_d, self._bessel_beta_roots
-            )
+            current_p_d = _finite_dimensionless_pressure(current_t_d, r_d, self._bessel_beta_roots)
             current_p_d_prime = _finite_dimensionless_pressure_derivative(
                 current_t_d, r_d, self._bessel_beta_roots
             )
@@ -737,14 +710,12 @@ class CarterTracyAquifer(BoundaryCondition):
             # Degenerate: pD ≈ tD_{n-1} * pD'; return previous value unchanged
             return previous_we
 
-        numerator_bracket = (
-            aquifer_constant * current_delta_p - previous_we * current_p_d_prime
-        )
+        numerator_bracket = aquifer_constant * current_delta_p - previous_we * current_p_d_prime
         return previous_we + delta_t_d * (numerator_bracket / denominator)
 
     def _advance(
         self, time: Number, average_pressure: Number
-    ) -> typing.Tuple[Number, Number, Number]:
+    ) -> tuple[Number, Number, Number]:
         """
         Compute `(current_t_d, we_n, rate)` from `time` and `average_pressure`,
         using `self`'s currently *committed* recursive state as the base.
@@ -857,15 +828,11 @@ class CarterTracyAquifer(BoundaryCondition):
         if n_faces == 0:
             return typing.cast(NumberArray[NDimension], np.empty(0, dtype=dtype))
 
-        average_pressure = self._average_boundary_pressure(
-            face_positions, state, reservoir
-        )
+        average_pressure = self._average_boundary_pressure(face_positions, state, reservoir)
         _, _, rate = self._advance(time, average_pressure)
 
         per_face_rate = rate / n_faces
-        return typing.cast(
-            NumberArray[NDimension], np.full(n_faces, per_face_rate, dtype=dtype)
-        )
+        return typing.cast(NumberArray[NDimension], np.full(n_faces, per_face_rate, dtype=dtype))
 
     def commit(
         self,
@@ -903,9 +870,7 @@ class CarterTracyAquifer(BoundaryCondition):
         if len(face_positions) == 0:
             return self
 
-        average_pressure = self._average_boundary_pressure(
-            face_positions, state, reservoir
-        )
+        average_pressure = self._average_boundary_pressure(face_positions, state, reservoir)
         current_t_d, we_n, _ = self._advance(time, average_pressure)
 
         new_instance = attrs.evolve(self)
@@ -934,7 +899,7 @@ class CarterTracyAquifer(BoundaryCondition):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `CarterTracyAquifer` with all dimensional parameters
@@ -995,14 +960,10 @@ class CarterTracyAquifer(BoundaryCondition):
                 else None
             ),
             inner_radius=(
-                self.inner_radius * length_factor
-                if self.inner_radius is not None
-                else None
+                self.inner_radius * length_factor if self.inner_radius is not None else None
             ),
             outer_radius=(
-                self.outer_radius * length_factor
-                if self.outer_radius is not None
-                else None
+                self.outer_radius * length_factor if self.outer_radius is not None else None
             ),
             aquifer_thickness=(
                 self.aquifer_thickness * length_factor
@@ -1045,8 +1006,8 @@ class CarterTracyAquifer(BoundaryCondition):
         )
         return new_instance
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        data: typing.Dict[str, typing.Any] = {
+    def __dump__(self) -> dict[str, typing.Any]:
+        data: dict[str, typing.Any] = {
             "initial_pressure": self.initial_pressure,
             "angle": self.angle,
             "unit_system": self.unit_system.value,
@@ -1099,9 +1060,7 @@ class CarterTracyAquifer(BoundaryCondition):
             instance = cls(
                 initial_pressure=float(data["initial_pressure"]),
                 aquifer_constant=float(data["aquifer_constant"]),
-                dimensionless_radius_ratio=float(
-                    data.get("dimensionless_radius_ratio", 10.0)
-                ),
+                dimensionless_radius_ratio=float(data.get("dimensionless_radius_ratio", 10.0)),
                 dimensionless_time_scale=(
                     float(data["dimensionless_time_scale"])
                     if data.get("dimensionless_time_scale") is not None
@@ -1112,9 +1071,7 @@ class CarterTracyAquifer(BoundaryCondition):
                 unit_system=UnitSystem(data.get("unit_system", UnitSystem.FIELD.value)),
             )
 
-        object.__setattr__(
-            instance, "_previous_time", float(data.get("previous_time", 0.0))
-        )
+        object.__setattr__(instance, "_previous_time", float(data.get("previous_time", 0.0)))
         object.__setattr__(
             instance,
             "_previous_pressure",

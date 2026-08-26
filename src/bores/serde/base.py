@@ -15,7 +15,6 @@ from typing_extensions import Self
 
 from bores.errors import DeserializationError, SerializationError, ValidationError
 from bores.serde.utils import deserialize_ndarray, serialize_ndarray
-from bores.typing import T
 
 __all__ = [
     "Serializable",
@@ -36,7 +35,7 @@ def _is_generic_alias(typ: typing.Any) -> bool:
     return hasattr(typ, "__origin__") and typ.__origin__ is not None
 
 
-def _get_origin_class(typ: typing.Any) -> typing.Optional[type]:
+def _get_origin_class(typ: typing.Any) -> type | None:
     if _is_generic_alias(typ):
         return typing.get_origin(typ)
     if isinstance(typ, type):
@@ -89,19 +88,19 @@ def _is_ndarray_type(typ: typing.Any) -> bool:
     return isinstance(origin, type) and issubclass(origin, np.ndarray)
 
 
-def _unwrap_optional(typ: typing.Any) -> typing.Tuple[typing.List[typing.Any], bool]:
+def _unwrap_optional(typ: typing.Any) -> tuple[list[typing.Any], bool]:
     if not _is_optional_type(typ):
         return [typ], False
     args = [arg for arg in typing.get_args(typ) if arg is not type(None)]
     return args, True
 
 
-_TYPE_SERIALIZERS: typing.Dict[
-    typing.Type[typing.Any],
+_TYPE_SERIALIZERS: dict[
+    type[typing.Any],
     typing.Callable[[typing.Any], typing.Any],
 ] = {}
-_TYPE_DESERIALIZERS: typing.Dict[
-    typing.Type[typing.Any],
+_TYPE_DESERIALIZERS: dict[
+    type[typing.Any],
     typing.Callable[[typing.Any], typing.Any],
 ] = {}
 _type_serializers_lock = threading.Lock()
@@ -109,7 +108,7 @@ _type_deserializers_lock = threading.Lock()
 
 
 def register_type_serializer(
-    typ: typing.Type[typing.Any],
+    typ: type[typing.Any],
     serializer: typing.Callable[[typing.Any], typing.Any],
 ) -> None:
     """Register arg global type serializer for arg specific type. `f(value) -> data`."""
@@ -118,7 +117,7 @@ def register_type_serializer(
 
 
 def register_type_deserializer(
-    typ: typing.Type[typing.Any],
+    typ: type[typing.Any],
     deserializer: typing.Callable[[typing.Any], typing.Any],
 ) -> None:
     """Register arg global type deserializer for arg specific type. `f(data) -> value`."""
@@ -126,8 +125,8 @@ def register_type_deserializer(
         _TYPE_DESERIALIZERS[typ] = deserializer
 
 
-def _get_primary_types(typ: typing.Any) -> typing.List[typing.Any]:
-    result: typing.List[typing.Any] = []
+def _get_primary_types(typ: typing.Any) -> list[typing.Any]:
+    result: list[typing.Any] = []
     if typ is type(None):
         return result
 
@@ -166,8 +165,8 @@ def _get_primary_types(typ: typing.Any) -> typing.List[typing.Any]:
 
 def _direct_registry_handler(
     typ: typing.Any,
-    registry: typing.Mapping[typing.Type[typing.Any], typing.Any],
-) -> typing.Optional[typing.Any]:
+    registry: typing.Mapping[type[typing.Any], typing.Any],
+) -> typing.Any | None:
     """
     Look up `typ` (or its origin class's MRO) directly in `registry` with
     no Optional/Union/container unwrapping.
@@ -187,8 +186,8 @@ def _direct_registry_handler(
 
 def _find_type_handler(
     typ: typing.Any,
-    registry: typing.Mapping[typing.Type[typing.Any], typing.Any],
-) -> typing.Optional[typing.Any]:
+    registry: typing.Mapping[type[typing.Any], typing.Any],
+) -> typing.Any | None:
     for candidate in _get_primary_types(typ):
         handler = _direct_registry_handler(candidate, registry)
         if handler is not None:
@@ -198,7 +197,7 @@ def _find_type_handler(
 
 def _discover_type_serializers(
     fields: typing.Mapping[str, typing.Any],
-) -> typing.Dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
+) -> dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
     """
     Auto-discover per-type serializers from `_TYPE_SERIALIZERS`.
 
@@ -209,7 +208,7 @@ def _discover_type_serializers(
     per-field dump/load loop apply the handler to the whole container
     value instead of mapping it over each element.
     """
-    discovered: typing.Dict[typing.Any, typing.Any] = {}
+    discovered: dict[typing.Any, typing.Any] = {}
     with _type_serializers_lock:
         snapshot = dict(_TYPE_SERIALIZERS)
 
@@ -225,9 +224,9 @@ def _discover_type_serializers(
 
 def _discover_type_deserializers(
     fields: typing.Mapping[str, typing.Any],
-) -> typing.Dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
+) -> dict[typing.Any, typing.Callable[[typing.Any], typing.Any]]:
     """Deserializer analogue of `_discover_type_serializers`."""
-    discovered: typing.Dict[typing.Any, typing.Any] = {}
+    discovered: dict[typing.Any, typing.Any] = {}
     with _type_deserializers_lock:
         snapshot = dict(_TYPE_DESERIALIZERS)
 
@@ -260,22 +259,16 @@ def _fallback_structure(value: typing.Any, typ: typing.Any) -> typing.Any:
 # would otherwise shadow it entirely (breaking every `Enum`-typed field,
 # not just ones nested inside arg container).
 converter.register_unstructure_hook_func(
-    check_func=lambda t: (
-        not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t)
-    ),
+    check_func=lambda t: not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t),
     func=_fallback_unstructure,
 )
 converter.register_structure_hook_func(
-    check_func=lambda t: (
-        not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t)
-    ),
+    check_func=lambda t: not _is_generic_alias(t) and not attrs.has(t) and not _is_enum_type(t),
     func=_fallback_structure,
 )
 
 
-def _structure_serializable(
-    data: typing.Any, cls: typing.Type["Serializable"]
-) -> "Serializable":
+def _structure_serializable(data: typing.Any, cls: type["Serializable"]) -> "Serializable":
     origin = _get_origin_class(cls) or cls
     if isinstance(data, origin):
         return data  # already arg live object (e.g. mixed manual construction)
@@ -287,12 +280,10 @@ def _unstructure_serializable(obj: "Serializable") -> typing.Mapping[str, typing
 
 
 converter.register_structure_hook_func(_is_serializable_type, _structure_serializable)
-converter.register_unstructure_hook_func(
-    _is_serializable_type, _unstructure_serializable
-)
+converter.register_unstructure_hook_func(_is_serializable_type, _unstructure_serializable)
 
 
-def _unstructure_namedtuple(value: typing.Any) -> typing.Dict[str, typing.Any]:
+def _unstructure_namedtuple(value: typing.Any) -> dict[str, typing.Any]:
     typ = type(value)
     hints = typing.get_type_hints(typ, include_extras=False)
     return {
@@ -304,7 +295,7 @@ def _unstructure_namedtuple(value: typing.Any) -> typing.Dict[str, typing.Any]:
     }
 
 
-def _structure_namedtuple(data: typing.Any, typ: typing.Type[typing.Any]) -> typing.Any:
+def _structure_namedtuple(data: typing.Any, typ: type[typing.Any]) -> typing.Any:
     if not isinstance(data, Mapping):
         return typ(*data)
     hints = typing.get_type_hints(typ, include_extras=False)
@@ -351,19 +342,15 @@ def _fallback_union_disambiguator(data: typing.Any, typ: typing.Any) -> typing.A
        tag) wherever possible.
     """
     members, _ = (
-        _unwrap_optional(typ)
-        if _is_optional_type(typ)
-        else (list(typing.get_args(typ)), False)
+        _unwrap_optional(typ) if _is_optional_type(typ) else (list(typing.get_args(typ)), False)
     )
     if data is None and type(None) in typing.get_args(typ):
         return None
     non_none = [member for member in members if member is not type(None)]
 
-    errors: typing.List[typing.Tuple[typing.Any, Exception]] = []
+    errors: list[tuple[typing.Any, Exception]] = []
 
-    exact_matches = [
-        member for member in non_none if _get_origin_class(member) is type(data)
-    ]
+    exact_matches = [member for member in non_none if _get_origin_class(member) is type(data)]
     for member in exact_matches:
         try:
             return converter.structure(data, member)
@@ -428,7 +415,7 @@ converter.register_structure_hook_factory(
 )
 
 
-def ndarray_serializer(arr: npt.NDArray) -> typing.Dict[str, typing.Any]:
+def ndarray_serializer(arr: npt.NDArray) -> dict[str, typing.Any]:
     return serialize_ndarray(arr)
 
 
@@ -436,7 +423,7 @@ def ndarray_deserializer(data: typing.Any) -> npt.NDArray:
     return deserialize_ndarray(data)
 
 
-def _unstructure_ndarray(obj: npt.NDArray) -> typing.Dict[str, typing.Any]:
+def _unstructure_ndarray(obj: npt.NDArray) -> dict[str, typing.Any]:
     return serialize_ndarray(obj)
 
 
@@ -463,15 +450,13 @@ def register_ndarray_serializers() -> None:
 
 def _find_container_element_handler(
     typ: typing.Any, active: typing.Mapping[typing.Any, typing.Any]
-) -> typing.Optional[typing.Tuple[str, typing.Any, typing.Any]]:
+) -> tuple[str, typing.Any, typing.Any] | None:
     origin = typing.get_origin(typ)
     args = typing.get_args(typ)
     if origin is None or not args:
         return None
 
-    if origin in (dict, Mapping) or (
-        isinstance(origin, type) and issubclass(origin, Mapping)
-    ):
+    if origin in (dict, Mapping) or (isinstance(origin, type) and issubclass(origin, Mapping)):
         value_type = args[1] if len(args) > 1 else None
         if value_type is None:
             return None
@@ -503,7 +488,7 @@ def _find_container_element_handler(
 
 def _find_optional_element_handler(
     typ: typing.Any, active: typing.Mapping[typing.Any, typing.Any]
-) -> typing.Optional[typing.Any]:
+) -> typing.Any | None:
     """
     If `typ` is `Optional[X]` (exactly one non-`None` member) and `X` has arg
     registered handler in `active`, return that handler. `None` otherwise.
@@ -532,24 +517,20 @@ def _find_optional_element_handler(
 
 def _build_serializer(
     fields: typing.Mapping[str, typing.Any],
-    exclude: typing.Optional[typing.Iterable[str]] = None,
-    serializers: typing.Optional[
-        typing.Mapping[
-            typing.Union[str, typing.Type], typing.Callable[[typing.Any], typing.Any]
-        ]
-    ] = None,
-) -> typing.Callable[["Serializable"], typing.Dict[str, typing.Any]]:
+    exclude: typing.Iterable[str] | None = None,
+    serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
+) -> typing.Callable[["Serializable"], dict[str, typing.Any]]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(serializers or {})
-    _discovered: typing.Optional[typing.Dict[typing.Any, typing.Any]] = None
+    _discovered: dict[typing.Any, typing.Any] | None = None
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         nonlocal _discovered
         if _discovered is None:
             _discovered = _discover_type_serializers(fields)
         active = {**_discovered, **explicit}
 
-        result: typing.Dict[str, typing.Any] = {}
+        result: dict[str, typing.Any] = {}
         for field, typ in fields.items():
             if field in exclude_set:
                 continue
@@ -572,9 +553,7 @@ def _build_serializer(
                     mapped = [handler(value) for value in value]
                     result[field] = tuple(mapped) if origin is tuple else mapped
                 else:
-                    result[field] = {
-                        key: handler(value) for key, value in value.items()
-                    }
+                    result[field] = {key: handler(value) for key, value in value.items()}
                 continue
 
             optional_handler = _find_optional_element_handler(typ, active)
@@ -599,20 +578,16 @@ def _build_serializer(
 
 def _build_deserializer(
     fields: typing.Mapping[str, typing.Any],
-    exclude: typing.Optional[typing.Iterable[str]] = None,
-    deserializers: typing.Optional[
-        typing.Mapping[
-            typing.Union[str, typing.Type], typing.Callable[[typing.Any], typing.Any]
-        ]
-    ] = None,
+    exclude: typing.Iterable[str] | None = None,
+    deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
 ) -> typing.Callable[..., "Serializable"]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(deserializers or {})
-    _discovered: typing.Optional[typing.Dict[typing.Any, typing.Any]] = None
+    _discovered: dict[typing.Any, typing.Any] | None = None
 
     @classmethod
     def __load__(
-        cls: typing.Type[SerializableT],
+        cls: type[SerializableT],
         data: typing.Mapping[str, typing.Any],
     ) -> SerializableT:
         nonlocal _discovered
@@ -620,7 +595,7 @@ def _build_deserializer(
             _discovered = _discover_type_deserializers(fields)
         active = {**_discovered, **explicit}
 
-        init_kwargs: typing.Dict[str, typing.Any] = {}
+        init_kwargs: dict[str, typing.Any] = {}
         for field, typ in fields.items():
             if field in exclude_set or field not in data:
                 continue
@@ -643,16 +618,12 @@ def _build_deserializer(
                     mapped = [handler(value) for value in value]
                     init_kwargs[field] = tuple(mapped) if origin is tuple else mapped
                 else:
-                    init_kwargs[field] = {
-                        key: handler(value) for key, value in value.items()
-                    }
+                    init_kwargs[field] = {key: handler(value) for key, value in value.items()}
                 continue
 
             optional_handler = _find_optional_element_handler(typ, active)
             if optional_handler is not None:
-                init_kwargs[field] = (
-                    optional_handler(value) if value is not None else None
-                )
+                init_kwargs[field] = optional_handler(value) if value is not None else None
                 continue
 
             if _is_serializable_type(typ):
@@ -661,8 +632,7 @@ def _build_deserializer(
                     init_kwargs[field] = origin_cls.load(value)  # type: ignore[union-attr]
                 except Exception as exc:
                     raise DeserializationError(
-                        f"Failed to load nested `Serializable` field {field!r} "
-                        f"of type {typ!r}"
+                        f"Failed to load nested `Serializable` field {field!r} of type {typ!r}"
                     ) from exc
                 continue
 
@@ -684,38 +654,24 @@ class SerializableMeta(type):
     def __init__(
         cls,
         name: str,
-        bases: typing.Tuple,
-        namespace: typing.Dict[str, typing.Any],
-        fields: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-        dump_exclude: typing.Optional[typing.Iterable[str]] = None,
-        load_exclude: typing.Optional[typing.Iterable[str]] = None,
-        serializers: typing.Optional[
-            typing.Mapping[
-                typing.Union[str, typing.Type],
-                typing.Callable[[typing.Any], typing.Any],
-            ]
-        ] = None,
-        deserializers: typing.Optional[
-            typing.Mapping[
-                typing.Union[str, typing.Type],
-                typing.Callable[[typing.Any], typing.Any],
-            ]
-        ] = None,
+        bases: tuple,
+        namespace: dict[str, typing.Any],
+        fields: typing.Mapping[str, typing.Any] | None = None,
+        dump_exclude: typing.Iterable[str] | None = None,
+        load_exclude: typing.Iterable[str] | None = None,
+        serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
+        deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
     ):
         super().__init__(name, bases, namespace)
-        parent_serializers: typing.Dict[typing.Any, typing.Any] = {}
-        parent_deserializers: typing.Dict[typing.Any, typing.Any] = {}
-        parent_fields: typing.Dict[str, typing.Any] = {}
+        parent_serializers: dict[typing.Any, typing.Any] = {}
+        parent_deserializers: dict[typing.Any, typing.Any] = {}
+        parent_fields: dict[str, typing.Any] = {}
         for cl in reversed(cls.__mro__[1:-1]):
             if serializable_fields := getattr(cl, "__serializable_fields__", None):
                 parent_fields.update(serializable_fields)
-            if serializable_serializers := getattr(
-                cl, "__serializable_serializers__", None
-            ):
+            if serializable_serializers := getattr(cl, "__serializable_serializers__", None):
                 parent_serializers.update(serializable_serializers)
-            if serializable_deserializers := getattr(
-                cl, "__serializable_deserializers__", None
-            ):
+            if serializable_deserializers := getattr(cl, "__serializable_deserializers__", None):
                 parent_deserializers.update(serializable_deserializers)
 
         try:
@@ -785,25 +741,23 @@ class Serializable(metaclass=SerializableMeta):
     def __init_subclass__(cls, *args: typing.Any, **kwargs: typing.Any) -> None:
         super().__init_subclass__()
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Dump the object to arg dictionary. Overridable per-class hook."""
         raise NotImplementedError
 
     @classmethod
-    def __load__(cls: typing.Type[Self], data: typing.Mapping[str, typing.Any]) -> Self:
+    def __load__(cls: type[Self], data: typing.Mapping[str, typing.Any]) -> Self:
         """Load an object from arg mapping. Overridable per-class hook."""
         raise NotImplementedError
 
     __dump__._is_placeholder = True  # type: ignore
     __load__._is_placeholder = True  # type: ignore
 
-    def dump(self) -> typing.Dict[str, typing.Any]:
+    def dump(self) -> dict[str, typing.Any]:
         try:
             return self.__dump__()  # type: ignore[arg-type]
         except Exception as exc:
-            raise SerializationError(
-                f"Failed to dump {type(self).__name__!r} object"
-            ) from exc
+            raise SerializationError(f"Failed to dump {type(self).__name__!r} object") from exc
 
     @classmethod
     def load(cls, data: typing.Mapping[str, typing.Any]) -> Self:
@@ -812,18 +766,14 @@ class Serializable(metaclass=SerializableMeta):
         except DeserializationError:
             raise
         except Exception as exc:
-            raise DeserializationError(
-                f"Failed to load {cls.__name__!r} object"
-            ) from exc
+            raise DeserializationError(f"Failed to load {cls.__name__!r} object") from exc
 
 
-def dump(o: Serializable, /) -> typing.Dict[str, typing.Any]:
+def dump(o: Serializable, /) -> dict[str, typing.Any]:
     """Dump arg `Serializable` object to arg dictionary."""
     return o.dump()
 
 
-def load(
-    cls: typing.Type[SerializableT], data: typing.Mapping[str, typing.Any]
-) -> SerializableT:
+def load(cls: type[SerializableT], data: typing.Mapping[str, typing.Any]) -> SerializableT:
     """Load arg `Serializable` object from arg dictionary."""
     return cls.load(data)

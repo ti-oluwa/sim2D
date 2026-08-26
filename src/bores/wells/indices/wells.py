@@ -61,7 +61,7 @@ class WellIndex(Serializable):
     well_name: str
     """Name of the well these indices belong to."""
 
-    perforations: typing.Tuple[PerforationIndex, ...] = attrs.field(converter=tuple)
+    perforations: tuple[PerforationIndex, ...] = attrs.field(converter=tuple)
     """Resolved connection factor for each of this well's open perforations."""
 
     total_well_index: Number
@@ -109,7 +109,7 @@ class WellIndex(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a  new `WellIndex` in the *target* unit system.
@@ -126,8 +126,7 @@ class WellIndex(Serializable):
         return attrs.evolve(
             self,
             perforations=tuple(
-                perforation.convert(target, table=table)
-                for perforation in self.perforations
+                perforation.convert(target, table=table) for perforation in self.perforations
             ),
             total_well_index=self.total_well_index * well_index_factor,
             unit_system=target,
@@ -151,10 +150,7 @@ def resolve_well_index_direction(
     :param cell_index: Cell the perforation resolved into.
     :returns: `Orientation.X`, `Orientation.Y`, or `Orientation.Z`.
     """
-    if (
-        perforation.direction is not None
-        and perforation.direction is not Orientation.UNSET
-    ):
+    if perforation.direction is not None and perforation.direction is not Orientation.UNSET:
         return perforation.direction
 
     lengths = {
@@ -165,9 +161,7 @@ def resolve_well_index_direction(
     return min(lengths, key=lengths.get)  # type: ignore[arg-type]
 
 
-def is_locally_cartesian(
-    grid: Grid, cell_index: Integer, tolerance: Number = 0.05
-) -> bool:
+def is_locally_cartesian(grid: Grid, cell_index: Integer, tolerance: Number = 0.05) -> bool:
     """
     Decide whether `cell_index` is "Cartesian-like enough" for Peaceman's
     formula to be valid, vs. requiring the equivalent-radius fallback.
@@ -219,16 +213,14 @@ def compute_peaceman_well_index(
     :return: The well index (mD*ft).
     """
     return (permeability * interval_thickness * net_to_gross) / (
-        np.log(effective_drainage_radius / wellbore_radius)
-        + regime_constant
-        + skin_factor
+        np.log(effective_drainage_radius / wellbore_radius) + regime_constant + skin_factor
     )
 
 
 @numba.njit(cache=True)
 def compute_3D_effective_drainage_radius(
-    interval_thickness: typing.Tuple[Number, Number, Number],
-    permeability: typing.Tuple[Number, Number, Number],
+    interval_thickness: tuple[Number, Number, Number],
+    permeability: tuple[Number, Number, Number],
     well_orientation: Orientation,
 ) -> Number:
     """
@@ -271,8 +263,8 @@ def compute_3D_effective_drainage_radius(
 
 @numba.njit(cache=True)
 def compute_2D_effective_drainage_radius(
-    interval_thickness: typing.Tuple[Number, Number],
-    permeability: typing.Tuple[Number, Number],
+    interval_thickness: tuple[Number, Number],
+    permeability: tuple[Number, Number],
 ) -> Number:
     """
     Compute the effective drainage radius for a well in a 2D reservoir
@@ -309,7 +301,7 @@ def compute_geometric_mean(values: typing.Sequence[Number]) -> Number:
 
 @numba.njit(cache=True)
 def compute_effective_permeability_for_well(
-    permeability: typing.Tuple[Number, Number, Number], orientation: Orientation
+    permeability: tuple[Number, Number, Number], orientation: Orientation
 ) -> Number:
     """
     Compute `k_eff` for Peaceman WI using geometric mean of the two
@@ -353,13 +345,7 @@ def compute_equivalent_radius_well_index(
     :returns: Well index (mD*ft).
     """
     r0 = 0.14 * np.sqrt(cell_volume / completion_length)
-    return (
-        2.0
-        * np.pi
-        * permeability
-        * completion_length
-        / (np.log(r0 / wellbore_radius) + skin)
-    )
+    return 2.0 * np.pi * permeability * completion_length / (np.log(r0 / wellbore_radius) + skin)
 
 
 def resolve_connection_factor(
@@ -472,7 +458,7 @@ def build_wells_indices(
     regime_constant: float = -3 / 4,
     net_to_gross: NumberOrArray[OneDimension] = 1.0,
     **resolve_kwargs: typing.Any,
-) -> typing.Dict[str, WellIndex]:
+) -> dict[str, WellIndex]:
     """
     Resolve every well in `wells` against `grid` and compute connection
     factors for every open perforation.
@@ -492,7 +478,7 @@ def build_wells_indices(
             f"`unit_system` ({wells.unit_system.value})."
         )
 
-    result: typing.Dict[str, WellIndex] = {}
+    result: dict[str, WellIndex] = {}
     for name in wells:
         well = wells[name]
         if well.trajectory is None:
@@ -504,15 +490,13 @@ def build_wells_indices(
                 grid=grid, well=well, **resolve_kwargs
             )
 
-        resolved: typing.List[PerforationIndex] = []
+        resolved: list[PerforationIndex] = []
         total_well_index = 0.0
         for perforation_idx in perforation_indices:
             perforation = perforation_idx.perforation
             cell_idx = perforation_idx.cell_index
             wellbore_radius = perforation.wellbore_radius
-            cell_permeabilities = {
-                axis: array[cell_idx] for axis, array in permeabilities.items()
-            }
+            cell_permeabilities = {axis: array[cell_idx] for axis, array in permeabilities.items()}
             cell_net_to_gross = (
                 net_to_gross[cell_idx] if isinstance(net_to_gross, np.ndarray) else 1.0
             )

@@ -1,4 +1,3 @@
-import typing
 import warnings
 
 import numba
@@ -41,19 +40,19 @@ def build_pressure_grid(
     depth_grid: NDimensionalGrid[NDimension],
     datum_depth: float,
     datum_pressure: float,
-    oil_gradient: typing.Optional[float] = None,
-    water_gradient: typing.Optional[float] = None,
-    gas_gradient: typing.Optional[float] = None,
-    oil_density: typing.Optional[float] = None,
-    water_density: typing.Optional[float] = None,
-    gas_density: typing.Optional[float] = None,
-    oil_specific_gravity: typing.Optional[float] = None,
-    water_specific_gravity: typing.Optional[float] = None,
-    gas_specific_gravity: typing.Optional[float] = None,
-    oil_api_gravity: typing.Optional[float] = None,
-    gas_oil_contact: typing.Optional[float] = None,
-    oil_water_contact: typing.Optional[float] = None,
-    cap_pressure: typing.Optional[float] = None,
+    oil_gradient: float | None = None,
+    water_gradient: float | None = None,
+    gas_gradient: float | None = None,
+    oil_density: float | None = None,
+    water_density: float | None = None,
+    gas_density: float | None = None,
+    oil_specific_gravity: float | None = None,
+    water_specific_gravity: float | None = None,
+    gas_specific_gravity: float | None = None,
+    oil_api_gravity: float | None = None,
+    gas_oil_contact: float | None = None,
+    oil_water_contact: float | None = None,
+    cap_pressure: float | None = None,
     dtype: npt.DTypeLike = None,
 ) -> NDimensionalGrid[NDimension]:
     """
@@ -162,9 +161,9 @@ def build_pressure_grid(
     ```python
     pressure_grid = build_pressure_grid(
         depth_grid=depth_grid,
-        datum_depth=8400.0,      # centre of Layer 3 (ft)
-        datum_pressure=4800.0,   # psia
-        oil_density=37.474,      # lbm/ft³ at initial conditions
+        datum_depth=8400.0,  # centre of Layer 3 (ft)
+        datum_pressure=4800.0,  # psia
+        oil_density=37.474,  # lbm/ft³ at initial conditions
         gas_oil_contact=8200.0,  # ft
         gas_specific_gravity=0.792,
     )
@@ -240,7 +239,7 @@ def build_pressure_grid(
 
     # Compute contact pressures by integrating from datum. These become the inter-zone boundary conditions.
     # Pressure at GOC (propagated from datum using appropriate gradient)
-    pressure_at_goc: typing.Optional[float] = None
+    pressure_at_goc: float | None = None
     if gas_oil_contact is not None:
         # If datum is in oil zone (below GOC), integrate upward to GOC with oil gradient.
         # If datum is in gas zone (above GOC), integrate downward to GOC with gas gradient.
@@ -256,7 +255,7 @@ def build_pressure_grid(
             )
 
     # Pressure at OWC
-    pressure_at_owc: typing.Optional[float] = None
+    pressure_at_owc: float | None = None
     if oil_water_contact is not None:
         if datum_depth <= oil_water_contact:
             # datum is at or above OWC: oil gradient from datum down to OWC
@@ -334,10 +333,10 @@ def build_pressure_grid(
 
 def _resolve_gradient(
     phase: str,
-    gradient: typing.Optional[float],
-    density: typing.Optional[float],
-    specific_gravity: typing.Optional[float],
-    api_gravity: typing.Optional[float],
+    gradient: float | None,
+    density: float | None,
+    specific_gravity: float | None,
+    api_gravity: float | None,
     default: float,
 ) -> float:
     """
@@ -366,8 +365,8 @@ def _validate_pressure_inputs(
     depth_grid: npt.NDArray,
     datum_depth: float,
     datum_pressure: float,
-    gas_oil_contact: typing.Optional[float],
-    oil_water_contact: typing.Optional[float],
+    gas_oil_contact: float | None,
+    oil_water_contact: float | None,
 ) -> None:
     """Validate inputs for build_pressure_grid."""
     if depth_grid.ndim != 3:
@@ -375,9 +374,7 @@ def _validate_pressure_inputs(
             f"`depth_grid` must be 3-D (nx, ny, nz), got shape {depth_grid.shape}."
         )
     if datum_pressure <= 0:
-        raise ValidationError(
-            f"`datum_pressure` must be positive, got {datum_pressure} psia."
-        )
+        raise ValidationError(f"`datum_pressure` must be positive, got {datum_pressure} psia.")
     if datum_depth < 0:
         raise ValidationError(
             f"`datum_depth` must be non-negative (depth is positive downward), "

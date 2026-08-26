@@ -50,7 +50,7 @@ class Fault(Serializable):
     k1: int
     k2: int
     face_direction: str
-    transmissibility_multiplier: typing.Optional[Number] = attrs.field(default=None)
+    transmissibility_multiplier: Number | None = attrs.field(default=None)
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
@@ -85,18 +85,18 @@ class Fault(Serializable):
     def from_deck(cls, deck_file: DeckFile, *, name: str) -> Self: ...
     @typing.overload
     @classmethod
-    def from_deck(cls, deck_file: DeckFile, *, name: None) -> typing.List[Self]: ...
+    def from_deck(cls, deck_file: DeckFile, *, name: None) -> list[Self]: ...
     @typing.overload
     @classmethod
-    def from_deck(cls, deck_file: DeckFile) -> typing.List[Self]: ...
+    def from_deck(cls, deck_file: DeckFile) -> list[Self]: ...
 
     @classmethod
     def from_deck(
         cls,
         deck_file: DeckFile,
         *,
-        name: typing.Optional[str] = None,
-    ) -> typing.Union[Self, typing.List[Self]]:
+        name: str | None = None,
+    ) -> Self | list[Self]:
         """
         Construct one or all `Fault` objects from a parsed `DeckFile`.
 
@@ -116,7 +116,7 @@ class Fault(Serializable):
             raise ValidationError("No FAULTS keyword found in the provided data file.")
 
         multflt_records = deck_file.get("MULTFLT") or []
-        multflt_map: typing.Dict[str, Number] = {
+        multflt_map: dict[str, Number] = {
             record["name"]: record["multiplier"] for record in multflt_records
         }
         if name is not None:
@@ -124,8 +124,7 @@ class Fault(Serializable):
             if not matching:
                 available = sorted({record["name"] for record in fault_records})
                 raise ValidationError(
-                    f"Fault {name!r} not found in FAULTS keyword. "
-                    f"Available faults: {available}."
+                    f"Fault {name!r} not found in FAULTS keyword. Available faults: {available}."
                 )
             record = matching[0]
             return cls(
@@ -205,9 +204,7 @@ def apply_faults(grid: Grid, *faults: Fault) -> Grid:
         references cells outside the grid bounds.
     """
     if not faults:
-        raise ValidationError(
-            "At least one `Fault` must be supplied to `apply_faults`."
-        )
+        raise ValidationError("At least one `Fault` must be supplied to `apply_faults`.")
 
     if grid.dimensions is not None:
         nx, ny, nz = grid.dimensions
@@ -245,13 +242,13 @@ def remove_faults(grid: Grid, *names: str) -> Grid:
     :returns: A new `Grid` with the specified faults removed.
     :raises ValidationError: If a named fault does not exist on the grid.
     """
-    existing_names: typing.Set[str] = set()
+    existing_names: set[str] = set()
     if grid.fault_face_indices:
         existing_names.update(grid.fault_face_indices.keys())
     if grid.nnc_fault_indices:
         existing_names.update(grid.nnc_fault_indices.keys())
 
-    names_to_remove: typing.FrozenSet[str] = (
+    names_to_remove: frozenset[str] = (
         frozenset(names) if names else frozenset(existing_names)
     )
 
@@ -265,7 +262,7 @@ def remove_faults(grid: Grid, *names: str) -> Grid:
 
 
 def _validate_fault_bounds(
-    faults: typing.Tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
+    faults: tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
 ) -> None:
     """
     Validate that all fault IJK ranges are within the grid bounds.
@@ -278,17 +275,11 @@ def _validate_fault_bounds(
     """
     for fault in faults:
         if fault.i2 > nx:
-            raise ValidationError(
-                f"Fault {fault.name!r}: i2={fault.i2} exceeds grid nx={nx}."
-            )
+            raise ValidationError(f"Fault {fault.name!r}: i2={fault.i2} exceeds grid nx={nx}.")
         if fault.j2 > ny:
-            raise ValidationError(
-                f"Fault {fault.name!r}: j2={fault.j2} exceeds grid ny={ny}."
-            )
+            raise ValidationError(f"Fault {fault.name!r}: j2={fault.j2} exceeds grid ny={ny}.")
         if fault.k2 > nz:
-            raise ValidationError(
-                f"Fault {fault.name!r}: k2={fault.k2} exceeds grid nz={nz}."
-            )
+            raise ValidationError(f"Fault {fault.name!r}: k2={fault.k2} exceeds grid nz={nz}.")
 
 
 def _ijk_to_flat(i: Integer, j: Integer, k: Integer, nx: Integer, ny: Integer) -> int:
@@ -310,7 +301,7 @@ def _ijk_to_flat(i: Integer, j: Integer, k: Integer, nx: Integer, ny: Integer) -
 
 def _resolve_fault_cell_pairs(
     fault: Fault, nx: Integer, ny: Integer, nz: Integer
-) -> typing.List[typing.Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """
     Enumerate all cell pairs across a fault interface.
 
@@ -328,7 +319,7 @@ def _resolve_fault_cell_pairs(
     :returns: List of `(cell_a_flat, cell_b_flat)` pairs.
     """
     direction = fault.face_direction
-    pairs: typing.List[typing.Tuple[int, int]] = []
+    pairs: list[tuple[int, int]] = []
 
     for k in range(fault.k1, fault.k2 + 1):
         for j in range(fault.j1, fault.j2 + 1):
@@ -356,7 +347,7 @@ def _resolve_fault_cell_pairs(
     return pairs
 
 
-def _build_face_lookup(grid: Grid) -> typing.Dict[typing.Tuple[int, int], int]:
+def _build_face_lookup(grid: Grid) -> dict[tuple[int, int], int]:
     """
     Build a `{(min_cell, max_cell): face_index}` lookup from `grid.face_cell_indices`.
 
@@ -367,7 +358,7 @@ def _build_face_lookup(grid: Grid) -> typing.Dict[typing.Tuple[int, int], int]:
     :param grid: The source grid.
     :returns: Dict mapping sorted cell pairs to face indices.
     """
-    lookup: typing.Dict[typing.Tuple[int, int], int] = {}
+    lookup: dict[tuple[int, int], int] = {}
     for face_idx in range(grid.n_faces):
         owner = int(grid.face_cell_indices[face_idx, 0])
         neighbour = int(grid.face_cell_indices[face_idx, 1])
@@ -377,7 +368,7 @@ def _build_face_lookup(grid: Grid) -> typing.Dict[typing.Tuple[int, int], int]:
 
 
 def _apply_faults_to_grid(
-    grid: Grid, faults: typing.Tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
+    grid: Grid, faults: tuple[Fault, ...], nx: Integer, ny: Integer, nz: Integer
 ) -> Grid:
     """
     Produce a new `Grid` with the given faults applied.
@@ -400,22 +391,16 @@ def _apply_faults_to_grid(
     face_lookup = _build_face_lookup(grid)
     # Start from copies of existing fault data structures
     fault_face_indices = typing.cast(
-        typing.Dict[str, typing.List[int]],
-        {
-            name: list(indices)
-            for name, indices in (grid.fault_face_indices or {}).items()
-        },
+        dict[str, list[int]],
+        {name: list(indices) for name, indices in (grid.fault_face_indices or {}).items()},
     )
     nnc_fault_indices_lists = typing.cast(
-        typing.Dict[str, typing.List[int]],
-        {
-            name: list(indices)
-            for name, indices in (grid.nnc_fault_indices or {}).items()
-        },
+        dict[str, list[int]],
+        {name: list(indices) for name, indices in (grid.nnc_fault_indices or {}).items()},
     )
 
     # Existing NNC arrays (we may append to these)
-    existing_nnc_pairs: typing.List[typing.Tuple[int, int]] = (
+    existing_nnc_pairs: list[tuple[int, int]] = (
         [
             (int(grid.nnc_cell_indices[i, 0]), int(grid.nnc_cell_indices[i, 1]))
             for i in range(len(grid.nnc_cell_indices))
@@ -423,20 +408,20 @@ def _apply_faults_to_grid(
         if grid.nnc_cell_indices is not None
         else []
     )
-    existing_nnc_types: typing.List[int] = (
+    existing_nnc_types: list[int] = (
         [int(t) for t in grid.nnc_connection_types]
         if grid.nnc_connection_types is not None
         else []
     )
-    existing_nnc_transmissibilities: typing.List[Number] = (
+    existing_nnc_transmissibilities: list[Number] = (
         [t for t in grid.nnc_transmissibilities]
         if grid.nnc_transmissibilities is not None
         else [float("nan")] * len(existing_nnc_pairs)
     )
 
     # Drop existing NNC entries for faults being replaced
-    names_being_replaced: typing.Set[str] = {f.name for f in faults}
-    indices_to_drop: typing.Set[int] = set()
+    names_being_replaced: set[str] = {f.name for f in faults}
+    indices_to_drop: set[int] = set()
     for name in names_being_replaced:
         if name in nnc_fault_indices_lists:
             indices_to_drop.update(nnc_fault_indices_lists.pop(name))
@@ -444,12 +429,12 @@ def _apply_faults_to_grid(
 
     if indices_to_drop:
         # Build compacted NNC arrays excluding dropped indices
-        old_to_new: typing.Dict[int, int] = {}
-        new_nnc_pairs: typing.List[typing.Tuple[int, int]] = []
-        new_nnc_types: typing.List[int] = []
-        new_nnc_transmissibilities: typing.List[Number] = []
+        old_to_new: dict[int, int] = {}
+        new_nnc_pairs: list[tuple[int, int]] = []
+        new_nnc_types: list[int] = []
+        new_nnc_transmissibilities: list[Number] = []
         for old_idx, (cell_pair, nnc_type, transmissibility) in enumerate(
-            zip(existing_nnc_pairs, existing_nnc_types, existing_nnc_transmissibilities)
+            zip(existing_nnc_pairs, existing_nnc_types, existing_nnc_transmissibilities, strict=False)
         ):
             if old_idx in indices_to_drop:
                 continue
@@ -461,9 +446,7 @@ def _apply_faults_to_grid(
 
         # Remap surviving nnc_fault_indices positions
         nnc_fault_indices_lists = {
-            name: [
-                old_to_new[old_idx] for old_idx in old_indices if old_idx in old_to_new
-            ]
+            name: [old_to_new[old_idx] for old_idx in old_indices if old_idx in old_to_new]
             for name, old_indices in nnc_fault_indices_lists.items()
         }
         existing_nnc_pairs = new_nnc_pairs
@@ -477,8 +460,8 @@ def _apply_faults_to_grid(
     # Process each incoming fault
     for fault in faults:
         cell_pairs = _resolve_fault_cell_pairs(fault, nx, ny, nz)
-        face_list: typing.List[int] = []
-        nnc_list: typing.List[int] = []
+        face_list: list[int] = []
+        nnc_list: list[int] = []
 
         for cell_a, cell_b in cell_pairs:
             face_idx = face_lookup.get((cell_a, cell_b))
@@ -507,7 +490,7 @@ def _apply_faults_to_grid(
             nnc_fault_indices_lists[fault.name] = nnc_list
 
     # Build updated fault_transmissibility_multipliers
-    updated_multipliers: typing.Dict[str, Number] = dict(
+    updated_multipliers: dict[str, Number] = dict(
         grid.fault_transmissibility_multipliers or {}
     )
     for fault in faults:
@@ -532,10 +515,7 @@ def _apply_faults_to_grid(
         else None
     )
     merged_fault_face_indices = (
-        {
-            name: np.asarray(idxs, dtype=np.int32)
-            for name, idxs in fault_face_indices.items()
-        }
+        {name: np.asarray(idxs, dtype=np.int32) for name, idxs in fault_face_indices.items()}
         if fault_face_indices
         else None
     )
@@ -560,7 +540,7 @@ def _apply_faults_to_grid(
     )
 
 
-def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
+def _remove_faults_from_grid(grid: Grid, names: frozenset[str]) -> Grid:
     """
     Produce a new `Grid` with the specified faults stripped out.
 
@@ -587,13 +567,11 @@ def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
                 neighbour = int(grid.face_cell_indices[face_idx, 1])
                 is_boundary = owner < 0 or neighbour < 0
                 new_face_connection_types[face_idx] = int(
-                    ConnectionType.BOUNDARY_FACE
-                    if is_boundary
-                    else ConnectionType.INTERIOR_FACE
+                    ConnectionType.BOUNDARY_FACE if is_boundary else ConnectionType.INTERIOR_FACE
                 )
 
     # Determine NNC indices to drop
-    indices_to_drop: typing.Set[int] = set()
+    indices_to_drop: set[int] = set()
     if grid.nnc_fault_indices:
         for name in names:
             nnc_indices = grid.nnc_fault_indices.get(name)
@@ -604,10 +582,10 @@ def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
     n_nnc = grid.n_nnc
     has_nnc_transmissibilities = grid.nnc_transmissibilities is not None
 
-    surviving_pairs: typing.List[typing.Tuple[int, int]] = []
-    surviving_types: typing.List[int] = []
-    surviving_transmissibilities: typing.List[Number] = []
-    old_to_new: typing.Dict[int, int] = {}
+    surviving_pairs: list[tuple[int, int]] = []
+    surviving_types: list[int] = []
+    surviving_transmissibilities: list[Number] = []
+    old_to_new: dict[int, int] = {}
 
     for old_idx in range(n_nnc):
         if old_idx in indices_to_drop:
@@ -631,19 +609,13 @@ def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
 
     # Updated fault maps (minus removed faults, minus any remapped nnc indices)
     new_fault_face_indices = (
-        {
-            name: indices
-            for name, indices in grid.fault_face_indices.items()
-            if name not in names
-        }
+        {name: indices for name, indices in grid.fault_face_indices.items() if name not in names}
         if grid.fault_face_indices
         else None
     )
     new_nnc_fault_indices = (
         {
-            name: np.asarray(
-                [old_to_new[int(i)] for i in idxs if i in old_to_new], dtype=np.int32
-            )
+            name: np.asarray([old_to_new[int(i)] for i in idxs if i in old_to_new], dtype=np.int32)
             for name, idxs in grid.nnc_fault_indices.items()
             if name not in names
         }
@@ -664,9 +636,7 @@ def _remove_faults_from_grid(grid: Grid, names: typing.FrozenSet[str]) -> Grid:
         face_connection_types=new_face_connection_types,
         fault_face_indices=new_fault_face_indices or None,
         nnc_cell_indices=(
-            np.asarray(surviving_pairs, dtype=np.int32).reshape(-1, 2)
-            if surviving_pairs
-            else None
+            np.asarray(surviving_pairs, dtype=np.int32).reshape(-1, 2) if surviving_pairs else None
         ),
         nnc_connection_types=(
             np.asarray(surviving_types, dtype=np.int8) if surviving_types else None

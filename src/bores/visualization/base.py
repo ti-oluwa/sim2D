@@ -129,7 +129,7 @@ class PropertyMeta:
     optimized for their typical value ranges and physical meaning (e.g., pressure uses 'viridis',
     temperature uses 'inferno' for heat-like appearance)."""
 
-    aliases: typing.Optional[typing.Sequence[str]] = None
+    aliases: typing.Sequence[str] | None = None
     """Alternative names that can be used to refer to this property (e.g., 'pressure' for 'oil_pressure')."""
 
     log_scale: bool = False
@@ -149,7 +149,7 @@ class PropertyMeta:
     Example: 0.5 cP viscosity becomes log₁₀(0.5) = -0.301 for plotting,
     but hover text still shows "0.5 cP" to the user."""
 
-    min_val: typing.Optional[float] = None
+    min_val: float | None = None
     """Minimum value for data clipping and normalization. If specified along with max_val,
     all data values will be clipped to this range before visualization.
     
@@ -160,7 +160,7 @@ class PropertyMeta:
     
     Set to None for no minimum clipping."""
 
-    max_val: typing.Optional[float] = None
+    max_val: float | None = None
     """Maximum value for data clipping and normalization. If specified along with min_val,
     all data values will be clipped to this range before visualization.
     
@@ -595,7 +595,7 @@ class PropertyRegistry:
         self._properties = _explode_properties(defaults)
 
     @property
-    def properties(self) -> typing.List[str]:
+    def properties(self) -> list[str]:
         """
         A list of all available property names.
 
@@ -622,9 +622,7 @@ class PropertyRegistry:
         """
         name = self._clean_name(name)
         if name not in self._properties:
-            raise ValueError(
-                f"Unknown property: {name}. Available: {', '.join(self.properties)}"
-            )
+            raise ValueError(f"Unknown property: {name}. Available: {', '.join(self.properties)}")
         return self._properties[name]
 
     def __getitem__(self, name: str, /) -> PropertyMeta:
@@ -652,8 +650,8 @@ class PropertyRegistry:
 
 
 def _explode_properties(
-    properties: typing.Dict[str, PropertyMeta],
-) -> typing.Dict[str, PropertyMeta]:
+    properties: dict[str, PropertyMeta],
+) -> dict[str, PropertyMeta]:
     """Return a new dict with all aliases expanded to point to the same metadata."""
     expanded = {}
     for prop_name, metadata in properties.items():
@@ -894,7 +892,7 @@ def _calculate_colorbar_position(
     col: int,
     rows: int,
     cols: int,
-) -> typing.Dict[str, typing.Any]:
+) -> dict[str, typing.Any]:
     """
     Calculate smart colorbar positioning for subplot grids.
 
@@ -923,9 +921,7 @@ def _calculate_colorbar_position(
     )
 
     # Scale thickness based on number of columns to prevent overlap
-    colorbar_thickness = min(
-        _COLORBAR_MIN_THICKNESS, int(_COLORBAR_BASE_THICKNESS / cols)
-    )
+    colorbar_thickness = min(_COLORBAR_MIN_THICKNESS, int(_COLORBAR_BASE_THICKNESS / cols))
 
     return {
         "x": colorbar_x_position,
@@ -940,18 +936,18 @@ def _calculate_colorbar_position(
 
 def merge_plots(
     *figures: go.Figure,
-    rows: typing.Optional[int] = None,
-    cols: typing.Optional[int] = None,
-    subplot_titles: typing.Optional[typing.Sequence[str]] = None,
+    rows: int | None = None,
+    cols: int | None = None,
+    subplot_titles: typing.Sequence[str] | None = None,
     shared_xaxes: bool = False,
     shared_yaxes: bool = False,
-    vertical_spacing: typing.Optional[float] = None,
-    horizontal_spacing: typing.Optional[float] = None,
-    height: typing.Optional[int] = None,
-    width: typing.Optional[int] = None,
-    title: typing.Optional[str] = None,
+    vertical_spacing: float | None = None,
+    horizontal_spacing: float | None = None,
+    height: int | None = None,
+    width: int | None = None,
+    title: str | None = None,
     show_legend: bool = True,
-    hovermode: typing.Optional[str] = None,
+    hovermode: str | None = None,
 ) -> go.Figure:
     """
     Display multiple Plotly figures in a single unified plot with subplots.
@@ -1172,12 +1168,8 @@ def merge_plots(
         ) from exc
 
     # Track subplot-specific background colors and templates
-    subplot_backgrounds: typing.Dict[
-        typing.Tuple[int, int], typing.Dict[str, typing.Any]
-    ] = {}
-    subplot_fonts: typing.Dict[
-        typing.Tuple[int, int], typing.Dict[str, typing.Any]
-    ] = {}
+    subplot_backgrounds: dict[tuple[int, int], dict[str, typing.Any]] = {}
+    subplot_fonts: dict[tuple[int, int], dict[str, typing.Any]] = {}
 
     # Add traces from each figure to the combined figure
     for idx, fig in enumerate(valid_figures):
@@ -1205,33 +1197,21 @@ def merge_plots(
 
             if is_scene:
                 # Copy all the 3D scene properties comprehensively
-                scene_key = (
-                    "scene"
-                    if row == 1 and col == 1
-                    else f"scene{(row - 1) * cols + col}"
-                )
+                scene_key = "scene" if row == 1 and col == 1 else f"scene{(row - 1) * cols + col}"
                 _copy_scene_properties(fig, combined_fig, scene_key)
             else:
                 # Copy 2D x-axis and y-axis properties
                 if hasattr(fig.layout, "xaxis") and fig.layout.xaxis:
                     xaxis_key = (
-                        "xaxis"
-                        if row == 1 and col == 1
-                        else f"xaxis{(row - 1) * cols + col}"
+                        "xaxis" if row == 1 and col == 1 else f"xaxis{(row - 1) * cols + col}"
                     )
-                    _copy_2d_axis_properties(
-                        fig.layout.xaxis, combined_fig.layout[xaxis_key]
-                    )
+                    _copy_2d_axis_properties(fig.layout.xaxis, combined_fig.layout[xaxis_key])
 
                 if hasattr(fig.layout, "yaxis") and fig.layout.yaxis:
                     yaxis_key = (
-                        "yaxis"
-                        if row == 1 and col == 1
-                        else f"yaxis{(row - 1) * cols + col}"
+                        "yaxis" if row == 1 and col == 1 else f"yaxis{(row - 1) * cols + col}"
                     )
-                    _copy_2d_axis_properties(
-                        fig.layout.yaxis, combined_fig.layout[yaxis_key]
-                    )
+                    _copy_2d_axis_properties(fig.layout.yaxis, combined_fig.layout[yaxis_key])
 
                 # Store background colors and font settings for this subplot
                 if hasattr(fig.layout, "plot_bgcolor") and fig.layout.plot_bgcolor:
@@ -1241,9 +1221,7 @@ def merge_plots(
                 if hasattr(fig.layout, "paper_bgcolor") and fig.layout.paper_bgcolor:
                     if (row, col) not in subplot_backgrounds:
                         subplot_backgrounds[(row, col)] = {}
-                    subplot_backgrounds[(row, col)]["paper_bgcolor"] = (
-                        fig.layout.paper_bgcolor
-                    )
+                    subplot_backgrounds[(row, col)]["paper_bgcolor"] = fig.layout.paper_bgcolor
 
                 # Store font settings for this subplot
                 if hasattr(fig.layout, "font") and fig.layout.font:
@@ -1259,9 +1237,7 @@ def merge_plots(
                     if combined_trace_idx < len(combined_fig.data):  # type: ignore
                         # Create a copy of colorbar to avoid modifying original
                         colorbar_dict = (
-                            dict(trace.colorbar)
-                            if isinstance(trace.colorbar, dict)
-                            else {}
+                            dict(trace.colorbar) if isinstance(trace.colorbar, dict) else {}
                         )
 
                         # Calculate smart colorbar positioning for this subplot
@@ -1334,8 +1310,8 @@ def merge_plots(
 def image_config(
     fmt: typing.Literal["png", "jpeg", "webp", "svg", "pdf"] = "png",
     scale: int = 2,
-    width: typing.Optional[int] = None,
-    height: typing.Optional[int] = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> None:
     """
     Configure image export settings for a Plotly figure.

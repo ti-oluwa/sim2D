@@ -42,9 +42,7 @@ def load_well_from_records(
     welspecs_record: typing.Mapping[str, typing.Any],
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     *,
-    wpimult_records: typing.Optional[
-        typing.Sequence[typing.Mapping[str, typing.Any]]
-    ] = None,
+    wpimult_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     well_type: WellType = WellType.PRODUCER,
 ) -> Well:
@@ -65,9 +63,7 @@ def load_well_from_records(
     :raises ValidationError: If `compdat_records` is empty.
     """
     if not compdat_records:
-        raise ValidationError(
-            f"No `COMPDAT` records for well {welspecs_record['well']!r}."
-        )
+        raise ValidationError(f"No `COMPDAT` records for well {welspecs_record['well']!r}.")
 
     perforations = []
     dims = grid.dimensions
@@ -77,12 +73,10 @@ def load_well_from_records(
         )
 
     if welspecs_record["inflow_eq"] != "STD":
-        raise NotSupportedError(
-            "Only the standard inflow equation (STD) is currently supported."
-        )
+        raise NotSupportedError("Only the standard inflow equation (STD) is currently supported.")
 
-    whole_well_multiplier: typing.Optional[float] = None
-    multiplier_by_ijk: typing.Dict[typing.Tuple[int, int, int, int], float] = {}
+    whole_well_multiplier: float | None = None
+    multiplier_by_ijk: dict[tuple[int, int, int, int], float] = {}
     if wpimult_records:
         for record in wpimult_records:
             i, j = record.get("i", 0), record.get("j", 0)
@@ -142,17 +136,13 @@ def load_well_from_records(
     )[:2]
     pvt_region = welspecs_record.get("pvt_table") or None  # 0 should map to None too
     preferred_phase = (
-        FluidPhase(welspecs_record["phase"].lower())
-        if welspecs_record.get("phase")
-        else None
+        FluidPhase(welspecs_record["phase"].lower()) if welspecs_record.get("phase") else None
     )
     return Well(
         name=welspecs_record["well"],
         well_type=well_type,
         surface_location=surface_location,
-        reference_depth=reference_depth
-        if reference_depth is not None
-        else deepest_bottom_depth,
+        reference_depth=reference_depth if reference_depth is not None else deepest_bottom_depth,
         perforations=tuple(perforations),
         preferred_phase=preferred_phase,
         group=welspecs_record.get("group"),
@@ -166,9 +156,7 @@ def load_wells_from_records(
     welspecs_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     *,
-    wpimult_records: typing.Optional[
-        typing.Sequence[typing.Mapping[str, typing.Any]]
-    ] = None,
+    wpimult_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     injector_names: typing.Container[str] = (),
 ) -> Wells:
@@ -188,8 +176,8 @@ def load_wells_from_records(
         per-well tubing-diameter keyword, so this is deck-wide).
     :returns: `Wells` keyed by well name.
     """
-    compdat_by_well: typing.Dict[str, typing.List[typing.Mapping[str, typing.Any]]] = {}
-    wpimult_by_well: typing.Dict[str, typing.List[typing.Mapping[str, typing.Any]]] = {}
+    compdat_by_well: dict[str, list[typing.Mapping[str, typing.Any]]] = {}
+    wpimult_by_well: dict[str, list[typing.Mapping[str, typing.Any]]] = {}
     for record in compdat_records:
         compdat_by_well.setdefault(record["well"], []).append(record)
 
@@ -204,9 +192,7 @@ def load_wells_from_records(
             compdat_records=compdat_by_well.get(record["well"], []),
             wpimult_records=wpimult_by_well.get(record["well"]),
             well_type=(
-                WellType.INJECTOR
-                if record["well"] in injector_names
-                else WellType.PRODUCER
+                WellType.INJECTOR if record["well"] in injector_names else WellType.PRODUCER
             ),
             unit_system=unit_system,
         )
@@ -216,8 +202,8 @@ def load_wells_from_records(
 
 
 def from_deck_gas_rate(
-    value: typing.Optional[float], unit_system: UnitSystem
-) -> typing.Optional[float]:
+    value: float | None, unit_system: UnitSystem
+) -> float | None:
     """
     :param value: Raw gas rate value as written in the deck, or None.
     :param unit_system: The deck's unit system.
@@ -244,7 +230,7 @@ def load_producer_control_from_record(
         isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
     """
     mode = ProducerControlMode(record["control_mode"])
-    limits: typing.List[Limit] = []
+    limits: list[Limit] = []
     bhp = record.get("bhp")
     if bhp is not None and mode is not ProducerControlMode.BHP:
         limits.append(BHPLimit(min_value=bhp, unit_system=unit_system))
@@ -254,9 +240,7 @@ def load_producer_control_from_record(
         target_rate={
             ProducerControlMode.ORAT: record.get("orat"),
             ProducerControlMode.WRAT: record.get("wrat"),
-            ProducerControlMode.GRAT: from_deck_gas_rate(
-                record.get("grat"), unit_system
-            ),
+            ProducerControlMode.GRAT: from_deck_gas_rate(record.get("grat"), unit_system),
             ProducerControlMode.LRAT: record.get("lrat"),
             ProducerControlMode.RESV: record.get("resv"),
         }.get(mode),
@@ -280,7 +264,7 @@ def load_injector_control_from_record(
     """
     mode = InjectorControlMode(record["control_mode"])
     phase = FluidPhase(record["injector_type"].lower())
-    limits: typing.List[Limit] = []
+    limits: list[Limit] = []
     bhp = record.get("bhp")
     if bhp is not None and mode is not InjectorControlMode.BHP:
         limits.append(BHPLimit(max_value=bhp, unit_system=unit_system))
@@ -309,7 +293,7 @@ ECONOMIC_QUANTITY_FIELDS = {
 
 def load_economic_limits_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
-) -> typing.Tuple[EconomicLimit, ...]:
+) -> tuple[EconomicLimit, ...]:
     """
     Load `EconomicLimit`s from `WECON` records.
 
@@ -332,10 +316,7 @@ def load_economic_limits_from_record(
         # same way it does to a standalone gas rate.
         if quantity == EconomicQuantity.GOR:
             value = from_deck_gas_rate(value, unit_system)
-        elif (
-            quantity is EconomicQuantity.WATER_GAS_RATIO
-            and unit_system is UnitSystem.FIELD
-        ):
+        elif quantity is EconomicQuantity.WATER_GAS_RATIO and unit_system is UnitSystem.FIELD:
             value /= c.MSCF_TO_SCF
         limits.append(
             EconomicLimit(quantity=quantity, max_value=value, unit_system=unit_system)  # type: ignore
@@ -362,9 +343,7 @@ def apply_economic_limits(
         current = controls[well_name]
         new_limits = load_economic_limits_from_record(record, unit_system=unit_system)
         if new_limits:
-            controls.set(
-                well_name, attrs.evolve(current, limits=current.limits + new_limits)
-            )
+            controls.set(well_name, attrs.evolve(current, limits=current.limits + new_limits))
 
 
 def load_controls_from_records(
@@ -382,7 +361,7 @@ def load_controls_from_records(
     :param unit_system: The deck's unit system.
     :returns: `WellControls` keyed by well name.
     """
-    controls: typing.Dict[str, WellControl] = {}
+    controls: dict[str, WellControl] = {}
     for record in wconprod_records:
         controls[record["well"]] = load_producer_control_from_record(
             record, unit_system=unit_system
@@ -461,7 +440,7 @@ def load_group_controls_from_records(
     :param unit_system: The deck's unit system.
     :returns: `GroupControls` keyed by group name.
     """
-    controls: typing.Dict[str, GroupControl] = {}
+    controls: dict[str, GroupControl] = {}
     for record in gconprod_records:
         controls[record["group"]] = load_group_control_from_record(
             record, is_injection=False, unit_system=unit_system
@@ -551,9 +530,7 @@ def load_groups_from_deck(deck_file: DeckFile) -> WellGroups:
     """
     gruptree = deck_file.get("GRUPTREE")
     if not gruptree:
-        raise DeckParseError(
-            "Cannot load well groups from deck. `GRUPTREE` is missing."
-        )
+        raise DeckParseError("Cannot load well groups from deck. `GRUPTREE` is missing.")
     return load_groups_from_records(gruptree)
 
 

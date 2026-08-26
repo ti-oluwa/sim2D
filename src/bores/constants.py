@@ -42,13 +42,13 @@ class Constant(Serializable):
     value: typing.Any
     """The actual value of the constant."""
 
-    description: typing.Optional[str] = None
+    description: str | None = None
     """Optional description of what this constant represents."""
 
-    unit: typing.Optional[str] = None
+    unit: str | None = None
     """Optional unit of measurement for this constant."""
 
-    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    aliases: tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
     """
     Alternate names this constant is also known by (e.g. a unit-suffixed
     name and a system-suffixed name for the same numeric value). This is
@@ -110,13 +110,13 @@ class ConstantFactory(Serializable):
     factory: typing.Callable[[], typing.Any]
     """Zero-argument callable that returns the constant's current value."""
 
-    description: typing.Optional[str] = None
+    description: str | None = None
     """Optional description of what this constant represents."""
 
-    unit: typing.Optional[str] = None
+    unit: str | None = None
     """Optional unit of measurement for this constant."""
 
-    aliases: typing.Tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
+    aliases: tuple[str, ...] = attrs.field(factory=tuple, converter=tuple)
     """Alternate names - see `Constant.aliases`."""
 
     @property
@@ -142,7 +142,7 @@ class ConstantFactory(Serializable):
             parts.append(f"aliases={self.aliases!r}")
         return f"{self.__class__.__name__}({', '.join(parts)})"
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize by evaluating the factory - produces a plain value snapshot."""
         evaluated = Constant(
             value=self.value,
@@ -194,9 +194,7 @@ def _fd_eps_factory() -> float:
 
 
 # Default constants dictionary
-DEFAULT_CONSTANTS: typing.Dict[
-    str, typing.Union[typing.Any, Constant, ConstantFactory]
-] = {
+DEFAULT_CONSTANTS: dict[str, typing.Any | Constant | ConstantFactory] = {
     # Standard Conditions
     # Pressure
     "STANDARD_PRESSURE_PASCAL": Constant(
@@ -647,9 +645,7 @@ DEFAULT_CONSTANTS: typing.Dict[
     "DAYS_PER_SECOND": Constant(
         value=1 / 86400.0, description="Number of days in a second", unit="day/s"
     ),
-    "HOURS_PER_DAY": Constant(
-        value=24.0, description="Number of hours in a day", unit="hrs/day"
-    ),
+    "HOURS_PER_DAY": Constant(value=24.0, description="Number of hours in a day", unit="hrs/day"),
     "DAYS_PER_HOUR": Constant(
         value=1 / 24.0, description="Number of days in a hour", unit="day/hr"
     ),
@@ -930,9 +926,7 @@ DEFAULT_CONSTANTS: typing.Dict[
     ),
     "AQUIFER_BESSEL_SERIES_TERMS": Constant(
         value=30,
-        description=(
-            "Empirically validated safety margin for the Klins finite-aquifer series"
-        ),
+        description=("Empirically validated safety margin for the Klins finite-aquifer series"),
         unit="dimensionless",
     ),
 }
@@ -941,7 +935,7 @@ DEFAULT_CONSTANTS: typing.Dict[
 @typing.final
 class Constants(
     StoreSerializable,
-    fields={"_store": typing.Dict[str, Constant]},
+    fields={"_store": dict[str, Constant]},
 ):
     """
     Physical constants and conversion factors.
@@ -970,13 +964,9 @@ class Constants(
 
     def __init__(
         self,
-        defaults: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        defaults: dict[str, typing.Any] | None = None,
     ) -> None:
-        defaults = (
-            {**DEFAULT_CONSTANTS, **defaults}
-            if defaults is not None
-            else DEFAULT_CONSTANTS
-        )
+        defaults = {**DEFAULT_CONSTANTS, **defaults} if defaults is not None else DEFAULT_CONSTANTS
         for name, value in defaults.items():
             if isinstance(value, (Constant, ConstantFactory)):
                 wrapped = value
@@ -988,7 +978,7 @@ class Constants(
             self._register_aliases(name, wrapped)
 
     def _register_aliases(
-        self, canonical: str, constant: typing.Union[Constant, ConstantFactory]
+        self, canonical: str, constant: Constant | ConstantFactory
     ) -> None:
         """
         Index *constant*'s declared aliases against *canonical* in `_aliases`.
@@ -1028,9 +1018,7 @@ class Constants(
         try:
             constant = self._store[self._resolve(name)]
             return (
-                constant.value
-                if isinstance(constant, (Constant, ConstantFactory))
-                else constant
+                constant.value if isinstance(constant, (Constant, ConstantFactory)) else constant
             )
         except KeyError:
             raise AttributeError(
@@ -1040,7 +1028,7 @@ class Constants(
     def __getitem__(self, name: str) -> Constant:
         return self._store[self._resolve(name)]
 
-    def __setattr__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
+    def __setattr__(self, name: str, value: typing.Any | Constant) -> None:
         if name.startswith("_"):
             object.__setattr__(self, name, value)
             return
@@ -1053,7 +1041,7 @@ class Constants(
         # replacement itself declares new aliases, register those too.
         self._register_aliases(canonical, wrapped)
 
-    def __setitem__(self, name: str, value: typing.Union[typing.Any, Constant]) -> None:
+    def __setitem__(self, name: str, value: typing.Any | Constant) -> None:
         canonical = self._resolve(name)
         wrapped = value if isinstance(value, Constant) else Constant(value=value)
         self._store[canonical] = wrapped
@@ -1105,15 +1093,15 @@ class Constants(
         return constant.value if isinstance(constant, Constant) else constant
 
     def get_constant(
-        self, name: str, default: typing.Optional[Constant] = None
-    ) -> typing.Optional[Constant]:
+        self, name: str, default: Constant | None = None
+    ) -> Constant | None:
         return self._store.get(self._resolve(name), default)
 
     def __dir__(self):
         default = super().__dir__()
         return sorted({*default, *self._store.keys(), *self._aliases.keys()})
 
-    def _ipython_key_completions_(self) -> typing.List[str]:
+    def _ipython_key_completions_(self) -> list[str]:
         return sorted({*self._store.keys(), *self._aliases.keys()})
 
     def __len__(self) -> int:
@@ -1135,7 +1123,7 @@ class Constants(
 
 
 _DEFAULT_CONTEXT_ID = uuid4().hex
-_constants_context: ContextVar[typing.Tuple[Constants, str]] = ContextVar(
+_constants_context: ContextVar[tuple[Constants, str]] = ContextVar(
     "constants_context", default=(Constants(), _DEFAULT_CONTEXT_ID)
 )
 
@@ -1159,7 +1147,7 @@ class ConstantsContext:
         """
         self._constants = constants
         self._id = uuid4().hex
-        self._token: typing.Optional[Token[typing.Tuple[Constants, str]]] = None
+        self._token: Token[tuple[Constants, str]] | None = None
 
     @property
     def id(self) -> str:
@@ -1242,7 +1230,7 @@ class __ConstantsProxy:
         default = super().__dir__()
         return sorted({*default, *self._constants.__dir__()})
 
-    def _ipython_key_completions_(self) -> typing.List[str]:
+    def _ipython_key_completions_(self) -> list[str]:
         return self._constants._ipython_key_completions_()
 
 
@@ -1250,7 +1238,7 @@ c = __ConstantsProxy()
 """Global proxy to access physical constants and conversion factors."""
 
 
-def get_constant(name: str) -> typing.Optional[Constant]:
+def get_constant(name: str) -> Constant | None:
     """
     Get a `Constant` object by name from the global constants.
 
@@ -1277,7 +1265,7 @@ def set_default_constants(constants: Constants, /) -> None:
 
 
 def build_unit_conversion_table(
-    constants: typing.Optional[Constants] = None,
+    constants: Constants | None = None,
 ) -> UnitConversionTable:
     """
     Build a complete unit conversion table from the provided or default
@@ -1322,9 +1310,7 @@ def build_unit_conversion_table(
     cm_to_ft: float = cm_to_m * m_to_ft
     kg_m3_to_g_cm3: float = cm_to_m**3  # 1e-6 / 1e-3 = 1e-3
 
-    bar_to_pa: float = psi_to_pa / (
-        psi_to_pa / atm_to_pa * (1.0 / psi_to_bar) * psi_to_bar
-    )
+    bar_to_pa: float = psi_to_pa / (psi_to_pa / atm_to_pa * (1.0 / psi_to_bar) * psi_to_bar)
     # Simpler: bar_to_pa = 1e5; but derive from constants to stay consistent
     # 1 bar = 14.5038 psi; bar_to_pa = 14.5038 * psi_to_pa / 14.5038... just:
     bar_to_pa = 1.0 / psi_to_bar * psi_to_pa  # 100 000 Pa/bar
@@ -1775,7 +1761,7 @@ def get_conversion_factors(
     to_system: UnitSystem,
     /,
     *,
-    table: typing.Optional[UnitConversionTable] = None,
+    table: UnitConversionTable | None = None,
 ) -> UnitConversionFactors:
     """
     Return a dictionary of scalar conversion factors for every physical

@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 def update_fluid_properties(
     fluid_properties: FluidProperties[ThreeDimensions],
     miscibility_model: MiscibilityModel = "immiscible",
-    wells: typing.Optional[Wells[ThreeDimensions]] = None,
-    pvt_tables: typing.Optional[PVTTables] = None,
+    wells: Wells[ThreeDimensions] | None = None,
+    pvt_tables: PVTTables | None = None,
     freeze_saturation_pressure: bool = False,
 ) -> FluidProperties[ThreeDimensions]:
     """
@@ -220,11 +220,9 @@ def update_fluid_properties(
             gas_solubility_in_water_grid=gas_solubility_in_water_grid,  # type: ignore[arg-type]
             gas_free_water_formation_volume_factor_grid=gas_free_water_formation_volume_factor_grid,
         )
-        new_water_formation_volume_factor_grid = (
-            build_water_formation_volume_factor_grid(
-                water_density_grid=new_water_density_grid,  # Use new density here
-                salinity_grid=fluid_properties.water_salinity_grid,
-            )
+        new_water_formation_volume_factor_grid = build_water_formation_volume_factor_grid(
+            water_density_grid=new_water_density_grid,  # Use new density here
+            salinity_grid=fluid_properties.water_salinity_grid,
         )
         new_water_viscosity_grid = build_water_viscosity_grid(
             temperature_grid=temperature_grid,
@@ -247,13 +245,11 @@ def update_fluid_properties(
             temperature=temperature_grid,
             salinity=water_salinity_grid,
         )
-        new_water_formation_volume_factor_grid = (
-            water_pvt_table.formation_volume_factor(
-                pressure=pressure_grid,
-                temperature=temperature_grid,
-                salinity=water_salinity_grid,
-                bubble_point_pressure=new_water_bubble_point_pressure_grid,
-            )
+        new_water_formation_volume_factor_grid = water_pvt_table.formation_volume_factor(
+            pressure=pressure_grid,
+            temperature=temperature_grid,
+            salinity=water_salinity_grid,
+            bubble_point_pressure=new_water_bubble_point_pressure_grid,
         )
         new_water_viscosity_grid = water_pvt_table.viscosity(
             pressure=pressure_grid,
@@ -270,9 +266,7 @@ def update_fluid_properties(
         # Compute New bubble point using Current Rs
         if freeze_saturation_pressure:
             # Keep current bubble point constant
-            new_oil_bubble_point_pressure_grid = (
-                fluid_properties.oil_bubble_point_pressure_grid
-            )
+            new_oil_bubble_point_pressure_grid = fluid_properties.oil_bubble_point_pressure_grid
         else:
             # print(fluid_properties.solution_gas_to_oil_ratio_grid.dtype)
             # Recompute bubble point using current Rs
@@ -345,9 +339,7 @@ def update_fluid_properties(
         # Compute New bubble point using Current Rs
         if freeze_saturation_pressure:
             # Keep current bubble point constant
-            new_oil_bubble_point_pressure_grid = (
-                fluid_properties.oil_bubble_point_pressure_grid
-            )
+            new_oil_bubble_point_pressure_grid = fluid_properties.oil_bubble_point_pressure_grid
         else:
             # Recompute from tables
             new_oil_bubble_point_pressure_grid = oil_pvt_table.bubble_point_pressure(
@@ -467,7 +459,7 @@ def update_residual_saturation_grids(
     residual_oil_drainage_ratio_gas_flood: float = 0.6,  # sorg_drainage = 0.6 x sorg_imbibition
     residual_gas_drainage_ratio: float = 0.5,  # sgr_drainage = 0.5 x sgr_imbibition
     tolerance: float = 1e-6,
-) -> typing.Tuple[RockProperties[ThreeDimensions], HysteresisState[ThreeDimensions]]:
+) -> tuple[RockProperties[ThreeDimensions], HysteresisState[ThreeDimensions]]:
     """
     Updates the effective residual saturation grids based on current displacement regimes
     (drainage or imbibition) determined from hysteresis state and current saturations.
@@ -482,9 +474,7 @@ def update_residual_saturation_grids(
     :param tolerance: Tolerance to determine significant saturation changes.
     :return: Tuple of updated `RockProperties` and `HysteresisState` with new effective residual saturations
     """
-    residual_oil_saturation_water_grid = (
-        rock_properties.residual_oil_saturation_water_grid
-    )
+    residual_oil_saturation_water_grid = rock_properties.residual_oil_saturation_water_grid
     residual_oil_saturation_gas_grid = rock_properties.residual_oil_saturation_gas_grid
     residual_gas_saturation_grid = rock_properties.residual_gas_saturation_grid
     max_water_saturation_grid = hysteresis_state.max_water_saturation_grid

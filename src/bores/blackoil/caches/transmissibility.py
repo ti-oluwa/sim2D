@@ -111,15 +111,9 @@ CACHE_FLOAT_FIELDS = tuple(
 )
 
 
-def make_new_cache(
-    n_interior_faces: int, dtype: npt.DTypeLike
-) -> TransmissibilityCache:
-    float_fields = {
-        name: np.zeros(n_interior_faces, dtype=dtype) for name in CACHE_FLOAT_FIELDS
-    }
-    int_fields = {
-        name: np.full(n_interior_faces, -1, dtype=np.int32) for name in CACHE_INT_FIELDS
-    }
+def make_new_cache(n_interior_faces: int, dtype: npt.DTypeLike) -> TransmissibilityCache:
+    float_fields = {name: np.zeros(n_interior_faces, dtype=dtype) for name in CACHE_FLOAT_FIELDS}
+    int_fields = {name: np.full(n_interior_faces, -1, dtype=np.int32) for name in CACHE_INT_FIELDS}
     return TransmissibilityCache(**float_fields, **int_fields)  # type: ignore[arg-type]
 
 
@@ -240,8 +234,8 @@ def _update_transmissibility_cache(
         out_water_potential_difference[i] = water_potential_difference
         out_water_face_density[i] = water_density[water_upstream]
         out_water_face_viscosity[i] = water_viscosity[water_upstream]
-        water_t = geometric_t * water_mobility[water_upstream]
-        out_water_transmissibility[i] = water_t
+        water_transmissibility = geometric_t * water_mobility[water_upstream]
+        out_water_transmissibility[i] = water_transmissibility
         out_dTw_dP[i] = geometric_t * dʎw_dP[water_upstream]
         out_dTw_dsw[i] = geometric_t * dʎw_dsw[water_upstream]
         out_dTw_dso[i] = geometric_t * dʎw_dso[water_upstream]
@@ -257,8 +251,8 @@ def _update_transmissibility_cache(
         out_oil_potential_difference[i] = oil_potential_difference
         out_oil_face_density[i] = oil_density[oil_upstream]
         out_oil_face_viscosity[i] = oil_viscosity[oil_upstream]
-        oil_t = geometric_t * oil_mobility[oil_upstream]
-        out_oil_transmissibility[i] = oil_t
+        oil_transmissibility = geometric_t * oil_mobility[oil_upstream]
+        out_oil_transmissibility[i] = oil_transmissibility
         out_dTo_dP[i] = geometric_t * dʎo_dP[oil_upstream]
         out_dTo_dsw[i] = geometric_t * dʎo_dsw[oil_upstream]
         out_dTo_dso[i] = geometric_t * dʎo_dso[oil_upstream]
@@ -274,14 +268,16 @@ def _update_transmissibility_cache(
         out_gas_potential_difference[i] = gas_potential_difference
         out_gas_face_density[i] = gas_density[gas_upstream]
         out_gas_face_viscosity[i] = gas_viscosity[gas_upstream]
-        gas_t = geometric_t * gas_mobility[gas_upstream]
-        out_gas_transmissibility[i] = gas_t
+        gas_transmissibility = geometric_t * gas_mobility[gas_upstream]
+        out_gas_transmissibility[i] = gas_transmissibility
         out_dTg_dP[i] = geometric_t * dʎg_dP[gas_upstream]
         out_dTg_dsw[i] = geometric_t * dʎg_dsw[gas_upstream]
         out_dTg_dso[i] = geometric_t * dʎg_dso[gas_upstream]
         out_dTg_dsg[i] = geometric_t * dʎg_dsg[gas_upstream]
 
-        out_total_transmissibility[i] = water_t + oil_t + gas_t
+        out_total_transmissibility[i] = (
+            water_transmissibility + oil_transmissibility + gas_transmissibility
+        )
 
 
 def compute_transmissibility_cache(
@@ -291,7 +287,7 @@ def compute_transmissibility_cache(
     oil_pressure: CellArray,
     oil_water_capillary_pressure: CellArray,
     gas_oil_capillary_pressure: CellArray,
-    out: typing.Optional[TransmissibilityCache] = None,
+    out: TransmissibilityCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> TransmissibilityCache:
     """

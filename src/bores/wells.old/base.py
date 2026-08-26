@@ -49,7 +49,7 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
 
     name: str
     """Name of the well."""
-    perforating_intervals: typing.Sequence[typing.Tuple[Coordinates, Coordinates]]
+    perforating_intervals: typing.Sequence[tuple[Coordinates, Coordinates]]
     """Perforating intervals of the well. Each interval is a tuple of (start_location, end_location)."""
     radius: float
     """Radius of the wellbore (ft)."""
@@ -57,9 +57,7 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
     """Control strategy for the well (e.g., rate control, pressure control)."""
     skin_factor: float = 0.0
     """Skin factor for the well, affecting flow performance."""
-    orientation: Orientation = attrs.field(
-        default=Orientation.UNSET, converter=Orientation
-    )
+    orientation: Orientation = attrs.field(default=Orientation.UNSET, converter=Orientation)
     """Orientation of the well, indicating its dominant direction in the reservoir grid."""
     is_active: bool = True
     """Indicates whether the well is active or not. Set to False if the well is shut in or inactive."""
@@ -112,7 +110,7 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         axis = np.argmax(total_length)
         return Orientation(("x", "y", "z")[axis])
 
-    def check_location(self, grid_shape: typing.Tuple[int, ...]) -> None:
+    def check_location(self, grid_shape: tuple[int, ...]) -> None:
         """
         Check if the well's perforating intervals are within the grid dimensions.
 
@@ -120,19 +118,19 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         :raises ValidationError: If any of the well's perforating intervals are out of bounds.
         """
         for interval_idx, (start, end) in enumerate(self.perforating_intervals):
-            if not all(0 <= coord < dim for coord, dim in zip(start, grid_shape)):
+            if not all(0 <= coord < dim for coord, dim in zip(start, grid_shape, strict=False)):
                 raise ValidationError(
                     f"Start location {start} for interval {interval_idx} of well {self.name!r} is out of bounds."
                 )
-            if not all(0 <= coord < dim for coord, dim in zip(end, grid_shape)):
+            if not all(0 <= coord < dim for coord, dim in zip(end, grid_shape, strict=False)):
                 raise ValidationError(
                     f"End location {end} for interval {interval_idx} of well {self.name!r} is out of bounds."
                 )
 
     def get_effective_drainage_radius(
         self,
-        interval_thickness: typing.Tuple[float, ...],
-        permeability: typing.Tuple[float, ...],
+        interval_thickness: tuple[float, ...],
+        permeability: tuple[float, ...],
     ) -> float:
         """
         Compute the effective drainage radius for the well based on its orientation,
@@ -150,9 +148,7 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
 
         if dimensions == 2:
             if len(permeability) != 2:
-                raise ValidationError(
-                    "Permeability must be a 2D tuple for 2D locations"
-                )
+                raise ValidationError("Permeability must be a 2D tuple for 2D locations")
             interval_thickness = typing.cast(TwoDimensions, interval_thickness)
             permeability = typing.cast(TwoDimensions, permeability)
             return compute_2D_effective_drainage_radius(
@@ -173,9 +169,9 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
 
     def get_well_index(
         self,
-        interval_thickness: typing.Tuple[float, ...],
-        permeability: typing.Tuple[float, ...],
-        skin_factor: typing.Optional[float] = None,
+        interval_thickness: tuple[float, ...],
+        permeability: tuple[float, ...],
+        skin_factor: float | None = None,
         net_to_gross: float = 1.0,
         regime_constant: float = -3 / 4,
     ) -> float:
@@ -233,11 +229,11 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         fluid: WellFluidT,
         phase_fvf: float,
         phase_mobility: float,
-        phase_viscosity: typing.Optional[float] = None,
+        phase_viscosity: float | None = None,
         allocation_fraction: float = 1.0,
         use_pseudo_pressure: bool = False,
-        fluid_compressibility: typing.Optional[float] = None,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        fluid_compressibility: float | None = None,
+        pvt_tables: PVTTables | None = None,
         **kwargs: typing.Any,
     ) -> float:
         """
@@ -281,11 +277,11 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         fluid: WellFluidT,
         phase_fvf: float,
         phase_mobility: float,
-        phase_viscosity: typing.Optional[float] = None,
+        phase_viscosity: float | None = None,
         allocation_fraction: float = 1.0,
         use_pseudo_pressure: bool = False,
-        fluid_compressibility: typing.Optional[float] = None,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        fluid_compressibility: float | None = None,
+        pvt_tables: PVTTables | None = None,
         **kwargs: typing.Any,
     ) -> float:
         """
@@ -329,11 +325,11 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         fluid: WellFluidT,
         phase_fvf: float,
         phase_mobility: float,
-        phase_viscosity: typing.Optional[float] = None,
+        phase_viscosity: float | None = None,
         allocation_fraction: float = 1.0,
         use_pseudo_pressure: bool = False,
-        fluid_compressibility: typing.Optional[float] = None,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        fluid_compressibility: float | None = None,
+        pvt_tables: PVTTables | None = None,
         **kwargs: typing.Any,
     ) -> ControlInfo:
         """
@@ -379,7 +375,7 @@ class Well(StoreSerializable, typing.Generic[Coordinates, WellFluidT]):
         """Open the well."""
         self.is_active = True
 
-    def duplicate(self: Self, *, name: typing.Optional[str] = None, **kwargs) -> Self:
+    def duplicate(self: Self, *, name: str | None = None, **kwargs) -> Self:
         """
         Create a duplicate of the well with an optional new name.
 
@@ -439,7 +435,7 @@ class InjectionWell(Well[Coordinates, InjectedFluid]):
 
     __type__ = "injection_well"
 
-    injected_fluid: typing.Optional[InjectedFluid] = None
+    injected_fluid: InjectedFluid | None = None
     """Properties of the fluid being injected into the well."""
 
     def get_flow_rate(
@@ -450,11 +446,11 @@ class InjectionWell(Well[Coordinates, InjectedFluid]):
         fluid: InjectedFluid,
         phase_fvf: float,
         phase_mobility: float,
-        phase_viscosity: typing.Optional[float] = None,
+        phase_viscosity: float | None = None,
         allocation_fraction: float = 1.0,
         use_pseudo_pressure: bool = False,
-        fluid_compressibility: typing.Optional[float] = None,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        fluid_compressibility: float | None = None,
+        pvt_tables: PVTTables | None = None,
         **kwargs: typing.Any,
     ) -> float:
         """
@@ -516,7 +512,7 @@ class ProductionWell(Well[Coordinates, ProducedFluid]):
         super().__attrs_post_init__()
 
     @functools.cached_property
-    def produced_phases(self) -> typing.List[FluidPhase]:
+    def produced_phases(self) -> list[FluidPhase]:
         """List of unique fluid phases produced by the well (e.g., ['oil', 'gas', 'water'])."""
         return [fluid.phase for fluid in self.produced_fluids]  # type: ignore[return-value]
 
@@ -526,8 +522,8 @@ ProductionWellT = typing.TypeVar("ProductionWellT", bound=ProductionWell)
 
 
 def _expand_interval(
-    interval: typing.Tuple[Coordinates, Coordinates], orientation: Orientation
-) -> typing.List[Coordinates]:
+    interval: tuple[Coordinates, Coordinates], orientation: Orientation
+) -> list[Coordinates]:
     """Expand a well perforating interval into a list of grid locations."""
     start, end = interval
     dimensions = len(start)
@@ -535,8 +531,8 @@ def _expand_interval(
         raise ValidationError("2D/3D locations are required")
 
     # Normalize start and end to ensure ranges are valid regardless of order
-    start = tuple(min(s, e) for s, e in zip(start, end))
-    end = tuple(max(s, e) for s, e in zip(start, end))
+    start = tuple(min(s, e) for s, e in zip(start, end, strict=False))
+    end = tuple(max(s, e) for s, e in zip(start, end, strict=False))
 
     if dimensions == 2:
         start = start + (0,)
@@ -571,13 +567,13 @@ def _expand_interval(
     else:
         raise ValidationError(f"Invalid well orientation {orientation!r}")
 
-    return typing.cast(typing.List[Coordinates], locations)
+    return typing.cast(list[Coordinates], locations)
 
 
 def _expand_intervals(
-    intervals: typing.Sequence[typing.Tuple[Coordinates, Coordinates]],
+    intervals: typing.Sequence[tuple[Coordinates, Coordinates]],
     orientation: Orientation,
-) -> typing.List[Coordinates]:
+) -> list[Coordinates]:
     """Expand multiple well perforating intervals into a list of grid locations."""
     locations = []
     for interval in intervals:
@@ -587,7 +583,7 @@ def _expand_intervals(
 
 def _prepare_wells_map(
     wells: typing.Sequence[WellT],
-) -> typing.Dict[typing.Tuple[int, ...], WellT]:
+) -> dict[tuple[int, ...], WellT]:
     """Prepare the wells map for quick access."""
     wells_map = {
         loc: well
@@ -607,7 +603,7 @@ class _WellsProxy(typing.Generic[Coordinates, WellT]):
     wells: typing.Sequence[WellT]
     """A map of well perforating intervals to the well objects."""
 
-    wells_map: typing.Dict[Coordinates, WellT] = attrs.field(init=False)
+    wells_map: dict[Coordinates, WellT] = attrs.field(init=False)
     """A map to store wells by their location for quick access."""
     allow_interval_overlap: bool = True
     """
@@ -632,7 +628,7 @@ class _WellsProxy(typing.Generic[Coordinates, WellT]):
                 f"Overlapping wells found at some locations. Expected {expected_location_count} unique locations, but got {actual_location_count}."
             )
 
-    def __getitem__(self, location: Coordinates) -> typing.Optional[WellT]:
+    def __getitem__(self, location: Coordinates) -> WellT | None:
         """Get a well by its location."""
         return self.wells_map.get(location, None)
 
@@ -640,7 +636,7 @@ class _WellsProxy(typing.Generic[Coordinates, WellT]):
         """Set a well at a specific location."""
         self.wells_map[location] = well
 
-    def __iter__(self) -> typing.Iterator[typing.Tuple[Coordinates, WellT]]:
+    def __iter__(self) -> typing.Iterator[tuple[Coordinates, WellT]]:
         """Iterate over well locations and their corresponding well objects."""
         return iter(self.wells_map.items())
 
@@ -648,14 +644,14 @@ class _WellsProxy(typing.Generic[Coordinates, WellT]):
 # Serialize/deserialize list of wells as dictionaries of well name to well object
 def _serialize_wells(
     wells: typing.Sequence[WellT], recurse: bool = True
-) -> typing.Dict[str, typing.Dict[str, typing.Any]]:
+) -> dict[str, dict[str, typing.Any]]:
     """Serialize a list of wells to a dictionary."""
     return {well.name: serialize_well(well, recurse) for well in wells}
 
 
 def _deserialize_wells(
-    data: typing.Dict[str, typing.Dict[str, typing.Any]],
-) -> typing.List[Well]:
+    data: dict[str, dict[str, typing.Any]],
+) -> list[Well]:
     """Deserialize a dictionary of wells to a list."""
     return [deserialize_well(item) for item in data.values()]
 
@@ -688,25 +684,17 @@ class Wells(
     This includes both production and injection wells.
     """
 
-    injection_wells: typing.Sequence[InjectionWell[Coordinates]] = attrs.field(
-        factory=list
-    )
+    injection_wells: typing.Sequence[InjectionWell[Coordinates]] = attrs.field(factory=list)
     """List of injection wells in the reservoir."""
-    production_wells: typing.Sequence[ProductionWell[Coordinates]] = attrs.field(
-        factory=list
-    )
+    production_wells: typing.Sequence[ProductionWell[Coordinates]] = attrs.field(factory=list)
     """List of production wells in the reservoir."""
-    injectors: _WellsProxy[Coordinates, InjectionWell[Coordinates]] = attrs.field(
-        init=False
-    )
+    injectors: _WellsProxy[Coordinates, InjectionWell[Coordinates]] = attrs.field(init=False)
     """
     Proxy for injection wells.
 
     This allows quick access to injection wells by their location.
     """
-    producers: _WellsProxy[Coordinates, ProductionWell[Coordinates]] = attrs.field(
-        init=False
-    )
+    producers: _WellsProxy[Coordinates, ProductionWell[Coordinates]] = attrs.field(init=False)
     """
     Proxy for production wells.
 
@@ -750,9 +738,9 @@ class Wells(
 
     def get_by_location(
         self, location: Coordinates
-    ) -> typing.Tuple[
-        typing.Optional[InjectionWell[Coordinates]],
-        typing.Optional[ProductionWell[Coordinates]],
+    ) -> tuple[
+        InjectionWell[Coordinates] | None,
+        ProductionWell[Coordinates] | None,
     ]:
         """
         Get wells by their grid coordinates.
@@ -764,9 +752,9 @@ class Wells(
 
     def get_by_name(
         self, name: str
-    ) -> typing.Tuple[
-        typing.Optional[InjectionWell[Coordinates]],
-        typing.Optional[ProductionWell[Coordinates]],
+    ) -> tuple[
+        InjectionWell[Coordinates] | None,
+        ProductionWell[Coordinates] | None,
     ]:
         """
         Get wells by their name.
@@ -774,19 +762,15 @@ class Wells(
         :param name: The name of the well.
         :return: A tuple of (injection_well, production_well) or (None, None) if not found.
         """
-        injection_well = next(
-            (well for well in self.injection_wells if well.name == name), None
-        )
-        production_well = next(
-            (well for well in self.production_wells if well.name == name), None
-        )
+        injection_well = next((well for well in self.injection_wells if well.name == name), None)
+        production_well = next((well for well in self.production_wells if well.name == name), None)
         return injection_well, production_well
 
     def __getitem__(
-        self, key: typing.Union[Coordinates, str], /
-    ) -> typing.Tuple[
-        typing.Optional[InjectionWell[Coordinates]],
-        typing.Optional[ProductionWell[Coordinates]],
+        self, key: Coordinates | str, /
+    ) -> tuple[
+        InjectionWell[Coordinates] | None,
+        ProductionWell[Coordinates] | None,
     ]:
         """
         Get a well by its grid coordinates.
@@ -800,16 +784,14 @@ class Wells(
 
     def __iter__(
         self,
-    ) -> typing.Iterator[
-        typing.Union[InjectionWell[Coordinates], ProductionWell[Coordinates]]
-    ]:
+    ) -> typing.Iterator[InjectionWell[Coordinates] | ProductionWell[Coordinates]]:
         """Iterate over all wells in the collection (both injection and production wells)."""
         return iter(itertools.chain(self.injection_wells, self.production_wells))
 
     @property
     def locations(
         self,
-    ) -> typing.Tuple[typing.List[Coordinates], typing.List[Coordinates]]:
+    ) -> tuple[list[Coordinates], list[Coordinates]]:
         """
         Get the starting locations of all wells in the reservoir.
 
@@ -831,7 +813,7 @@ class Wells(
         return injection_well_heads, production_well_heads
 
     @property
-    def names(self) -> typing.Tuple[typing.List[str], typing.List[str]]:
+    def names(self) -> tuple[list[str], list[str]]:
         """
         Get all well names in the reservoir.
 
@@ -845,7 +827,7 @@ class Wells(
             [well.name for well in self.production_wells],
         )
 
-    def check_location(self, grid_shape: typing.Tuple[int, ...]) -> None:
+    def check_location(self, grid_shape: tuple[int, ...]) -> None:
         """
         Check if all wells' perforating intervals are within the grid dimensions.
 
@@ -865,6 +847,5 @@ class Wells(
 
     def any_open(self) -> bool:
         return any(
-            well.is_open
-            for well in itertools.chain(self.injection_wells, self.production_wells)
+            well.is_open for well in itertools.chain(self.injection_wells, self.production_wells)
         )

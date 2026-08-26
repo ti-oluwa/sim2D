@@ -12,9 +12,7 @@ def _b64_encode(arr: npt.NDArray) -> str:
     return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
 
 
-def _b64_decode(
-    s: str, dtype: npt.DTypeLike, shape: typing.Tuple[int, ...]
-) -> npt.NDArray:
+def _b64_decode(s: str, dtype: npt.DTypeLike, shape: tuple[int, ...]) -> npt.NDArray:
     raw = base64.b64decode(s)
     return np.frombuffer(raw, dtype=dtype).reshape(shape).copy()
 
@@ -49,7 +47,7 @@ def _sniff_sparse(
     *,
     min_sparse_cells: int = 10,
     sparse_density_threshold: float = 0.05,
-) -> typing.Optional[typing.Tuple[typing.Any, npt.NDArray, npt.NDArray]]:
+) -> tuple[typing.Any, npt.NDArray, npt.NDArray] | None:
     """
     Return (fill_value, flat_indices_int32, values) if the array is sparse,
     else None. Fill value is the most common scalar value (exact, lossless).
@@ -87,7 +85,7 @@ def serialize_ndarray(
     *,
     min_sparse_cells: int = 10,
     sparse_density_threshold: float = 0.05,
-) -> typing.Dict[str, typing.Any]:
+) -> dict[str, typing.Any]:
     """
     Smart serializer for numpy arrays.
 
@@ -142,9 +140,7 @@ def serialize_ndarray(
 
 
 def deserialize_ndarray(
-    data: typing.Union[
-        typing.Mapping[str, typing.Any], typing.Sequence[typing.Any], npt.NDArray
-    ],
+    data: typing.Mapping[str, typing.Any] | typing.Sequence[typing.Any] | npt.NDArray,
     *,
     dtype: npt.DTypeLike = None,
 ) -> npt.NDArray:
@@ -180,9 +176,7 @@ def deserialize_ndarray(
         arr = np.empty(shape, dtype=stored_dtype)
         for idx, val in enumerate(layer_values):
             # Build index tuple: slice(None) for all axes except `axis`
-            idx_tuple = tuple(
-                idx if dim == axis else slice(None) for dim in range(arr.ndim)
-            )
+            idx_tuple = tuple(idx if dim == axis else slice(None) for dim in range(arr.ndim))
             arr[idx_tuple] = val
 
     elif encoding == "sparse":
@@ -200,9 +194,7 @@ def deserialize_ndarray(
         raw = base64.b64decode(data["data"])  # type: ignore
         expected = stored_dtype.itemsize * n_elements
         if len(raw) != expected:
-            raise ValueError(
-                f"Byte-length mismatch. Expected {expected}, got {len(raw)}"
-            )
+            raise ValueError(f"Byte-length mismatch. Expected {expected}, got {len(raw)}")
         arr = np.frombuffer(raw, dtype=stored_dtype).reshape(shape).copy()
 
     else:

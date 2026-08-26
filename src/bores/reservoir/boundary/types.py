@@ -116,7 +116,7 @@ class ConstantFluxBoundary(BoundaryCondition):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ConstantFluxBoundary` with `flux` rescaled to
@@ -128,9 +128,7 @@ class ConstantFluxBoundary(BoundaryCondition):
         if target == self.unit_system:
             return self
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        return self.__class__(
-            flux=self.flux * factors["reservoir_rate"], unit_system=target
-        )
+        return self.__class__(flux=self.flux * factors["reservoir_rate"], unit_system=target)
 
     def is_no_flow(self) -> bool:
         """Return `True` if `flux == 0.0` (sealed boundary)."""
@@ -211,7 +209,7 @@ class ConstantPressureBoundary(BoundaryCondition):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ConstantPressureBoundary` with `pressure` rescaled
@@ -223,9 +221,7 @@ class ConstantPressureBoundary(BoundaryCondition):
         if target == self.unit_system:
             return self
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        return self.__class__(
-            pressure=self.pressure * factors["pressure"], unit_system=target
-        )
+        return self.__class__(pressure=self.pressure * factors["pressure"], unit_system=target)
 
 
 @boundary_condition
@@ -307,17 +303,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
     Ignored when `alpha_function` is not `None`.
     """
 
-    alpha_function: typing.Optional[
-        typing.Callable[
-            [
-                IntArray[OneDimension],
-                ReservoirState,
-                Reservoir,
-                Number,
-            ],
-            npt.NDArray,
-        ]
-    ] = attrs.field(default=None)
+    alpha_function: typing.Callable[[IntArray[OneDimension], ReservoirState, Reservoir, Number], npt.NDArray] | None = attrs.field(default=None)
     """
     Optional per-face PI callable.
 
@@ -402,7 +388,7 @@ class ProductivityIndexBoundary(BoundaryCondition):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ProductivityIndexBoundary` with `pressure_boundary`
@@ -426,8 +412,8 @@ class ProductivityIndexBoundary(BoundaryCondition):
             unit_system=target,
         )
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        data: typing.Dict[str, typing.Any] = {
+    def __dump__(self) -> dict[str, typing.Any]:
+        data: dict[str, typing.Any] = {
             "pressure_boundary": self.pressure_boundary,
             "productivity_index": self.productivity_index,
             "unit_system": self.unit_system.value,
@@ -541,16 +527,14 @@ class TimeDependentFluxBoundary(BoundaryCondition):
         """
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         result = self.schedule_function(face_positions, state, reservoir, time)
-        return typing.cast(
-            NumberArray[OneDimension], np.asarray(result, dtype=dtype, copy=False)
-        )
+        return typing.cast(NumberArray[OneDimension], np.asarray(result, dtype=dtype, copy=False))
 
     def convert(
         self,
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `TimeDependentFluxBoundary` with a different
@@ -576,11 +560,9 @@ class TimeDependentFluxBoundary(BoundaryCondition):
             UserWarning,
             stacklevel=2,
         )
-        return self.__class__(
-            schedule_function=self.schedule_function, unit_system=target
-        )
+        return self.__class__(schedule_function=self.schedule_function, unit_system=target)
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {
             "schedule_function": _serialise_boundary_func(self.schedule_function),
             "unit_system": self.unit_system.value,

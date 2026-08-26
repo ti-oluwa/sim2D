@@ -96,11 +96,11 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[FloatArray[ThreeDimensions]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> FloatArray[ThreeDimensions] | None:
         if dims is None:
             raise DeckParseError("`COORD` requires grid dimensions (SPECGRID/DIMENS).")
 
@@ -141,11 +141,11 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[FloatArray[ThreeDimensions]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> FloatArray[ThreeDimensions] | None:
         if dims is None:
             raise DeckParseError("`ZCORN` requires grid dimensions (`SPECGRID`/`DIMENS`).")
 
@@ -165,9 +165,7 @@ class ZCornKeyword(Keyword[FloatArray[ThreeDimensions]]):
         # Eclipse writes `ZCORN` in Fortran order with i varying fastest, then j, then k varying slowest,
         # hence in the corresponding shape in C-order with i-fastest is (nz*2, ny*2, nx*2)
         # Access: zcorn[2*k, 2*j, 2*i] for cell (i, j, k)
-        return np.array(tokens, dtype=np.float64).reshape(
-            dims.nz * 2, dims.ny * 2, dims.nx * 2
-        )
+        return np.array(tokens, dtype=np.float64).reshape(dims.nz * 2, dims.ny * 2, dims.nx * 2)
 
 
 COORD = CoordKeyword()
@@ -264,7 +262,7 @@ DZ = ArrayKeyword("DZ", dtype=np.float64, default_value=0.0)
 """`DZ` - cell size in the z direction (one value per cell)."""
 
 
-class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
+class VectorDimsKeyword(Keyword[list[np.float64]]):
     """
     Shared implementation for `DXV` / `DYV` / `DZV`: a flat list of
     per-column or per-layer cell sizes along one structured axis, given
@@ -294,11 +292,11 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[np.float64]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[np.float64] | None:
         if dims is None:
             raise DeckParseError(
                 f"Cannot parse {self.name!r} without resolved grid "
@@ -315,14 +313,10 @@ class VectorDimsKeyword(Keyword[typing.List[np.float64]]):
         try:
             values = [np.float64(token) for token in tokens]
         except ValueError as exc:
-            raise DeckParseError(
-                f"{self.name} contains a non-numeric value: {exc}"
-            ) from exc
+            raise DeckParseError(f"{self.name} contains a non-numeric value: {exc}") from exc
 
         if len(values) != expected:
-            raise DeckParseError(
-                f"{self.name} expected {expected} value(s); got {len(values)}."
-            )
+            raise DeckParseError(f"{self.name} expected {expected} value(s); got {len(values)}.")
         return values
 
 
@@ -441,17 +435,17 @@ class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[dict[str, typing.Any]] | None:
         records = super().parse(deck, dims)
         if records is None:
             return None
 
         # Last value for each fault name wins.
-        by_name: typing.Dict[typing.Hashable, typing.Dict[str, typing.Any]] = {}
+        by_name: dict[typing.Hashable, dict[str, typing.Any]] = {}
         for record in records:
             if record is None:
                 continue

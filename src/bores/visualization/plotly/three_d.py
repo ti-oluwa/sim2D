@@ -47,7 +47,7 @@ from bores.wells import Wells
 logger = logging.getLogger(__name__)
 
 
-_active_figures: typing.List[weakref.ref] = []
+_active_figures: list[weakref.ref] = []
 
 
 def _track_figure(figure: go.Figure) -> None:
@@ -254,14 +254,12 @@ class PlotConfig:
     """Whether to apply data-driven opacity scaling for better depth perception.
     Higher data values become more opaque, lower values more transparent."""
 
-    opacity_scale_values: typing.Sequence[typing.Sequence[float]] = (
-        DEFAULT_OPACITY_SCALE_VALUES
-    )
+    opacity_scale_values: typing.Sequence[typing.Sequence[float]] = DEFAULT_OPACITY_SCALE_VALUES
     """Custom opacity scaling values for volume rendering. List of [data_fraction, opacity] pairs.
     If None, uses default scaling optimized for reservoir data visualization.
     Example: [[0, 0.05], [0.2, 0.3], [0.5, 0.6], [0.8, 0.8], [1, 1.0]]"""
 
-    aspect_mode: typing.Optional[typing.Literal["cube", "data", "auto"]] = None
+    aspect_mode: typing.Literal["cube", "data", "auto"] | None = None
     """Aspect mode for the 3D plot. Determines how the plot is scaled and displayed.
     Options are:
     - "cube": Equal scaling for all axes (default).
@@ -274,7 +272,7 @@ class PlotConfig:
     including ambient, diffuse, and specular reflections, roughness, and fresnel effects.
     This affects how surfaces appear under different lighting conditions, enhancing realism."""
 
-    light_position: typing.Optional[LightPosition] = None
+    light_position: LightPosition | None = None
     """Position of the light source in 3D space. Controls where the light comes from,
     affecting shadows and highlights on surfaces. This can be adjusted to simulate different
     lighting conditions, such as overhead sunlight or side lighting for dramatic effects."""
@@ -315,7 +313,7 @@ class BaseRenderer(ABC):
         """
         ...
 
-    def get_colorscale(self, color_scheme: typing.Union[ColorScheme, str]) -> str:
+    def get_colorscale(self, color_scheme: ColorScheme | str) -> str:
         """
         Get plotly colorscale string from ColorScheme enum.
 
@@ -331,10 +329,10 @@ class BaseRenderer(ABC):
         z_title: str,
         aspect_mode: str,
         z_scale: float = 1.0,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
-        z_range: typing.Optional[typing.Tuple[float, float]] = None,
-    ) -> typing.Dict[str, typing.Any]:
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
+    ) -> dict[str, typing.Any]:
         """
         Prepare scene configuration with proper aspect ratio handling.
 
@@ -348,7 +346,7 @@ class BaseRenderer(ABC):
         :param z_range: Optional (min, max) range for Z coordinates
         :return: Scene configuration dictionary
         """
-        scene_config: typing.Dict[str, typing.Any] = {
+        scene_config: dict[str, typing.Any] = {
             "xaxis_title": x_title,
             "yaxis_title": y_title,
             "zaxis_title": z_title,
@@ -377,9 +375,7 @@ class BaseRenderer(ABC):
 
         # Apply aspect ratio based on mode and z_scale
         if z_scale != 1.0:
-            if aspect_mode == "data" and all(
-                r is not None for r in [x_range, y_range, z_range]
-            ):
+            if aspect_mode == "data" and all(r is not None for r in [x_range, y_range, z_range]):
                 # Calculate aspect ratio from actual data extents
                 x_extent = x_range[1] - x_range[0]  # type: ignore
                 y_extent = y_range[1] - y_range[0]  # type: ignore
@@ -421,7 +417,7 @@ class BaseRenderer(ABC):
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
         normalize_range: bool = False,
-    ) -> typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid]:
+    ) -> tuple[ThreeDimensionalGrid, ThreeDimensionalGrid]:
         """
         Prepare data for plotting (handle log scale, clipping, etc.).
 
@@ -452,9 +448,7 @@ class BaseRenderer(ABC):
                     np.where(display_data <= 0, metadata.min_val * 0.1, display_data)
                 )
             else:
-                processed_data = np.clip(
-                    processed_data, metadata.min_val, metadata.max_val
-                )
+                processed_data = np.clip(processed_data, metadata.min_val, metadata.max_val)
                 display_data = processed_data.copy()
 
         elif metadata.min_val is not None:
@@ -492,10 +486,10 @@ class BaseRenderer(ABC):
 
     def get_physical_coordinates(
         self,
-        cell_dimension: typing.Tuple[float, float],
+        cell_dimension: tuple[float, float],
         depth_grid: ThreeDimensionalGrid,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
-    ) -> typing.Tuple[OneDimensionalGrid, OneDimensionalGrid, ThreeDimensionalGrid]:
+        coordinate_offsets: tuple[int, int, int] | None = None,
+    ) -> tuple[OneDimensionalGrid, OneDimensionalGrid, ThreeDimensionalGrid]:
         """
         Prepare physical coordinate arrays based on cell dimensions and depth grid.
 
@@ -544,15 +538,12 @@ class BaseRenderer(ABC):
         for i, j in itertools.product(range(nx), range(ny)):
             # For interior boundaries: midpoint between adjacent cell centers
             for k in range(nz - 1):
-                z_boundaries[i, j, k + 1] = (
-                    depth_grid[i, j, k] + depth_grid[i, j, k + 1]
-                ) / 2
+                z_boundaries[i, j, k + 1] = (depth_grid[i, j, k] + depth_grid[i, j, k + 1]) / 2
 
             # First boundary (top): extrapolate from first two centers
             if nz > 1:
                 z_boundaries[i, j, 0] = (
-                    depth_grid[i, j, 0]
-                    - (depth_grid[i, j, 1] - depth_grid[i, j, 0]) / 2
+                    depth_grid[i, j, 0] - (depth_grid[i, j, 1] - depth_grid[i, j, 0]) / 2
                 )
             else:
                 # Only one layer - assume unit thickness
@@ -579,15 +570,13 @@ class BaseRenderer(ABC):
     def apply_labels(
         self,
         figure: go.Figure,
-        labels: typing.Optional[
-            typing.Union["Labels", typing.Iterable["Label"]]
-        ] = None,
-        data: typing.Optional[ThreeDimensionalGrid] = None,
-        metadata: typing.Optional[PropertyMeta] = None,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
-        format_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        labels: typing.Union["Labels", typing.Iterable["Label"]] | None = None,
+        data: ThreeDimensionalGrid | None = None,
+        metadata: PropertyMeta | None = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
+        format_kwargs: dict[str, typing.Any] | None = None,
     ) -> None:
         """
         Apply labels to a 3D plot using the Label system.
@@ -639,17 +628,15 @@ class BaseRenderer(ABC):
             # Debug information
             logger.debug(f"Applied {len(annotations)} labels to 3D plot")
         else:
-            logger.debug(
-                "No annotations to apply - labels may be filtered out or invisible"
-            )
+            logger.debug("No annotations to apply - labels may be filtered out or invisible")
 
     def render_wells(
         self,
         figure: go.Figure,
-        wells: typing.Optional[Wells[ThreeDimensions]] = None,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[np.ndarray] = None,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+        wells: Wells[ThreeDimensions] | None = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: np.ndarray | None = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
         z_scale: float = 1.0,
         **kwargs: Unpack[WellKwargs],
     ) -> None:
@@ -693,10 +680,10 @@ class BaseRenderer(ABC):
             model_state.wells,
             cell_dimension=(100, 100),
             depth_grid=depth_grid,
-            injection_color='#ff6b6b',
-            production_color='#51cf66',
+            injection_color="#ff6b6b",
+            production_color="#51cf66",
             wellbore_width=8.0,
-            show_surface_marker=True
+            show_surface_marker=True,
         )
         ```
 
@@ -736,7 +723,7 @@ class BaseRenderer(ABC):
 
         def grid_to_physical(
             i: int, j: int, k: int
-        ) -> typing.Optional[typing.Tuple[float, float, float]]:
+        ) -> tuple[float, float, float] | None:
             """
             Convert grid indices to physical coordinates.
             Returns None if coordinates contain NaN or are out of bounds.
@@ -1377,16 +1364,16 @@ class VolumeRenderer(BaseRenderer):
         figure: go.Figure,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
         surface_count: int = 50,
-        opacity: typing.Optional[float] = None,
-        isomin: typing.Optional[float] = None,
-        isomax: typing.Optional[float] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
-        use_opacity_scaling: typing.Optional[bool] = None,
-        aspect_mode: typing.Optional[str] = "auto",
+        opacity: float | None = None,
+        isomin: float | None = None,
+        isomax: float | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
+        use_opacity_scaling: bool | None = None,
+        aspect_mode: str | None = "auto",
         z_scale: float = 1.0,
         labels: typing.Optional["Labels"] = None,
         auto_coarsen: bool = True,
@@ -1458,9 +1445,7 @@ class VolumeRenderer(BaseRenderer):
             )
 
             # Coarsen the data
-            data = coarsen_grid(
-                data, batch_size=(coarsen_factor, coarsen_factor, coarsen_factor)
-            )
+            data = coarsen_grid(data, batch_size=(coarsen_factor, coarsen_factor, coarsen_factor))
 
             # Coarsen depth_grid if provided
             if depth_grid is not None:
@@ -1494,9 +1479,7 @@ class VolumeRenderer(BaseRenderer):
         original_isomax = isomax
 
         # For volume rendering, we need both normalized (for volume) and display (for colorbar/hover)
-        normalized_data, display_data = self.normalize_data(
-            data, metadata, normalize_range=False
-        )
+        normalized_data, display_data = self.normalize_data(data, metadata, normalize_range=False)
 
         # Convert user-provided values to internal processed units
         if metadata.log_scale:
@@ -1523,16 +1506,8 @@ class VolumeRenderer(BaseRenderer):
             isomax = original_isomax
 
         # Get data range for colorbar mapping using ORIGINAL values
-        data_min = (
-            original_cmin
-            if original_cmin is not None
-            else float(np.nanmin(display_data))
-        )
-        data_max = (
-            original_cmax
-            if original_cmax is not None
-            else float(np.nanmax(display_data))
-        )
+        data_min = original_cmin if original_cmin is not None else float(np.nanmin(display_data))
+        data_max = original_cmax if original_cmax is not None else float(np.nanmax(display_data))
 
         # Create coordinate grids - use physical coordinates if available
         if cell_dimension is not None and depth_grid is not None:
@@ -1564,9 +1539,7 @@ class VolumeRenderer(BaseRenderer):
         else:
             # Fallback to index-based coordinates - reverse Z to show k=0 at top
             nx, ny, nz = data.shape
-            x, y, z = np.meshgrid(
-                np.arange(nx), np.arange(ny), np.arange(nz)[::-1], indexing="ij"
-            )
+            x, y, z = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz)[::-1], indexing="ij")
             x_title = "X Index"
             y_title = "Y Index"
             z_title = "Z Index"
@@ -1590,9 +1563,7 @@ class VolumeRenderer(BaseRenderer):
             absolute_k = z_index_offset + k
             # For hover text, map k to show k=0 at top (highest Z coordinate)
             display_k = data.shape[2] - 1 - k
-            absolute_display_k = (
-                z_index_offset + display_k
-            )  # Apply offset to display k as well
+            absolute_display_k = z_index_offset + display_k  # Apply offset to display k as well
             if cell_dimension is not None and depth_grid is not None:
                 hover_text.append(
                     f"Cell: ({absolute_i}, {absolute_j}, {absolute_display_k})<br>"  # Show absolute indices
@@ -1631,13 +1602,9 @@ class VolumeRenderer(BaseRenderer):
         scale_title = f"{metadata.display_name} ({metadata.unit})" + (
             " - Log Scale" if metadata.log_scale else ""
         )
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         volume_opacity = opacity if opacity is not None else self.config.opacity
-        opacity_scale = (
-            self.config.opacity_scale_values if use_opacity_scaling else None
-        )
+        opacity_scale = self.config.opacity_scale_values if use_opacity_scaling else None
         figure.add_trace(
             go.Volume(
                 x=x.flatten(),
@@ -1706,11 +1673,11 @@ class VolumeRenderer(BaseRenderer):
         x_title: str = "X Index",
         y_title: str = "Y Index",
         z_title: str = "Z Index",
-        aspect_mode: typing.Optional[str] = None,
+        aspect_mode: str | None = None,
         z_scale: float = 1.0,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
-        z_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
     ):
         """
         Update figure layout with dimensions and scene configuration.
@@ -1755,15 +1722,15 @@ class IsosurfaceRenderer(BaseRenderer):
         figure: go.Figure,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        isomin: typing.Optional[float] = None,
-        isomax: typing.Optional[float] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        isomin: float | None = None,
+        isomax: float | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         surface_count: int = 50,
-        opacity: typing.Optional[float] = None,
-        aspect_mode: typing.Optional[str] = "auto",
+        opacity: float | None = None,
+        aspect_mode: str | None = "auto",
         z_scale: float = 1.0,
         labels: typing.Optional["Labels"] = None,
         **kwargs,
@@ -1805,9 +1772,7 @@ class IsosurfaceRenderer(BaseRenderer):
         original_isomax = isomax
 
         # Normalized data for isosurface calculation
-        normalized_data, display_data = self.normalize_data(
-            data, metadata, normalize_range=False
-        )
+        normalized_data, display_data = self.normalize_data(data, metadata, normalize_range=False)
 
         # Convert user-provided values to internal processed units
         if metadata.log_scale:
@@ -1834,16 +1799,8 @@ class IsosurfaceRenderer(BaseRenderer):
             isomax = original_isomax
 
         # Get data range for colorbar mapping using ORIGINAL values
-        data_min = (
-            original_cmin
-            if original_cmin is not None
-            else float(np.nanmin(display_data))
-        )
-        data_max = (
-            original_cmax
-            if original_cmax is not None
-            else float(np.nanmax(display_data))
-        )
+        data_min = original_cmin if original_cmin is not None else float(np.nanmin(display_data))
+        data_max = original_cmax if original_cmax is not None else float(np.nanmax(display_data))
 
         # Create coordinate grids - use physical coordinates if available
         if cell_dimension is not None and depth_grid is not None:
@@ -1943,9 +1900,7 @@ class IsosurfaceRenderer(BaseRenderer):
         scale_title = f"{metadata.display_name} ({metadata.unit})" + (
             " - Log Scale" if metadata.log_scale else ""
         )
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         isosurface_opacity = opacity if opacity is not None else self.config.opacity
         figure.add_trace(
             go.Isosurface(
@@ -1977,15 +1932,9 @@ class IsosurfaceRenderer(BaseRenderer):
         )
 
         # Calculate coordinate ranges for aspect ratio calculation
-        x_range = (
-            (float(x_flat.min()), float(x_flat.max())) if x_flat.size > 0 else None
-        )
-        y_range = (
-            (float(y_flat.min()), float(y_flat.max())) if y_flat.size > 0 else None
-        )
-        z_range = (
-            (float(z_flat.min()), float(z_flat.max())) if z_flat.size > 0 else None
-        )
+        x_range = (float(x_flat.min()), float(x_flat.max())) if x_flat.size > 0 else None
+        y_range = (float(y_flat.min()), float(y_flat.max())) if y_flat.size > 0 else None
+        z_range = (float(z_flat.min()), float(z_flat.max())) if z_flat.size > 0 else None
 
         self.update_layout(
             figure,
@@ -2019,11 +1968,11 @@ class IsosurfaceRenderer(BaseRenderer):
         x_title: str = "X Index",
         y_title: str = "Y Index",
         z_title: str = "Z Index",
-        aspect_mode: typing.Optional[str] = None,
+        aspect_mode: str | None = None,
         z_scale: float = 1.0,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
-        z_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
     ) -> None:
         """
         Update figure layout with dimensions and scene configuration for isosurface plots.
@@ -2062,7 +2011,7 @@ def interpolate_opacity(
     x: np.ndarray, scale_values: typing.Sequence[typing.Sequence[float]]
 ) -> npt.NDArray[np.floating]:
     # scale_values: list of [fraction, opacity]
-    fractions, opacities = zip(*scale_values)
+    fractions, opacities = zip(*scale_values, strict=False)
     return np.interp(x, fractions, opacities)
 
 
@@ -2076,15 +2025,15 @@ class Scatter3DRenderer(BaseRenderer):
         figure: go.Figure,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
         threshold: float = 0.0,
         sample_rate: float = 1.0,
         marker_size: int = 4,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
-        opacity: typing.Optional[float] = None,
-        aspect_mode: typing.Optional[str] = "auto",
+        cmin: float | None = None,
+        cmax: float | None = None,
+        opacity: float | None = None,
+        aspect_mode: str | None = "auto",
         z_scale: float = 1.0,
         labels: typing.Optional["Labels"] = None,
         **kwargs,
@@ -2125,9 +2074,7 @@ class Scatter3DRenderer(BaseRenderer):
 
         # Normalize data for consistent scaling and thresholding
         # Original data will be used for hover text and colorbar
-        normalized_data, display_data = self.normalize_data(
-            data, metadata, normalize_range=False
-        )
+        normalized_data, display_data = self.normalize_data(data, metadata, normalize_range=False)
 
         # Convert user-provided values to internal processed units
         if metadata.log_scale:
@@ -2146,16 +2093,8 @@ class Scatter3DRenderer(BaseRenderer):
             cmax = original_cmax
 
         # Get data range for colorbar mapping using ORIGINAL values
-        data_min = (
-            original_cmin
-            if original_cmin is not None
-            else float(np.nanmin(display_data))
-        )
-        data_max = (
-            original_cmax
-            if original_cmax is not None
-            else float(np.nanmax(display_data))
-        )
+        data_min = original_cmin if original_cmin is not None else float(np.nanmin(display_data))
+        data_max = original_cmax if original_cmax is not None else float(np.nanmax(display_data))
 
         # Subsample data for performance
         # Get indices where data exceeds threshold
@@ -2165,9 +2104,7 @@ class Scatter3DRenderer(BaseRenderer):
         # Subsample
         n_points = len(indices[0])
         if n_points > 10000:  # Limit number of points for performance
-            sample_indices = np.random.choice(
-                n_points, int(n_points * sample_rate), replace=False
-            )
+            sample_indices = np.random.choice(n_points, int(n_points * sample_rate), replace=False)
             x_coords = indices[0][sample_indices]
             y_coords = indices[1][sample_indices]
             z_coords_raw = indices[2][sample_indices]
@@ -2205,7 +2142,7 @@ class Scatter3DRenderer(BaseRenderer):
             z_physical = np.array(
                 [
                     (z_boundaries[x, y, z] + z_boundaries[x, y, z + 1]) / 2
-                    for x, y, z in zip(x_coords, y_coords, z_coords)
+                    for x, y, z in zip(x_coords, y_coords, z_coords, strict=False)
                 ]
             )
 
@@ -2270,9 +2207,7 @@ class Scatter3DRenderer(BaseRenderer):
         scale_title = f"{metadata.display_name} ({metadata.unit})" + (
             " - Log Scale" if metadata.log_scale else ""
         )
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         scatter_opacity = opacity if opacity is not None else self.config.opacity
         figure.add_trace(
             go.Scatter3d(
@@ -2303,19 +2238,13 @@ class Scatter3DRenderer(BaseRenderer):
 
         # Calculate coordinate ranges for aspect ratio calculation
         x_range = (
-            (float(np.min(x_physical)), float(np.max(x_physical)))
-            if len(x_physical) > 0
-            else None
+            (float(np.min(x_physical)), float(np.max(x_physical))) if len(x_physical) > 0 else None
         )
         y_range = (
-            (float(np.min(y_physical)), float(np.max(y_physical)))
-            if len(y_physical) > 0
-            else None
+            (float(np.min(y_physical)), float(np.max(y_physical))) if len(y_physical) > 0 else None
         )
         z_range = (
-            (float(np.min(z_physical)), float(np.max(z_physical)))
-            if len(z_physical) > 0
-            else None
+            (float(np.min(z_physical)), float(np.max(z_physical))) if len(z_physical) > 0 else None
         )
 
         self.update_layout(
@@ -2350,11 +2279,11 @@ class Scatter3DRenderer(BaseRenderer):
         x_title: str = "X Cell Index",
         y_title: str = "Y Cell Index",
         z_title: str = "Z Cell Index",
-        aspect_mode: typing.Optional[str] = None,
+        aspect_mode: str | None = None,
         z_scale: float = 1.0,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
-        z_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
     ) -> None:
         """
         Update figure layout with dimensions and scene configuration for scatter plots.
@@ -2389,7 +2318,7 @@ class Scatter3DRenderer(BaseRenderer):
         )
 
 
-PLOT_TYPE_NAMES: typing.Dict[PlotType, str] = {
+PLOT_TYPE_NAMES: dict[PlotType, str] = {
     PlotType.VOLUME: "3D Volume",
     PlotType.ISOSURFACE: "3D Isosurface",
     PlotType.SCATTER_3D: "3D Scatter",
@@ -2406,8 +2335,8 @@ class DataVisualizer:
 
     def __init__(
         self,
-        config: typing.Optional[PlotConfig] = None,
-        registry: typing.Optional[PropertyRegistry] = None,
+        config: PlotConfig | None = None,
+        registry: PropertyRegistry | None = None,
     ) -> None:
         """
         Initialize the visualizer with optional configuration.
@@ -2416,7 +2345,7 @@ class DataVisualizer:
         :param registry: Optional fluid property registry (uses default if None)
         """
         self._config = config or PlotConfig()
-        self._renderers: typing.Dict[PlotType, BaseRenderer] = {
+        self._renderers: dict[PlotType, BaseRenderer] = {
             PlotType.VOLUME: VolumeRenderer(self._config),
             PlotType.ISOSURFACE: IsosurfaceRenderer(self._config),
             PlotType.SCATTER_3D: Scatter3DRenderer(self._config),
@@ -2431,7 +2360,7 @@ class DataVisualizer:
     def add_renderer(
         self,
         plot_type: PlotType,
-        renderer_type: typing.Type[BaseRenderer],
+        renderer_type: type[BaseRenderer],
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> None:
@@ -2466,16 +2395,10 @@ class DataVisualizer:
     def apply_slice(
         self,
         data: ThreeDimensionalGrid,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-    ) -> typing.Tuple[ThreeDimensionalGrid, typing.Tuple[slice, slice, slice]]:
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
+    ) -> tuple[ThreeDimensionalGrid, tuple[slice, slice, slice]]:
         """
         Validate and apply slicing to 3D data, ensuring result is still 3D.
 
@@ -2490,7 +2413,7 @@ class DataVisualizer:
 
     def _get_data(
         self,
-        source: typing.Union[ModelState[ThreeDimensions], BlackOil],
+        source: ModelState[ThreeDimensions] | BlackOil,
         name: str,
     ) -> ThreeDimensionalGrid:
         """
@@ -2512,7 +2435,7 @@ class DataVisualizer:
         self,
         plot_type: PlotType,
         metadata: PropertyMeta,
-        custom_title: typing.Optional[str] = None,
+        custom_title: str | None = None,
     ) -> str:
         """
         Smart title determination logic that includes plot type information.
@@ -2534,26 +2457,16 @@ class DataVisualizer:
 
     def make_plot(
         self,
-        source: typing.Union[
-            BlackOil[ThreeDimensions],
-            ModelState[ThreeDimensions],
-            ThreeDimensionalGrid,
-        ],
-        property: typing.Optional[str] = None,
-        plot_type: typing.Optional[typing.Union[PlotType, str]] = None,
-        figure: typing.Optional[go.Figure] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
+        source: BlackOil[ThreeDimensions] | ModelState[ThreeDimensions] | ThreeDimensionalGrid,
+        property: str | None = None,
+        plot_type: PlotType | str | None = None,
+        figure: go.Figure | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
         labels: typing.Optional["Labels"] = None,
         show_wells: bool = False,
         **kwargs: typing.Any,
@@ -2593,7 +2506,9 @@ class DataVisualizer:
         # Plot raw ThreeDimensionalGrid directly
         grid_data = np.random.rand(10, 10, 5)
         viz.make_plot(grid_data)  # Uses generic metadata
-        viz.make_plot(grid_data, property="custom_prop")  # Uses registered property metadata if available
+        viz.make_plot(
+            grid_data, property="custom_prop"
+        )  # Uses registered property metadata if available
 
         # Plot with string plot type (converted internally)
         viz.make_plot(state, "pressure", plot_type="volume")
@@ -2616,10 +2531,10 @@ class DataVisualizer:
             state,
             property="oil_saturation",
             show_wells=True,
-            injection_color='#ff6b6b',
-            production_color='#51cf66',
+            injection_color="#ff6b6b",
+            production_color="#51cf66",
             wellbore_width=8.0,
-            show_surface_marker=True
+            show_surface_marker=True,
         )
         ```
         """
@@ -2765,7 +2680,7 @@ class DataVisualizer:
         final_title = self.get_title(plot_type, metadata, title)
 
         # Apply final layout updates
-        layout_updates: typing.Dict[str, typing.Any] = {"title": final_title}
+        layout_updates: dict[str, typing.Any] = {"title": final_title}
         if width is not None:
             layout_updates["width"] = width
         if height is not None:
@@ -2777,28 +2692,18 @@ class DataVisualizer:
 
     def animate(
         self,
-        sequence: typing.Union[
-            typing.List[BlackOil[ThreeDimensions]],
-            typing.Sequence[ModelState[ThreeDimensions]],
-            typing.Sequence[ThreeDimensionalGrid],
-        ],
-        property: typing.Optional[str] = None,
-        plot_type: typing.Optional[typing.Union[PlotType, str]] = None,
+        sequence: list[BlackOil[ThreeDimensions]] | typing.Sequence[ModelState[ThreeDimensions]] | typing.Sequence[ThreeDimensionalGrid],
+        property: str | None = None,
+        plot_type: PlotType | str | None = None,
         frame_duration: int = 200,
         step_size: int = 1,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
-        title: typing.Optional[str] = None,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        save: typing.Union[HtmlExporter, str, None] = None,
+        width: int | None = None,
+        height: int | None = None,
+        title: str | None = None,
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
+        save: HtmlExporter | str | None = None,
         labels: typing.Optional["Labels"] = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
@@ -2837,6 +2742,7 @@ class DataVisualizer:
 
         # Save with explicit HtmlExporter for fine control
         from bores.visualization.utils import HtmlExporter
+
         viz.animate(states, "pressure", save=HtmlExporter("out.html", auto_open=True))
         ```
         """
@@ -2882,14 +2788,12 @@ class DataVisualizer:
         if "cmin" not in kwargs:
             # Add cmin/cmax to kwargs for consistent color mapping across frames
             if is_model_state_sequence or is_model_sequence:
-                data_list: typing.List[ThreeDimensionalGrid] = [
+                data_list: list[ThreeDimensionalGrid] = [
                     self._get_data(source, metadata.name)  # type: ignore[arg-type]
                     for source in sequence
                 ]
             else:
-                data_list = typing.cast(
-                    typing.List[ThreeDimensionalGrid], list(sequence)
-                )
+                data_list = typing.cast(list[ThreeDimensionalGrid], list(sequence))
 
             cmin = float(np.nanmin([np.nanmin(data) for data in data_list]))
             cmax = float(np.nanmax([np.nanmax(data) for data in data_list]))
@@ -2943,7 +2847,7 @@ class DataVisualizer:
                 time_str = f"Frame {i}"
 
             # Extract annotations from the frame figure if they exist
-            frame_layout: typing.Dict[str, typing.Any] = {
+            frame_layout: dict[str, typing.Any] = {
                 "title": f"{metadata.display_name} at {time_str}"
             }
 
@@ -2955,17 +2859,13 @@ class DataVisualizer:
                         annotations = list(scene_layout.annotations or [])
                         if annotations:
                             frame_layout["scene"] = {"annotations": annotations}
-                            logger.debug(
-                                f"Extracted {len(annotations)} annotations for frame {i}"
-                            )
+                            logger.debug(f"Extracted {len(annotations)} annotations for frame {i}")
                         else:
                             frame_layout["scene"] = {"annotations": []}
                     else:
                         frame_layout["scene"] = {"annotations": []}
                 except Exception as exc:
-                    logger.warning(
-                        f"Failed to extract annotations for frame {i}: {exc}"
-                    )
+                    logger.warning(f"Failed to extract annotations for frame {i}: {exc}")
                     frame_layout["scene"] = {"annotations": []}
 
             frame = go.Frame(
@@ -3091,7 +2991,7 @@ class DataVisualizer:
 
         return base_fig
 
-    def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
+    def help(self, plot_type: PlotType | None = None) -> str:
         """
         Print help information about available plot types and their parameters.
 
@@ -3103,8 +3003,7 @@ class DataVisualizer:
         from bores.visualization.plotly1d import viz, PlotType
 
         # Get help for all plot types
-        print(viz.help())
-        """
+        print(viz.help())"""
         if plot_type is not None:
             renderer = self.get_renderer(plot_type)
             return renderer.help()

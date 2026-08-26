@@ -1,6 +1,5 @@
 """Black-oil fluid physics model."""
 
-import typing
 
 from typing_extensions import Self
 
@@ -34,7 +33,7 @@ class BlackOil(
         self,
         pvt: PVT,
         satfunc: SatFunc,
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         :param pvt: PVT region tables keyed by 1-based `PVTNUM` index.
@@ -86,7 +85,7 @@ class BlackOil(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `BlackOil` with all region tables rescaled to *target*.

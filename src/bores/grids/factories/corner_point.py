@@ -55,7 +55,7 @@ ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
 """Corner-point ACTNUM array, shape `(NZ, NY, NX)`; 1 = active."""
 
 
-_HEXAHEDRON_FACES_ZDOWN: typing.List[typing.List[int]] = [
+_HEXAHEDRON_FACES_ZDOWN: list[list[int]] = [
     [0, 3, 2, 1],  # top    - outward normal = -z
     [4, 5, 6, 7],  # bottom - outward normal = +z
     [0, 1, 5, 4],  # -y face
@@ -67,7 +67,7 @@ _HEXAHEDRON_FACES_ZDOWN: typing.List[typing.List[int]] = [
 _TOP_FACE_LOCAL: int = 0
 _BOTTOM_FACE_LOCAL: int = 1
 
-_FACE_DIR_TO_LOCAL: typing.Dict[str, int] = {
+_FACE_DIR_TO_LOCAL: dict[str, int] = {
     "X": 5,
     "X-": 4,
     "Y": 3,
@@ -81,37 +81,23 @@ def make_corner_point_grid(
     *,
     coord: CoordArray,
     zcorn: ZCornArray,
-    actnum: typing.Optional[ActNumArray] = None,
+    actnum: ActNumArray | None = None,
     vertex_tolerance: Number = 1e-8,
-    pinch_tolerance: typing.Optional[Number] = None,
+    pinch_tolerance: Number | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    map_axes: typing.Optional[MapAxes] = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+    map_axes: MapAxes | None = None,
     apply_map_axes: bool = True,
-    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
-    fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
-    fault_transmissibility_multipliers: typing.Optional[
-        typing.Mapping[str, Number]
-    ] = None,
-    positive_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
+    nnc_cell_indices: IntArray[TwoDimensions] | None = None,
+    nnc_transmissibilities: NumberArray[OneDimension] | None = None,
+    fault_records: typing.Sequence[FaultRecord] | None = None,
+    fault_transmissibility_multipliers: typing.Mapping[str, Number] | None = None,
+    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
 ) -> Grid:
     """
     Build a corner-point (pillar) grid from ECLIPSE-style COORD / ZCORN / ACTNUM arrays.
@@ -158,9 +144,7 @@ def make_corner_point_grid(
     coord_arr = np.asarray(coord, dtype=np.float64, copy=False)
     zcorn_arr = np.asarray(zcorn, dtype=np.float64, copy=False)
 
-    resolved_map_axes = (
-        map_axes if map_axes is not None else (metadata or {}).get("map_axes")
-    )
+    resolved_map_axes = map_axes if map_axes is not None else (metadata or {}).get("map_axes")
     if resolved_map_axes is not None:
         # `MAPUNITS` (map_axes' own unit_system) can differ from GRIDUNIT
         # (this grid's unit_system) so we normalise once, upfront, so both the
@@ -177,13 +161,9 @@ def make_corner_point_grid(
         metadata = {**(metadata or {}), "map_axes": resolved_map_axes}
 
     if coord_arr.ndim != 3 or coord_arr.shape[2] != 6:
-        raise ValidationError(
-            f"`coord` must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}."
-        )
+        raise ValidationError(f"`coord` must have shape (NY+1, NX+1, 6); got {coord_arr.shape!r}.")
     if zcorn_arr.ndim != 3:
-        raise ValidationError(
-            f"`zcorn` must be a 3-D array; got ndim={zcorn_arr.ndim}."
-        )
+        raise ValidationError(f"`zcorn` must be a 3-D array; got ndim={zcorn_arr.ndim}.")
 
     ny_plus1, nx_plus1 = coord_arr.shape[:2]
     nx = nx_plus1 - 1
@@ -199,9 +179,7 @@ def make_corner_point_grid(
     if actnum is None:
         actnum_arr = typing.cast(ActNumArray, np.ones((nz, ny, nx), dtype=np.int32))
     else:
-        actnum_arr = typing.cast(
-            ActNumArray, np.asarray(actnum, dtype=np.int32, copy=False)
-        )
+        actnum_arr = typing.cast(ActNumArray, np.asarray(actnum, dtype=np.int32, copy=False))
         if actnum_arr.shape != (nz, ny, nx):
             raise ValidationError(
                 f"actnum shape {actnum_arr.shape!r} does not match "
@@ -234,8 +212,8 @@ def make_corner_point_grid(
     cell_statuses = np.full(n_active_cells, int(CellStatus.ACTIVE), dtype=np.int8)
 
     # Resolve fault face indices; cell pairs with no shared face become fault NNCs.
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
-    fault_face_indices: typing.Optional[typing.Dict[str, IntArray[OneDimension]]] = None
+    fault_nnc_pairs: list[tuple[int, int, str]] = []
+    fault_face_indices: dict[str, IntArray[OneDimension]] | None = None
     if fault_records:
         fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
             fault_records=fault_records,
@@ -249,18 +227,14 @@ def make_corner_point_grid(
             boundary_fault_faces = face_indices[boundary_fault_mask]
             interior_fault_faces = face_indices[~boundary_fault_mask]
 
-            face_connection_types[interior_fault_faces] = int(
-                ConnectionType.INTERIOR_FAULT_FACE
-            )
-            face_connection_types[boundary_fault_faces] = int(
-                ConnectionType.BOUNDARY_FAULT_FACE
-            )
+            face_connection_types[interior_fault_faces] = int(ConnectionType.INTERIOR_FAULT_FACE)
+            face_connection_types[boundary_fault_faces] = int(ConnectionType.BOUNDARY_FAULT_FACE)
 
     # Merge all NNC sources: [geometry pinchouts] + [geometry fault NNCs] + [user NNCs]
     # Each source contributes a pairs array (n, 2), a types array (n,), and
     # optionally a transmissibilities array (n,).
-    all_nnc_parts: typing.List[
-        typing.Tuple[
+    all_nnc_parts: list[
+        tuple[
             npt.NDArray[np.int32],
             npt.NDArray[np.int8],
             npt.NDArray[np.float64],
@@ -277,17 +251,15 @@ def make_corner_point_grid(
             )
         )
 
-    fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
+    fault_nnc_indices: dict[str, list[int]] = {}
     if fault_nnc_pairs:
-        fault_pairs = np.asarray(
-            [(a, b) for a, b, _ in fault_nnc_pairs], dtype=np.int32
-        ).reshape(-1, 2)
+        fault_pairs = np.asarray([(a, b) for a, b, _ in fault_nnc_pairs], dtype=np.int32).reshape(
+            -1, 2
+        )
         fault_connection_types = np.full(
             len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
         )
-        fault_transmissibilities = np.full(
-            len(fault_nnc_pairs), np.nan, dtype=np.float64
-        )
+        fault_transmissibilities = np.full(len(fault_nnc_pairs), np.nan, dtype=np.float64)
         all_nnc_parts.append(
             (
                 fault_pairs,
@@ -319,29 +291,24 @@ def make_corner_point_grid(
             )
         )
 
-    merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
-    merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
-    merged_nnc_transmissibilities: typing.Optional[npt.NDArray[np.float64]] = None
-    merged_nnc_fault_indices: typing.Optional[
-        typing.Dict[str, IntArray[OneDimension]]
-    ] = None
+    merged_nnc_pairs: npt.NDArray[np.int32] | None = None
+    merged_nnc_connection_types: npt.NDArray[np.int8] | None = None
+    merged_nnc_transmissibilities: npt.NDArray[np.float64] | None = None
+    merged_nnc_fault_indices: dict[str, IntArray[OneDimension]] | None = None
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8, copy=False)
+        merged_nnc_connection_types = np.concatenate([t for _, t, _ in all_nnc_parts]).astype(
+            np.int8, copy=False
+        )
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         # Only store if at least one value is finite (avoids all-NaN array)
         merged_nnc_transmissibilities = (
-            merged_transmissibilities
-            if np.any(np.isfinite(merged_transmissibilities))
-            else None
+            merged_transmissibilities if np.any(np.isfinite(merged_transmissibilities)) else None
         )
         if fault_nnc_pairs:
             merged_nnc_fault_indices = {  # type: ignore[arg-type]
-                name: np.asarray(idxs, dtype=np.int32)
-                for name, idxs in fault_nnc_indices.items()
+                name: np.asarray(idxs, dtype=np.int32) for name, idxs in fault_nnc_indices.items()
             }
 
     return Grid(
@@ -406,9 +373,7 @@ def _map_axes_xy_inverse(
     :returns: Shape `(n, 2)` local-space points.
     """
     inverse_rotation = np.linalg.inv(map_axes.rotation_matrix)
-    return typing.cast(
-        NumberArray[TwoDimensions], (xy - map_axes.origin) @ inverse_rotation.T
-    )
+    return typing.cast(NumberArray[TwoDimensions], (xy - map_axes.origin) @ inverse_rotation.T)
 
 
 def _apply_map_axes_to_coord(coord: CoordArray, map_axes: MapAxes) -> CoordArray:
@@ -538,7 +503,7 @@ def _compute_active_cell_corner_coordinates(
 
 @numba.njit(cache=True)
 def _is_cell_pinched(
-    vtk_vertices: typing.List[Integer],
+    vtk_vertices: list[Integer],
     vertex_coordinates: VertexCoordinates,
     pinch_tolerance: Number,
 ) -> Boolean:
@@ -571,13 +536,13 @@ def _compute_corner_point_geometry(
     actnum: ActNumArray,
     vertex_tolerance: Number = 1e-8,
     pinch_tolerance: Number = 0.0,
-) -> typing.Tuple[
+) -> tuple[
     VertexCoordinates,
     IntArray[OneDimension],
     IntArray[OneDimension],
     IntArray[TwoDimensions],
     npt.NDArray[np.int8],
-    typing.Optional[npt.NDArray[np.int32]],
+    npt.NDArray[np.int32] | None,
     npt.NDArray[np.int8],
     IntArray[TwoDimensions],
     NumberArray[OneDimension],
@@ -619,10 +584,10 @@ def _compute_corner_point_geometry(
 
     vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
 
-    face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
-    nnc_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
-    nnc_pair_types: typing.List[int] = []
-    nnc_face_keys: typing.Set[FaceKey] = set()
+    face_registry: dict[FaceKey, _FaceRecord] = {}
+    nnc_pairs: list[tuple[Integer, Integer]] = []
+    nnc_pair_types: list[int] = []
+    nnc_face_keys: set[FaceKey] = set()
 
     n_pinched = 0
     n_degenerate = 0
@@ -672,10 +637,10 @@ def _compute_corner_point_geometry(
             stacklevel=4,
         )
 
-    flat_face_vertex_indices: typing.List[Integer] = []
-    face_vertex_offsets: typing.List[int] = [0]
-    face_cell_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
-    face_connection_types: typing.List[int] = []
+    flat_face_vertex_indices: list[Integer] = []
+    face_vertex_offsets: list[int] = [0]
+    face_cell_pairs: list[tuple[Integer, Integer]] = []
+    face_connection_types: list[int] = []
 
     for record in face_registry.values():
         flat_face_vertex_indices.extend(record.face_vertex_indices)
@@ -687,7 +652,7 @@ def _compute_corner_point_geometry(
         else:
             face_connection_types.append(int(ConnectionType.INTERIOR_FACE))
 
-    nnc_array: typing.Optional[npt.NDArray[np.int32]] = None
+    nnc_array: npt.NDArray[np.int32] | None = None
     nnc_connection_types_array: npt.NDArray[np.int8] = np.empty(0, dtype=np.int8)
     if nnc_pairs:
         nnc_array = np.asarray(nnc_pairs, dtype=np.int32).reshape(-1, 2)
@@ -696,9 +661,7 @@ def _compute_corner_point_geometry(
     vtk_corner_indices = np.empty((n_active, 8), dtype=np.int32)
     for cell_idx in range(n_active):
         for vertex in range(8):
-            vtk_corner_indices[cell_idx, vertex] = corner_global[
-                cell_idx, vtk_to_corner[vertex]
-            ]
+            vtk_corner_indices[cell_idx, vertex] = corner_global[cell_idx, vtk_to_corner[vertex]]
 
     cell_volumes, cell_centroids = _compute_hex_volumes_and_centroids(
         vtk_corner_indices=vtk_corner_indices,
@@ -722,9 +685,9 @@ def _resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
     active_cells: IntArray[TwoDimensions],
     face_cell_indices: IntArray[TwoDimensions],
-) -> typing.Tuple[
-    typing.Dict[str, IntArray[OneDimension]],
-    typing.List[typing.Tuple[int, int, str]],
+) -> tuple[
+    dict[str, IntArray[OneDimension]],
+    list[tuple[int, int, str]],
 ]:
     """
     Resolve `FaultRecord` IJK ranges to unstructured face index arrays.
@@ -737,17 +700,17 @@ def _resolve_fault_face_indices(
     :param face_cell_indices: Shape `(n_faces, 2)`.
     :returns: Tuple `(fault_face_index_dict, fault_nnc_pairs)`.
     """
-    kji_to_cell: typing.Dict[typing.Tuple[int, int, int], int] = {}
+    kji_to_cell: dict[tuple[int, int, int], int] = {}
     for cell_idx, (k, j, i) in enumerate(active_cells):
         kji_to_cell[(int(k), int(j), int(i))] = cell_idx
 
-    cell_pair_to_face: typing.Dict[typing.FrozenSet[int], int] = {}
+    cell_pair_to_face: dict[frozenset[int], int] = {}
     for face_idx, (owner, neighbour) in enumerate(face_cell_indices):
         if owner >= 0 and neighbour >= 0:
             cell_pair_to_face[frozenset((int(owner), int(neighbour)))] = face_idx
 
-    result: typing.Dict[str, typing.List[int]] = {}
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
+    result: dict[str, list[int]] = {}
+    fault_nnc_pairs: list[tuple[int, int, str]] = []
 
     for record in fault_records:
         face_direction = record.face_direction.upper()
@@ -767,7 +730,7 @@ def _resolve_fault_face_indices(
         else:
             di, dj, dk = 0, 0, 1
 
-        face_indices: typing.List[int] = []
+        face_indices: list[int] = []
         n_inactive = 0
 
         for k in range(record.k1 - 1, record.k2):
@@ -802,10 +765,7 @@ def _resolve_fault_face_indices(
                 result[record.name] = face_indices
 
     return (  # type: ignore[return-value]
-        {
-            name: np.unique(np.asarray(idxs, dtype=np.int32))
-            for name, idxs in result.items()
-        },
+        {name: np.unique(np.asarray(idxs, dtype=np.int32)) for name, idxs in result.items()},
         fault_nnc_pairs,
     )
 
@@ -906,7 +866,7 @@ def _fill_zcorn(
 def _compute_hex_volumes_and_centroids(
     vtk_corner_indices: IntArray[TwoDimensions],
     vertex_coordinates: NumberArray[TwoDimensions],
-) -> typing.Tuple[NumberArray[OneDimension], NumberArray[TwoDimensions]]:
+) -> tuple[NumberArray[OneDimension], NumberArray[TwoDimensions]]:
     """
     Compute hexahedral cell volumes and centroids via 5-tetrahedron decomposition.
 
@@ -1009,7 +969,7 @@ def _compute_hex_volumes_and_centroids(
 
 def rederive_corner_point_arrays(
     grid: Grid,
-) -> typing.Tuple[CoordArray, ZCornArray, Integer, Integer, Integer]:
+) -> tuple[CoordArray, ZCornArray, Integer, Integer, Integer]:
     """
     Reconstruct approximate COORD and ZCORN arrays from a `Grid`.
 
@@ -1090,7 +1050,7 @@ def rederive_corner_point_arrays(
     pillar_x[nonzero] /= pillar_count[nonzero]
     pillar_y[nonzero] /= pillar_count[nonzero]
 
-    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    map_axes: MapAxes | None = meta.get("map_axes")
     if map_axes is not None:
         # grid.cell_min_xyz/cell_max_xyz (and so pillar_x/pillar_y above)
         # are in map space whenever this grid was built with `MAPAXES`

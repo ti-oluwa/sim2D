@@ -14,7 +14,7 @@ from bores.wells.base import Well, Wells
 class PerforationIndex:
     """Well index for a single perforated cell."""
 
-    cell: typing.Tuple[int, int, int]  # (i, j, k)
+    cell: tuple[int, int, int]  # (i, j, k)
     """Perforated cell indices"""
     cell_idx: int
     """Perforated cell 1D index"""
@@ -28,7 +28,7 @@ class WellIndex:
 
     well_name: str
     """Well name"""
-    perforations: typing.Tuple[PerforationIndex, ...]
+    perforations: tuple[PerforationIndex, ...]
     """Tuple of `PerforationIndex` objects"""
     total_well_index: float
     """Sum total of all perforated cells' well indices"""
@@ -46,9 +46,9 @@ class WellIndex:
 class WellsIndices:
     """(Pre)computed well indices for all wells."""
 
-    injection: typing.Dict[str, WellIndex]
+    injection: dict[str, WellIndex]
     """Mapping of injection well names to their corresponding `WellIndex`"""
-    production: typing.Dict[str, WellIndex]
+    production: dict[str, WellIndex]
     """Mapping of injection well names to their corresponding `WellIndex`"""
 
 
@@ -108,9 +108,7 @@ def build_wells_indices(
                     net_to_gross=net_to_gross_grid[i, j, k],
                     regime_constant=regime_constant,
                 )
-                cell_idx = to_1D_index(
-                    i, j, k, cell_count_x, cell_count_y, cell_count_z
-                )
+                cell_idx = to_1D_index(i, j, k, cell_count_x, cell_count_y, cell_count_z)
                 perforations.append(
                     PerforationIndex(
                         cell=(i, j, k),
@@ -127,9 +125,7 @@ def build_wells_indices(
 
     return WellsIndices(
         injection={wells.name: _well_indices(wells) for wells in wells.injection_wells},
-        production={
-            wells.name: _well_indices(wells) for wells in wells.production_wells
-        },
+        production={wells.name: _well_indices(wells) for wells in wells.production_wells},
     )
 
 

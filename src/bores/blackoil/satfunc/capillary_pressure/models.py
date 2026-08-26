@@ -53,7 +53,7 @@ def _compute_brooks_corey_capillary_pressures_scalar(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[Number, Number]:
+) -> tuple[Number, Number]:
     """
     Scalar variant of Brooks-Corey capillary pressure computation.
 
@@ -118,9 +118,7 @@ def _compute_brooks_corey_capillary_pressures_scalar(
     oil_water_capillary_pressure: Number = 0.0
     if total_mobile_pore_space_water > minimum_mobile_pore_space:
         effective_water_saturation = (sw - swc) / total_mobile_pore_space_water
-        effective_water_saturation = min(
-            max(effective_water_saturation, saturation_epsilon), 1.0
-        )
+        effective_water_saturation = min(max(effective_water_saturation, saturation_epsilon), 1.0)
 
         if effective_water_saturation < 1.0 - saturation_epsilon:
             if wettability == Wettability.WATER_WET:
@@ -145,22 +143,18 @@ def _compute_brooks_corey_capillary_pressures_scalar(
                     ** (-1.0 / oil_water_pore_size_distribution_index_oil_wet)
                 )
                 oil_water_capillary_pressure = (
-                    mixed_wet_water_fraction * pcow_ww
-                    + (1.0 - mixed_wet_water_fraction) * pcow_ow
+                    mixed_wet_water_fraction * pcow_ww + (1.0 - mixed_wet_water_fraction) * pcow_ow
                 )
 
     # Pcgo (Pg - Po)
     gas_oil_capillary_pressure: Number = 0.0
     if total_mobile_pore_space_gas > minimum_mobile_pore_space:
         effective_gas_saturation = (sg - sgr) / total_mobile_pore_space_gas
-        effective_gas_saturation = min(
-            max(effective_gas_saturation, saturation_epsilon), 1.0
-        )
+        effective_gas_saturation = min(max(effective_gas_saturation, saturation_epsilon), 1.0)
 
         if effective_gas_saturation < 1.0 - saturation_epsilon:
             gas_oil_capillary_pressure = gas_oil_entry_pressure * (
-                effective_gas_saturation
-                ** (-1.0 / gas_oil_pore_size_distribution_index)
+                effective_gas_saturation ** (-1.0 / gas_oil_pore_size_distribution_index)
             )
 
     return oil_water_capillary_pressure, gas_oil_capillary_pressure
@@ -185,7 +179,7 @@ def _compute_brooks_corey_capillary_pressures_array(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[NumberArray[NDimension], NumberArray[NDimension]]:
+) -> tuple[NumberArray[NDimension], NumberArray[NDimension]]:
     """
     Array variant of Brooks-Corey capillary pressure computation.
 
@@ -247,18 +241,14 @@ def _compute_brooks_corey_capillary_pressures_array(
     zero = dtype(0.0)
 
     # Broadcast all arrays to same shape
-    sw, so, sg, swc, sorw, sorg, sgr = np.broadcast_arrays(
-        sw, so, sg, swc, sorw, sorg, sgr
-    )
+    sw, so, sg, swc, sorw, sorg, sgr = np.broadcast_arrays(sw, so, sg, swc, sorw, sorg, sgr)
     # Validate saturations
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
         raise ValidationError("Saturations must be between 0 and 1.")
 
     # Normalize saturations if they do not sum to 1
     total_saturation = sw + so + sg
-    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (
-        total_saturation > 0.0
-    )
+    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (total_saturation > 0.0)
     if np.any(needs_norm):
         sw = np.where(needs_norm, sw / total_saturation, sw)
         so = np.where(needs_norm, so / total_saturation, so)
@@ -282,9 +272,7 @@ def _compute_brooks_corey_capillary_pressures_array(
             one,
             out=effective_water_saturation,
         )
-        undersaturated = valid_water & (
-            effective_water_saturation < one - saturation_epsilon
-        )
+        undersaturated = valid_water & (effective_water_saturation < one - saturation_epsilon)
 
         if np.any(undersaturated):
             if wettability == Wettability.WATER_WET:
@@ -313,8 +301,7 @@ def _compute_brooks_corey_capillary_pressures_array(
                     ** (-one / oil_water_pore_size_distribution_index_oil_wet)
                 )
                 pcow = (
-                    mixed_wet_water_fraction * pcow_ww
-                    + (one - mixed_wet_water_fraction) * pcow_ow
+                    mixed_wet_water_fraction * pcow_ww + (one - mixed_wet_water_fraction) * pcow_ow
                 )
                 oil_water_capillary_pressure = np.where(undersaturated, pcow, zero)
 
@@ -332,19 +319,16 @@ def _compute_brooks_corey_capillary_pressures_array(
             one,
             out=effective_gas_saturation,
         )
-        is_undersaturated_gas = valid_gas & (
-            effective_gas_saturation < one - saturation_epsilon
-        )
+        is_undersaturated_gas = valid_gas & (effective_gas_saturation < one - saturation_epsilon)
         if np.any(is_undersaturated_gas):
             pcgo = gas_oil_entry_pressure * (
-                effective_gas_saturation
-                ** (-one / gas_oil_pore_size_distribution_index)
+                effective_gas_saturation ** (-one / gas_oil_pore_size_distribution_index)
             )
             gas_oil_capillary_pressure = np.where(is_undersaturated_gas, pcgo, zero)
 
-    return typing.cast(
-        NumberArray[NDimension], oil_water_capillary_pressure
-    ), typing.cast(NumberArray[NDimension], gas_oil_capillary_pressure)
+    return typing.cast(NumberArray[NDimension], oil_water_capillary_pressure), typing.cast(
+        NumberArray[NDimension], gas_oil_capillary_pressure
+    )
 
 
 def compute_brooks_corey_capillary_pressures(
@@ -365,7 +349,7 @@ def compute_brooks_corey_capillary_pressures(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for Brooks-Corey capillary pressure computation.
 
@@ -442,7 +426,7 @@ def _compute_brooks_corey_derivatives_scalar(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[Number, Number, Number, Number]:
+) -> tuple[Number, Number, Number, Number]:
     """
     Scalar variant of Brooks-Corey capillary pressure derivatives.
 
@@ -486,21 +470,14 @@ def _compute_brooks_corey_derivatives_scalar(
         if wettability == Wettability.MIXED_WET:
             exp_ww = -one / oil_water_pore_size_distribution_index_water_wet
             exp_ow = -one / oil_water_pore_size_distribution_index_oil_wet
-            dse_w_ww = (
-                oil_water_entry_pressure_water_wet * exp_ww * (se_w ** (exp_ww - one))
-            )
-            dse_w_ow = -(
-                oil_water_entry_pressure_oil_wet * exp_ow * (se_w ** (exp_ow - one))
-            )
+            dse_w_ww = oil_water_entry_pressure_water_wet * exp_ww * (se_w ** (exp_ww - one))
+            dse_w_ow = -(oil_water_entry_pressure_oil_wet * exp_ow * (se_w ** (exp_ow - one)))
             dpcow_dse_w = (
-                mixed_wet_water_fraction * dse_w_ww
-                + (one - mixed_wet_water_fraction) * dse_w_ow
+                mixed_wet_water_fraction * dse_w_ww + (one - mixed_wet_water_fraction) * dse_w_ow
             )
         else:
             if wettability == Wettability.WATER_WET:
-                pore_distribution_index = (
-                    oil_water_pore_size_distribution_index_water_wet
-                )
+                pore_distribution_index = oil_water_pore_size_distribution_index_water_wet
                 entry_pressure = oil_water_entry_pressure_water_wet
                 sign = one
             else:  # OIL_WET
@@ -522,9 +499,7 @@ def _compute_brooks_corey_derivatives_scalar(
     dpcgo_dsg = zero
     if valid_gas:
         exp_gas_oil = -one / gas_oil_pore_size_distribution_index
-        dpcgo_dse_g = (
-            gas_oil_entry_pressure * exp_gas_oil * (se_g ** (exp_gas_oil - one))
-        )
+        dpcgo_dse_g = gas_oil_entry_pressure * exp_gas_oil * (se_g ** (exp_gas_oil - one))
         dpcgo_dsg = dpcgo_dse_g / mobile_gas_range
 
     dpcgo_dso = zero
@@ -550,7 +525,7 @@ def _compute_brooks_corey_derivatives_array(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[
+) -> tuple[
     NumberArray[NDimension],
     NumberArray[NDimension],
     NumberArray[NDimension],
@@ -605,28 +580,16 @@ def _compute_brooks_corey_derivatives_array(
         water_wet_fraction = dtype(mixed_wet_water_fraction)
         exp_ww = -one / dtype(oil_water_pore_size_distribution_index_water_wet)
         exp_ow = -one / dtype(oil_water_pore_size_distribution_index_oil_wet)
-        dse_w_ww = (
-            dtype(oil_water_entry_pressure_water_wet)
-            * exp_ww
-            * (se_w ** (exp_ww - one))
-        )
-        dse_w_ow = -(
-            dtype(oil_water_entry_pressure_oil_wet) * exp_ow * (se_w ** (exp_ow - one))
-        )
-        dpcow_dse_w = (
-            water_wet_fraction * dse_w_ww + (one - water_wet_fraction) * dse_w_ow
-        )
+        dse_w_ww = dtype(oil_water_entry_pressure_water_wet) * exp_ww * (se_w ** (exp_ww - one))
+        dse_w_ow = -(dtype(oil_water_entry_pressure_oil_wet) * exp_ow * (se_w ** (exp_ow - one)))
+        dpcow_dse_w = water_wet_fraction * dse_w_ww + (one - water_wet_fraction) * dse_w_ow
     else:
         if wettability == Wettability.WATER_WET:
-            pore_distribution_index = dtype(
-                oil_water_pore_size_distribution_index_water_wet
-            )
+            pore_distribution_index = dtype(oil_water_pore_size_distribution_index_water_wet)
             entry_pressure = dtype(oil_water_entry_pressure_water_wet)
             sign = one
         else:  # OIL_WET
-            pore_distribution_index = dtype(
-                oil_water_pore_size_distribution_index_oil_wet
-            )
+            pore_distribution_index = dtype(oil_water_pore_size_distribution_index_oil_wet)
             entry_pressure = dtype(oil_water_entry_pressure_oil_wet)
             sign = -one
         exp = -one / pore_distribution_index
@@ -649,9 +612,7 @@ def _compute_brooks_corey_derivatives_array(
     )
 
     exp_gas_oil = -one / dtype(gas_oil_pore_size_distribution_index)
-    dpcgo_dse_g = (
-        dtype(gas_oil_entry_pressure) * exp_gas_oil * (se_g ** (exp_gas_oil - one))
-    )
+    dpcgo_dse_g = dtype(gas_oil_entry_pressure) * exp_gas_oil * (se_g ** (exp_gas_oil - one))
     dpcgo_dsg = np.where(
         valid_gas,
         dpcgo_dse_g / mobile_gas_range,
@@ -683,7 +644,7 @@ def compute_brooks_corey_capillary_pressure_derivatives(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-12,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -760,16 +721,16 @@ class BrooksCoreyCapillaryPressureTable(
 
     __type__ = "brooks_corey_capillary_pressure_model"
 
-    irreducible_water_saturation: typing.Optional[Number] = None
+    irreducible_water_saturation: Number | None = None
     """Default irreducible water saturation (swc). Can be overridden per call."""
 
-    residual_oil_saturation_water: typing.Optional[Number] = None
+    residual_oil_saturation_water: Number | None = None
     """Default residual oil saturation after water flood (sorw). Can be overridden per call."""
 
-    residual_oil_saturation_gas: typing.Optional[Number] = None
+    residual_oil_saturation_gas: Number | None = None
     """Default residual oil saturation after gas flood (sorg). Can be overridden per call."""
 
-    residual_gas_saturation: typing.Optional[Number] = None
+    residual_gas_saturation: Number | None = None
     """Default residual gas saturation (sgr). Can be overridden per call."""
 
     oil_water_entry_pressure_water_wet: Number = 5.0
@@ -831,12 +792,10 @@ class BrooksCoreyCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -915,12 +874,10 @@ class BrooksCoreyCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -929,7 +886,7 @@ class BrooksCoreyCapillaryPressureTable(
 
         Returns a dictionary contianing:
         ```
-        (dpcow/dsw, dpcow/dso, dpcgo/dsg)
+        (dpcow / dsw, dpcow / dso, dpcgo / dsg)
         ```
 
         - `dpcow/dsw`: analytically derived from the Brooks-Corey power law via
@@ -942,9 +899,9 @@ class BrooksCoreyCapillaryPressureTable(
         The Brooks-Corey capillary pressure formulae are:
 
         ```
-        Pcow = Pd_ow * Se_w^(-1/lambda_ow)          (water-wet)
-        Pcow = -Pd_ow * Se_w^(-1/lambda_ow)         (oil-wet)
-        Pcgo = Pd_go * Se_g^(-1/lambda_go)
+        Pcow = Pd_ow * Se_w ^ (-1 / lambda_ow)(water - wet)
+        Pcow = -Pd_ow * Se_w ^ (-1 / lambda_ow)(oil - wet)
+        Pcgo = Pd_go * Se_g ^ (-1 / lambda_go)
         ```
 
         where effective water saturation:
@@ -1048,7 +1005,7 @@ class BrooksCoreyCapillaryPressureTable(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `BrooksCoreyCapillaryPressureTable` with all pressure
@@ -1099,7 +1056,7 @@ def _compute_van_genuchten_capillary_pressures_scalar(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[Number, Number]:
+) -> tuple[Number, Number]:
     """
     Scalar variant of van Genuchten capillary pressure computation.
 
@@ -1194,8 +1151,7 @@ def _compute_van_genuchten_capillary_pressures_scalar(
             pcow_ow = -(1.0 / oil_water_alpha_oil_wet) * term_ow
 
             oil_water_capillary_pressure = (
-                mixed_wet_water_fraction * pcow_ww
-                + (1.0 - mixed_wet_water_fraction) * pcow_ow
+                mixed_wet_water_fraction * pcow_ww + (1.0 - mixed_wet_water_fraction) * pcow_ow
             )
 
     # Pcgo (Pg - Po)
@@ -1208,9 +1164,7 @@ def _compute_van_genuchten_capillary_pressures_scalar(
         )
 
         m_gas_oil = 1.0 - 1.0 / gas_oil_n
-        term = (effective_gas_saturation ** (-1.0 / m_gas_oil) - 1.0) ** (
-            1.0 / gas_oil_n
-        )
+        term = (effective_gas_saturation ** (-1.0 / m_gas_oil) - 1.0) ** (1.0 / gas_oil_n)
         gas_oil_capillary_pressure = (1.0 / gas_oil_alpha) * term
 
     return oil_water_capillary_pressure, gas_oil_capillary_pressure
@@ -1235,7 +1189,7 @@ def _compute_van_genuchten_capillary_pressures_array(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[NumberArray[NDimension], NumberArray[NDimension]]:
+) -> tuple[NumberArray[NDimension], NumberArray[NDimension]]:
     """
     Array variant of van Genuchten capillary pressure computation.
 
@@ -1292,9 +1246,7 @@ def _compute_van_genuchten_capillary_pressures_array(
     zero = dtype(0.0)
 
     # Broadcast all arrays to same shape
-    sw, so, sg, swc, sorw, sorg, sgr = np.broadcast_arrays(
-        sw, so, sg, swc, sorw, sorg, sgr
-    )
+    sw, so, sg, swc, sorw, sorg, sgr = np.broadcast_arrays(sw, so, sg, swc, sorw, sorg, sgr)
 
     # Validate saturations
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
@@ -1302,9 +1254,7 @@ def _compute_van_genuchten_capillary_pressures_array(
 
     # Normalize saturations if they do not sum to 1
     total_saturation = sw + so + sg
-    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (
-        total_saturation > 0.0
-    )
+    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (total_saturation > 0.0)
     if np.any(needs_norm):
         sw = np.where(needs_norm, sw / total_saturation, sw)
         so = np.where(needs_norm, so / total_saturation, so)
@@ -1355,10 +1305,7 @@ def _compute_van_genuchten_capillary_pressures_array(
             )
             pcow_ow = -(one / oil_water_alpha_oil_wet) * term_ow
 
-            pcow = (
-                mixed_wet_water_fraction * pcow_ww
-                + (one - mixed_wet_water_fraction) * pcow_ow
-            )
+            pcow = mixed_wet_water_fraction * pcow_ww + (one - mixed_wet_water_fraction) * pcow_ow
             oil_water_capillary_pressure = np.where(valid_water, pcow, zero)
 
     # Pcgo (Pg - Po)
@@ -1374,15 +1321,13 @@ def _compute_van_genuchten_capillary_pressures_array(
         )
 
         m_gas_oil = one - one / gas_oil_n
-        term = (effective_gas_saturation ** (-one / m_gas_oil) - one) ** (
-            one / gas_oil_n
-        )
+        term = (effective_gas_saturation ** (-one / m_gas_oil) - one) ** (one / gas_oil_n)
         pcgo = (one / gas_oil_alpha) * term
         gas_oil_capillary_pressure = np.where(valid_gas, pcgo, zero)
 
-    return typing.cast(
-        NumberArray[NDimension], oil_water_capillary_pressure
-    ), typing.cast(NumberArray[NDimension], gas_oil_capillary_pressure)
+    return typing.cast(NumberArray[NDimension], oil_water_capillary_pressure), typing.cast(
+        NumberArray[NDimension], gas_oil_capillary_pressure
+    )
 
 
 def compute_van_genuchten_capillary_pressures(
@@ -1403,7 +1348,7 @@ def compute_van_genuchten_capillary_pressures(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for van Genuchten capillary pressure computation.
 
@@ -1520,7 +1465,7 @@ def _compute_van_genuchten_derivatives_scalar(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[Number, Number, Number, Number]:
+) -> tuple[Number, Number, Number, Number]:
     """
     Scalar variant of van Genuchten capillary pressure derivatives.
 
@@ -1611,10 +1556,7 @@ def _compute_van_genuchten_derivatives_scalar(
             du_dse_ow = (-one / m_ow) * (se_w ** (-one / m_ow - one))
             d_ow = dpc_du_ow * du_dse_ow
 
-            dpcow_dse_w = (
-                mixed_wet_water_fraction * d_ww
-                + (one - mixed_wet_water_fraction) * d_ow
-            )
+            dpcow_dse_w = mixed_wet_water_fraction * d_ww + (one - mixed_wet_water_fraction) * d_ow
 
         dpcow_dsw = dpcow_dse_w / mobile_water_range
 
@@ -1633,11 +1575,7 @@ def _compute_van_genuchten_derivatives_scalar(
         m_gas_oil = one - one / gas_oil_n
         u = se_g ** (-one / m_gas_oil) - one
         u_safe = max(u, 1e-30)
-        dpc_du = (
-            (one / gas_oil_alpha)
-            * (one / gas_oil_n)
-            * (u_safe ** (one / gas_oil_n - one))
-        )
+        dpc_du = (one / gas_oil_alpha) * (one / gas_oil_n) * (u_safe ** (one / gas_oil_n - one))
         du_dse = (-one / m_gas_oil) * (se_g ** (-one / m_gas_oil - one))
         dpcgo_dse_g = dpc_du * du_dse
         dpcgo_dsg = dpcgo_dse_g / mobile_gas_range
@@ -1664,7 +1602,7 @@ def _compute_van_genuchten_derivatives_array(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[
+) -> tuple[
     NumberArray[NDimension],
     NumberArray[NDimension],
     NumberArray[NDimension],
@@ -1824,7 +1762,7 @@ def compute_van_genuchten_derivatives(
     mixed_wet_water_fraction: Number = 0.5,
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1901,16 +1839,16 @@ class VanGenuchtenCapillaryPressureTable(
 
     __type__ = "van_genuchten_capillary_pressure_model"
 
-    irreducible_water_saturation: typing.Optional[Number] = None
+    irreducible_water_saturation: Number | None = None
     """Default irreducible water saturation (swc). Can be overridden per call."""
 
-    residual_oil_saturation_water: typing.Optional[Number] = None
+    residual_oil_saturation_water: Number | None = None
     """Default residual oil saturation after water flood (sorw). Can be overridden per call."""
 
-    residual_oil_saturation_gas: typing.Optional[Number] = None
+    residual_oil_saturation_gas: Number | None = None
     """Default residual oil saturation after gas flood (sorg). Can be overridden per call."""
 
-    residual_gas_saturation: typing.Optional[Number] = None
+    residual_gas_saturation: Number | None = None
     """Default residual gas saturation (sgr). Can be overridden per call."""
 
     oil_water_alpha_water_wet: Number = 0.01
@@ -1971,12 +1909,10 @@ class VanGenuchtenCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -2055,12 +1991,10 @@ class VanGenuchtenCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -2070,7 +2004,7 @@ class VanGenuchtenCapillaryPressureTable(
         Returns a dictionary containing:
 
         ```
-        (dpcow/dsw, dpcow/dso, dpcgo/dsg)
+        (dpcow / dsw, dpcow / dso, dpcgo / dsg)
         ```
 
         - `dpcow/dsw`: analytically derived via the chain rule through effective water saturation.
@@ -2162,7 +2096,7 @@ class VanGenuchtenCapillaryPressureTable(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `VanGenuchtenCapillaryPressureTable` with all pressure
@@ -2214,7 +2148,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[Number, Number]:
+) -> tuple[Number, Number]:
     """
     Scalar variant of Leverett J-function capillary pressure computation.
 
@@ -2278,9 +2212,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
 
     # Pcow (Po - Pw)
     oil_water_capillary_pressure: Number = 0.0
-    valid_water = (
-        total_mobile_pore_space_water > minimum_mobile_pore_space and valid_rock
-    )
+    valid_water = total_mobile_pore_space_water > minimum_mobile_pore_space and valid_rock
 
     if valid_water:
         effective_water_saturation = (sw - swc) / total_mobile_pore_space_water
@@ -2356,7 +2288,7 @@ def _compute_leverett_j_capillary_pressures_array(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[NumberArray[NDimension], NumberArray[NDimension]]:
+) -> tuple[NumberArray[NDimension], NumberArray[NDimension]]:
     """
     Array variant of Leverett J-function capillary pressure computation.
 
@@ -2423,9 +2355,7 @@ def _compute_leverett_j_capillary_pressures_array(
 
     # Normalize saturations if they do not sum to 1
     total_saturation = sw + so + sg
-    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (
-        total_saturation > 0.0
-    )
+    needs_norm = (np.abs(total_saturation - 1.0) > saturation_epsilon) & (total_saturation > 0.0)
     if np.any(needs_norm):
         sw = np.where(needs_norm, sw / total_saturation, sw)
         so = np.where(needs_norm, so / total_saturation, so)
@@ -2442,9 +2372,7 @@ def _compute_leverett_j_capillary_pressures_array(
 
     # Pcow (Po - Pw)
     oil_water_capillary_pressure = np.zeros_like(sw)
-    valid_water = (
-        total_mobile_pore_space_water > minimum_mobile_pore_space
-    ) & valid_rock
+    valid_water = (total_mobile_pore_space_water > minimum_mobile_pore_space) & valid_rock
 
     if np.any(valid_water):
         effective_water_saturation = np.where(
@@ -2470,9 +2398,9 @@ def _compute_leverett_j_capillary_pressures_array(
         elif wettability == Wettability.OIL_WET:
             oil_water_capillary_pressure = np.where(valid_water, -pcow, zero)
         else:  # MIXED_WET
-            mixedpcow = pcow * mixed_wet_water_fraction + (
-                one - mixed_wet_water_fraction
-            ) * (-pcow)
+            mixedpcow = pcow * mixed_wet_water_fraction + (one - mixed_wet_water_fraction) * (
+                -pcow
+            )
             oil_water_capillary_pressure = np.where(valid_water, mixedpcow, zero)
 
     # Pcgo (Pg - Po)
@@ -2523,7 +2451,7 @@ def compute_leverett_j_capillary_pressures(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Dispatch function for Leverett J-function capillary pressure computation.
 
@@ -2611,7 +2539,7 @@ def _compute_leverett_j_derivatives_scalar(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[Number, Number, Number, Number]:
+) -> tuple[Number, Number, Number, Number]:
     """
     Scalar variant of Leverett J-function capillary pressure derivatives.
 
@@ -2649,16 +2577,12 @@ def _compute_leverett_j_derivatives_scalar(
     one = 1.0
 
     leverett_rock_factor = (
-        np.sqrt(porosity / permeability)
-        if permeability > 0.0 and porosity > 0.0
-        else 0.0
+        np.sqrt(porosity / permeability) if permeability > 0.0 and porosity > 0.0 else 0.0
     )
 
     # Oil-water derivatives
     mobile_water_range = one - swc - sorw
-    valid_water = (mobile_water_range > minimum_mobile_pore_space) and (
-        leverett_rock_factor > 0.0
-    )
+    valid_water = (mobile_water_range > minimum_mobile_pore_space) and (leverett_rock_factor > 0.0)
     se_w = min(
         max((sw - swc) / mobile_water_range, saturation_epsilon),
         one - saturation_epsilon,
@@ -2667,9 +2591,7 @@ def _compute_leverett_j_derivatives_scalar(
     dpcow_dsw = zero
     if valid_water:
         dj_dse_w = (
-            -j_function_coefficient
-            * j_function_exponent
-            * (se_w ** (-j_function_exponent - one))
+            -j_function_coefficient * j_function_exponent * (se_w ** (-j_function_exponent - one))
         )
         cos_oil_water_angle = np.cos(np.deg2rad(oil_water_contact_angle))
         oil_water_scale = (
@@ -2692,9 +2614,7 @@ def _compute_leverett_j_derivatives_scalar(
 
     # Gas-oil derivatives
     mobile_gas_range = one - swc - sorg - sgr
-    valid_gas = (mobile_gas_range > minimum_mobile_pore_space) and (
-        leverett_rock_factor > 0.0
-    )
+    valid_gas = (mobile_gas_range > minimum_mobile_pore_space) and (leverett_rock_factor > 0.0)
     se_g = min(
         max((sg - sgr) / mobile_gas_range, saturation_epsilon),
         one - saturation_epsilon,
@@ -2703,9 +2623,7 @@ def _compute_leverett_j_derivatives_scalar(
     dpcgo_dsg = zero
     if valid_gas:
         dj_dse_g = (
-            -j_function_coefficient
-            * j_function_exponent
-            * (se_g ** (-j_function_exponent - one))
+            -j_function_coefficient * j_function_exponent * (se_g ** (-j_function_exponent - one))
         )
         cos_gas_oil_angle = np.cos(np.deg2rad(gas_oil_contact_angle))
         gas_oil_scale = (
@@ -2741,7 +2659,7 @@ def _compute_leverett_j_derivatives_array(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[
+) -> tuple[
     NumberArray[NDimension],
     NumberArray[NDimension],
     NumberArray[NDimension],
@@ -2886,7 +2804,7 @@ def compute_leverett_j_derivatives(
     saturation_epsilon: Number = 1e-6,
     minimum_mobile_pore_space: Number = 1e-9,
     dyne_per_cm_to_pressure_unit: Number = 4.725e-4,
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -2981,16 +2899,16 @@ class LeverettJCapillaryPressureTable(
 
     __type__ = "leverett_j_capillary_pressure_model"
 
-    irreducible_water_saturation: typing.Optional[Number] = None
+    irreducible_water_saturation: Number | None = None
     """Default irreducible water saturation (swc). Can be overridden per call."""
 
-    residual_oil_saturation_water: typing.Optional[Number] = None
+    residual_oil_saturation_water: Number | None = None
     """Default residual oil saturation after water flood (sorw). Can be overridden per call."""
 
-    residual_oil_saturation_gas: typing.Optional[Number] = None
+    residual_oil_saturation_gas: Number | None = None
     """Default residual oil saturation after gas flood (sorg). Can be overridden per call."""
 
-    residual_gas_saturation: typing.Optional[Number] = None
+    residual_gas_saturation: Number | None = None
     """Default residual gas saturation (sgr). Can be overridden per call."""
 
     permeability: Number = 100.0
@@ -3054,14 +2972,12 @@ class LeverettJCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        porosity: typing.Optional[NumberOrArray[NDimension]] = None,
-        permeability: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
+        porosity: NumberOrArray[NDimension] | None = None,
+        permeability: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -3138,9 +3054,7 @@ class LeverettJCapillaryPressureTable(
             wettability=self.wettability,
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(
-                self.unit_system
-            ),
+            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(self.unit_system),
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
@@ -3149,14 +3063,12 @@ class LeverettJCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        irreducible_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_oil_saturation_water: typing.Optional[
-            NumberOrArray[NDimension]
-        ] = None,
-        residual_oil_saturation_gas: typing.Optional[NumberOrArray[NDimension]] = None,
-        residual_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        porosity: typing.Optional[NumberOrArray[NDimension]] = None,
-        permeability: typing.Optional[NumberOrArray[NDimension]] = None,
+        irreducible_water_saturation: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_water: NumberOrArray[NDimension] | None = None,
+        residual_oil_saturation_gas: NumberOrArray[NDimension] | None = None,
+        residual_gas_saturation: NumberOrArray[NDimension] | None = None,
+        porosity: NumberOrArray[NDimension] | None = None,
+        permeability: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -3166,7 +3078,7 @@ class LeverettJCapillaryPressureTable(
         Returns a dictionary containing:
 
         ```
-        (dpcow/dsw, dpcow/dso, dpcgo/dsg)
+        (dpcow / dsw, dpcow / dso, dpcgo / dsg)
         ```
 
         - `dpcow/dsw`: analytically derived via the chain rule through
@@ -3266,9 +3178,7 @@ class LeverettJCapillaryPressureTable(
             mixed_wet_water_fraction=self.mixed_wet_water_fraction,
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(
-                self.unit_system
-            ),
+            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(self.unit_system),
         )
         return CapillaryPressureDerivatives(
             dpcow_dsw=dpcow_dsw,
@@ -3282,7 +3192,7 @@ class LeverettJCapillaryPressureTable(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `LeverettJCapillaryPressureTable` rescaled to *target*.

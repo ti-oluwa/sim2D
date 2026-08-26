@@ -102,34 +102,34 @@ class StepResult(typing.Generic[NDimension]):
     """Size of the current time step (seconds)."""
     time: float
     """Total elapsed simulation time (seconds)."""
-    hysteresis_state: typing.Optional[HysteresisState[NDimension]] = None
+    hysteresis_state: HysteresisState[NDimension] | None = None
     """Updated hysteresis state after the time step."""
-    rates: typing.Optional[WellRates[NDimension]] = None
+    rates: WellRates[NDimension] | None = None
     """Well rate info for the step"""
     success: bool = True
     """Whether the time step evolution was successful."""
-    message: typing.Optional[str] = None
+    message: str | None = None
     """Optional message providing additional information about the time step result."""
-    material_balance_errors: typing.Optional[MaterialBalanceErrors] = None
+    material_balance_errors: MaterialBalanceErrors | None = None
     """Material balance errors for this time step. None for rejected steps or first step."""
-    maximum_pressure_change: typing.Optional[float] = None
+    maximum_pressure_change: float | None = None
     """Maximum pressure change from the pressure solution."""
-    maximum_oil_saturation_change: typing.Optional[float] = None
+    maximum_oil_saturation_change: float | None = None
     """Maximum oil saturation change from the transport solution."""
-    maximum_water_saturation_change: typing.Optional[float] = None
+    maximum_water_saturation_change: float | None = None
     """Maximum water saturation change from the transport solution."""
-    maximum_gas_saturation_change: typing.Optional[float] = None
+    maximum_gas_saturation_change: float | None = None
     """Maximum gas saturation change from the transport solution."""
-    timer_context: typing.Dict[str, typing.Any] = attrs.field(factory=dict)
+    timer_context: dict[str, typing.Any] = attrs.field(factory=dict)
     """Keyword argument that should be passed to the simulation timer on accepting or rejecting a step."""
 
 
 @attrs.frozen(slots=True)
 class SaturationChangeCheckResult:
     violated: bool
-    max_pressurehase_saturation_change: typing.Optional[float]
-    max_allowed_phase_saturation_change: typing.Optional[float]
-    message: typing.Optional[str] = None
+    max_pressurehase_saturation_change: float | None
+    max_allowed_phase_saturation_change: float | None
+    message: str | None = None
 
 
 def _validate_pressure_range(
@@ -139,8 +139,8 @@ def _validate_pressure_range(
     time: float,
     fluid_properties: FluidProperties[ThreeDimensions],
     rock_properties: RockProperties[ThreeDimensions],
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]] = None,
-) -> typing.Optional[StepResult[ThreeDimensions]]:
+    hysteresis_state: HysteresisState[ThreeDimensions] | None = None,
+) -> StepResult[ThreeDimensions] | None:
     """
     Check for out-of-range pressures and return a failure `StepResult` if found.
 
@@ -155,9 +155,7 @@ def _validate_pressure_range(
     """
     min_allowable = c.MINIMUM_VALID_PRESSURE - 1e-3
     max_allowable = c.MAXIMUM_VALID_PRESSURE + 1e-3
-    out_of_range_mask = (pressure_grid < min_allowable) | (
-        pressure_grid > max_allowable
-    )
+    out_of_range_mask = (pressure_grid < min_allowable) | (pressure_grid > max_allowable)
     out_of_range_indices = np.argwhere(out_of_range_mask)
 
     if out_of_range_indices.size > 0:
@@ -172,9 +170,7 @@ def _validate_pressure_range(
         if min_pressure < min_allowable:
             message += f"Pressure dropped below {min_allowable} psi (Min: {min_pressure:.4f}).\n"
         if max_pressure > max_allowable:
-            message += (
-                f"Pressure exceeded {max_allowable} psi (Max: {max_pressure:.4f}).\n"
-            )
+            message += f"Pressure exceeded {max_allowable} psi (Max: {max_pressure:.4f}).\n"
         message += (
             PRESSURE_ERROR_MSG.format(indices=out_of_range_indices.tolist())
             + f"\nAt Time Step {time_step}."
@@ -301,9 +297,9 @@ def _make_bhps(grid_shape: NDimension) -> BottomHolePressures[float, NDimension]
 def _rebuild_rock_fluid_grids(
     fluid_properties: FluidProperties[ThreeDimensions],
     rock_properties: RockProperties[ThreeDimensions],
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
+    hysteresis_state: HysteresisState[ThreeDimensions] | None,
     config: Config,
-) -> typing.Tuple[
+) -> tuple[
     RelPermGrids[ThreeDimensions],
     RelativeMobilityGrids[ThreeDimensions],
     CapillaryPressureGrids[ThreeDimensions],
@@ -341,7 +337,7 @@ def _rebuild_rock_fluid_grids(
 def _run_impes_step(
     time_step: int,
     grid_shape: ThreeDimensions,
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
@@ -351,7 +347,7 @@ def _run_impes_step(
     face_transmissibilities: FaceTransmissibilities,
     rock_properties: RockProperties[ThreeDimensions],
     fluid_properties: FluidProperties[ThreeDimensions],
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
+    hysteresis_state: HysteresisState[ThreeDimensions] | None,
     relperm_grids: RelPermGrids[ThreeDimensions],
     relperm_endpoints: RelPermEndpoints,
     relative_mobility_grids: RelativeMobilityGrids[ThreeDimensions],
@@ -611,15 +607,9 @@ def _run_impes_step(
     )
 
     transport_solution = transport_result.value
-    maximum_oil_saturation_change = float(
-        transport_solution.maximum_oil_saturation_change
-    )
-    maximum_water_saturation_change = float(
-        transport_solution.maximum_water_saturation_change
-    )
-    maximum_gas_saturation_change = float(
-        transport_solution.maximum_gas_saturation_change
-    )
+    maximum_oil_saturation_change = float(transport_solution.maximum_oil_saturation_change)
+    maximum_water_saturation_change = float(transport_solution.maximum_water_saturation_change)
+    maximum_gas_saturation_change = float(transport_solution.maximum_gas_saturation_change)
     saturation_check = _check_saturation_changes(
         maximum_oil_saturation_change=maximum_oil_saturation_change,
         maximum_water_saturation_change=maximum_water_saturation_change,
@@ -690,9 +680,7 @@ def _run_impes_step(
     oil_mass_grid = transport_solution.oil_mass_grid
     free_gas_mass_grid = transport_solution.free_gas_mass_grid
     dissolved_gas_mass_in_oil_grid = transport_solution.dissolved_gas_mass_in_oil_grid
-    dissolved_gas_mass_in_water_grid = (
-        transport_solution.dissolved_gas_mass_in_water_grid
-    )
+    dissolved_gas_mass_in_water_grid = transport_solution.dissolved_gas_mass_in_water_grid
     solvent_concentration_grid = transport_solution.solvent_concentration_grid
 
     if np.any((gas_saturation_grid > 1) | (oil_saturation_grid > 1)):
@@ -793,7 +781,7 @@ def _run_impes_step(
 def _run_sequential_implicit_step(
     time_step: int,
     grid_shape: ThreeDimensions,
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
@@ -803,7 +791,7 @@ def _run_sequential_implicit_step(
     face_transmissibilities: FaceTransmissibilities,
     rock_properties: RockProperties[ThreeDimensions],
     fluid_properties: FluidProperties[ThreeDimensions],
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
+    hysteresis_state: HysteresisState[ThreeDimensions] | None,
     relperm_grids: RelPermGrids[ThreeDimensions],
     relperm_endpoints: RelPermEndpoints,
     relative_mobility_grids: RelativeMobilityGrids[ThreeDimensions],
@@ -1061,15 +1049,9 @@ def _run_sequential_implicit_step(
         dtype=dtype,
     )
     transport_solution = transport_result.value
-    maximum_oil_saturation_change = float(
-        transport_solution.maximum_oil_saturation_change
-    )
-    maximum_water_saturation_change = float(
-        transport_solution.maximum_water_saturation_change
-    )
-    maximum_gas_saturation_change = float(
-        transport_solution.maximum_gas_saturation_change
-    )
+    maximum_oil_saturation_change = float(transport_solution.maximum_oil_saturation_change)
+    maximum_water_saturation_change = float(transport_solution.maximum_water_saturation_change)
+    maximum_gas_saturation_change = float(transport_solution.maximum_gas_saturation_change)
     saturation_check = _check_saturation_changes(
         maximum_oil_saturation_change=maximum_oil_saturation_change,
         maximum_water_saturation_change=maximum_water_saturation_change,
@@ -1225,7 +1207,7 @@ def _run_sequential_implicit_step(
 def _run_full_sequential_implicit_step(
     time_step: int,
     grid_shape: ThreeDimensions,
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     thickness_grid: NDimensionalGrid[ThreeDimensions],
     elevation_grid: NDimensionalGrid[ThreeDimensions],
     pore_volume_grid: NDimensionalGrid[ThreeDimensions],
@@ -1235,7 +1217,7 @@ def _run_full_sequential_implicit_step(
     face_transmissibilities: FaceTransmissibilities,
     rock_properties: RockProperties[ThreeDimensions],
     fluid_properties: FluidProperties[ThreeDimensions],
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]],
+    hysteresis_state: HysteresisState[ThreeDimensions] | None,
     relperm_grids: RelPermGrids[ThreeDimensions],
     relperm_endpoints: RelPermEndpoints,
     relative_mobility_grids: RelativeMobilityGrids[ThreeDimensions],
@@ -1319,7 +1301,7 @@ def _run_full_sequential_implicit_step(
     maximum_gas_saturation_change = None
     well_rates = None
     has_open_wells = False
-    timer_context: typing.Dict[str, typing.Any] = {}
+    timer_context: dict[str, typing.Any] = {}
 
     logger.debug(
         "Starting outer iteration loop (max %d iterations) at time step %d...",
@@ -1364,9 +1346,7 @@ def _run_full_sequential_implicit_step(
         else:
             well_rates = None
 
-        logger.debug(
-            "Solving pressure implicitly for outer iteration saturation solve..."
-        )
+        logger.debug("Solving pressure implicitly for outer iteration saturation solve...")
         kwds = (
             dict(
                 relperm_grids=iter_relperm_grids,
@@ -1463,13 +1443,9 @@ def _run_full_sequential_implicit_step(
         iter_fluid_properties = attrs.evolve(
             iter_fluid_properties, pressure_grid=new_pressure_grid
         )
-        logger.debug(
-            "Pressure updated in fluid properties for outer iteration saturation solve."
-        )
+        logger.debug("Pressure updated in fluid properties for outer iteration saturation solve.")
 
-        logger.debug(
-            "Updating fluid properties to reflect pressure change for outer iteration..."
-        )
+        logger.debug("Updating fluid properties to reflect pressure change for outer iteration...")
         iter_fluid_properties = update_fluid_properties(
             fluid_properties=iter_fluid_properties,
             wells=wells,
@@ -1490,8 +1466,7 @@ def _run_full_sequential_implicit_step(
             maximum_picard_iterations,
         )
         new_pore_volume_grid = pore_volume_grid * np.exp(
-            rock_properties.compressibility
-            * (new_pressure_grid - initial_pressure_grid)
+            rock_properties.compressibility * (new_pressure_grid - initial_pressure_grid)
         )
         transport_result = implicit.solve_transport(
             elevation_grid=elevation_grid,
@@ -1509,15 +1484,9 @@ def _run_full_sequential_implicit_step(
             dtype=dtype,
         )
         transport_solution = transport_result.value
-        maximum_oil_saturation_change = float(
-            transport_solution.maximum_oil_saturation_change
-        )
-        maximum_water_saturation_change = float(
-            transport_solution.maximum_water_saturation_change
-        )
-        maximum_gas_saturation_change = float(
-            transport_solution.maximum_gas_saturation_change
-        )
+        maximum_oil_saturation_change = float(transport_solution.maximum_oil_saturation_change)
+        maximum_water_saturation_change = float(transport_solution.maximum_water_saturation_change)
+        maximum_gas_saturation_change = float(transport_solution.maximum_gas_saturation_change)
         if not transport_result.success:
             logger.warning(
                 f"Implicit saturation solve failed at outer iteration "
@@ -1622,17 +1591,12 @@ def _run_full_sequential_implicit_step(
         # Picard convergence check
         pressure_delta = new_pressure_grid - previous_pressure_grid
         pressure_rms_reference = max(float(np.sqrt(np.mean(new_pressure_grid**2))), 1.0)
-        pressure_rms_change = (
-            float(np.sqrt(np.mean(pressure_delta**2))) / pressure_rms_reference
-        )
+        pressure_rms_change = float(np.sqrt(np.mean(pressure_delta**2))) / pressure_rms_reference
 
         water_saturation_rms_change = float(
             np.sqrt(
                 np.mean(
-                    (
-                        iter_fluid_properties.water_saturation_grid
-                        - previous_water_saturation_grid
-                    )
+                    (iter_fluid_properties.water_saturation_grid - previous_water_saturation_grid)
                     ** 2
                 )
             )
@@ -1640,22 +1604,14 @@ def _run_full_sequential_implicit_step(
         oil_saturation_rms_change = float(
             np.sqrt(
                 np.mean(
-                    (
-                        iter_fluid_properties.oil_saturation_grid
-                        - previous_oil_saturation_grid
-                    )
-                    ** 2
+                    (iter_fluid_properties.oil_saturation_grid - previous_oil_saturation_grid) ** 2
                 )
             )
         )
         gas_saturation_rms_change = float(
             np.sqrt(
                 np.mean(
-                    (
-                        iter_fluid_properties.gas_saturation_grid
-                        - previous_gas_saturation_grid
-                    )
-                    ** 2
+                    (iter_fluid_properties.gas_saturation_grid - previous_gas_saturation_grid) ** 2
                 )
             )
         )
@@ -1678,9 +1634,7 @@ def _run_full_sequential_implicit_step(
             pressure_rms_change < picard_tolerance
             and maximum_saturation_rms_change < picard_tolerance
         ):
-            logger.debug(
-                "Picard outer loop converged after %d iteration(s).", iteration + 1
-            )
+            logger.debug("Picard outer loop converged after %d iteration(s).", iteration + 1)
             converged = True
             break
 
@@ -1703,9 +1657,7 @@ def _run_full_sequential_implicit_step(
         )
 
         previous_pressure_grid = new_pressure_grid.copy()
-        previous_water_saturation_grid = (
-            iter_fluid_properties.water_saturation_grid.copy()
-        )
+        previous_water_saturation_grid = iter_fluid_properties.water_saturation_grid.copy()
         previous_oil_saturation_grid = iter_fluid_properties.oil_saturation_grid.copy()
         previous_gas_saturation_grid = iter_fluid_properties.gas_saturation_grid.copy()
 
@@ -1827,26 +1779,26 @@ class Run(StoreSerializable):
     config: Config
     """Simulation configuration and parameters."""
 
-    name: typing.Optional[str] = None
+    name: str | None = None
     """Human-readable name for this run."""
 
-    description: typing.Optional[str] = None
+    description: str | None = None
     """Detailed description of the simulation."""
 
-    tags: typing.List[str] = attrs.field(factory=list)
+    tags: list[str] = attrs.field(factory=list)
     """Tags for organizing runs."""
 
-    created_at: typing.Optional[str] = attrs.field(
+    created_at: str | None = attrs.field(
         factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     """ISO timestamp of when this run was created."""
 
     def __call__(
         self,
-        config: typing.Optional[Config] = None,
+        config: Config | None = None,
         *,
-        on_step_rejected: typing.Optional[StepCallback] = None,
-        on_step_accepted: typing.Optional[StepCallback] = None,
+        on_step_rejected: StepCallback | None = None,
+        on_step_accepted: StepCallback | None = None,
     ) -> typing.Generator[ModelState[ThreeDimensions], None, None]:
         """
         Return a generator that executes this simulation run.
@@ -1871,7 +1823,7 @@ class Run(StoreSerializable):
         *,
         correct_inplace: bool = True,
         raise_on_error: bool = True,
-        zero_flow_tolerance: typing.Optional[float] = None,
+        zero_flow_tolerance: float | None = None,
         emit_log: bool = True,
     ) -> ValidationReport:
         """
@@ -1901,10 +1853,10 @@ class Run(StoreSerializable):
     @classmethod
     def read_files(
         cls,
-        model_path: typing.Union[str, PathLike],
-        config_path: typing.Union[str, PathLike],
-        pvt_tables_path: typing.Optional[typing.Union[str, PathLike]] = None,
-        pvt_data_path: typing.Optional[typing.Union[str, PathLike]] = None,
+        model_path: str | PathLike,
+        config_path: str | PathLike,
+        pvt_tables_path: str | PathLike | None = None,
+        pvt_data_path: str | PathLike | None = None,
     ) -> Self:
         """
         Load a `Run` from separate model and configuration files.
@@ -1958,7 +1910,7 @@ def running() -> bool:
     return __simulation_running.get()
 
 
-def stop(reason: typing.Optional[str] = None):
+def stop(reason: str | None = None):
     """
     Stop the currently running simulation (in this context) for the given `reason`
 
@@ -1973,11 +1925,11 @@ def stop(reason: typing.Optional[str] = None):
 
 
 def run(
-    input: typing.Union[BlackOil[ThreeDimensions], Run],
-    config: typing.Optional[Config] = None,
+    input: BlackOil[ThreeDimensions] | Run,
+    config: Config | None = None,
     *,
-    on_step_rejected: typing.Optional[StepCallback] = None,
-    on_step_accepted: typing.Optional[StepCallback] = None,
+    on_step_rejected: StepCallback | None = None,
+    on_step_accepted: StepCallback | None = None,
 ) -> typing.Generator[ModelState[ThreeDimensions], None, None]:
     """
     Run a simulation on a 3D reservoir model.
@@ -2003,7 +1955,6 @@ def run(
     Example:
 
     ```python
-
     import bores
 
     model = bores.BlackOil.from_file("path/to/3d_model.h5")
@@ -2025,9 +1976,7 @@ def run(
             config = config or input.config
         else:
             if config is None:
-                raise ValidationError(
-                    "Must provide `config` when `input` is a `BlackOil`."
-                )
+                raise ValidationError("Must provide `config` when `input` is a `BlackOil`.")
             model = input
 
         boundary_conditions = config.boundary_conditions
@@ -2040,9 +1989,7 @@ def run(
             wells = Wells()
 
         if boundary_conditions is None:
-            logger.debug(
-                "No boundary conditions provided, applying no-flow boundaries."
-            )
+            logger.debug("No boundary conditions provided, applying no-flow boundaries.")
             boundary_conditions = BoundaryConditions[ThreeDimensions]()
 
         cell_dimension = model.cell_dimension
@@ -2058,8 +2005,7 @@ def run(
         enable_hysteresis = config.enable_hysteresis
         apply_dip = not config.disable_structural_dip
         needs_injector_seeding = (
-            config.minimum_injector_water_saturation
-            or config.minimum_injector_gas_saturation
+            config.minimum_injector_water_saturation or config.minimum_injector_gas_saturation
         )
         relperm_endpoints = (
             config.rock_fluid_tables.relative_permeability_table.get_relperm_endpoints()
@@ -2070,9 +2016,7 @@ def run(
         logger.info(
             f"Grid dimensions: (nx={grid_shape[0]}, ny={grid_shape[1]}, nz={grid_shape[2]})"
         )
-        logger.info(
-            f"Cell dimensions: (dx={cell_dimension[0]}ft, dy={cell_dimension[1]}ft)"
-        )
+        logger.info(f"Cell dimensions: (dx={cell_dimension[0]}ft, dy={cell_dimension[1]}ft)")
         logger.info(
             f"Evolution scheme: {_SCHEME_ALIASES.get(scheme, scheme.replace('-', ' ').title())}"
         )
@@ -2172,14 +2116,10 @@ def run(
             new_step = timer.next_step
             step_size = timer.propose_step_size()
             time = timer.elapsed_time + step_size
-            logger.debug(
-                "Attempting time step %d with size %d seconds...", new_step, step_size
-            )
+            logger.debug("Attempting time step %d with size %d seconds...", new_step, step_size)
             try:
                 if has_wells and has_well_schedules:
-                    logger.debug(
-                        "Updating wells configuration for time step %d", new_step
-                    )
+                    logger.debug("Updating wells configuration for time step %d", new_step)
                     assert well_schedules is not None
                     well_schedules.apply(wells, state)
 
@@ -2315,9 +2255,7 @@ def run(
                 hysteresis_state = result.hysteresis_state
 
                 # Update rock-fluid grids using the new pressure and saturation state
-                logger.debug(
-                    "Updating rock-fluid property grids after time step %d...", new_step
-                )
+                logger.debug("Updating rock-fluid property grids after time step %d...", new_step)
                 relperm_grids, relative_mobility_grids, capillary_pressure_grids = (
                     _rebuild_rock_fluid_grids(
                         fluid_properties=fluid_properties,
@@ -2327,11 +2265,7 @@ def run(
                     )
                 )
 
-                if (
-                    timer.step == 1
-                    or (timer.step % output_frequency == 0)
-                    or timer.is_last_step
-                ):
+                if timer.step == 1 or (timer.step % output_frequency == 0) or timer.is_last_step:
                     logger.debug("Capturing model state at time step %d", timer.step)
                     wells_snapshot = copy.deepcopy(wells)
                     if hysteresis_state is not None:

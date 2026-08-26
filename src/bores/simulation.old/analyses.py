@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["ModelAnalyst"]
 
 
-def _ensure_cells(cells: typing.Union[Cells, CellFilter]) -> typing.Optional[Cells]:
+def _ensure_cells(cells: Cells | CellFilter) -> Cells | None:
     """Convert CellFilter to Cells if needed."""
     if cells is None:
         return None
@@ -299,13 +299,13 @@ class DeclineCurveResult:
     """Coefficient of determination (R²) indicating goodness of fit."""
     phase: typing.Literal["oil", "gas", "water"] = "oil"
     """Phase analyzed ('oil', 'gas', 'water')."""
-    error: typing.Optional[str] = None
+    error: str | None = None
     """Error message if analysis could not be completed."""
-    steps: typing.Optional[typing.List[int]] = None
+    steps: list[int] | None = None
     """Time steps used in the analysis."""
-    actual_rates: typing.Optional[typing.List[float]] = None
+    actual_rates: list[float] | None = None
     """Actual production rates in STB/day or SCF/day depending on phase."""
-    predicted_rates: typing.Optional[typing.List[float]] = None
+    predicted_rates: list[float] | None = None
     """Predicted production rates from decline curve in STB/day or SCF/day depending on phase."""
 
 
@@ -350,7 +350,7 @@ class InjectionFrontAnalysis:
     Units: fraction (dimensionless).
     """
 
-    front_centroid: typing.Tuple[float, float, float]
+    front_centroid: tuple[float, float, float]
     """
     Saturation-delta weighted centre-of-mass of the contacted region
     expressed as (i_centroid, j_centroid, k_centroid) in cell-index units.
@@ -369,10 +369,10 @@ class ModelAnalyst(typing.Generic[NDimension]):
     def __init__(
         self,
         states: typing.Iterable[ModelState[NDimension]],
-        stoiip: typing.Optional[float] = None,
-        stgiip: typing.Optional[float] = None,
-        free_giip: typing.Optional[float] = None,
-        stwiip: typing.Optional[float] = None,
+        stoiip: float | None = None,
+        stgiip: float | None = None,
+        free_giip: float | None = None,
+        stwiip: float | None = None,
     ) -> None:
         """
         Initializes the model analyst with a series of model states.
@@ -392,9 +392,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self._states = {int(state.step): state for state in states}
 
         if not self._states:
-            raise ValidationError(
-                "No states provided. ModelAnalyst requires at least one state."
-            )
+            raise ValidationError("No states provided. ModelAnalyst requires at least one state.")
 
         self._min_step = min(self._states.keys())
         self._max_step = max(self._states.keys())
@@ -416,26 +414,24 @@ class ModelAnalyst(typing.Generic[NDimension]):
         # We use per-instance memoization caches prevent memory leaks.
         # Using `@functools.cache` on instance methods inserts self into a class-level LRU cache,
         # preventing garbage collection for the lifetime of the class.
-        self._cell_area_cache: typing.Dict[typing.Tuple, float] = {}
-        self._oil_in_place_cache: typing.Dict[int, float] = {}
-        self._free_gas_in_place_cache: typing.Dict[int, float] = {}
-        self._total_gas_in_place_cache: typing.Dict[int, float] = {}
-        self._water_in_place_cache: typing.Dict[int, float] = {}
-        self._oil_produced_cache: typing.Dict[typing.Tuple, float] = {}
-        self._gas_produced_cache: typing.Dict[typing.Tuple, float] = {}
-        self._water_produced_cache: typing.Dict[typing.Tuple, float] = {}
-        self._oil_injected_cache: typing.Dict[typing.Tuple, float] = {}
-        self._gas_injected_cache: typing.Dict[typing.Tuple, float] = {}
-        self._water_injected_cache: typing.Dict[typing.Tuple, float] = {}
-        self._instantaneous_production_rates_cache: typing.Dict[
-            typing.Tuple, InstantaneousRates
+        self._cell_area_cache: dict[tuple, float] = {}
+        self._oil_in_place_cache: dict[int, float] = {}
+        self._free_gas_in_place_cache: dict[int, float] = {}
+        self._total_gas_in_place_cache: dict[int, float] = {}
+        self._water_in_place_cache: dict[int, float] = {}
+        self._oil_produced_cache: dict[tuple, float] = {}
+        self._gas_produced_cache: dict[tuple, float] = {}
+        self._water_produced_cache: dict[tuple, float] = {}
+        self._oil_injected_cache: dict[tuple, float] = {}
+        self._gas_injected_cache: dict[tuple, float] = {}
+        self._water_injected_cache: dict[tuple, float] = {}
+        self._instantaneous_production_rates_cache: dict[
+            tuple, InstantaneousRates
         ] = {}
-        self._instantaneous_injection_rates_cache: typing.Dict[
-            typing.Tuple, InstantaneousRates
+        self._instantaneous_injection_rates_cache: dict[
+            tuple, InstantaneousRates
         ] = {}
-        self._productivity_analysis_cache: typing.Dict[
-            typing.Tuple, ProductivityAnalysis
-        ] = {}
+        self._productivity_analysis_cache: dict[tuple, ProductivityAnalysis] = {}
 
     @property
     def min_step(self) -> int:
@@ -448,7 +444,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         return self._max_step
 
     @property
-    def available_steps(self) -> typing.List[int]:
+    def available_steps(self) -> list[int]:
         """List of all available step numbers in sorted order."""
         return self._sorted_steps.copy()
 
@@ -464,7 +460,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             return int(self._max_step + step + 1)
         return int(step)
 
-    def get_state(self, step: int) -> typing.Optional[ModelState[NDimension]]:
+    def get_state(self, step: int) -> ModelState[NDimension] | None:
         """
         Retrieves the model state for a specific time step.
 
@@ -476,10 +472,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
         state = self._states.get(step, None)
         if state is None:
-            logger.debug(
-                f"Time step {step} not found. Available time steps: "
-                f"{self._sorted_steps}"
-            )
+            logger.debug(f"Time step {step} not found. Available time steps: {self._sorted_steps}")
         else:
             logger.debug(f"Retrieved state at time step {step}")
         return state
@@ -621,7 +614,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         cumulative = analyst.cumulative_oil_produced
         remaining = stoiip - cumulative
         print(f"Recovered: {cumulative:,.0f} STB ({rf:.1%})")
-        print(f"Remaining: {remaining:,.0f} STB ({1-rf:.1%})")
+        print(f"Remaining: {remaining:,.0f} STB ({1 - rf:.1%})")
         # Recovered: 1,250,000 STB (32.5%)
         # Remaining: 2,596,154 STB (67.5%)
         ```
@@ -693,9 +686,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         for s in self._sorted_steps:
             st = self._states[s]
             solution_gor_grid = st.model.fluid_properties.solution_gas_to_oil_ratio_grid
-            gas_solubility_in_water_grid = (
-                st.model.fluid_properties.gas_solubility_in_water_grid
-            )
+            gas_solubility_in_water_grid = st.model.fluid_properties.gas_solubility_in_water_grid
             step_in_days = st.step_size * days_per_second
 
             oil_fvf_grid = st.rates.production_fvfs.oil.array()
@@ -721,13 +712,10 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 np.nansum(solution_gor_grid * oil_production_stb) * step_in_days
             )
             dissolved_gas_produced += float(
-                np.nansum(gas_solubility_in_water_grid * water_production_stb)
-                * step_in_days
+                np.nansum(gas_solubility_in_water_grid * water_production_stb) * step_in_days
             )
 
-        total_gas_produced = (
-            free_gas_produced + solution_gas_produced + dissolved_gas_produced
-        )
+        total_gas_produced = free_gas_produced + solution_gas_produced + dissolved_gas_produced
         return float(total_gas_produced / stgiip)
 
     def compute_cell_area(self, x_dim: float, y_dim: float) -> float:
@@ -916,8 +904,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 )
                 stgiip_grid = (
                     giip_grid
-                    + stoiip_grid
-                    * model.fluid_properties.solution_gas_to_oil_ratio_grid
+                    + stoiip_grid * model.fluid_properties.solution_gas_to_oil_ratio_grid
                     + stwiip_grid * model.fluid_properties.gas_solubility_in_water_grid
                 )
                 stgiip = float(np.nansum(stgiip_grid))
@@ -937,9 +924,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             st = self._states[s]
             step_in_days = st.step_size * days_per_second
             solution_gor_grid = st.model.fluid_properties.solution_gas_to_oil_ratio_grid
-            gas_solubility_in_water_grid = (
-                st.model.fluid_properties.gas_solubility_in_water_grid
-            )
+            gas_solubility_in_water_grid = st.model.fluid_properties.gas_solubility_in_water_grid
 
             oil_fvf_grid = st.rates.production_fvfs.oil.array()
             water_fvf_grid = st.rates.production_fvfs.water.array()
@@ -963,8 +948,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 np.nansum(solution_gor_grid * oil_production_stb) * step_in_days
             )
             dissolved_gas_produced += float(
-                np.nansum(gas_solubility_in_water_grid * water_production_stb)
-                * step_in_days
+                np.nansum(gas_solubility_in_water_grid * water_production_stb) * step_in_days
             )
 
         self._total_gas_in_place_cache[step] = (
@@ -1029,7 +1013,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def oil_in_place_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the oil in place history between two time steps.
 
@@ -1045,7 +1029,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def gas_in_place_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Computes the free gas in place history between two time steps.
 
@@ -1061,7 +1045,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def water_in_place_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Computes the water in place history between two time steps.
 
@@ -1079,7 +1063,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative oil produced between two time steps.
@@ -1111,7 +1095,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `oil_produced`."""
         key = (from_step, to_step, cells_obj)
@@ -1126,17 +1110,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         ft3_to_bbl = c.CUBIC_FEET_TO_BARRELS
@@ -1168,7 +1146,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative free gas produced between two time steps.
@@ -1196,7 +1174,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `gas_produced`."""
         key = (from_step, to_step, cells_obj)
@@ -1207,17 +1185,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         for t in range(from_step, to_step + 1):
@@ -1248,7 +1220,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative water produced between two time steps.
@@ -1276,7 +1248,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `water_produced`."""
         key = (from_step, to_step, cells_obj)
@@ -1287,17 +1259,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         ft3_to_bbl = c.CUBIC_FEET_TO_BARRELS
@@ -1332,7 +1298,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative oil injected between two time steps.
@@ -1360,7 +1326,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `oil_injected`."""
         key = (from_step, to_step, cells_obj)
@@ -1372,17 +1338,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         ft3_to_bbl = c.CUBIC_FEET_TO_BARRELS
@@ -1410,7 +1370,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative gas injected between two time steps.
@@ -1438,7 +1398,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `gas_injected`."""
         key = (from_step, to_step, cells_obj)
@@ -1449,17 +1409,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         for t in range(from_step, to_step + 1):
@@ -1490,7 +1444,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> float:
         """
         Computes the cumulative water injected between two time steps.
@@ -1518,7 +1472,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int,
         to_step: int,
-        cells_obj: typing.Optional[Cells],
+        cells_obj: Cells | None,
     ) -> float:
         """Internal cached implementation of `water_injected`."""
         key = (from_step, to_step, cells_obj)
@@ -1529,17 +1483,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         mask = None
         if cells_obj is not None:
             first_state = next(
-                (
-                    self._states[t]
-                    for t in range(from_step, to_step + 1)
-                    if t in self._states
-                ),
+                (self._states[t] for t in range(from_step, to_step + 1) if t in self._states),
                 None,
             )
             if first_state is not None:
-                mask = cells_obj.get_mask(
-                    first_state.model.grid_shape, first_state.wells
-                )
+                mask = cells_obj.get_mask(first_state.model.grid_shape, first_state.wells)
 
         days_per_second = c.DAYS_PER_SECOND
         ft3_to_bbl = c.CUBIC_FEET_TO_BARRELS
@@ -1574,7 +1522,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the oil production history between two time steps.
 
@@ -1605,15 +1553,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add production for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.oil_produced(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.oil_produced(from_step, from_step, cells=cells_obj)
                 else:
                     # Add production from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.oil_produced(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.oil_produced(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1628,7 +1572,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the free gas production history between two time steps.
 
@@ -1659,15 +1603,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add production for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.gas_produced(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.gas_produced(from_step, from_step, cells=cells_obj)
                 else:
                     # Add production from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.gas_produced(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.gas_produced(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1682,7 +1622,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the water production history between two time steps.
 
@@ -1713,15 +1653,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add production for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.water_produced(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.water_produced(from_step, from_step, cells=cells_obj)
                 else:
                     # Add production from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.water_produced(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.water_produced(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1736,7 +1672,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the oil injection history between two time steps.
 
@@ -1767,15 +1703,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add injection for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.oil_injected(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.oil_injected(from_step, from_step, cells=cells_obj)
                 else:
                     # Add injection from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.oil_injected(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.oil_injected(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1790,7 +1722,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the gas injection history between two time steps.
 
@@ -1821,15 +1753,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add injection for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.gas_injected(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.gas_injected(from_step, from_step, cells=cells_obj)
                 else:
                     # Add injection from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.gas_injected(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.gas_injected(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1844,7 +1772,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         cumulative: bool = False,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the water injection history between two time steps.
 
@@ -1875,15 +1803,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
             for t in range(from_step, to_step + 1, interval):
                 # Add injection for steps since last yield
                 if t == from_step:
-                    cumulative_total += self.water_injected(
-                        from_step, from_step, cells=cells_obj
-                    )
+                    cumulative_total += self.water_injected(from_step, from_step, cells=cells_obj)
                 else:
                     # Add injection from last yielded step to current step
                     prev_t = t - interval
-                    cumulative_total += self.water_injected(
-                        prev_t + 1, t, cells=cells_obj
-                    )
+                    cumulative_total += self.water_injected(prev_t + 1, t, cells=cells_obj)
                 yield (t, cumulative_total)
         else:
             for t in range(from_step, to_step + 1, interval):
@@ -1897,8 +1821,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
         to_step: int = -1,
         interval: int = 1,
         cells: CellFilter = None,
-        stoiip: typing.Optional[float] = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+        stoiip: float | None = None,
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the oil recovery factor history over time.
 
@@ -1956,12 +1880,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
         else:
             initial_state = self.get_state(self._min_step)
             if initial_state is None:
-                raise ValidationError(
-                    f"Initial state (step {self._min_step}) not available"
-                )
-            mask = cells_obj.get_mask(
-                initial_state.model.grid_shape, initial_state.wells
-            )
+                raise ValidationError(f"Initial state (step {self._min_step}) not available")
+            mask = cells_obj.get_mask(initial_state.model.grid_shape, initial_state.wells)
             model = initial_state.model
             oil_saturation = model.fluid_properties.oil_saturation_grid
             oil_fvf = model.fluid_properties.oil_formation_volume_factor_grid
@@ -1969,9 +1889,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             net_to_gross = model.rock_properties.net_to_gross_grid
             thickness = model.thickness_grid
             cell_area_in_acres = self.compute_cell_area(*model.cell_dimension[:2])
-            cell_area_grid = uniform_grid(
-                grid_shape=model.grid_shape, value=cell_area_in_acres
-            )
+            cell_area_grid = uniform_grid(grid_shape=model.grid_shape, value=cell_area_in_acres)
             stoiip_grid = compute_hydrocarbon_in_place(
                 area=cell_area_grid,
                 thickness=thickness,
@@ -1993,9 +1911,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 yield (t, 0.0)
         else:
             for t in range(from_step, to_step + 1, interval):
-                cumulative_oil_produced = self.oil_produced(
-                    self._min_step, t, cells=cells_obj
-                )
+                cumulative_oil_produced = self.oil_produced(self._min_step, t, cells=cells_obj)
                 rf = cumulative_oil_produced / oiip
                 yield (t, rf)
 
@@ -2005,7 +1921,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         to_step: int = -1,
         interval: int = 1,
         cells: CellFilter = None,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Get the total gas recovery factor history over time.
 
@@ -2049,9 +1965,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         if cells_obj is None:
             total_initial_gas = self.stock_tank_gas_initially_in_place
         else:
-            mask = cells_obj.get_mask(
-                initial_state.model.grid_shape, initial_state.wells
-            )
+            mask = cells_obj.get_mask(initial_state.model.grid_shape, initial_state.wells)
             model = initial_state.model
 
             # Calculate GIIP for the filtered region
@@ -2061,9 +1975,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             net_to_gross = model.rock_properties.net_to_gross_grid
             thickness = model.thickness_grid
             cell_area_in_acres = self.compute_cell_area(*model.cell_dimension[:2])
-            cell_area_grid = uniform_grid(
-                grid_shape=model.grid_shape, value=cell_area_in_acres
-            )
+            cell_area_grid = uniform_grid(grid_shape=model.grid_shape, value=cell_area_in_acres)
             giip_grid = compute_hydrocarbon_in_place(
                 area=cell_area_grid,
                 thickness=thickness,
@@ -2096,8 +2008,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 oiip_grid = np.where(mask, oiip_grid, 0.0)
 
             initial_solution_gas_grid = (
-                oiip_grid
-                * initial_state.model.fluid_properties.solution_gas_to_oil_ratio_grid
+                oiip_grid * initial_state.model.fluid_properties.solution_gas_to_oil_ratio_grid
             )
             total_initial_gas_grid = giip_grid + initial_solution_gas_grid
             total_initial_gas = np.nansum(total_initial_gas_grid)
@@ -2117,9 +2028,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 st = self._states[s]
                 oil_production = st.rates.production_rates.oil
                 step_in_days = st.step_size * days_per_second
-                solution_gor_grid = (
-                    st.model.fluid_properties.solution_gas_to_oil_ratio_grid
-                )
+                solution_gor_grid = st.model.fluid_properties.solution_gas_to_oil_ratio_grid
                 gas_solubility_in_water_grid = (
                     st.model.fluid_properties.gas_solubility_in_water_grid
                 )
@@ -2164,17 +2073,12 @@ class ModelAnalyst(typing.Generic[NDimension]):
             sorted_idx = 0
             for t in range(from_step, to_step + 1, interval):
                 # Accumulate solution gas contributions up to step t
-                while (
-                    sorted_idx < len(self._sorted_steps)
-                    and self._sorted_steps[sorted_idx] <= t
-                ):
+                while sorted_idx < len(self._sorted_steps) and self._sorted_steps[sorted_idx] <= t:
                     s = self._sorted_steps[sorted_idx]
                     cumulative_solution_gas += step_solution_gas.get(s, 0.0)
                     sorted_idx += 1
 
-                cumulative_free_gas = self.gas_produced(
-                    self._min_step, t, cells=cells_obj
-                )
+                cumulative_free_gas = self.gas_produced(self._min_step, t, cells=cells_obj)
                 total_gas_produced = cumulative_free_gas + cumulative_solution_gas
                 rf = float(total_gas_produced / total_initial_gas)
                 yield (t, rf)
@@ -2198,9 +2102,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
         model = state.model
         cell_area_in_acres = self.compute_cell_area(*model.cell_dimension[:2])
-        cell_area_grid = uniform_grid(
-            grid_shape=model.grid_shape, value=cell_area_in_acres
-        )
+        cell_area_grid = uniform_grid(grid_shape=model.grid_shape, value=cell_area_in_acres)
         pore_volume_grid = (
             cell_area_grid
             * model.thickness_grid
@@ -2211,12 +2113,9 @@ class ModelAnalyst(typing.Generic[NDimension]):
         total_pore_volume = np.nansum(pore_volume_grid)
 
         hydrocarbon_saturation_grid = (
-            model.fluid_properties.oil_saturation_grid
-            + model.fluid_properties.gas_saturation_grid
+            model.fluid_properties.oil_saturation_grid + model.fluid_properties.gas_saturation_grid
         )
-        hydrocarbon_pore_volume = np.nansum(
-            pore_volume_grid * hydrocarbon_saturation_grid
-        )
+        hydrocarbon_pore_volume = np.nansum(pore_volume_grid * hydrocarbon_saturation_grid)
         return ReservoirVolumetrics(
             oil_in_place=self.oil_in_place(step),
             gas_in_place=self.free_gas_in_place(step),
@@ -2226,7 +2125,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         )
 
     def instantaneous_production_rates(
-        self, step: int = -1, cells: typing.Union[Cells, CellFilter] = None
+        self, step: int = -1, cells: Cells | CellFilter = None
     ) -> InstantaneousRates:
         """
         Calculates instantaneous production rates at a specific time step.
@@ -2260,11 +2159,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 water_cut=0.0,
             )
 
-        mask = (
-            cells_obj.get_mask(state.model.grid_shape, state.wells)
-            if cells_obj
-            else None
-        )
+        mask = cells_obj.get_mask(state.model.grid_shape, state.wells) if cells_obj else None
 
         oil_rate = 0.0
         free_gas_rate = 0.0
@@ -2299,9 +2194,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             free_gas_rate = float(np.nansum(gas_production_scf))
 
         if oil_production_stb is not None:
-            solution_gor_grid = (
-                state.model.fluid_properties.solution_gas_to_oil_ratio_grid
-            )
+            solution_gor_grid = state.model.fluid_properties.solution_gas_to_oil_ratio_grid
             solution_gas_rate = float(np.nansum(solution_gor_grid * oil_production_stb))
 
         gas_rate = free_gas_rate + solution_gas_rate
@@ -2344,7 +2237,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         return result
 
     def instantaneous_injection_rates(
-        self, step: int = -1, cells: typing.Union[Cells, CellFilter] = None
+        self, step: int = -1, cells: Cells | CellFilter = None
     ) -> InstantaneousRates:
         """
         Calculates instantaneous injection rates at a specific time step.
@@ -2378,11 +2271,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 water_cut=0.0,
             )
 
-        mask = (
-            cells_obj.get_mask(state.model.grid_shape, state.wells)
-            if cells_obj
-            else None
-        )
+        mask = cells_obj.get_mask(state.model.grid_shape, state.wells) if cells_obj else None
 
         oil_rate = 0.0
         gas_rate = 0.0
@@ -2579,9 +2468,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         initial_water_sat = _initial_oil_weighted_mean(
             initial_model.fluid_properties.water_saturation_grid
         )
-        initial_pressure = _initial_oil_weighted_mean(
-            initial_model.fluid_properties.pressure_grid
-        )
+        initial_pressure = _initial_oil_weighted_mean(initial_model.fluid_properties.pressure_grid)
 
         current_oil_fvf = _current_oil_weighted_mean(
             current_model.fluid_properties.oil_formation_volume_factor_grid
@@ -2600,9 +2487,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         current_water_fvf = _current_oil_weighted_mean(
             current_model.fluid_properties.water_formation_volume_factor_grid
         )
-        current_pressure = _current_oil_weighted_mean(
-            current_model.fluid_properties.pressure_grid
-        )
+        current_pressure = _current_oil_weighted_mean(current_model.fluid_properties.pressure_grid)
         pressure_decline = initial_pressure - current_pressure
 
         rock_compressibility = float(initial_model.rock_properties.compressibility)
@@ -2636,9 +2521,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             st = self._states[s]
             step_in_days = st.step_size * days_per_second
             solution_gor_grid = st.model.fluid_properties.solution_gas_to_oil_ratio_grid
-            gas_solubility_in_water_grid = (
-                st.model.fluid_properties.gas_solubility_in_water_grid
-            )
+            gas_solubility_in_water_grid = st.model.fluid_properties.gas_solubility_in_water_grid
 
             oil_fvf_grid = st.rates.production_fvfs.oil.array()
             water_fvf_grid = st.rates.production_fvfs.water.array()
@@ -2662,8 +2545,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 np.nansum(solution_gor_grid * oil_production_stb) * step_in_days
             )
             cumulative_solution_gas_produced += float(
-                np.nansum(gas_solubility_in_water_grid * water_production_stb)
-                * step_in_days
+                np.nansum(gas_solubility_in_water_grid * water_production_stb) * step_in_days
             )
 
         cumulative_total_gas_produced = (
@@ -2693,10 +2575,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         # Underground withdrawal, `F` in bbl
         underground_withdrawal = (
             cumulative_oil_produced
-            * (
-                current_oil_fvf
-                + (producing_gor - current_solution_gor) * current_gas_fvf
-            )
+            * (current_oil_fvf + (producing_gor - current_solution_gor) * current_gas_fvf)
             + cumulative_water_produced * current_water_fvf
             - cumulative_water_injected * injected_water_fvf
             - cumulative_gas_injected * injected_gas_fvf
@@ -2829,9 +2708,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         current_water_saturation = current_model.fluid_properties.water_saturation_grid
         initial_gas_saturation = initial_model.fluid_properties.gas_saturation_grid
         current_gas_saturation = current_model.fluid_properties.gas_saturation_grid
-        solvent_concentration_grid = (
-            current_model.fluid_properties.solvent_concentration_grid
-        )
+        solvent_concentration_grid = current_model.fluid_properties.solvent_concentration_grid
 
         # Determine contacted mask based on displacing phase and thresholds
         if displacing_phase == "water":
@@ -2903,15 +2780,11 @@ class ModelAnalyst(typing.Generic[NDimension]):
         )
 
         # Contacted / uncontacted oil volumes (STB) based on mask
-        contacted_initial_oil_volume_stb = float(
-            np.nansum(initial_oil_volume_stb[contacted_mask])
-        )
+        contacted_initial_oil_volume_stb = float(np.nansum(initial_oil_volume_stb[contacted_mask]))
         contacted_oil_volume_remaining_stb = float(
             np.nansum(current_oil_volume_stb[contacted_mask])
         )
-        uncontacted_oil_volume_stb = float(
-            np.nansum(initial_oil_volume_stb[~contacted_mask])
-        )
+        uncontacted_oil_volume_stb = float(np.nansum(initial_oil_volume_stb[~contacted_mask]))
 
         # Volumetric sweep efficiency: fraction of initial oil contacted
         volumetric_sweep_efficiency = (
@@ -2952,8 +2825,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             total_planform_cells = int(np.prod(grid_shape))
 
         areal_sweep_efficiency = (
-            (contacted_planform_cells * cell_area_ft2)
-            / (total_planform_cells * cell_area_ft2)
+            (contacted_planform_cells * cell_area_ft2) / (total_planform_cells * cell_area_ft2)
             if total_planform_cells > 0
             else 0.0
         )
@@ -3000,9 +2872,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             )
 
         # Weight by initial oil (denominator_per_column * cell_area_ft2 / Bo)
-        total_initial_oil_volume_stb_columns = np.nansum(
-            initial_oil_volume_stb_per_column
-        )
+        total_initial_oil_volume_stb_columns = np.nansum(initial_oil_volume_stb_per_column)
         if total_initial_oil_volume_stb_columns > 0.0:
             vertical_sweep_efficiency = (
                 np.nansum(column_fraction * initial_oil_volume_stb_per_column)
@@ -3109,8 +2979,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             weight_sum = float(np.nansum(weights))
             if weight_sum > 0:
                 centroid = tuple(
-                    float(np.nansum(idx[:, d] * weights) / weight_sum)
-                    for d in range(idx.shape[1])
+                    float(np.nansum(idx[:, d] * weights) / weight_sum) for d in range(idx.shape[1])
                 )
             else:
                 centroid = tuple(float(np.mean(idx[:, d])) for d in range(idx.shape[1]))
@@ -3150,12 +3019,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
             )
             return "vogel"
 
-        avg_oil_saturation = np.nanmean(
-            state.model.fluid_properties.oil_saturation_grid
-        )
-        avg_gas_saturation = np.nanmean(
-            state.model.fluid_properties.gas_saturation_grid
-        )
+        avg_oil_saturation = np.nanmean(state.model.fluid_properties.oil_saturation_grid)
+        avg_gas_saturation = np.nanmean(state.model.fluid_properties.gas_saturation_grid)
         reservoir_pressure = np.nanmean(state.model.fluid_properties.pressure_grid)
         estimated_bubble_point = np.nanmean(
             state.model.fluid_properties.oil_bubble_point_pressure_grid
@@ -3180,7 +3045,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         step: int = -1,
         phase: typing.Literal["oil", "gas", "water"] = "oil",
-        cells: typing.Union[Cells, CellFilter] = None,
+        cells: Cells | CellFilter = None,
     ) -> ProductivityAnalysis:
         """
         Well productivity analysis based on actual flow rates and reservoir properties.
@@ -3244,11 +3109,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             )
 
         # Get cell mask for filtering
-        mask = (
-            cells_obj.get_mask(state.model.grid_shape, state.wells)
-            if cells_obj
-            else None
-        )
+        mask = cells_obj.get_mask(state.model.grid_shape, state.wells) if cells_obj else None
 
         # Accumulate metrics across all wells
         total_flow_rate = 0.0
@@ -3282,9 +3143,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 if mask is not None and not mask[i, j, k]:
                     continue
 
-                cell_pressure = float(
-                    state.model.fluid_properties.pressure_grid[i, j, k]
-                )
+                cell_pressure = float(state.model.fluid_properties.pressure_grid[i, j, k])
 
                 # Get actual cell flow rate and fluid properties
                 if phase == "oil":
@@ -3338,15 +3197,9 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
                 # Get well index and phase mobility for this cell
                 interval_thickness = state.model.cell_dimension
-                perm_x = float(
-                    state.model.rock_properties.absolute_permeability.x[i, j, k]
-                )
-                perm_y = float(
-                    state.model.rock_properties.absolute_permeability.y[i, j, k]
-                )
-                perm_z = float(
-                    state.model.rock_properties.absolute_permeability.z[i, j, k]
-                )
+                perm_x = float(state.model.rock_properties.absolute_permeability.x[i, j, k])
+                perm_y = float(state.model.rock_properties.absolute_permeability.y[i, j, k])
+                perm_z = float(state.model.rock_properties.absolute_permeability.z[i, j, k])
                 permeability = (perm_x, perm_y, perm_z)
 
                 well_index = well.get_well_index(
@@ -3407,9 +3260,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             avg_flow_efficiency = 1.0
             avg_well_index = 0.0
             avg_mobility = 0.0
-            logger.warning(
-                "No active production wells or cells found for productivity analysis"
-            )
+            logger.warning("No active production wells or cells found for productivity analysis")
 
         result = ProductivityAnalysis(
             total_flow_rate=float(avg_flow_rate),
@@ -3423,7 +3274,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         return result
 
     def voidage_replacement_ratio(
-        self, step: int = -1, cells: typing.Union[Cells, CellFilter] = None
+        self, step: int = -1, cells: Cells | CellFilter = None
     ) -> float:
         """
         Calculates the voidage replacement ratio (VRR) at a specific time step.
@@ -3469,26 +3320,14 @@ class ModelAnalyst(typing.Generic[NDimension]):
             return 0.0
 
         # Get cumulative injection/production volumes
-        cumulative_water_injected = self.water_injected(
-            self._min_step, step, cells=cells_obj
-        )
-        cumulative_gas_injected = self.gas_injected(
-            self._min_step, step, cells=cells_obj
-        )
-        cumulative_oil_produced = self.oil_produced(
-            self._min_step, step, cells=cells_obj
-        )
-        cumulative_water_produced = self.water_produced(
-            self._min_step, step, cells=cells_obj
-        )
+        cumulative_water_injected = self.water_injected(self._min_step, step, cells=cells_obj)
+        cumulative_gas_injected = self.gas_injected(self._min_step, step, cells=cells_obj)
+        cumulative_oil_produced = self.oil_produced(self._min_step, step, cells=cells_obj)
+        cumulative_water_produced = self.water_produced(self._min_step, step, cells=cells_obj)
         free_gas_produced = self.gas_produced(self._min_step, step, cells=cells_obj)
 
-        avg_oil_fvf = np.nanmean(
-            state.model.fluid_properties.oil_formation_volume_factor_grid
-        )
-        avg_gas_fvf = np.nanmean(
-            state.model.fluid_properties.gas_formation_volume_factor_grid
-        )
+        avg_oil_fvf = np.nanmean(state.model.fluid_properties.oil_formation_volume_factor_grid)
+        avg_gas_fvf = np.nanmean(state.model.fluid_properties.gas_formation_volume_factor_grid)
         avg_water_fvf_produced = np.nanmean(
             state.model.fluid_properties.water_formation_volume_factor_grid
         )
@@ -3527,9 +3366,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 break
             st = self._states[s]
             solution_gor_grid = st.model.fluid_properties.solution_gas_to_oil_ratio_grid
-            gas_solubility_in_water_grid = (
-                st.model.fluid_properties.gas_solubility_in_water_grid
-            )
+            gas_solubility_in_water_grid = st.model.fluid_properties.gas_solubility_in_water_grid
             step_in_days = st.step_size * days_per_second
 
             oil_fvf_grid = st.rates.production_fvfs.oil.array()
@@ -3554,8 +3391,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 np.nansum(solution_gor_grid * oil_production_stb) * step_in_days
             )
             solution_gas_produced += float(
-                np.nansum(gas_solubility_in_water_grid * water_production_stb)
-                * step_in_days
+                np.nansum(gas_solubility_in_water_grid * water_production_stb) * step_in_days
             )
 
         total_gas_produced = free_gas_produced + solution_gas_produced  # SCF
@@ -3577,7 +3413,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         to_step: int = -1,
         phase: typing.Literal["oil", "gas", "water"] = "oil",
         max_decline_per_year: float = 2.0,
-    ) -> typing.Tuple[str, typing.Dict[str, DeclineCurveResult]]:
+    ) -> tuple[str, dict[str, DeclineCurveResult]]:
         """
         Automatically recommend the best decline curve model based on statistical fit and physical constraints.
 
@@ -3697,9 +3533,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         ```python
         # Get recommendation and all model results
         recommended, all_models = analyst.recommend_decline_model(
-            from_step=0,
-            to_step=-1,
-            phase="oil"
+            from_step=0, to_step=-1, phase="oil"
         )
         print(f"Recommended model: {recommended}")
         print(f"R² = {all_models[recommended].r_squared:.4f}")
@@ -3715,7 +3549,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
         # Use recommended model for forecasting
         best_model = all_models[recommended]
-        forecast = analyst.forecast_production(best_model, steps=365*10)
+        forecast = analyst.forecast_production(best_model, steps=365 * 10)
         ```
 
         Notes:
@@ -3743,7 +3577,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         - Update decline curves annually as new production data becomes available
         """
         models = ["exponential", "hyperbolic", "harmonic"]
-        results: typing.Dict[str, DeclineCurveResult] = {}
+        results: dict[str, DeclineCurveResult] = {}
 
         for model in models:
             result = self.decline_curve_analysis(
@@ -3795,9 +3629,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         from_step: int = 0,
         to_step: int = -1,
-        decline_type: typing.Literal[
-            "exponential", "hyperbolic", "harmonic"
-        ] = "exponential",
+        decline_type: typing.Literal["exponential", "hyperbolic", "harmonic"] = "exponential",
         phase: typing.Literal["oil", "gas", "water"] = "oil",
         max_decline_per_year: float = 2.0,
     ) -> DeclineCurveResult:
@@ -3876,9 +3708,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             # Exponential decline: q = qi * exp(-Di*t)
             # Use linear regression on ln(q) vs t to find parameters
             log_production_rates = np.log(positive_production_rates)
-            linear_regression_coefficients = np.polyfit(
-                filtered_steps, log_production_rates, 1
-            )
+            linear_regression_coefficients = np.polyfit(filtered_steps, log_production_rates, 1)
 
             exponential_decline_rate_per_timestep = -linear_regression_coefficients[0]
             log_initial_rate_intercept = linear_regression_coefficients[1]
@@ -3895,9 +3725,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 (positive_production_rates - np.mean(positive_production_rates)) ** 2
             )
             exponential_r_squared = (
-                1 - (sum_squared_residuals / total_sum_squares)
-                if total_sum_squares > 0
-                else 0.0
+                1 - (sum_squared_residuals / total_sum_squares) if total_sum_squares > 0 else 0.0
             )
 
             # Return fitted qi as `initial_rate` (using last actual rate leads to forecast
@@ -3962,9 +3790,9 @@ class ModelAnalyst(typing.Generic[NDimension]):
             time_array, initial_rate_param, decline_rate_param, b_factor_param
         ):
             """Hyperbolic decline curve function for curve fitting."""
-            return initial_rate_param / (
-                1 + b_factor_param * decline_rate_param * time_array
-            ) ** (1 / b_factor_param)
+            return initial_rate_param / (1 + b_factor_param * decline_rate_param * time_array) ** (
+                1 / b_factor_param
+            )
 
         # Initial parameter estimates
         estimated_initial_rate = positive_production_rates[0]
@@ -3979,9 +3807,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
             logger.error(
                 f"ReservoirState at time step {from_step} not available for decline curve analysis."
             )
-            raise ValidationError(
-                f"ReservoirState at time step {from_step} is not available."
-            )
+            raise ValidationError(f"ReservoirState at time step {from_step} is not available.")
 
         step_size_seconds = state.step_size
         timesteps_per_year = c.SECONDS_PER_YEAR / step_size_seconds
@@ -4054,8 +3880,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self,
         decline_result: DeclineCurveResult,
         steps: int,
-        economic_limit: typing.Optional[float] = None,
-    ) -> typing.List[typing.Tuple[int, float]]:
+        economic_limit: float | None = None,
+    ) -> list[tuple[int, float]]:
         """
         Forecast future production rates based on fitted decline curve parameters.
 
@@ -4118,10 +3944,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 )
             elif decline_result.decline_type == "hyperbolic":
                 rate = decline_result.initial_rate / (
-                    1
-                    + decline_result.b_factor
-                    * decline_rate_per_timestep
-                    * time_since_start
+                    1 + decline_result.b_factor * decline_rate_per_timestep * time_since_start
                 ) ** (1 / decline_result.b_factor)
             else:
                 rate = 0.0
@@ -4208,14 +4031,10 @@ class ModelAnalyst(typing.Generic[NDimension]):
         # Calculate time to reach economic limit if applicable
         if economic_limit > 0 and q_final == economic_limit:
             if decline_result.decline_type == "exponential":
-                time_to_limit = (
-                    -np.log(economic_limit / qi) / di if qi > economic_limit else 0
-                )
+                time_to_limit = -np.log(economic_limit / qi) / di if qi > economic_limit else 0
             elif decline_result.decline_type == "harmonic":
                 time_to_limit = (
-                    (qi - economic_limit) / (di * economic_limit)
-                    if economic_limit > 0
-                    else 0
+                    (qi - economic_limit) / (di * economic_limit) if economic_limit > 0 else 0
                 )
             elif decline_result.decline_type == "hyperbolic":
                 if b > 0:
@@ -4264,9 +4083,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 else:
                     cumulative = 0.0
             else:
-                cumulative = (
-                    (qi**b) / (di * (1 - b)) * (qi ** (1 - b) - q_final ** (1 - b))
-                )
+                cumulative = (qi**b) / (di * (1 - b)) * (qi ** (1 - b) - q_final ** (1 - b))
         else:
             cumulative = 0.0
 
@@ -4307,14 +4124,10 @@ class ModelAnalyst(typing.Generic[NDimension]):
         :return: Mobility ratio (M). Returns float('inf') if calculation is not possible.
         """
         if displaced_phase not in {"oil", "water"}:
-            raise ValidationError(
-                "Invalid displaced phase specified for mobility ratio."
-            )
+            raise ValidationError("Invalid displaced phase specified for mobility ratio.")
 
         if displacing_phase not in {"oil", "water", "gas"}:
-            raise ValidationError(
-                "Invalid displacing phase specified for mobility ratio."
-            )
+            raise ValidationError("Invalid displacing phase specified for mobility ratio.")
 
         state = self.get_state(step)
         if state is None:
@@ -4374,7 +4187,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def reservoir_volumetrics_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, ReservoirVolumetrics], None, None]:
+    ) -> typing.Generator[tuple[int, ReservoirVolumetrics], None, None]:
         """
         Generator for reservoir volumetrics history over time.
 
@@ -4394,8 +4207,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
         to_step: int = -1,
         interval: int = 1,
         rate_type: typing.Literal["production", "injection"] = "production",
-        cells: typing.Union[Cells, CellFilter] = None,
-    ) -> typing.Generator[typing.Tuple[int, InstantaneousRates], None, None]:
+        cells: Cells | CellFilter = None,
+    ) -> typing.Generator[tuple[int, InstantaneousRates], None, None]:
         """
         Generator for instantaneous rates history over time.
 
@@ -4418,7 +4231,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def cumulative_production_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, CumulativeProduction], None, None]:
+    ) -> typing.Generator[tuple[int, CumulativeProduction], None, None]:
         """
         Generator for cumulative production history over time.
 
@@ -4434,7 +4247,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
 
     def material_balance_history(
         self, from_step: int = 0, to_step: int = -1, interval: int = 1
-    ) -> typing.Generator[typing.Tuple[int, MaterialBalance], None, None]:
+    ) -> typing.Generator[tuple[int, MaterialBalance], None, None]:
         """
         Generator for material balance history over time.
 
@@ -4459,7 +4272,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         delta_water_saturation_threshold: float = 0.02,
         delta_gas_saturation_threshold: float = 0.01,
         solvent_concentration_threshold: float = 0.01,
-    ) -> typing.Generator[typing.Tuple[int, SweepEfficiencyAnalysis], None, None]:
+    ) -> typing.Generator[tuple[int, SweepEfficiencyAnalysis], None, None]:
         """
         Generator for sweep efficiency analysis history over time.
 
@@ -4489,7 +4302,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         interval: int = 1,
         phase: typing.Literal["water", "gas"] = "water",
         threshold: float = 0.02,
-    ) -> typing.Generator[typing.Tuple[int, InjectionFrontAnalysis], None, None]:
+    ) -> typing.Generator[tuple[int, InjectionFrontAnalysis], None, None]:
         """
         Generator for injection-front analysis over a range of time steps.
 
@@ -4513,7 +4326,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         to_step: int = -1,
         interval: int = 1,
         phase: typing.Literal["oil", "gas", "water"] = "oil",
-    ) -> typing.Generator[typing.Tuple[int, ProductivityAnalysis], None, None]:
+    ) -> typing.Generator[tuple[int, ProductivityAnalysis], None, None]:
         """
         Generator for productivity analysis history over time.
 
@@ -4533,7 +4346,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         from_step: int = 0,
         to_step: int = -1,
         interval: int = 1,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Generator for voidage replacement ratio (VRR) history over time.
 
@@ -4559,7 +4372,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         from_step: int = 0,
         to_step: int = -1,
         interval: int = 1,
-    ) -> typing.Generator[typing.Tuple[int, float], None, None]:
+    ) -> typing.Generator[tuple[int, float], None, None]:
         """
         Generator for mobility ratio history over time.
 

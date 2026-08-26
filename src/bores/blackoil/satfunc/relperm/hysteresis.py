@@ -160,12 +160,12 @@ def compute_land_residual_saturation(
 
 
 def _get_oil_water_relative_permeabilities(
-    oil_water_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
+    oil_water_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(krw, kro_w)` from an oil-water relative permeability table.
 
@@ -226,12 +226,12 @@ def _get_oil_water_relative_permeabilities(
 
 
 def _get_gas_oil_relative_permeabilities(
-    gas_oil_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
+    gas_oil_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(kro_g, krg)` from a gas-oil relative permeability table.
 
@@ -291,12 +291,12 @@ def _get_gas_oil_relative_permeabilities(
 
 
 def _get_oil_water_relative_permeability_derivatives(
-    oil_water_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
+    oil_water_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(d_krw/d_ref, d_kro_w/d_ref)` for the oil-water table, where
     *ref* is the table's natural reference saturation (Sw in water-wet, So in
@@ -320,11 +320,9 @@ def _get_oil_water_relative_permeability_derivatives(
             wetting_saturation = oil_saturation
             non_wetting_saturation = water_saturation
 
-        wetting_derivative = (
-            oil_water_table.get_wetting_phase_relative_permeability_derivative(
-                wetting_saturation=wetting_saturation,
-                non_wetting_saturation=non_wetting_saturation,
-            )
+        wetting_derivative = oil_water_table.get_wetting_phase_relative_permeability_derivative(
+            wetting_saturation=wetting_saturation,
+            non_wetting_saturation=non_wetting_saturation,
         )
         non_wetting_derivative = (
             oil_water_table.get_non_wetting_phase_relative_permeability_derivative(
@@ -350,12 +348,12 @@ def _get_oil_water_relative_permeability_derivatives(
 
 
 def _get_gas_oil_relative_permeability_derivatives(
-    gas_oil_table: typing.Union[TwoPhaseRelPermTable, RelativePermeabilityTable],
+    gas_oil_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     **kwargs: typing.Any,
-) -> typing.Tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+) -> tuple[NumberOrArray[NDimension], NumberOrArray[NDimension]]:
     """
     Return `(d_kro_g/d_ref, d_krg/d_ref)` for the gas-oil table, where
     *ref* is the table's natural reference saturation (So in oil-wet, Sg in
@@ -379,11 +377,9 @@ def _get_gas_oil_relative_permeability_derivatives(
             wetting_saturation = gas_saturation
             non_wetting_saturation = oil_saturation
 
-        wetting_derivative = (
-            gas_oil_table.get_wetting_phase_relative_permeability_derivative(
-                wetting_saturation=wetting_saturation,
-                non_wetting_saturation=non_wetting_saturation,
-            )
+        wetting_derivative = gas_oil_table.get_wetting_phase_relative_permeability_derivative(
+            wetting_saturation=wetting_saturation,
+            non_wetting_saturation=non_wetting_saturation,
         )
         non_wetting_derivative = (
             gas_oil_table.get_non_wetting_phase_relative_permeability_derivative(
@@ -457,10 +453,10 @@ class KilloughLandRelPermTable(
     gas_oil_drainage_table: RelativePermeabilityTable
     """Primary drainage relative permeability table for the gas-oil system."""
 
-    oil_water_imbibition_table: typing.Optional[RelativePermeabilityTable] = None
+    oil_water_imbibition_table: RelativePermeabilityTable | None = None
     """Primary imbibition table for the oil-water system. Defaults to the drainage table."""
 
-    gas_oil_imbibition_table: typing.Optional[RelativePermeabilityTable] = None
+    gas_oil_imbibition_table: RelativePermeabilityTable | None = None
     """Primary imbibition table for the gas-oil system. Defaults to the drainage table."""
 
     land_trapping_coefficient_water: Number = 1.0
@@ -469,19 +465,19 @@ class KilloughLandRelPermTable(
     land_trapping_coefficient_gas: Number = 1.0
     """Land trapping coefficient *C* for the gas-oil system (>= 0)."""
 
-    maximum_residual_oil_saturation_water: typing.Optional[float] = None
+    maximum_residual_oil_saturation_water: float | None = None
     """
     Maximum residual oil saturation S_r_max used by Land's formula for the
     oil-water system. Required when `oil_water_imbibition_table` is set.
     """
 
-    maximum_residual_oil_saturation_gas: typing.Optional[float] = None
+    maximum_residual_oil_saturation_gas: float | None = None
     """
     Maximum residual oil saturation S_r_max for the gas-oil system. Required
     when `gas_oil_imbibition_table` is set.
     """
 
-    maximum_residual_gas_saturation: typing.Optional[float] = None
+    maximum_residual_gas_saturation: float | None = None
     """
     Maximum residual gas saturation S_r_max used by Land's formula. Required
     when `gas_oil_imbibition_table` is set.
@@ -490,7 +486,7 @@ class KilloughLandRelPermTable(
     scanning_interpolation_exponent: Number = 1.0
     """Killough scanning curve interpolation exponent *n* (1 = linear)."""
 
-    mixing_rule: typing.Union[MixingRule, str] = "eclipse_rule"
+    mixing_rule: MixingRule | str = "eclipse_rule"
     """Three-phase oil relative permeability mixing rule."""
 
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
@@ -503,17 +499,13 @@ class KilloughLandRelPermTable(
             self.oil_water_drainage_table.wetting_phase,
             self.oil_water_drainage_table.non_wetting_phase,
         } != {FluidPhase.WATER, FluidPhase.OIL}:
-            raise ValidationError(
-                "`oil_water_drainage_table` must involve water and oil phases."
-            )
+            raise ValidationError("`oil_water_drainage_table` must involve water and oil phases.")
 
         if isinstance(self.gas_oil_drainage_table, TwoPhaseRelPermTable) and {
             self.gas_oil_drainage_table.wetting_phase,
             self.gas_oil_drainage_table.non_wetting_phase,
         } != {FluidPhase.OIL, FluidPhase.GAS}:
-            raise ValidationError(
-                "`gas_oil_drainage_table` must involve oil and gas phases."
-            )
+            raise ValidationError("`gas_oil_drainage_table` must involve oil and gas phases.")
 
         if (
             self.oil_water_imbibition_table is not None
@@ -537,9 +529,7 @@ class KilloughLandRelPermTable(
             }
             != {FluidPhase.OIL, FluidPhase.GAS}
         ):
-            raise ValidationError(
-                "`gas_oil_imbibition_table` must involve oil and gas phases."
-            )
+            raise ValidationError("`gas_oil_imbibition_table` must involve oil and gas phases.")
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         """
@@ -596,17 +586,13 @@ class KilloughLandRelPermTable(
         self,
         water_saturation: npt.NDArray,
         gas_saturation: npt.NDArray,
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ],
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ],
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
-    ) -> typing.Tuple[
+        max_water_saturation: NumberOrArray[NDimension] | None,
+        max_gas_saturation: NumberOrArray[NDimension] | None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None,
+    ) -> tuple[
         npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
     ]:
         """
@@ -639,9 +625,7 @@ class KilloughLandRelPermTable(
         use_water_hysteresis = (
             max_water_saturation is not None and water_imbibition_flag is not None
         )
-        use_gas_hysteresis = (
-            max_gas_saturation is not None and gas_imbibition_flag is not None
-        )
+        use_gas_hysteresis = max_gas_saturation is not None and gas_imbibition_flag is not None
 
         if use_water_hysteresis:
             maximum_water_saturation = np.atleast_1d(max_water_saturation)  # type: ignore
@@ -676,9 +660,7 @@ class KilloughLandRelPermTable(
             gas_imbibition_flag = typing.cast(
                 BooleanArray[NDimension], np.zeros_like(gas_saturation, dtype=np.bool_)
             )
-            gas_reversal_saturation = typing.cast(
-                NumberArray[NDimension], gas_saturation.copy()
-            )
+            gas_reversal_saturation = typing.cast(NumberArray[NDimension], gas_saturation.copy())
 
         (
             maximum_water_saturation,
@@ -709,16 +691,12 @@ class KilloughLandRelPermTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_water_saturation: NumberOrArray[NDimension] | None = None,
+        max_gas_saturation: NumberOrArray[NDimension] | None = None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None = None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilities:
         """
@@ -789,9 +767,7 @@ class KilloughLandRelPermTable(
         use_water_hysteresis = (
             max_water_saturation is not None and water_imbibition_flag is not None
         )
-        use_gas_hysteresis = (
-            max_gas_saturation is not None and gas_imbibition_flag is not None
-        )
+        use_gas_hysteresis = max_gas_saturation is not None and gas_imbibition_flag is not None
 
         (
             maximum_water_saturation,
@@ -812,13 +788,9 @@ class KilloughLandRelPermTable(
         )
 
         oil_water_drainage_table = self.oil_water_drainage_table
-        oil_water_imbibition_table = (
-            self.oil_water_imbibition_table or oil_water_drainage_table
-        )
+        oil_water_imbibition_table = self.oil_water_imbibition_table or oil_water_drainage_table
         gas_oil_drainage_table = self.gas_oil_drainage_table
-        gas_oil_imbibition_table = (
-            self.gas_oil_imbibition_table or gas_oil_drainage_table
-        )
+        gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Oil-water system - Land trapping on oil
         oil_saturation_at_oil_water_reversal = np.maximum(
@@ -826,10 +798,7 @@ class KilloughLandRelPermTable(
             1.0 - water_reversal_saturation - gas_saturation,  # type: ignore
         )
         imbibition_oil_water_kwargs = dict(kwargs)
-        if (
-            use_water_hysteresis
-            and self.maximum_residual_oil_saturation_water is not None
-        ):
+        if use_water_hysteresis and self.maximum_residual_oil_saturation_water is not None:
             dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
@@ -891,9 +860,7 @@ class KilloughLandRelPermTable(
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
             )
-            imbibition_gas_oil_kwargs["residual_gas_saturation"] = (
-                dynamic_residual_gas_saturation
-            )
+            imbibition_gas_oil_kwargs["residual_gas_saturation"] = dynamic_residual_gas_saturation
         if use_gas_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
             dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,
@@ -974,16 +941,12 @@ class KilloughLandRelPermTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_water_saturation: NumberOrArray[NDimension] | None = None,
+        max_gas_saturation: NumberOrArray[NDimension] | None = None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None = None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> RelativePermeabilityDerivatives:
         """
@@ -1033,9 +996,7 @@ class KilloughLandRelPermTable(
         use_water_hysteresis = (
             max_water_saturation is not None and water_imbibition_flag is not None
         )
-        use_gas_hysteresis = (
-            max_gas_saturation is not None and gas_imbibition_flag is not None
-        )
+        use_gas_hysteresis = max_gas_saturation is not None and gas_imbibition_flag is not None
 
         (
             maximum_water_saturation,
@@ -1056,13 +1017,9 @@ class KilloughLandRelPermTable(
         )
 
         oil_water_drainage_table = self.oil_water_drainage_table
-        oil_water_imbibition_table = (
-            self.oil_water_imbibition_table or oil_water_drainage_table
-        )
+        oil_water_imbibition_table = self.oil_water_imbibition_table or oil_water_drainage_table
         gas_oil_drainage_table = self.gas_oil_drainage_table
-        gas_oil_imbibition_table = (
-            self.gas_oil_imbibition_table or gas_oil_drainage_table
-        )
+        gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Build imbibition kwargs with Land trapping
         oil_saturation_at_oil_water_reversal = np.maximum(
@@ -1070,10 +1027,7 @@ class KilloughLandRelPermTable(
             1.0 - water_reversal_saturation - gas_saturation,  # type: ignore
         )
         imbibition_oil_water_kwargs = dict(kwargs)
-        if (
-            use_water_hysteresis
-            and self.maximum_residual_oil_saturation_water is not None
-        ):
+        if use_water_hysteresis and self.maximum_residual_oil_saturation_water is not None:
             dynamic_residual_oil_saturation_water = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_oil_water_reversal,
                 maximum_residual_saturation=self.maximum_residual_oil_saturation_water,
@@ -1094,9 +1048,7 @@ class KilloughLandRelPermTable(
                 maximum_residual_saturation=self.maximum_residual_gas_saturation,
                 land_trapping_coefficient=self.land_trapping_coefficient_gas,
             )
-            imbibition_gas_oil_kwargs["residual_gas_saturation"] = (
-                dynamic_residual_gas_saturation
-            )
+            imbibition_gas_oil_kwargs["residual_gas_saturation"] = dynamic_residual_gas_saturation
         if use_gas_hysteresis and self.maximum_residual_oil_saturation_gas is not None:
             dynamic_residual_oil_saturation_gas = compute_land_residual_saturation(
                 initial_non_wetting_saturation=oil_saturation_at_gas_oil_reversal,

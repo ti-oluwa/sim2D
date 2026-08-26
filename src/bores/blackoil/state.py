@@ -1,6 +1,5 @@
 """Dynamic simulation state for one point in time: reservoir state plus optional well states."""
 
-import typing
 
 import attrs
 from typing_extensions import Self
@@ -19,15 +18,12 @@ class BlackOilModelState(Serializable):
     """Reservoir state plus well states at one simulation time."""
 
     reservoir: ReservoirState
-    wells: typing.Optional[WellsStates] = None
+    wells: WellsStates | None = None
     time: Number = 0.0
     """Simulation time this state corresponds to (in `unit_system`)."""
 
     def __attrs_post_init__(self) -> None:
-        if (
-            self.wells is not None
-            and self.wells.unit_system != self.reservoir.unit_system
-        ):
+        if self.wells is not None and self.wells.unit_system != self.reservoir.unit_system:
             raise ValidationError(
                 f"`wells.unit_system` ({self.wells.unit_system.value}) != "
                 f"`reservoir.unit_system` ({self.reservoir.unit_system.value})."
@@ -43,7 +39,7 @@ class BlackOilModelState(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         :param target: Target unit system.
@@ -56,7 +52,5 @@ class BlackOilModelState(Serializable):
         return attrs.evolve(
             self,
             reservoir=self.reservoir.convert(target, table=table),
-            wells=self.wells.convert(target, table=table)
-            if self.wells is not None
-            else None,
+            wells=self.wells.convert(target, table=table) if self.wells is not None else None,
         )

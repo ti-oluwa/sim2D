@@ -51,9 +51,7 @@ def sequence_to_ndarray(
         return np.empty((0,), dtype=np.int8)
 
     if any(isinstance(v, Mapping) for v in value):
-        raise TypeError(
-            f"Sequence of mappings must be stored as groups, not datasets: {path}"
-        )
+        raise TypeError(f"Sequence of mappings must be stored as groups, not datasets: {path}")
 
     if isinstance(value[0], Sequence) and not isinstance(value[0], (str, bytes)):
         arrays = [sequence_to_ndarray(v, path, string_array_factory) for v in value]
@@ -67,8 +65,7 @@ def sequence_to_ndarray(
         return np.asarray(value, dtype=bool)
 
     if all(
-        isinstance(v, (int, np.integer)) and not isinstance(v, (bool, np.bool_))
-        for v in value
+        isinstance(v, (int, np.integer)) and not isinstance(v, (bool, np.bool_)) for v in value
     ):
         return np.asarray(value)
 
@@ -79,8 +76,7 @@ def sequence_to_ndarray(
         return string_array_factory(value)
 
     raise TypeError(
-        f"Unsupported or mixed sequence contents at {path}: "
-        f"{set(type(v).__name__ for v in value)}"
+        f"Unsupported or mixed sequence contents at {path}: {set(type(v).__name__ for v in value)}"
     )
 
 
@@ -88,9 +84,7 @@ def normalize_for_storage(value: typing.Any) -> typing.Any:
     """Normalize Python values for storage (replace None with sentinel)."""
     if value is None:
         return NONE_SENTINEL
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, np.ndarray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, np.ndarray)):
         return [normalize_for_storage(v) for v in value]
     elif isinstance(value, Mapping):
         return {k: normalize_for_storage(v) for k, v in value.items()}

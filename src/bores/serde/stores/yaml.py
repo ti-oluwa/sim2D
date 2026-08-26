@@ -26,9 +26,7 @@ __all__ = ["YAMLStore"]
 logger = logging.getLogger(__name__)
 
 
-def _ndarray_representer(
-    dumper: typing.Union[yaml.Dumper, yaml.SafeDumper], data: npt.NDArray
-):
+def _ndarray_representer(dumper: yaml.Dumper | yaml.SafeDumper, data: npt.NDArray):
     if data.ndim > 2 or data.size > 50:
         return dumper.represent_mapping(
             "!ndarray",
@@ -48,9 +46,7 @@ def _ndarray_representer(
     )
 
 
-def _np_scalar_representer(
-    dumper: typing.Union[yaml.Dumper, yaml.SafeDumper], data: np.generic
-):
+def _np_scalar_representer(dumper: yaml.Dumper | yaml.SafeDumper, data: np.generic):
     return dumper.represent_mapping(
         "!np_scalar",
         {"dtype": str(data.dtype), "value": data.item()},
@@ -58,7 +54,7 @@ def _np_scalar_representer(
 
 
 def _ndarray_from_base64(
-    encoded: str, dtype: npt.DTypeLike, shape: typing.Tuple[int, ...]
+    encoded: str, dtype: npt.DTypeLike, shape: tuple[int, ...]
 ) -> npt.NDArray:
     raw = base64.b64decode(encoded)
     arr = np.frombuffer(raw, dtype=dtype)
@@ -66,7 +62,7 @@ def _ndarray_from_base64(
 
 
 def _ndarray_constructor(
-    loader: typing.Union[yaml.Loader, yaml.FullLoader, yaml.UnsafeLoader],
+    loader: yaml.Loader | yaml.FullLoader | yaml.UnsafeLoader,
     node: yaml.Node,
 ):
     try:
@@ -86,16 +82,14 @@ def _ndarray_constructor(
     except Exception:
         print("Failed !ndarray constructor:")
         print(f"  tag: {node.tag}")
-        print(
-            f"  line: {node.start_mark.line + 1}, column: {node.start_mark.column + 1}"
-        )
+        print(f"  line: {node.start_mark.line + 1}, column: {node.start_mark.column + 1}")
         print(f"  node type: {type(node).__name__}")
         print(f"  node content: {node.value if hasattr(node, 'value') else node}")
         raise
 
 
 def _np_scalar_constructor(
-    loader: typing.Union[yaml.Loader, yaml.FullLoader, yaml.UnsafeLoader],
+    loader: yaml.Loader | yaml.FullLoader | yaml.UnsafeLoader,
     node: yaml.Node,
 ):
     node = typing.cast(yaml.MappingNode, node)
@@ -129,7 +123,7 @@ for _t in [
     yaml.add_representer(np.generic, _np_scalar_representer)
 
 
-class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
+class YAMLStore(DataStore[SerializableT, list[typing.Any]]):
     """
     YAML-based storage.
 
@@ -145,14 +139,14 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
     ```python
     with store(mode="a"):
         for item in items:
-            store.append(item)   # in-memory only
+            store.append(item)  # in-memory only
     # <- file written once here by `close()`
     ```
     """
 
     can_append: bool = False
 
-    def __init__(self, filepath: typing.Union[PathLike, str]):
+    def __init__(self, filepath: PathLike | str):
         """
         Initialize the store
 
@@ -181,16 +175,12 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
             if mode == "w" or not self.filepath.exists():
                 self._handle = []
             else:
-                with open(self.filepath, mode="r", encoding="utf-8") as f:
+                with open(self.filepath, encoding="utf-8") as f:
                     self._handle = yaml.load(f, Loader=yaml.FullLoader) or []
-            logger.debug(
-                f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath}"
-            )
+            logger.debug(f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath}")
         except Exception as exc:
             self._handle = None
-            raise StorageError(
-                f"Failed to open {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to open {self.__class__.__name__}: {exc}") from exc
 
     def close(self) -> None:
         """
@@ -207,9 +197,7 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
                 f"{self.__class__.__name__} closed (wrote {len(self._handle)} entries): {self.filepath}"
             )
         except Exception as exc:
-            raise StorageError(
-                f"Failed to close/write {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to close/write {self.__class__.__name__}: {exc}") from exc
         finally:
             self._handle = None
 
@@ -217,10 +205,8 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
     def dump(
         self,
         data: typing.Iterable[SerializableT],
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> None:
         items = []
         for index, item in enumerate(data):
@@ -243,13 +229,13 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
                 yaml.safe_dump(items, f, sort_keys=False)
 
     @reraise_storage_error
-    def entries(self) -> typing.List[EntryMeta]:
+    def entries(self) -> list[EntryMeta]:
         if self._handle is not None:
             items = self._handle
         else:
             if not self.filepath.exists():
                 return []
-            with open(self.filepath, mode="r", encoding="utf-8") as f:
+            with open(self.filepath, encoding="utf-8") as f:
                 items = yaml.load(f, Loader=yaml.FullLoader) or []
 
         return [
@@ -264,15 +250,15 @@ class YAMLStore(DataStore[SerializableT, typing.List[typing.Any]]):
     @reraise_storage_error
     def load(
         self,
-        typ: typing.Type[SerializableT],
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
+        typ: type[SerializableT],
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: DataValidator[SerializableT] | None = None,
     ) -> typing.Generator[SerializableT, None, None]:
         if self._handle is not None:
             items = list(self._handle)
         else:
-            with open(self.filepath, mode="r", encoding="utf-8") as f:
+            with open(self.filepath, encoding="utf-8") as f:
                 items = yaml.load(f, Loader=yaml.FullLoader) or []
 
         if indices is not None:

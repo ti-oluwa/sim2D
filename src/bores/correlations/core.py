@@ -97,9 +97,7 @@ def is_CoolProp_supported_fluid(fluid: str) -> bool:
     return PropsSI("D", "T", 300, "P", 101325, fluid) is not None
 
 
-def clip_pressure(
-    pressure: NumberOrArray[NDimension], fluid: str
-) -> NumberOrArray[NDimension]:
+def clip_pressure(pressure: NumberOrArray[NDimension], fluid: str) -> NumberOrArray[NDimension]:
     """
     Clips pressure to be within CoolProp's valid pressure range for the given fluid.
 

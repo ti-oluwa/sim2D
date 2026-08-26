@@ -31,7 +31,7 @@ __all__ = ["apply_limits"]
 
 def _bhp_bound(
     *, min_value: Number, max_value: Number, bhp: Number, is_injector: bool
-) -> typing.Optional[Number]:
+) -> Number | None:
     """
     Gets the bounding BHP for a `BHPLimit` row, if violated.
 
@@ -63,7 +63,7 @@ def _rate_bound(
     min_pressure: Number,
     max_pressure: Number,
     resolver_spec: CompiledControlResolverSpec,
-) -> typing.Optional[Number]:
+) -> Number | None:
     """
     Gets the bounding BHP for a `RateLimit` row, if violated.
 
@@ -92,17 +92,15 @@ def _rate_bound(
         "reservoir" if quantity_tag == RateQuantityTag.RESERVOIR else "surface"
     )
 
-    _, reservoir_condition_rates, surface_condition_rates = (
-        solve_connection_pressures_and_rates(
-            wellbore=wellbore,
-            reference_depth=reference_depth,
-            workspace=workspace,
-            connection_samples=connection_samples,
-            reference_pressure=bhp,
-            relevant_phases=quantity_phases,
-            is_injector=is_injector,
-            resolver_spec=resolver_spec,
-        )
+    _, reservoir_condition_rates, surface_condition_rates = solve_connection_pressures_and_rates(
+        wellbore=wellbore,
+        reference_depth=reference_depth,
+        workspace=workspace,
+        connection_samples=connection_samples,
+        reference_pressure=bhp,
+        relevant_phases=quantity_phases,
+        is_injector=is_injector,
+        resolver_spec=resolver_spec,
     )
     rates_to_check = (
         reservoir_condition_rates
@@ -146,7 +144,7 @@ def _thp_bound(
     max_pressure: Number,
     resolver_spec: CompiledControlResolverSpec,
     surface_fluid_properties: SurfaceFluidProperties,
-) -> typing.Optional[Number]:
+) -> Number | None:
     """
     Gets the bounding BHP for a `THPLimit` row, if violated.
 
@@ -254,8 +252,8 @@ def apply_limits(
     min_pressure: Number,
     max_pressure: Number,
     resolver_spec: CompiledControlResolverSpec,
-    surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
-) -> typing.Tuple[Number, PhaseValues, Integer, bool]:
+    surface_fluid_properties: SurfaceFluidProperties | None = None,
+) -> tuple[Number, PhaseValues, Integer, bool]:
     """
     Evaluates every limit row in `[limits_start, limits_end)` against a
     nominal resolution. If one or more are violated, re-resolves at
@@ -297,7 +295,7 @@ def apply_limits(
     :raises ValidationError: If a `THPLimit` row is present but
         `surface_fluid_properties` wasn't supplied.
     """
-    candidates: typing.List[typing.Tuple[Number, Integer]] = []
+    candidates: list[tuple[Number, Integer]] = []
 
     for row in range(limits_start, limits_end):
         kind = limits.kinds[row]

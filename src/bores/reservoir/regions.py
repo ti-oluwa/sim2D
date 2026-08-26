@@ -16,8 +16,8 @@ def _load_region_array(
     deck_file: DeckFile,
     keyword: str,
     n_cells: int,
-    default_region: typing.Optional[int] = None,
-) -> typing.Optional[IntCellArray]:
+    default_region: int | None = None,
+) -> IntCellArray | None:
     arr = deck_file.get(keyword)
     if arr is None:
         if default_region is not None:
@@ -44,38 +44,38 @@ class Regions(StoreSerializable):
     region 1 is assumed for every cell in the `get_*_region` methods.
     """
 
-    pvt_region: typing.Optional[IntCellArray] = None
+    pvt_region: IntCellArray | None = None
     """
     Shape (n_cells,) - PVT region index per cell (1-based).
     Selects which PVTTables entry from PVT applies.
     Read from PVTNUM. Default: 1 everywhere.
     """
 
-    saturation_region: typing.Optional[IntCellArray] = None
+    saturation_region: IntCellArray | None = None
     """
     Shape (n_cells,) - saturation function region index (1-based).
     Selects SWOF/SGOF/SWFN/SGFN table. Read from SATNUM.
     """
 
-    imbibition_region: typing.Optional[IntCellArray] = None
+    imbibition_region: IntCellArray | None = None
     """
     Shape (n_cells,) - imbibition saturation function region index (1-based).
     Used for hysteresis scanning curves. Read from IMBNUM.
     """
 
-    equilibrium_region: typing.Optional[IntCellArray] = None
+    equilibrium_region: IntCellArray | None = None
     """
     Shape (n_cells,) - equilibration region index (1-based).
     Selects which EQUIL record governs initialisation. Read from EQLNUM.
     """
 
-    rock_region: typing.Optional[IntCellArray] = None
+    rock_region: IntCellArray | None = None
     """
     Shape (n_cells,) - rock compaction region index (1-based).
     Selects ROCK/ROCKTAB table. Read from ROCKNUM.
     """
 
-    fluid_in_place_region: typing.Optional[IntCellArray] = None
+    fluid_in_place_region: IntCellArray | None = None
     """
     Shape (n_cells,) - fluid-in-place reporting region (1-based).
     Controls which cells contribute to ROIP/RGIP/RWIP output groups.
@@ -83,9 +83,7 @@ class Regions(StoreSerializable):
     """
 
     @classmethod
-    def from_deck(
-        cls, deck_file: DeckFile, *, n_cells: int, use_default: bool = False
-    ) -> Self:
+    def from_deck(cls, deck_file: DeckFile, *, n_cells: int, use_default: bool = False) -> Self:
         """
         Build `Regions` from a parsed DeckFile.
 

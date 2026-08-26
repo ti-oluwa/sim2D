@@ -33,17 +33,13 @@ def build_three_phase_capillary_pressure_grids(
     porosity_grid: NDimensionalGrid[NDimension],
     permeability_grid: NDimensionalGrid[NDimension],
     capillary_pressure_table: CapillaryPressureTable,
-    max_water_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    max_gas_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    water_imbibition_flag: typing.Optional[
-        np.ndarray[NDimension, np.dtype[np.bool_]]
-    ] = None,
-    gas_imbibition_flag: typing.Optional[
-        np.ndarray[NDimension, np.dtype[np.bool_]]
-    ] = None,
-    water_reversal_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    gas_reversal_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-) -> typing.Tuple[NDimensionalGrid[NDimension], NDimensionalGrid[NDimension]]:
+    max_water_saturation: NDimensionalGrid[NDimension] | None = None,
+    max_gas_saturation: NDimensionalGrid[NDimension] | None = None,
+    water_imbibition_flag: np.ndarray[NDimension, np.dtype[np.bool_]] | None = None,
+    gas_imbibition_flag: np.ndarray[NDimension, np.dtype[np.bool_]] | None = None,
+    water_reversal_saturation: NDimensionalGrid[NDimension] | None = None,
+    gas_reversal_saturation: NDimensionalGrid[NDimension] | None = None,
+) -> tuple[NDimensionalGrid[NDimension], NDimensionalGrid[NDimension]]:
     """
     Computes the capillary pressure grids for water, oil, and gas three-phase system.
 
@@ -126,29 +122,21 @@ def build_three_phase_capillary_pressure_grids(
             # Extract cell-specific hysteresis values if available
             cell_hysteresis_kwargs = {}
             if max_water_saturation is not None:
-                cell_hysteresis_kwargs["max_water_saturation"] = max_water_saturation[
-                    indices
-                ]
+                cell_hysteresis_kwargs["max_water_saturation"] = max_water_saturation[indices]
             if max_gas_saturation is not None:
-                cell_hysteresis_kwargs["max_gas_saturation"] = max_gas_saturation[
-                    indices
-                ]
+                cell_hysteresis_kwargs["max_gas_saturation"] = max_gas_saturation[indices]
             if water_imbibition_flag is not None:
-                cell_hysteresis_kwargs["water_imbibition_flag"] = water_imbibition_flag[
-                    indices
-                ]
+                cell_hysteresis_kwargs["water_imbibition_flag"] = water_imbibition_flag[indices]
             if gas_imbibition_flag is not None:
-                cell_hysteresis_kwargs["gas_imbibition_flag"] = gas_imbibition_flag[
+                cell_hysteresis_kwargs["gas_imbibition_flag"] = gas_imbibition_flag[indices]
+            if water_reversal_saturation is not None:
+                cell_hysteresis_kwargs["water_reversal_saturation"] = water_reversal_saturation[
                     indices
                 ]
-            if water_reversal_saturation is not None:
-                cell_hysteresis_kwargs["water_reversal_saturation"] = (
-                    water_reversal_saturation[indices]
-                )
             if gas_reversal_saturation is not None:
-                cell_hysteresis_kwargs["gas_reversal_saturation"] = (
-                    gas_reversal_saturation[indices]
-                )
+                cell_hysteresis_kwargs["gas_reversal_saturation"] = gas_reversal_saturation[
+                    indices
+                ]
 
             capillary_pressures = capillary_pressure_table(
                 water_saturation=water_saturation,
@@ -162,9 +150,7 @@ def build_three_phase_capillary_pressure_grids(
                 permeability=permeability,
                 **cell_hysteresis_kwargs,
             )
-            oil_water_capillary_pressure_grid[indices] = capillary_pressures[
-                "oil_water"
-            ]
+            oil_water_capillary_pressure_grid[indices] = capillary_pressures["oil_water"]
             gas_oil_capillary_pressure_grid[indices] = capillary_pressures["gas_oil"]
 
     return oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid  # type: ignore[return-value]
@@ -180,17 +166,13 @@ def build_three_phase_relative_permeabilities_grids(
     residual_gas_saturation_grid: NDimensionalGrid[NDimension],
     relative_permeability_table: RelativePermeabilityTable,
     phase_appearance_tolerance: float = 1e-6,
-    max_water_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    max_gas_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    water_imbibition_flag: typing.Optional[
-        np.ndarray[NDimension, np.dtype[np.bool_]]
-    ] = None,
-    gas_imbibition_flag: typing.Optional[
-        np.ndarray[NDimension, np.dtype[np.bool_]]
-    ] = None,
-    water_reversal_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    gas_reversal_saturation: typing.Optional[NDimensionalGrid[NDimension]] = None,
-) -> typing.Tuple[
+    max_water_saturation: NDimensionalGrid[NDimension] | None = None,
+    max_gas_saturation: NDimensionalGrid[NDimension] | None = None,
+    water_imbibition_flag: np.ndarray[NDimension, np.dtype[np.bool_]] | None = None,
+    gas_imbibition_flag: np.ndarray[NDimension, np.dtype[np.bool_]] | None = None,
+    water_reversal_saturation: NDimensionalGrid[NDimension] | None = None,
+    gas_reversal_saturation: NDimensionalGrid[NDimension] | None = None,
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -255,16 +237,14 @@ def build_three_phase_relative_permeabilities_grids(
         # Mark phases as inactive by setting relative permeability to zero
         # if below 'residual/irreducible saturations + tolerance'
         water_inactive = (
-            water_saturation_grid
-            <= irreducible_water_saturation_grid + phase_appearance_tolerance
+            water_saturation_grid <= irreducible_water_saturation_grid + phase_appearance_tolerance
         )
         oil_inactive = (
             oil_saturation_grid
             <= effective_residual_oil_saturation_grid + phase_appearance_tolerance
         )
         gas_inactive = (
-            gas_saturation_grid
-            <= residual_gas_saturation_grid + phase_appearance_tolerance
+            gas_saturation_grid <= residual_gas_saturation_grid + phase_appearance_tolerance
         )
 
         water_relative_permeability_grid = np.where(
@@ -300,29 +280,21 @@ def build_three_phase_relative_permeabilities_grids(
             # Extract cell-specific hysteresis values if available
             cell_hysteresis_kwargs = {}
             if max_water_saturation is not None:
-                cell_hysteresis_kwargs["max_water_saturation"] = max_water_saturation[
-                    i, j, k
-                ]
+                cell_hysteresis_kwargs["max_water_saturation"] = max_water_saturation[i, j, k]
             if max_gas_saturation is not None:
-                cell_hysteresis_kwargs["max_gas_saturation"] = max_gas_saturation[
-                    i, j, k
-                ]
+                cell_hysteresis_kwargs["max_gas_saturation"] = max_gas_saturation[i, j, k]
             if water_imbibition_flag is not None:
-                cell_hysteresis_kwargs["water_imbibition_flag"] = water_imbibition_flag[
-                    i, j, k
-                ]
+                cell_hysteresis_kwargs["water_imbibition_flag"] = water_imbibition_flag[i, j, k]
             if gas_imbibition_flag is not None:
-                cell_hysteresis_kwargs["gas_imbibition_flag"] = gas_imbibition_flag[
+                cell_hysteresis_kwargs["gas_imbibition_flag"] = gas_imbibition_flag[i, j, k]
+            if water_reversal_saturation is not None:
+                cell_hysteresis_kwargs["water_reversal_saturation"] = water_reversal_saturation[
                     i, j, k
                 ]
-            if water_reversal_saturation is not None:
-                cell_hysteresis_kwargs["water_reversal_saturation"] = (
-                    water_reversal_saturation[i, j, k]
-                )
             if gas_reversal_saturation is not None:
-                cell_hysteresis_kwargs["gas_reversal_saturation"] = (
-                    gas_reversal_saturation[i, j, k]
-                )
+                cell_hysteresis_kwargs["gas_reversal_saturation"] = gas_reversal_saturation[
+                    i, j, k
+                ]
 
             # Compute three-phase relative permeabilities
             relative_permeabilities = relative_permeability_table(
@@ -344,16 +316,12 @@ def build_three_phase_relative_permeabilities_grids(
                 effective_residual_oil_saturation = residual_oil_saturation_gas
 
             water_inactive = (
-                water_saturation
-                <= irreducible_water_saturation + phase_appearance_tolerance
+                water_saturation <= irreducible_water_saturation + phase_appearance_tolerance
             )
             oil_inactive = (
-                oil_saturation
-                <= effective_residual_oil_saturation + phase_appearance_tolerance
+                oil_saturation <= effective_residual_oil_saturation + phase_appearance_tolerance
             )
-            gas_inactive = (
-                gas_saturation <= residual_gas_saturation + phase_appearance_tolerance
-            )
+            gas_inactive = gas_saturation <= residual_gas_saturation + phase_appearance_tolerance
             water_relative_permeability_grid[i, j, k] = (
                 relative_permeabilities["water"] if not water_inactive else 0.0
             )
@@ -379,7 +347,7 @@ def build_three_phase_relative_mobilities_grids(
     water_viscosity_grid: NDimensionalGrid[NDimension],
     oil_viscosity_grid: NDimensionalGrid[NDimension],
     gas_viscosity_grid: NDimensionalGrid[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -450,12 +418,12 @@ def build_rock_fluid_properties_grids(
     porosity_grid: NDimensionalGrid[ThreeDimensions],
     permeability_grid: NDimensionalGrid[ThreeDimensions],
     relative_permeability_table: RelativePermeabilityTable,
-    capillary_pressure_table: typing.Optional[CapillaryPressureTable] = None,
-    hysteresis_state: typing.Optional[HysteresisState[ThreeDimensions]] = None,
+    capillary_pressure_table: CapillaryPressureTable | None = None,
+    hysteresis_state: HysteresisState[ThreeDimensions] | None = None,
     disable_capillary_effects: bool = False,
     capillary_strength_factor: float = 1.0,
     phase_appearance_tolerance: float = 1e-6,
-) -> typing.Tuple[
+) -> tuple[
     RelPermGrids[ThreeDimensions],
     RelativeMobilityGrids[ThreeDimensions],
     CapillaryPressureGrids[ThreeDimensions],
@@ -549,9 +517,7 @@ def build_rock_fluid_properties_grids(
             **hysteresis_kwargs,
         )
         if capillary_strength_factor != 1.0:
-            logger.debug(
-                f"Scaling capillary pressure grids by factor {capillary_strength_factor}"
-            )
+            logger.debug(f"Scaling capillary pressure grids by factor {capillary_strength_factor}")
             dtype = get_dtype()
             oil_water_capillary_pressure_grid = typing.cast(
                 NDimensionalGrid[ThreeDimensions],
@@ -606,7 +572,7 @@ def build_effective_residual_saturation_grids(
     residual_oil_drainage_ratio_gas_flood: float = 0.6,  # sorg_drainage = 0.6 x sorg_imbibition
     residual_gas_drainage_ratio: float = 0.5,  # gas_saturationr_drainage = 0.5 x gas_saturationr_imbibition
     tolerance: float = 1e-6,
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[ThreeDimensions],
     NDimensionalGrid[ThreeDimensions],
     NDimensionalGrid[ThreeDimensions],
@@ -680,24 +646,20 @@ def build_effective_residual_saturation_grids(
                 # Compute drainage values using ratios
                 Sor_drainage = sorw_imbibition * residual_oil_drainage_ratio_water_flood
                 sorg_drainage = sorg_imbibition * residual_oil_drainage_ratio_gas_flood
-                gas_saturationr_drainage = (
-                    gas_saturationr_imbibition * residual_gas_drainage_ratio
-                )
+                gas_saturationr_drainage = gas_saturationr_imbibition * residual_gas_drainage_ratio
 
                 # WATER-OIL SYSTEM
                 if water_saturation > (max_water_saturation + tolerance):
                     # If water saturation is increasing we have water imbibition
                     # hence, water is displacing oil and more oil is trapped
-                    effective_residual_oil_saturation_water_grid[i, j, k] = (
-                        sorw_imbibition
-                    )
+                    effective_residual_oil_saturation_water_grid[i, j, k] = sorw_imbibition
                     new_max_water_saturation_grid[i, j, k] = water_saturation
 
                     # If were just switching to imbibition, record reversal (if coming from drainage)
                     if not water_imbibition_flag_grid[i, j, k]:
-                        new_water_reversal_saturation_grid[i, j, k] = (
-                            old_water_saturation_grid[i, j, k]
-                        )
+                        new_water_reversal_saturation_grid[i, j, k] = old_water_saturation_grid[
+                            i, j, k
+                        ]
 
                     new_water_imbibition_flag_grid[i, j, k] = True
 
@@ -708,9 +670,9 @@ def build_effective_residual_saturation_grids(
 
                     # If were just switching to drainage, record reversal (if coming from imbibition)
                     if water_imbibition_flag_grid[i, j, k]:
-                        new_water_reversal_saturation_grid[i, j, k] = (
-                            old_water_saturation_grid[i, j, k]
-                        )
+                        new_water_reversal_saturation_grid[i, j, k] = old_water_saturation_grid[
+                            i, j, k
+                        ]
 
                     new_water_imbibition_flag_grid[i, j, k] = False
                     # max_water_saturation stays unchanged (only increases)
@@ -718,30 +680,22 @@ def build_effective_residual_saturation_grids(
                 else:
                     # If no significant change, use previous regime
                     if water_imbibition_flag_grid[i, j, k]:
-                        effective_residual_oil_saturation_water_grid[i, j, k] = (
-                            sorw_imbibition
-                        )
+                        effective_residual_oil_saturation_water_grid[i, j, k] = sorw_imbibition
                     else:
-                        effective_residual_oil_saturation_water_grid[i, j, k] = (
-                            Sor_drainage
-                        )
+                        effective_residual_oil_saturation_water_grid[i, j, k] = Sor_drainage
 
                 # GAS-OIL SYSTEM
                 if gas_saturation > (max_gas_saturation + tolerance):
                     # If gas saturation is increasing the we have gas imbibition
                     # hence, gas is displacing oil and more oil trapped
-                    effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                        sorg_imbibition
-                    )
-                    effective_residual_gas_saturation_grid[i, j, k] = (
-                        gas_saturationr_drainage
-                    )
+                    effective_residual_oil_saturation_gas_grid[i, j, k] = sorg_imbibition
+                    effective_residual_gas_saturation_grid[i, j, k] = gas_saturationr_drainage
                     new_max_gas_saturation_grid[i, j, k] = gas_saturation
                     # If were just switching to imbibition, record reversal (if coming from drainage)
                     if not gas_imbibition_flag_grid[i, j, k]:
-                        new_gas_reversal_saturation_grid[i, j, k] = (
-                            old_gas_saturation_grid[i, j, k]
-                        )
+                        new_gas_reversal_saturation_grid[i, j, k] = old_gas_saturation_grid[
+                            i, j, k
+                        ]
 
                     new_gas_imbibition_flag_grid[i, j, k] = True
 
@@ -749,34 +703,26 @@ def build_effective_residual_saturation_grids(
                     # If gas saturation descreasing then we have oil drainage
                     # hence, oil is displacing gas and less oil trapped
                     effective_residual_oil_saturation_gas_grid[i, j, k] = sorg_drainage
-                    effective_residual_gas_saturation_grid[i, j, k] = (
-                        gas_saturationr_imbibition
-                    )
+                    effective_residual_gas_saturation_grid[i, j, k] = gas_saturationr_imbibition
                     # max_gas_saturation stays unchanged (only increases)
                     # If were just switching to drainage, record reversal (if coming from imbibition)
                     if gas_imbibition_flag_grid[i, j, k]:
-                        new_gas_reversal_saturation_grid[i, j, k] = (
-                            old_gas_saturation_grid[i, j, k]
-                        )
+                        new_gas_reversal_saturation_grid[i, j, k] = old_gas_saturation_grid[
+                            i, j, k
+                        ]
 
                     new_gas_imbibition_flag_grid[i, j, k] = False
 
                 else:
                     # If there's no significant change, use previous regime
                     if gas_imbibition_flag_grid[i, j, k]:
-                        effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                            sorg_imbibition
-                        )
+                        effective_residual_oil_saturation_gas_grid[i, j, k] = sorg_imbibition
                         effective_residual_gas_saturation_grid[i, j, k] = (
                             gas_saturationr_imbibition
                         )
                     else:
-                        effective_residual_oil_saturation_gas_grid[i, j, k] = (
-                            sorg_drainage
-                        )
-                        effective_residual_gas_saturation_grid[i, j, k] = (
-                            gas_saturationr_drainage
-                        )
+                        effective_residual_oil_saturation_gas_grid[i, j, k] = sorg_drainage
+                        effective_residual_gas_saturation_grid[i, j, k] = gas_saturationr_drainage
 
     return (
         new_max_water_saturation_grid,

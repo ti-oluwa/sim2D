@@ -30,7 +30,7 @@ class StreamProgress(typing.TypedDict):
     saved_count: int
     checkpoints_count: int
     batch_pending: int
-    store_backend: typing.Optional[str]
+    store_backend: str | None
     memory_usage: float
 
 
@@ -85,7 +85,7 @@ class StateStream(typing.Generic[NDimension]):
     store = HDF5Store("run01.h5")
     with StateStream(states=run(), store=store, background_io=True) as stream:
         for state in stream.until(some_condition):
-            analyse(state)          # background thread writes while we analyse
+            analyse(state)  # background thread writes while we analyse
 
     # Replay the whole run later
     for state in stream.replay():
@@ -103,20 +103,16 @@ class StateStream(typing.Generic[NDimension]):
 
     def __init__(
         self,
-        states: typing.Optional[typing.Iterable[ModelState[NDimension]]] = None,
-        store: typing.Optional[DataStore[ModelState[NDimension], typing.Any]] = None,
+        states: typing.Iterable[ModelState[NDimension]] | None = None,
+        store: DataStore[ModelState[NDimension], typing.Any] | None = None,
         batch_size: int = 50,
         validate: bool = False,
         auto_save: bool = True,
         auto_replay: bool = True,
-        save: typing.Union[
-            typing.Callable[[ModelState[NDimension]], bool], bool
-        ] = True,
-        checkpoint_store: typing.Optional[
-            DataStore[ModelState[NDimension], typing.Any]
-        ] = None,
-        checkpoint_interval: typing.Optional[int] = None,
-        max_batch_memory_usage: typing.Optional[float] = None,
+        save: typing.Callable[[ModelState[NDimension]], bool] | bool = True,
+        checkpoint_store: DataStore[ModelState[NDimension], typing.Any] | None = None,
+        checkpoint_interval: int | None = None,
+        max_batch_memory_usage: float | None = None,
         background_io: bool = False,
         max_queue_size: int = 100,
         io_thread_name: str = "stream-io-worker",
@@ -178,9 +174,7 @@ class StateStream(typing.Generic[NDimension]):
                     "but not persisted."
                 )
             if self.auto_save:
-                logger.debug(
-                    "`auto_save=True` but no store provided. This setting has no effect."
-                )
+                logger.debug("`auto_save=True` but no store provided. This setting has no effect.")
             if self.save is not None:
                 logger.warning(
                     "`save` provided but no store configured. Predicate will be ignored."
@@ -191,9 +185,7 @@ class StateStream(typing.Generic[NDimension]):
                     "will not occur without persistence."
                 )
             if self.background_io:
-                logger.warning(
-                    "`background_io=True` but no store provided. Async I/O disabled."
-                )
+                logger.warning("`background_io=True` but no store provided. Async I/O disabled.")
                 self.background_io = False
 
         if store is not None and not store.can_append:
@@ -212,20 +204,20 @@ class StateStream(typing.Generic[NDimension]):
             )
 
         # Internal state
-        self._batch: typing.List[ModelState[NDimension]] = []
+        self._batch: list[ModelState[NDimension]] = []
         self._yield_count: int = 0
         self._saved_count: int = 0
         self._checkpoints_count: int = 0
         self._started: bool = False
         self._uses_save_func = callable(save)
         self._consumed: bool = False
-        self._state_size_mb: typing.Optional[float] = None
+        self._state_size_mb: float | None = None
 
         # Async I/O infrastructure
-        self._io_queue: typing.Optional[queue.Queue] = None
-        self._io_thread: typing.Optional[threading.Thread] = None
-        self._io_error: typing.Optional[Exception] = None
-        self._shutdown_event: typing.Optional[threading.Event] = None
+        self._io_queue: queue.Queue | None = None
+        self._io_thread: threading.Thread | None = None
+        self._io_error: Exception | None = None
+        self._shutdown_event: threading.Event | None = None
         self._saved_count_lock = threading.Lock()  # Protects _saved_count in async mode
 
         # Store-only (replay) mode
@@ -291,7 +283,7 @@ class StateStream(typing.Generic[NDimension]):
                             break
 
                         # Process batch
-                        batch: typing.List[ModelState[NDimension]] = item
+                        batch: list[ModelState[NDimension]] = item
                         logger.debug(f"I/O worker writing batch of {len(batch)} states")
 
                         try:
@@ -416,9 +408,7 @@ class StateStream(typing.Generic[NDimension]):
                     "Use `replay()` or set `auto_replay=True`."
                 )
             else:
-                raise StreamError(
-                    "Stream already consumed and no store available for replay."
-                )
+                raise StreamError("Stream already consumed and no store available for replay.")
 
         # No states provided, this shouldn't happen as `_consumed` should already be set to false
         # but still handle it
@@ -437,9 +427,7 @@ class StateStream(typing.Generic[NDimension]):
             return
 
         io_mode = "async" if self.background_io else "sync"
-        logger.debug(
-            f"Streaming -> {self.store} ({io_mode}, batch_size={self.batch_size})"
-        )
+        logger.debug(f"Streaming -> {self.store} ({io_mode}, batch_size={self.batch_size})")
 
         try:
             for state in self.states:
@@ -469,9 +457,7 @@ class StateStream(typing.Generic[NDimension]):
 
         # Mark the stream as consumed
         self._consumed = True
-        logger.debug(
-            f"Stream exhausted: {self._yield_count} yielded, {self._saved_count} saved"
-        )
+        logger.debug(f"Stream exhausted: {self._yield_count} yielded, {self._saved_count} saved")
 
     def __enter__(self) -> Self:
         """
@@ -489,9 +475,9 @@ class StateStream(typing.Generic[NDimension]):
 
     def __exit__(
         self,
-        exc_type: typing.Optional[typing.Type[BaseException]],
-        exc_val: typing.Optional[BaseException],
-        exc_tb: typing.Optional[typing.Any],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: typing.Any | None,
     ) -> None:
         """
         Context manager exit. Flushes any remaining states and ensure async I/O completion.
@@ -549,7 +535,7 @@ class StateStream(typing.Generic[NDimension]):
         logger.debug("Manually closing stream...")
         self.__exit__(None, None, None)
 
-    def last(self) -> typing.Optional[ModelState[NDimension]]:
+    def last(self) -> ModelState[NDimension] | None:
         """
         Get the last state from the stream.
 
@@ -566,7 +552,7 @@ class StateStream(typing.Generic[NDimension]):
             results = list(self.store.load(ModelState, indices=[max_idx]))
             return results[0] if results else None
 
-        last_state: typing.Optional[ModelState[NDimension]] = None
+        last_state: ModelState[NDimension] | None = None
         for state in self:
             last_state = state
 
@@ -598,7 +584,7 @@ class StateStream(typing.Generic[NDimension]):
         stream = StateStream(
             states=simulation(),
             checkpoint_interval=100,
-            checkpoint_store=HDF5Store("./checkpoints.h5")
+            checkpoint_store=HDF5Store("./checkpoints.h5"),
         )
         stream.consume()  # Checkpoints created, stream exhausted
         ```
@@ -616,14 +602,10 @@ class StateStream(typing.Generic[NDimension]):
 
     def replay(
         self,
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        steps: typing.Optional[
-            typing.Union[typing.Sequence[int], typing.Callable[[int], bool]]
-        ] = None,
-        validator: typing.Optional[
-            typing.Callable[[ModelState[NDimension]], ModelState[NDimension]]
-        ] = None,
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        steps: typing.Sequence[int] | typing.Callable[[int], bool] | None = None,
+        validator: typing.Callable[[ModelState[NDimension]], ModelState[NDimension]] | None = None,
     ) -> typing.Iterator[ModelState[NDimension]]:
         """
         Load and iterate over previously saved states from the store.
@@ -695,9 +677,7 @@ class StateStream(typing.Generic[NDimension]):
                 self._yield_count += 1
                 yield state
         except StorageError as exc:
-            raise StreamError(
-                f"An error occured while replaying stream: {exc}"
-            ) from exc
+            raise StreamError(f"An error occured while replaying stream: {exc}") from exc
         finally:
             if states is not None:
                 _close_iter(states)
@@ -775,17 +755,11 @@ class StateStream(typing.Generic[NDimension]):
         batch_size = len(self._batch)
 
         if self.background_io:
-            logger.debug(
-                f"Enqueuing batch of {batch_size} states to I/O thread (block={block})"
-            )
+            logger.debug(f"Enqueuing batch of {batch_size} states to I/O thread (block={block})")
 
             # Check for errors before enqueuing
             self._check_io_error()
-            if (
-                self._io_queue is None
-                or self.store is None
-                or self._shutdown_event is None
-            ):
+            if self._io_queue is None or self.store is None or self._shutdown_event is None:
                 raise StreamError("I/O infrastructure not properly initialized")
 
             try:
@@ -800,10 +774,7 @@ class StateStream(typing.Generic[NDimension]):
                     self._wait_for_queue()
 
             except queue.Full as exc:
-                logger.error(
-                    f"I/O queue full ({self.max_queue_size}). "
-                    f"Cannot buffer more states."
-                )
+                logger.error(f"I/O queue full ({self.max_queue_size}). Cannot buffer more states.")
                 raise StreamError(
                     "I/O queue exhausted. Simulation running faster than disk writes. "
                     "Increase `max_queue_size` or reduce `batch_size`."
@@ -821,9 +792,7 @@ class StateStream(typing.Generic[NDimension]):
                         )
 
                 self._saved_count += batch_size
-                logger.debug(
-                    f"Flushed {batch_size} states (total saved: {self._saved_count})"
-                )
+                logger.debug(f"Flushed {batch_size} states (total saved: {self._saved_count})")
             except Exception as exc:
                 logger.error(f"Failed to flush batch: {exc}")
                 raise
@@ -831,7 +800,7 @@ class StateStream(typing.Generic[NDimension]):
                 # Reassign to new list to free memory immediately
                 self._batch = []
 
-    def get_pending_batch(self) -> typing.List[ModelState[NDimension]]:
+    def get_pending_batch(self) -> list[ModelState[NDimension]]:
         """
         Get a copy of states in the current batch (not yet flushed to store).
 
@@ -950,9 +919,7 @@ class StateStream(typing.Generic[NDimension]):
             self._checkpoints_count += 1
             logger.info(f"Checkpoint saved at step {state.step}")
         except Exception as exc:
-            logger.error(
-                f"Failed to save checkpoint at step {state.step}: {exc}", exc_info=True
-            )
+            logger.error(f"Failed to save checkpoint at step {state.step}: {exc}", exc_info=True)
 
     def checkpoint(self, step: int) -> ModelState[NDimension]:
         """
@@ -964,9 +931,7 @@ class StateStream(typing.Generic[NDimension]):
         :raises `FileNotFoundError`: If checkpoint doesn't exist
         """
         if self.checkpoint_store is None:
-            raise StreamError(
-                "Checkpointing not configured. No `checkpoint_store` found."
-            )
+            raise StreamError("Checkpointing not configured. No `checkpoint_store` found.")
 
         results = list(
             self.checkpoint_store.load(
@@ -989,7 +954,7 @@ class StateStream(typing.Generic[NDimension]):
             raise StreamError("No `checkpoint_store` configured.")
         yield from self.checkpoint_store.load(ModelState)
 
-    def list_checkpoints(self) -> typing.List[int]:
+    def list_checkpoints(self) -> list[int]:
         """
         List all available checkpoint step numbers.
 
@@ -997,14 +962,10 @@ class StateStream(typing.Generic[NDimension]):
         :raises `StreamError`: If checkpointing not configured
         """
         if self.checkpoint_store is None:
-            raise StreamError(
-                "Checkpointing not configured. No `checkpoint_store` found"
-            )
+            raise StreamError("Checkpointing not configured. No `checkpoint_store` found")
 
         return sorted(
-            int(e.meta["step"])
-            for e in self.checkpoint_store.entries()
-            if "step" in e.meta
+            int(e.meta["step"]) for e in self.checkpoint_store.entries() if "step" in e.meta
         )
 
     def progress(self) -> StreamProgress:

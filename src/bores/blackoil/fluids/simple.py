@@ -25,14 +25,12 @@ __all__ = ["Fluid"]
 def _validate_pseudo_pressure_phase(
     instance: "Fluid",
     attribute: typing.Any,
-    value: typing.Optional[PseudoPressureTable],
+    value: PseudoPressureTable | None,
 ) -> None:
     """Validator: pseudo-pressure table is only valid for gas phase."""
     if value is not None and instance.phase != FluidPhase.GAS:
         phase_str = (
-            instance.phase.value
-            if isinstance(instance.phase, FluidPhase)
-            else str(instance.phase)
+            instance.phase.value if isinstance(instance.phase, FluidPhase) else str(instance.phase)
         )
         raise ValidationError(
             f"`pseudo_pressure` can only be set on gas phase fluids. "
@@ -52,10 +50,10 @@ class Fluid(StoreSerializable):
     name: str
     """Human-readable fluid name."""
 
-    phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
+    phase: FluidPhase | str = attrs.field(converter=FluidPhase)
     """Fluid phase (oil, gas, or gas)."""
 
-    pvt: typing.Optional[PVTTable] = None
+    pvt: PVTTable | None = None
     """
     Optional `PVTTable` for this fluid.
 
@@ -71,7 +69,7 @@ class Fluid(StoreSerializable):
     correlations in that case (requires `specific_gravity` on the subclass).
     """
 
-    pseudo_pressure: typing.Optional[PseudoPressureTable] = attrs.field(
+    pseudo_pressure: PseudoPressureTable | None = attrs.field(
         default=None,
         validator=attrs.validators.optional(_validate_pseudo_pressure_phase),
     )
@@ -86,17 +84,17 @@ class Fluid(StoreSerializable):
     def _build_pseudo_pressure_cache_key(
         self,
         temperature: Number,
-        reference_pressure: typing.Optional[Number],
-        pressure_range: typing.Optional[typing.Tuple[Number, Number]],
-        points: typing.Optional[int],
+        reference_pressure: Number | None,
+        pressure_range: tuple[Number, Number] | None,
+        points: int | None,
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        pvt_tables: PVTTables | None = None,
         dtype: npt.DTypeLike = None,
         unit_system: UnitSystem = UnitSystem.FIELD,
-    ) -> typing.Tuple[typing.Any, ...]:
+    ) -> tuple[typing.Any, ...]:
         """Stable hashable cache key for pseudo-pressure table construction."""
-        pvt_hash: typing.Optional[tuple] = None
+        pvt_hash: tuple | None = None
         if self.pvt is not None:
             bounds = getattr(self.pvt, "_extrapolation_bounds", {})
             pressure_bound = bounds.get("pressure", (0.0, 0.0))
@@ -110,7 +108,7 @@ class Fluid(StoreSerializable):
             )
 
         # Hash from global pvt_tables bundle gas slot (if used as fallback)
-        global_pvt_hash: typing.Optional[tuple] = None
+        global_pvt_hash: tuple | None = None
         if pvt_tables is not None:
             gas_table = getattr(pvt_tables, "gas", None)
             if gas_table is not None:
@@ -135,9 +133,7 @@ class Fluid(StoreSerializable):
             round(float(molecular_weight), 6) if molecular_weight is not None else None,
             round(temperature, 2),
             round(reference_pressure, 2) if reference_pressure is not None else None,
-            tuple(round(p, 2) for p in pressure_range)
-            if pressure_range is not None
-            else None,
+            tuple(round(p, 2) for p in pressure_range) if pressure_range is not None else None,
             points,
             number_of_base_points,
             number_of_endpoint_extra_points,
@@ -150,12 +146,12 @@ class Fluid(StoreSerializable):
     def get_pseudo_pressure_table(
         self,
         temperature: Number,
-        reference_pressure: typing.Optional[Number] = None,
-        pressure_range: typing.Optional[typing.Tuple[Number, Number]] = None,
-        points: typing.Optional[int] = None,
+        reference_pressure: Number | None = None,
+        pressure_range: tuple[Number, Number] | None = None,
+        points: int | None = None,
         number_of_base_points: int = 500,
         number_of_endpoint_extra_points: int = 20,
-        pvt_tables: typing.Optional[PVTTables] = None,
+        pvt_tables: PVTTables | None = None,
         dtype: npt.DTypeLike = None,
         unit_system: UnitSystem = UnitSystem.FIELD,
         use_cache: bool = True,
@@ -199,8 +195,8 @@ class Fluid(StoreSerializable):
             logger.debug("Using custom pseudo-pressure table for fluid '%s'", self.name)
             return self.pseudo_pressure
 
-        z_factor_func: typing.Optional[typing.Callable] = None  # type: ignore
-        viscosity_func: typing.Optional[typing.Callable] = None  # type: ignore
+        z_factor_func: typing.Callable | None = None  # type: ignore
+        viscosity_func: typing.Callable | None = None  # type: ignore
 
         if self.pvt is not None:
             if self.pvt.exists("compressibility_factor"):
@@ -209,9 +205,7 @@ class Fluid(StoreSerializable):
 
                 def z_factor_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
                     temperature_arr = np.full_like(pressure, _temperature)
-                    result = _pvt_table.compressibility_factor(
-                        pressure, temperature_arr
-                    )
+                    result = _pvt_table.compressibility_factor(pressure, temperature_arr)
                     return np.asarray(result, dtype=pressure.dtype)
 
                 z_factor_func._supports_arrays = True  # type: ignore[attr-defined]
@@ -237,9 +231,7 @@ class Fluid(StoreSerializable):
 
                     def z_factor_func(pressure: npt.NDArray) -> npt.NDArray:  # type: ignore[misc]
                         temperature_arr = np.full_like(pressure, _temperature)
-                        result = _gas_table.compressibility_factor(
-                            pressure, temperature_arr
-                        )
+                        result = _gas_table.compressibility_factor(pressure, temperature_arr)
                         return np.asarray(result, dtype=pressure.dtype)
 
                     z_factor_func._supports_arrays = True  # type: ignore[attr-defined]

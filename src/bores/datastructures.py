@@ -19,7 +19,7 @@ from bores.typing import (
 )
 
 DType = typing.TypeVar("DType", float, np.floating)
-ShapeT = typing.TypeVar("ShapeT", bound=typing.Tuple[int, ...])
+ShapeT = typing.TypeVar("ShapeT", bound=tuple[int, ...])
 
 
 __all__ = ["GridDimensions", "MapAxes", "ContextFlag"]
@@ -56,7 +56,7 @@ class GridDimensions(NamedTuple):
         """
         return i + j * self.nx + k * self.nx * self.ny
 
-    def ijk_index(self, flat: Integer) -> typing.Tuple[int, int, int]:
+    def ijk_index(self, flat: Integer) -> tuple[int, int, int]:
         """
         Convert a flat index to  0-based `(i, j, k)`.
 
@@ -124,7 +124,7 @@ class MapAxes:
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `MapAxes` with all coordinates expressed in *target*.
@@ -163,9 +163,7 @@ class ContextFlag(typing.Generic[T]):
         :param initial: Initial value for new contexts
         """
         self._var: ContextVar[T] = ContextVar(id, default=initial)
-        self._token: ContextVar[typing.Optional[Token]] = ContextVar(
-            f"{id}:token", default=None
-        )
+        self._token: ContextVar[Token | None] = ContextVar(f"{id}:token", default=None)
 
     def get(self) -> T:
         """

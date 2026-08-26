@@ -22,7 +22,7 @@ from bores.visualization.base import ColorScheme, PropertyMeta
 logger = logging.getLogger(__name__)
 
 
-_active_figures: typing.List[weakref.ref] = []
+_active_figures: list[weakref.ref] = []
 
 
 def _track_figure(figure: go.Figure) -> None:
@@ -83,7 +83,7 @@ class PlotConfig:
     show_colorbar: bool = True
     """Whether to display color scale bar"""
 
-    title: typing.Optional[str] = None
+    title: str | None = None
     """Optional title for plots"""
 
     # Styling
@@ -100,10 +100,10 @@ class PlotConfig:
     grid_color: str = "lightgray"
     """Color of grid lines (use 'lightgray', 'gray', 'white', etc. for contrast control)"""
 
-    xaxis_grid_color: typing.Optional[str] = None
+    xaxis_grid_color: str | None = None
     """Color of x-axis grid lines (if None, uses grid_color)"""
 
-    yaxis_grid_color: typing.Optional[str] = None
+    yaxis_grid_color: str | None = None
     """Color of y-axis grid lines (if None, uses grid_color)"""
 
     axis_line_color: str = "black"
@@ -199,8 +199,8 @@ class BaseRenderer(ABC):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
         **kwargs: typing.Any,
@@ -225,7 +225,7 @@ class BaseRenderer(ABC):
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
         normalize_range: bool = True,
-    ) -> typing.Tuple[TwoDimensionalGrid, TwoDimensionalGrid]:
+    ) -> tuple[TwoDimensionalGrid, TwoDimensionalGrid]:
         """
         Normalize data for consistent visualization.
 
@@ -253,7 +253,7 @@ class BaseRenderer(ABC):
             TwoDimensionalGrid, display_data
         )
 
-    def get_colorscale(self, color_scheme: typing.Optional[str] = None) -> str:
+    def get_colorscale(self, color_scheme: str | None = None) -> str:
         """
         Get the appropriate colorscale for the plot.
 
@@ -264,9 +264,7 @@ class BaseRenderer(ABC):
             return ColorScheme(color_scheme).value
         return ColorScheme(self.config.color_scheme).value or "viridis"
 
-    def format_value(
-        self, value: float, metadata: PropertyMeta, precision: int = 3
-    ) -> str:
+    def format_value(self, value: float, metadata: PropertyMeta, precision: int = 3) -> str:
         """
         Format a data value for display.
 
@@ -301,12 +299,12 @@ class HeatmapRenderer(BaseRenderer):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -326,9 +324,7 @@ class HeatmapRenderer(BaseRenderer):
         if data.ndim != 2:
             raise ValidationError("Heatmap plotting requires 2D data")
 
-        _, display_data = self.normalize_data(
-            data=data, metadata=metadata, normalize_range=False
-        )
+        _, display_data = self.normalize_data(data=data, metadata=metadata, normalize_range=False)
 
         # Handle coordinate arrays
         if x_coords is None:
@@ -348,9 +344,7 @@ class HeatmapRenderer(BaseRenderer):
                 )
             hover_text.append(hover_row)
 
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         figure.add_trace(
             go.Heatmap(
                 z=display_data,
@@ -413,13 +407,13 @@ class ContourRenderer(BaseRenderer):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
-        contour_levels: typing.Optional[int] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        contour_levels: int | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -440,9 +434,7 @@ class ContourRenderer(BaseRenderer):
         if data.ndim != 2:
             raise ValidationError("Contour plotting requires 2D data")
 
-        _, display_data = self.normalize_data(
-            data=data, metadata=metadata, normalize_range=False
-        )
+        _, display_data = self.normalize_data(data=data, metadata=metadata, normalize_range=False)
 
         # Handle coordinate arrays
         if x_coords is None:
@@ -450,9 +442,7 @@ class ContourRenderer(BaseRenderer):
         if y_coords is None:
             y_coords = np.arange(data.shape[0])
 
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         levels = contour_levels or 20
 
         # Calculate proper contour levels
@@ -521,14 +511,14 @@ class ScatterRenderer(BaseRenderer):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
         threshold: float = 0.0,
         marker_size: int = 6,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -550,9 +540,7 @@ class ScatterRenderer(BaseRenderer):
         if data.ndim != 2:
             raise ValidationError("Scatter plotting requires 2D data")
 
-        _, display_data = self.normalize_data(
-            data=data, metadata=metadata, normalize_range=False
-        )
+        _, display_data = self.normalize_data(data=data, metadata=metadata, normalize_range=False)
 
         # Handle coordinate arrays
         if x_coords is None:
@@ -577,12 +565,10 @@ class ScatterRenderer(BaseRenderer):
             f"{x_label}: {x:.4f}<br>"
             f"{y_label}: {y:.4f}<br>"
             f"{metadata.display_name}: {self.format_value(v, metadata)} {metadata.unit}"
-            for x, y, v in zip(x_scatter, y_scatter, values)
+            for x, y, v in zip(x_scatter, y_scatter, values, strict=False)
         ]
 
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
 
         figure.add_trace(
             go.Scatter(
@@ -640,12 +626,12 @@ class LineRenderer(BaseRenderer):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
         line_mode: typing.Literal["horizontal", "vertical", "both"] = "horizontal",
-        line_indices: typing.Optional[typing.Union[int, typing.List[int]]] = None,
+        line_indices: int | list[int] | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -665,9 +651,7 @@ class LineRenderer(BaseRenderer):
         if data.ndim != 2:
             raise ValidationError("Line plotting requires 2D data")
 
-        _, display_data = self.normalize_data(
-            data=data, metadata=metadata, normalize_range=False
-        )
+        _, display_data = self.normalize_data(data=data, metadata=metadata, normalize_range=False)
 
         # Handle coordinate arrays
         if x_coords is None:
@@ -776,12 +760,12 @@ class SurfaceRenderer(BaseRenderer):
         figure: go.Figure,
         data: TwoDimensionalGrid,
         metadata: PropertyMeta,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -801,9 +785,7 @@ class SurfaceRenderer(BaseRenderer):
         if data.ndim != 2:
             raise ValidationError("Surface plotting requires 2D data")
 
-        _, display_data = self.normalize_data(
-            data=data, metadata=metadata, normalize_range=False
-        )
+        _, display_data = self.normalize_data(data=data, metadata=metadata, normalize_range=False)
 
         # Handle coordinate arrays
         if x_coords is None:
@@ -811,9 +793,7 @@ class SurfaceRenderer(BaseRenderer):
         if y_coords is None:
             y_coords = np.arange(data.shape[0])
 
-        colorscale = self.get_colorscale(
-            kwargs.get("color_scheme", metadata.color_scheme)
-        )
+        colorscale = self.get_colorscale(kwargs.get("color_scheme", metadata.color_scheme))
         figure.add_trace(
             go.Surface(
                 z=display_data,
@@ -860,7 +840,7 @@ class SurfaceRenderer(BaseRenderer):
         )
 
 
-PLOT_TYPE_NAMES: typing.Dict[PlotType, str] = {
+PLOT_TYPE_NAMES: dict[PlotType, str] = {
     PlotType.HEATMAP: "Heatmap",
     PlotType.CONTOUR: "Contour",
     PlotType.CONTOUR_FILLED: "Filled Contour",
@@ -877,14 +857,14 @@ class Plotter:
     Supports multiple plot types via registered renderers.
     """
 
-    def __init__(self, config: typing.Optional[PlotConfig] = None) -> None:
+    def __init__(self, config: PlotConfig | None = None) -> None:
         """
         Initialize the visualizer with optional configuration.
 
         :param config: Optional configuration for 2D rendering (uses defaults if None)
         """
         self._config = config or PlotConfig()
-        self._renderers: typing.Dict[PlotType, BaseRenderer] = {
+        self._renderers: dict[PlotType, BaseRenderer] = {
             PlotType.HEATMAP: HeatmapRenderer(self._config),
             PlotType.CONTOUR: ContourRenderer(self._config, filled=False),
             PlotType.CONTOUR_FILLED: ContourRenderer(self._config, filled=True),
@@ -901,7 +881,7 @@ class Plotter:
     def add_renderer(
         self,
         plot_type: PlotType,
-        renderer_type: typing.Type[BaseRenderer],
+        renderer_type: type[BaseRenderer],
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> None:
@@ -917,7 +897,7 @@ class Plotter:
             raise ValidationError(f"Invalid plot type: {plot_type}")
         self._renderers[plot_type] = renderer_type(self.config, *args, **kwargs)
 
-    def get_renderer(self, plot_type: typing.Union[PlotType, str]) -> BaseRenderer:
+    def get_renderer(self, plot_type: PlotType | str) -> BaseRenderer:
         """
         Get the renderer for a specific plot type.
 
@@ -944,17 +924,17 @@ class Plotter:
 
     def make_plot(
         self,
-        data: typing.Union[TwoDimensionalGrid, npt.NDArray[np.floating]],
-        plot_type: typing.Union[PlotType, str] = PlotType.HEATMAP,
-        metadata: typing.Optional[PropertyMeta] = None,
-        figure: typing.Optional[go.Figure] = None,
-        title: typing.Optional[str] = None,
-        x_coords: typing.Optional[npt.NDArray] = None,
-        y_coords: typing.Optional[npt.NDArray] = None,
+        data: TwoDimensionalGrid | npt.NDArray[np.floating],
+        plot_type: PlotType | str = PlotType.HEATMAP,
+        metadata: PropertyMeta | None = None,
+        figure: go.Figure | None = None,
+        title: str | None = None,
+        x_coords: npt.NDArray | None = None,
+        y_coords: npt.NDArray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -1010,7 +990,7 @@ class Plotter:
         )
 
         # Apply final layout updates
-        layout_updates: typing.Dict[str, typing.Any] = {}
+        layout_updates: dict[str, typing.Any] = {}
 
         if title:
             layout_updates["title"] = title
@@ -1035,25 +1015,21 @@ class Plotter:
 
     def make_plots(
         self,
-        data_list: typing.Sequence[
-            typing.Union[TwoDimensionalGrid, npt.NDArray[np.floating]]
-        ],
-        plot_types: typing.Union[
-            PlotType, str, typing.Sequence[typing.Union[PlotType, str]]
-        ],
-        metadatas: typing.Optional[typing.Sequence[PropertyMeta]] = None,
-        titles: typing.Optional[typing.Sequence[str]] = None,
+        data_list: typing.Sequence[TwoDimensionalGrid | npt.NDArray[np.floating]],
+        plot_types: PlotType | str | typing.Sequence[PlotType | str],
+        metadatas: typing.Sequence[PropertyMeta] | None = None,
+        titles: typing.Sequence[str] | None = None,
         rows: int = 1,
         cols: int = 1,
-        x_coords: typing.Optional[np.ndarray] = None,
-        y_coords: typing.Optional[np.ndarray] = None,
+        x_coords: np.ndarray | None = None,
+        y_coords: np.ndarray | None = None,
         x_label: str = "X",
         y_label: str = "Y",
-        subplot_titles: typing.Optional[typing.Sequence[str]] = None,
+        subplot_titles: typing.Sequence[str] | None = None,
         shared_xaxes: bool = True,
         shared_yaxes: bool = True,
-        vertical_spacing: typing.Optional[float] = None,
-        horizontal_spacing: typing.Optional[float] = None,
+        vertical_spacing: float | None = None,
+        horizontal_spacing: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -1092,17 +1068,13 @@ class Plotter:
         if isinstance(plot_types, PlotType):
             plot_types = [plot_types] * len(data_list)
         elif isinstance(plot_types, collections.abc.Sequence):
-            plot_types = [
-                PlotType(pt) if isinstance(pt, str) else pt for pt in plot_types
-            ]
+            plot_types = [PlotType(pt) if isinstance(pt, str) else pt for pt in plot_types]
 
         if len(plot_types) != len(data_list):
-            raise ValidationError(
-                "Number of plot types must match number of data arrays"
-            )
+            raise ValidationError("Number of plot types must match number of data arrays")
 
         # Create subplot figure
-        subplot_kwargs: typing.Dict[str, typing.Any] = {
+        subplot_kwargs: dict[str, typing.Any] = {
             "rows": rows,
             "cols": cols,
             "subplot_titles": subplot_titles,
@@ -1117,7 +1089,7 @@ class Plotter:
         fig = make_subplots(**subplot_kwargs)
 
         # Add each plot to its subplot
-        for idx, (data, plot_type) in enumerate(zip(data_list, plot_types)):
+        for idx, (data, plot_type) in enumerate(zip(data_list, plot_types, strict=False)):
             row = (idx // cols) + 1
             col = (idx % cols) + 1
 
@@ -1167,7 +1139,7 @@ class Plotter:
         _track_figure(fig)
         return fig
 
-    def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
+    def help(self, plot_type: PlotType | None = None) -> str:
         """
         Print help information about available plot types and their parameters.
 
@@ -1179,8 +1151,7 @@ class Plotter:
         from bores.visualization.plotly1d import viz, PlotType
 
         # Get help for all plot types
-        print(viz.help())
-        """
+        print(viz.help())"""
         if plot_type is not None:
             renderer = self.get_renderer(plot_type)
             return renderer.help()

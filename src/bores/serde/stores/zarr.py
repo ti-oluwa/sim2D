@@ -118,7 +118,7 @@ def _join_path(*segments: str) -> str:
     return _SEP.join(_encode_segment(s) for s in segments)
 
 
-def _split_path(flat_key: str) -> typing.List[str]:
+def _split_path(flat_key: str) -> list[str]:
     return [_decode_segment(s) for s in flat_key.split(_SEP)]
 
 
@@ -131,14 +131,14 @@ _INTERNAL = {"_vtypes", "_meta", "_index", "_group_name", "count", "version"}
 
 def _flatten(
     data: typing.Mapping[str, typing.Any],
-    prefix: typing.Tuple[str, ...] = (),
-    out_arrays: typing.Optional[typing.Dict[str, npt.NDArray]] = None,
-    out_scalars: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    out_vtypes: typing.Optional[typing.Dict[str, str]] = None,
-) -> typing.Tuple[
-    typing.Dict[str, np.ndarray],
-    typing.Dict[str, typing.Any],
-    typing.Dict[str, str],
+    prefix: tuple[str, ...] = (),
+    out_arrays: dict[str, npt.NDArray] | None = None,
+    out_scalars: dict[str, typing.Any] | None = None,
+    out_vtypes: dict[str, str] | None = None,
+) -> tuple[
+    dict[str, np.ndarray],
+    dict[str, typing.Any],
+    dict[str, str],
 ]:
     """
     Recursively flatten *data* into three parallel flat dicts.
@@ -220,10 +220,10 @@ def _flatten(
 
 
 def _unflatten(
-    arrays: typing.Dict[str, npt.NDArray],
-    scalars: typing.Dict[str, typing.Any],
-    vtypes: typing.Dict[str, str],
-) -> typing.Dict[str, typing.Any]:
+    arrays: dict[str, npt.NDArray],
+    scalars: dict[str, typing.Any],
+    vtypes: dict[str, str],
+) -> dict[str, typing.Any]:
     """
     Reconstruct a nested dict from the three flat dicts produced by `_flatten`.
 
@@ -232,9 +232,9 @@ def _unflatten(
     :param vtypes: `{flat_key: vtype_tag}` - from the `_vtypes` attr.
     :returns: Reconstructed nested dict.
     """
-    result: typing.Dict[str, typing.Any] = {}
+    result: dict[str, typing.Any] = {}
 
-    def _set_nested(d: typing.Dict, parts: typing.List[str], value: typing.Any) -> None:
+    def _set_nested(d: dict, parts: list[str], value: typing.Any) -> None:
         for part in parts[:-1]:
             if part not in d:
                 d[part] = {}
@@ -315,10 +315,10 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
 
     def __init__(
         self,
-        store: typing.Union[StoreLike, PathLike, str],
+        store: StoreLike | PathLike | str,
         compressor: typing.Literal["zstd", "lz4", "blosclz"] = "lz4",
         compression_level: int = 1,
-        chunks: typing.Optional[typing.Tuple[int, ...]] = None,
+        chunks: tuple[int, ...] | None = None,
     ) -> None:
         """
         Initialise the store.
@@ -374,13 +374,9 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
             )
             # Seed in-memory counter
             self._pending_count = int(self._handle.attrs.get("count", 0))  # type: ignore
-            logger.debug(
-                f"{self.__class__.__name__} opened (mode={mode!r}): {self.store!s}"
-            )
+            logger.debug(f"{self.__class__.__name__} opened (mode={mode!r}): {self.store!s}")
         except Exception as exc:
-            raise StorageError(
-                f"Failed to open {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to open {self.__class__.__name__}: {exc}") from exc
 
     def close(self, consolidate: bool = False) -> None:
         """
@@ -407,16 +403,14 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
                         exc_info=True,
                     )
         except Exception as exc:
-            logger.warning(
-                f"Error closing {self.__class__.__name__}: {exc}", exc_info=True
-            )
+            logger.warning(f"Error closing {self.__class__.__name__}: {exc}", exc_info=True)
         finally:
             self._handle = None
             self._pending_count = 0
 
     def _get_chunks(
-        self, shape: typing.Tuple[int, ...]
-    ) -> typing.Optional[typing.Tuple[int, ...]]:
+        self, shape: tuple[int, ...]
+    ) -> tuple[int, ...] | None:
         if self.chunks:
             return self.chunks
         if len(shape) == 3:
@@ -425,9 +419,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
             return (min(100, shape[0]), min(100, shape[1]))
         return (min(shape[0], 1024),)
 
-    def _create_dataset(
-        self, group: zarr.Group, name: str, data: np.ndarray
-    ) -> zarr.Array:
+    def _create_dataset(self, group: zarr.Group, name: str, data: np.ndarray) -> zarr.Array:
         chunks = self._get_chunks(data.shape)
         is_string_array = data.dtype == object
         # `_sequence_to_ndarray`/`_zarr_string_array` only ever produce
@@ -470,9 +462,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         root: zarr.Group,
         index: int,
         item: SerializableT,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> EntryMeta:
         """
         Write one `Serializable` into *root* at position *index*.
@@ -511,7 +501,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         )
         return EntryMeta(idx=index, group_name=group_name, meta={})
 
-    def _read_entry(self, item_group: zarr.Group) -> typing.Dict[str, typing.Any]:
+    def _read_entry(self, item_group: zarr.Group) -> dict[str, typing.Any]:
         """
         Reconstruct a nested dict from a flat entry group.
 
@@ -524,22 +514,18 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         }
 
         # Collect flat scalars, stripping internal keys
-        scalars: typing.Dict[str, typing.Any] = {
+        scalars: dict[str, typing.Any] = {
             k: v for k, v in item_group.attrs.items() if k not in _INTERNAL
         }
-        vtypes: typing.Dict[str, str] = dict(item_group.attrs.get("_vtypes", {}))
+        vtypes: dict[str, str] = dict(item_group.attrs.get("_vtypes", {}))
         return _unflatten(arrays, scalars, vtypes)  # type: ignore[arg-type]
 
     @reraise_storage_error
     def dump(
         self,
         data: typing.Iterable[SerializableT],
-        validator: typing.Optional[
-            typing.Callable[[SerializableT], SerializableT]
-        ] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: typing.Callable[[SerializableT], SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> None:
         """
         Persist *data*, always overwriting any existing content.
@@ -573,12 +559,8 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
     def append(
         self,
         item: SerializableT,
-        validator: typing.Optional[
-            typing.Callable[[SerializableT], SerializableT]
-        ] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: typing.Callable[[SerializableT], SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> EntryMeta:
         """
         Append a single item without rewriting existing entries.
@@ -609,7 +591,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         return entry
 
     @reraise_storage_error
-    def entries(self) -> typing.List[EntryMeta]:
+    def entries(self) -> list[EntryMeta]:
         """
         Return metadata for every stored item in insertion order.
 
@@ -640,12 +622,10 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
     @reraise_storage_error
     def load(
         self,
-        typ: typing.Type[SerializableT],
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[
-            typing.Callable[[SerializableT], SerializableT]
-        ] = None,
+        typ: type[SerializableT],
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: typing.Callable[[SerializableT], SerializableT] | None = None,
     ) -> typing.Generator[SerializableT, None, None]:
         """
         Load and yield items from the store in insertion order.

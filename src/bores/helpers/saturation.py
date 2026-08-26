@@ -27,7 +27,7 @@ def build_saturation_grids(
     oil_water_transition_thickness: float = 5.0,
     transition_curvature_exponent: float = 2.0,
     dtype: npt.DTypeLike = None,
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -387,53 +387,35 @@ def _validate_inputs(
         raise ValidationError("All grid arrays must have the same shape.")
 
     # Check saturation ranges
-    if np.any(
-        (connate_water_saturation[active] < 0) | (connate_water_saturation[active] > 1)
-    ):
+    if np.any((connate_water_saturation[active] < 0) | (connate_water_saturation[active] > 1)):
         raise ValidationError("Connate water saturation must be in [0, 1].")
     if np.any(
-        (residual_oil_saturation_water[active] < 0)
-        | (residual_oil_saturation_water[active] > 1)
+        (residual_oil_saturation_water[active] < 0) | (residual_oil_saturation_water[active] > 1)
     ):
         raise ValidationError("Residual oil saturation (water) must be in [0, 1].")
     if np.any(
-        (residual_oil_saturation_gas[active] < 0)
-        | (residual_oil_saturation_gas[active] > 1)
+        (residual_oil_saturation_gas[active] < 0) | (residual_oil_saturation_gas[active] > 1)
     ):
         raise ValidationError("Residual oil saturation (gas) must be in [0, 1].")
-    if np.any(
-        (residual_gas_saturation[active] < 0) | (residual_gas_saturation[active] > 1)
-    ):
+    if np.any((residual_gas_saturation[active] < 0) | (residual_gas_saturation[active] > 1)):
         raise ValidationError("Residual gas saturation must be in [0, 1].")
 
     # Check for physically impossible saturation combinations
-    if np.any(
-        (connate_water_saturation[active] + residual_oil_saturation_gas[active]) > 1.0
-    ):
-        raise ValidationError(
-            "swc + Sor_gas exceeds 1.0 in some cells (gas zone constraint)."
-        )
-    if np.any(
-        (connate_water_saturation[active] + residual_gas_saturation[active]) > 1.0
-    ):
-        raise ValidationError(
-            "swc + sgr exceeds 1.0 in some cells (oil zone constraint)."
-        )
-    if np.any(
-        (residual_oil_saturation_water[active] + residual_gas_saturation[active]) > 1.0
-    ):
+    if np.any((connate_water_saturation[active] + residual_oil_saturation_gas[active]) > 1.0):
+        raise ValidationError("swc + Sor_gas exceeds 1.0 in some cells (gas zone constraint).")
+    if np.any((connate_water_saturation[active] + residual_gas_saturation[active]) > 1.0):
+        raise ValidationError("swc + sgr exceeds 1.0 in some cells (oil zone constraint).")
+    if np.any((residual_oil_saturation_water[active] + residual_gas_saturation[active]) > 1.0):
         raise ValidationError(
             "Sor_water + sgr exceeds 1.0 in some cells (not physical in any zone)."
         )
 
     # Warn if Sor_gas > Sor_water (unusual but not impossible)
-    if np.any(
-        residual_oil_saturation_gas[active] > residual_oil_saturation_water[active]
-    ):
+    if np.any(residual_oil_saturation_gas[active] > residual_oil_saturation_water[active]):
         warnings.warn(
             "Sor_gas > Sor_water in some cells. Typically, water displacement leaves "
             "more residual oil than gas displacement due to wettability effects.",
-            UserWarning,
+            UserWarning, stacklevel=2,
         )
 
     oil_column_thickness = oil_water_contact - gas_oil_contact
@@ -441,7 +423,7 @@ def _validate_inputs(
         warnings.warn(
             f"Oil column is very thin ({oil_column_thickness:.2f} ft). "
             "Verify contact depths are correct.",
-            UserWarning,
+            UserWarning, stacklevel=2,
         )
 
     # Check transition zone parameters
@@ -469,7 +451,7 @@ def _validate_inputs(
             warnings.warn(
                 f"Oil column between transitions is very thin ({oil_column_thickness:.2f} units(ft)). "
                 "Consider reducing transition thicknesses.",
-                UserWarning,
+                UserWarning, stacklevel=2,
             )
 
 
@@ -485,7 +467,7 @@ def _build_sharp_contacts(
     oil_saturation: NDimensionalGrid[NDimension],
     gas_saturation: NDimensionalGrid[NDimension],
     active: npt.NDArray,
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -528,9 +510,7 @@ def _build_sharp_contacts(
     :return: Tuple of (water_saturation, oil_saturation, gas_saturation) grids.
     """
     gas_zone = (depth_grid < gas_oil_contact) & active
-    oil_zone = (
-        (depth_grid >= gas_oil_contact) & (depth_grid < oil_water_contact) & active
-    )
+    oil_zone = (depth_grid >= gas_oil_contact) & (depth_grid < oil_water_contact) & active
     water_zone = (depth_grid >= oil_water_contact) & active
 
     # Gas cap - uses Sor_gas (gas has displaced oil)
@@ -569,7 +549,7 @@ def _build_transition_zones(
     oil_saturation: NDimensionalGrid[NDimension],
     gas_saturation: NDimensionalGrid[NDimension],
     active: npt.NDArray,
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -646,14 +626,10 @@ def _build_transition_zones(
 
     # Gas-oil transition: blend from (gas cap with Sor_gas) to (oil zone with sgr)
     gas_oil_zone = (
-        (depth_grid >= gas_oil_contact_top)
-        & (depth_grid <= gas_oil_contact_bottom)
-        & active
+        (depth_grid >= gas_oil_contact_top) & (depth_grid <= gas_oil_contact_bottom) & active
     )
     if np.any(gas_oil_zone):
-        frac = (
-            depth_grid[gas_oil_zone] - gas_oil_contact_top
-        ) / gas_oil_transition_thickness
+        frac = (depth_grid[gas_oil_zone] - gas_oil_contact_top) / gas_oil_transition_thickness
         # Clip frac to avoid numerical issues
         np.clip(frac, 0.0, 1.0, out=frac)
         weight = np.power(frac, transition_curvature_exponent)
@@ -681,9 +657,7 @@ def _build_transition_zones(
 
     # Oil zone (between transitions) - original oil accumulation
     oil_zone = (
-        (depth_grid > gas_oil_contact_bottom)
-        & (depth_grid < oil_water_contact_top)
-        & active
+        (depth_grid > gas_oil_contact_bottom) & (depth_grid < oil_water_contact_top) & active
     )
     oil_saturation[oil_zone] = (
         1.0 - connate_water_saturation[oil_zone] - residual_gas_saturation[oil_zone]
@@ -693,9 +667,7 @@ def _build_transition_zones(
 
     # Oil-water transition: blend from (oil zone) to (water zone with Sor_water)
     oil_water_zone = (
-        (depth_grid >= oil_water_contact_top)
-        & (depth_grid <= oil_water_contact_bottom)
-        & active
+        (depth_grid >= oil_water_contact_top) & (depth_grid <= oil_water_contact_bottom) & active
     )
     if np.any(oil_water_zone):
         frac = (
@@ -719,9 +691,7 @@ def _build_transition_zones(
         ) * (1 - weight) + residual_oil_saturation_water[oil_water_zone] * weight
 
         # Gas: from sgr to 0
-        gas_saturation[oil_water_zone] = residual_gas_saturation[oil_water_zone] * (
-            1 - weight
-        )
+        gas_saturation[oil_water_zone] = residual_gas_saturation[oil_water_zone] * (1 - weight)
 
     # Water zone (deeper than OWC transition) - uses Sor_water
     water_zone = (depth_grid > oil_water_contact_bottom) & active
@@ -736,7 +706,7 @@ def _normalize_saturations(
     oil_saturation: NDimensionalGrid[NDimension],
     gas_saturation: NDimensionalGrid[NDimension],
     active: npt.NDArray,
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
     NDimensionalGrid[NDimension],
@@ -778,17 +748,17 @@ def _normalize_saturations(
 
 def seed_phase_saturation(
     oil_saturation_grid: NDimensionalGrid[NDimension],
-    cells: typing.Sequence[typing.Tuple[int, int, int]],
-    phase: typing.Union[FluidPhase, typing.Literal["gas", "water"]],
-    gas_saturation_grid: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    water_saturation_grid: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    seed_saturation: typing.Optional[float] = None,
-    relperm_table: typing.Optional[RelativePermeabilityTable] = None,
+    cells: typing.Sequence[tuple[int, int, int]],
+    phase: FluidPhase | typing.Literal["gas", "water"],
+    gas_saturation_grid: NDimensionalGrid[NDimension] | None = None,
+    water_saturation_grid: NDimensionalGrid[NDimension] | None = None,
+    seed_saturation: float | None = None,
+    relperm_table: RelativePermeabilityTable | None = None,
     inplace: bool = False,
-) -> typing.Tuple[
-    typing.Optional[NDimensionalGrid[NDimension]],
+) -> tuple[
+    NDimensionalGrid[NDimension] | None,
     NDimensionalGrid[NDimension],
-    typing.Optional[NDimensionalGrid[NDimension]],
+    NDimensionalGrid[NDimension] | None,
 ]:
     """
     Seed the (injected) phase saturation at injector cells to break the cold-start
@@ -864,13 +834,9 @@ def seed_phase_saturation(
     if phase == FluidPhase.GAS and gas_saturation_grid is None:
         raise ValidationError("`gas_saturation_grid` is required when `phase` is gas.")
     if phase == FluidPhase.WATER and water_saturation_grid is None:
-        raise ValidationError(
-            "`water_saturation_grid` is required when `phase` is water."
-        )
+        raise ValidationError("`water_saturation_grid` is required when `phase` is water.")
     if seed_saturation is None and relperm_table is None:
-        raise ValidationError(
-            "Either `seed_saturation` or `relperm_table` must be provided."
-        )
+        raise ValidationError("Either `seed_saturation` or `relperm_table` must be provided.")
 
     if not inplace:
         oil_saturation_grid = oil_saturation_grid.copy()
@@ -894,16 +860,10 @@ def seed_phase_saturation(
             # Scan increasing Sg from 0 upward at connate Sw.
             # Step through candidate Sg values from the table by decrementing So.
             # Use 100 evenly spaced Sg candidates from 0 to (1 - base_water_saturation).
-            gas_saturation_candidates = np.linspace(
-                0.0, 1.0 - base_water_saturation, 200
-            )
-            oil_saturation_candidates = (
-                1.0 - base_water_saturation - gas_saturation_candidates
-            )
+            gas_saturation_candidates = np.linspace(0.0, 1.0 - base_water_saturation, 200)
+            oil_saturation_candidates = 1.0 - base_water_saturation - gas_saturation_candidates
             kr_values = relperm_table(
-                water_saturation=np.full_like(
-                    gas_saturation_candidates, base_water_saturation
-                ),
+                water_saturation=np.full_like(gas_saturation_candidates, base_water_saturation),
                 oil_saturation=oil_saturation_candidates,
                 gas_saturation=gas_saturation_candidates,
             )
@@ -936,9 +896,7 @@ def seed_phase_saturation(
                     "the full water saturation range. Cannot auto-detect seed saturation."
                 )
             first_nonzero_idx = int(np.argmax(nonzero_mask))
-            target_idx = min(
-                first_nonzero_idx + 1, len(water_saturation_candidates) - 1
-            )
+            target_idx = min(first_nonzero_idx + 1, len(water_saturation_candidates) - 1)
             seed = water_saturation_candidates[target_idx]
 
     # Apply seed at each cell

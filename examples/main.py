@@ -1,5 +1,4 @@
 import pyvista as pv
-import rich
 
 from bores.blackoil.fluids.model import BlackOil
 from bores.blackoil.model import BlackOilModel
@@ -17,7 +16,7 @@ from bores.wells.hydraulics.mechanistic import mechanistic_model
 from bores.wells.model import WellSystem
 
 df = DeckFile(
-    "/home/tioluwa/Downloads/NigerDelta UGH1 Composite Field.DATA",
+    "/home/tioluwa/Projects/nagscu/Phase One/Data/NigerDelta UGH1 Composite Field.DATA",
     encoding="utf-8",
     unit_system=UnitSystem.METRIC,
 )

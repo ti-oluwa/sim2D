@@ -8,7 +8,6 @@ station spacing, same as it would for any survey-based trajectory tool.
 """
 
 import math
-import typing
 
 import attrs
 
@@ -50,7 +49,7 @@ class WellTrajectory(Serializable):
     that identifies a unique location on an arbitrary path.
     """
 
-    stations: typing.Tuple[TrajectoryStation, ...] = attrs.field(converter=tuple)
+    stations: tuple[TrajectoryStation, ...] = attrs.field(converter=tuple)
 
     def __attrs_post_init__(self) -> None:
         if len(self.stations) < 2:
@@ -58,7 +57,7 @@ class WellTrajectory(Serializable):
                 "`WellTrajectory` needs at least 2 stations to define a "
                 f"path; got {len(self.stations)}."
             )
-        for previous, current in zip(self.stations, self.stations[1:]):
+        for previous, current in zip(self.stations, self.stations[1:], strict=False):
             if current.measured_depth <= previous.measured_depth:
                 raise ValidationError(
                     "`stations` must be strictly increasing in "
@@ -78,24 +77,22 @@ class WellTrajectory(Serializable):
 
     def _bracketing_leg(
         self, measured_depth: Number
-    ) -> typing.Tuple[TrajectoryStation, TrajectoryStation]:
+    ) -> tuple[TrajectoryStation, TrajectoryStation]:
         """Returns the two consecutive stations whose measured-depth range contains `measured_depth`."""
-        if not (
-            self.top_measured_depth <= measured_depth <= self.bottom_measured_depth
-        ):
+        if not (self.top_measured_depth <= measured_depth <= self.bottom_measured_depth):
             raise ValidationError(
                 f"measured_depth={measured_depth} is outside this "
                 f"trajectory's range [{self.top_measured_depth}, "
                 f"{self.bottom_measured_depth}]."
             )
-        for previous, current in zip(self.stations, self.stations[1:]):
+        for previous, current in zip(self.stations, self.stations[1:], strict=False):
             if previous.measured_depth <= measured_depth <= current.measured_depth:
                 return previous, current
         return self.stations[-2], self.stations[-1]
 
     def stations_between(
         self, start_md: Number, end_md: Number
-    ) -> typing.Tuple[TrajectoryStation, ...]:
+    ) -> tuple[TrajectoryStation, ...]:
         """
         Returns every vertex on the polyline between `start_md` and `end_md`,
         inclusive - the interpolated position at `start_md`, every real
@@ -112,30 +109,20 @@ class WellTrajectory(Serializable):
             outside this trajectory's range.
         """
         if start_md > end_md:
-            raise ValidationError(
-                f"`start_md` ({start_md}) must be <= `end_md` ({end_md})."
-            )
+            raise ValidationError(f"`start_md` ({start_md}) must be <= `end_md` ({end_md}).")
 
         interior = tuple(
-            station
-            for station in self.stations
-            if start_md < station.measured_depth < end_md
+            station for station in self.stations if start_md < station.measured_depth < end_md
         )
         start_x, start_y, start_z = self.position_at(start_md)
         end_x, end_y, end_z = self.position_at(end_md)
         return (
-            (
-                TrajectoryStation(
-                    measured_depth=start_md, x=start_x, y=start_y, z=start_z
-                ),
-            )
+            (TrajectoryStation(measured_depth=start_md, x=start_x, y=start_y, z=start_z),)
             + interior
             + (TrajectoryStation(measured_depth=end_md, x=end_x, y=end_y, z=end_z),)
         )
 
-    def position_at(
-        self, measured_depth: Number
-    ) -> typing.Tuple[Number, Number, Number]:
+    def position_at(self, measured_depth: Number) -> tuple[Number, Number, Number]:
         """
         Returns a linearly-interpolated `(x, y, z)` at `measured_depth`.
 
@@ -145,18 +132,14 @@ class WellTrajectory(Serializable):
         """
         previous, current = self._bracketing_leg(measured_depth)
         span = current.measured_depth - previous.measured_depth
-        fraction = (
-            0.0 if span == 0 else (measured_depth - previous.measured_depth) / span
-        )
+        fraction = 0.0 if span == 0 else (measured_depth - previous.measured_depth) / span
         return (
             previous.x + fraction * (current.x - previous.x),
             previous.y + fraction * (current.y - previous.y),
             previous.z + fraction * (current.z - previous.z),
         )
 
-    def tangent_at(
-        self, measured_depth: Number
-    ) -> typing.Tuple[Number, Number, Number]:
+    def tangent_at(self, measured_depth: Number) -> tuple[Number, Number, Number]:
         """
         Returns the unit tangent vector at `measured_depth`. The direction of the leg
         containing it. Constant within a leg (piecewise-linear trajectory).

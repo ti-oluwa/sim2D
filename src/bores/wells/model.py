@@ -36,10 +36,10 @@ class WellSystem(StoreSerializable):
     """Per-well hydraulics override - e.g. a gas well on Beggs-Brill while
     every oil well uses the mechanistic no-slip model."""
 
-    groups: typing.Optional[WellGroups] = None
+    groups: WellGroups | None = None
     """The well-group hierarchy, if the deck defined one."""
 
-    group_controls: typing.Optional[GroupControls] = None
+    group_controls: GroupControls | None = None
     """Current control target for each group, if the deck defined any."""
 
     resolver_spec: ControlResolverSpec = attrs.field(factory=ControlResolverSpec)
@@ -74,7 +74,7 @@ class WellSystem(StoreSerializable):
         """
         return self.wellbore_overrides.get(well_name, self.default_wellbore)
 
-    def get_wells_in_group(self, group_name: str) -> typing.Tuple[str, ...]:
+    def get_wells_in_group(self, group_name: str) -> tuple[str, ...]:
         """
         Gets every well belonging to a group or any group under it.
 
@@ -88,9 +88,7 @@ class WellSystem(StoreSerializable):
                 "`get_wells_in_group` requires `groups` to be set on this WellSystem."
             )
         member_group_names = {group_name, *self.groups.descendants(group_name)}
-        return tuple(
-            name for name in self.wells if self.wells[name].group in member_group_names
-        )
+        return tuple(name for name in self.wells if self.wells[name].group in member_group_names)
 
     @classmethod
     def from_deck(
@@ -127,7 +125,7 @@ class WellSystem(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Converts this system to a different unit system.

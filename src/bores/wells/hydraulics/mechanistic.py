@@ -79,7 +79,7 @@ class MechanisticModel(typing.NamedTuple):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Converts this model to a different unit system.
@@ -99,12 +99,8 @@ class MechanisticModel(typing.NamedTuple):
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
             hydrostatic_scale=1.0
             / (
-                get_unit_system_constant(
-                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
-                )
-                * get_unit_system_constant(
-                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
-                )
+                get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=target)
+                * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target)
             ),
             unit_system=target,
         )
@@ -113,14 +109,14 @@ class MechanisticModel(typing.NamedTuple):
 def mechanistic_model(
     *,
     tubing_inner_diameter: Number,
-    tubing_roughness: typing.Optional[Number] = None,
+    tubing_roughness: Number | None = None,
     friction_method: typing.Literal["simplified", "colebrook"] = "simplified",
     unit_system: UnitSystem = UnitSystem.FIELD,
-    gravitational_acceleration: typing.Optional[Number] = None,
-    laminar_reynolds_limit: typing.Optional[Number] = None,
-    turbulent_reynolds_limit: typing.Optional[Number] = None,
-    friction_max_iterations: typing.Optional[int] = None,
-    friction_tolerance: typing.Optional[Number] = None,
+    gravitational_acceleration: Number | None = None,
+    laminar_reynolds_limit: Number | None = None,
+    turbulent_reynolds_limit: Number | None = None,
+    friction_max_iterations: int | None = None,
+    friction_tolerance: Number | None = None,
 ) -> MechanisticModel:
     """
     Builds a `MechanisticModel`.
@@ -152,9 +148,7 @@ def mechanistic_model(
 
     return MechanisticModel(
         tubing_inner_diameter=tubing_inner_diameter,
-        tubing_roughness=tubing_roughness
-        if tubing_roughness is not None
-        else float("nan"),
+        tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
         gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
         laminar_reynolds_limit=(
@@ -173,18 +167,12 @@ def mechanistic_model(
             else c.COLEBROOK_MAX_ITERATIONS
         ),
         friction_tolerance=(
-            friction_tolerance
-            if friction_tolerance is not None
-            else c.COLEBROOK_TOLERANCE
+            friction_tolerance if friction_tolerance is not None else c.COLEBROOK_TOLERANCE
         ),
         hydrostatic_scale=1.0
         / (
-            get_unit_system_constant(
-                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
-            )
-            * get_unit_system_constant(
-                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
-            )
+            get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system)
+            * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system)
         ),
         unit_system=unit_system,
     )
@@ -235,21 +223,38 @@ def compute_perforation_pressures(
     model: MechanisticModel,
     reference_depth: Number,
     reference_pressure: Number,
-    phase_rates: PhaseValues,
+    connection_phase_rates: typing.Sequence[PhaseValues],
     representative_depths: NumberArray[OneDimension],
     inclinations_from_vertical: NumberArray[OneDimension],
     connection_samples: typing.Sequence[ConnectionSample],
     is_injector: bool,
-    out: typing.Optional[NumberArray[OneDimension]] = None,
+    out: NumberArray[OneDimension] | None = None,
     dtype: npt.DTypeLike = None,
 ) -> NumberArray[OneDimension]:
     """
-    Computes flowing pressure at each perforation connection.
+    Computes flowing pressure at each perforation connection, integrating
+    the wellbore sequentially from `reference_depth` rather than treating
+    each connection as an independent path from the reference.
+
+    The wellbore is split at `reference_depth` into up to two branches -
+    connections at or below it, and connections above it - each walked
+    independently outward from the reference, nearest connection first.
+    The segment feeding into a connection carries the combined rate of
+    that connection and every connection beyond it on the same branch
+    (not yet joined/still to be added to the branch's cumulative flow);
+    once a connection is passed, its own rate is removed from the running
+    total for the next segment. This holds for both production (rate
+    accumulates as segments approach the reference) and injection (rate
+    depletes as segments move away from the reference) under the same
+    walk, since both describe a monotonically decreasing carried rate
+    with distance from the reference.
 
     :param model: This well's `MechanisticModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
-    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param connection_phase_rates: Each connection's own rate of each
+        phase, at reservoir conditions - not the well total. Same order
+        as `connection_samples`.
     :param representative_depths: One depth per connection, same order as `connection_samples`.
     :param inclinations_from_vertical: One inclination per connection, in
         radians, same order as `connection_samples`.
@@ -260,20 +265,22 @@ def compute_perforation_pressures(
     :param dtype: Optional output array data type. Ignored if `out` is given.
     :returns: Pressure at each connection, same order as `connection_samples`.
     :raises ValueError: If `representative_depths`, `inclinations_from_vertical`,
-        and `connection_samples` don't all have the same length.
+        `connection_phase_rates`, and `connection_samples` don't all have the same length.
     """
     n = len(connection_samples)
     if out is not None and len(out) != n:
+        raise ValueError("If given, `out` must have the same length as `connection_samples`.")
+    if not (
+        len(representative_depths)
+        == len(inclinations_from_vertical)
+        == len(connection_phase_rates)
+        == n
+    ):
         raise ValueError(
-            "If given, `out` must have the same length as `connection_samples`."
-        )
-    if not (len(representative_depths) == len(inclinations_from_vertical) == n):
-        raise ValueError(
-            "`representative_depths`, `inclinations_from_vertical`, and "
-            "`connection_samples` must all have the same length."
+            "`representative_depths`, `inclinations_from_vertical`, "
+            "`connection_phase_rates`, and `connection_samples` must all have the same length."
         )
 
-    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
     if out is not None:
         pressures = out
     else:
@@ -282,47 +289,77 @@ def compute_perforation_pressures(
 
     friction_sign = -1.0 if is_injector else 1.0
 
-    for i in range(n):
-        sample = connection_samples[i]
-        dz = representative_depths[i] - reference_depth
-        geometric_sign = 1.0 if dz >= 0 else -1.0
+    below = sorted(
+        (i for i in range(n) if representative_depths[i] >= reference_depth),
+        key=lambda i: representative_depths[i],
+    )
+    above = sorted(
+        (i for i in range(n) if representative_depths[i] < reference_depth),
+        key=lambda i: -representative_depths[i],
+    )
 
-        if total_rate == 0.0:
-            drop = compute_static_hydrostatic_drop(
-                mixture_density=compute_static_mixture_density(
-                    phase_saturations=sample.phase_saturations,
-                    phase_densities=sample.phase_densities,
-                ),
-                length=abs(dz),
-                gravitational_acceleration=model.gravitational_acceleration,
-                unit_system=model.unit_system,
-            )
-            pressures[i] = reference_pressure + geometric_sign * drop.total
+    for branch in (below, above):
+        if not branch:
             continue
 
-        mixture_density = compute_mixture_density(
-            phase_rates=phase_rates, phase_densities=sample.phase_densities
+        remaining_rates = PhaseValues(
+            oil=sum(connection_phase_rates[i].oil for i in branch),
+            water=sum(connection_phase_rates[i].water for i in branch),
+            gas=sum(connection_phase_rates[i].gas for i in branch),
         )
-        mixture_viscosity = compute_mixture_viscosity(
-            phase_rates=phase_rates, phase_viscosities=sample.phase_viscosities
-        )
-        velocity = compute_mixture_velocity(
-            phase_rates=phase_rates, tubing_inner_diameter=model.tubing_inner_diameter
-        )
-        drop = compute_segment_drop(
-            model=model,
-            length=abs(dz),
-            inclination_from_vertical=inclinations_from_vertical[i],
-            mixture_density=mixture_density,
-            mixture_viscosity=mixture_viscosity,
-            mixture_velocity_in=velocity,
-            mixture_velocity_out=velocity,
-        )
-        pressures[i] = (
-            reference_pressure
-            + geometric_sign * (drop.hydrostatic + drop.acceleration)
-            + friction_sign * drop.friction
-        )
+        current_depth = reference_depth
+        current_pressure = reference_pressure
+
+        for i in branch:
+            length = abs(representative_depths[i] - current_depth)
+            geometric_sign = 1.0 if representative_depths[i] >= current_depth else -1.0
+            sample = connection_samples[i]
+            remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+
+            if remaining_total == 0.0:
+                drop = compute_static_hydrostatic_drop(
+                    mixture_density=compute_static_mixture_density(
+                        phase_saturations=sample.phase_saturations,
+                        phase_densities=sample.phase_densities,
+                    ),
+                    length=length,
+                    gravitational_acceleration=model.gravitational_acceleration,
+                    unit_system=model.unit_system,
+                )
+                current_pressure = current_pressure + geometric_sign * drop.total
+            else:
+                mixture_density = compute_mixture_density(
+                    phase_rates=remaining_rates, phase_densities=sample.phase_densities
+                )
+                mixture_viscosity = compute_mixture_viscosity(
+                    phase_rates=remaining_rates, phase_viscosities=sample.phase_viscosities
+                )
+                velocity = compute_mixture_velocity(
+                    phase_rates=remaining_rates, tubing_inner_diameter=model.tubing_inner_diameter
+                )
+                drop = compute_segment_drop(
+                    model=model,
+                    length=length,
+                    inclination_from_vertical=inclinations_from_vertical[i],
+                    mixture_density=mixture_density,
+                    mixture_viscosity=mixture_viscosity,
+                    mixture_velocity_in=velocity,
+                    mixture_velocity_out=velocity,
+                )
+                current_pressure = (
+                    current_pressure
+                    + geometric_sign * (drop.hydrostatic + drop.acceleration)
+                    + friction_sign * drop.friction
+                )
+
+            pressures[i] = current_pressure
+            current_depth = representative_depths[i]
+            remaining_rates = PhaseValues(
+                oil=remaining_rates.oil - connection_phase_rates[i].oil,
+                water=remaining_rates.water - connection_phase_rates[i].water,
+                gas=remaining_rates.gas - connection_phase_rates[i].gas,
+            )
+
     return pressures
 
 
@@ -377,7 +414,5 @@ def compute_tubing_head_pressure(
         mixture_velocity_out=velocity,
     )
     return (
-        reference_pressure
-        - (drop.hydrostatic + drop.acceleration)
-        - friction_sign * drop.friction
+        reference_pressure - (drop.hydrostatic + drop.acceleration) - friction_sign * drop.friction
     )

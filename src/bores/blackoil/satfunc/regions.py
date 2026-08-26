@@ -44,9 +44,9 @@ class SatFunc(StoreSerializable):
 
     def __init__(
         self,
-        tables: typing.Dict[int, SatFuncTables],
+        tables: dict[int, SatFuncTables],
         *,
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Build a `SatFunc` from a pre-built regional tables dict.
@@ -95,8 +95,7 @@ class SatFunc(StoreSerializable):
         if tables is None:
             available = sorted(self.tables.keys())
             raise KeyError(
-                f"Saturation function region {satnum} not found. "
-                f"Available regions: {available}."
+                f"Saturation function region {satnum} not found. Available regions: {available}."
             )
         return tables
 
@@ -117,7 +116,7 @@ class SatFunc(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `SatFunc` with capillary pressure in every
@@ -140,7 +139,7 @@ class SatFunc(StoreSerializable):
         cls,
         deck_file: DeckFile,
         *,
-        mixing_rule: typing.Optional[typing.Union[MixingRule, str]] = None,
+        mixing_rule: MixingRule | str | None = None,
         keyword_family: typing.Literal["first", "second", "auto"] = "auto",
         number_of_base_points: int = 200,
         number_of_endpoint_extra_points: int = 30,
@@ -202,7 +201,7 @@ class SatFunc(StoreSerializable):
                 "(second family)."
             )
 
-        tables: typing.Dict[int, SatFuncTables] = {}
+        tables: dict[int, SatFuncTables] = {}
         for region_index in range(n_regions):
             satnum = region_index + 1  # 1-based
 
@@ -219,7 +218,7 @@ class SatFunc(StoreSerializable):
                 dtype=dtype,
             )
 
-            capillary_pressure: typing.Optional[ThreePhaseCapillaryPressureTable] = None
+            capillary_pressure: ThreePhaseCapillaryPressureTable | None = None
             if include_capillary_pressure:
                 capillary_pressure = ThreePhaseCapillaryPressureTable.from_deck(
                     deck_file=deck_file,
@@ -254,12 +253,8 @@ class SatFunc(StoreSerializable):
     def __contains__(self, key: object) -> bool:
         return key in self.tables
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {
-            "tables": {
-                str(satnum): tables.dump() for satnum, tables in self.tables.items()
-            }
-        }
+    def __dump__(self) -> dict[str, typing.Any]:
+        return {"tables": {str(satnum): tables.dump() for satnum, tables in self.tables.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:

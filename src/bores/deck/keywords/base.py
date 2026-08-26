@@ -56,8 +56,8 @@ class Field(typing.Generic[T]):
     name: str
     type: typing.Callable[[str], T]
     required: bool = True
-    default: typing.Optional[T] = None
-    options: typing.Optional[Collection[T]] = None
+    default: T | None = None
+    options: Collection[T] | None = None
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
@@ -71,7 +71,7 @@ class Field(typing.Generic[T]):
             )
         object.__setattr__(self, "options", options)
 
-    def parse(self, raw: typing.Optional[str], keyword: str) -> typing.Optional[T]:
+    def parse(self, raw: str | None, keyword: str) -> T | None:
         """
         Parse one Eclipse field value.
 
@@ -87,9 +87,7 @@ class Field(typing.Generic[T]):
         # Field omitted entirely.
         if raw is None:
             if self.required:
-                raise DeckParseError(
-                    f"{keyword} record: missing required field {self.name!r}."
-                )
+                raise DeckParseError(f"{keyword} record: missing required field {self.name!r}.")
             return self.default
 
         # Eclipse explicit default ("1*").
@@ -143,11 +141,11 @@ class Keyword(typing.Generic[T], abc.ABC):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[T]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> T | None:
         """
         Parse this keyword's value out of `deck`.
 
@@ -171,7 +169,7 @@ class Keyword(typing.Generic[T], abc.ABC):
 
 def _parse_tokens(
     keyword: str, fields: typing.Sequence[Field[T]], tokens: typing.Sequence[str]
-) -> typing.Dict[str, typing.Optional[T]]:
+) -> dict[str, T | None]:
     """
     Convert a flat token sequence to a `{field_name: value}` dict
     according to `fields`.
@@ -183,7 +181,7 @@ def _parse_tokens(
     :raises DeckParseError: If a required field is missing or has an
         invalid value.
     """
-    result: typing.Dict[str, typing.Optional[T]] = {}
+    result: dict[str, T | None] = {}
     n_tokens = len(tokens)
     for idx, field in enumerate(fields):
         raw = tokens[idx] if idx < n_tokens else None
@@ -191,7 +189,7 @@ def _parse_tokens(
     return result
 
 
-class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
+class RecordKeyword(Keyword[dict[str, T | None]]):
     """
     A keyword holding exactly one fixed-layout record of mixed-type fields
     (`SPECGRID`, `MAPAXES`, `GRIDUNIT`, `PINCH`).
@@ -211,11 +209,11 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.Dict[str, typing.Optional[T]]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> dict[str, T | None] | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None
@@ -227,13 +225,11 @@ class RecordKeyword(Keyword[typing.Dict[str, typing.Optional[T]]]):
         tokens = tokenize(body)
         return self._parse_tokens(tokens)
 
-    def _parse_tokens(
-        self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Optional[T]]:
+    def _parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
         return _parse_tokens(self.name, self.fields, tokens)
 
 
-class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional[T]]]]):
+class RepeatedRecordKeyword(Keyword[list[dict[str, T | None]]]):
     """
     A keyword whose body holds zero or more individually `/`-terminated
     records sharing one field layout (`FAULTS`, `MULTFLT`, `NNC`).
@@ -257,16 +253,16 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[typing.Dict[str, typing.Optional[T]]]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[dict[str, T | None]] | None:
         records = deck.records_for(self.name)
         if not records:
             return None
 
-        results: typing.List[typing.Dict[str, typing.Optional[T]]] = []
+        results: list[dict[str, T | None]] = []
         for record in records:
             for line in record.body.split("/"):
                 tokens = tokenize(line)
@@ -275,9 +271,7 @@ class RepeatedRecordKeyword(Keyword[typing.List[typing.Dict[str, typing.Optional
                 results.append(self._parse_tokens(tokens))
         return results or None
 
-    def _parse_tokens(
-        self, tokens: typing.Sequence[str]
-    ) -> typing.Dict[str, typing.Optional[T]]:
+    def _parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
         return _parse_tokens(self.name, self.fields, tokens)
 
 
@@ -309,7 +303,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         dtype: npt.DTypeLike = np.float64,
         default_value: float = 0.0,
         is_multiplier: bool = False,
-        column_shape: typing.Optional[typing.Tuple[str, ...]] = None,
+        column_shape: tuple[str, ...] | None = None,
     ) -> None:
         """
         :param name: Keyword name (e.g. `"PORO"`).
@@ -357,18 +351,16 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         if column_shape and len(column_shape) > 3:
             raise ValueError(f"Invalid size for `column_shape`: {column_shape!r}")
-        self.column_shape = (
-            [column.lower() for column in column_shape] if column_shape else None
-        )
+        self.column_shape = [column.lower() for column in column_shape] if column_shape else None
 
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[FloatArray[OneDimension]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> FloatArray[OneDimension] | None:
         """
         Parse and return the resolved per-cell array.
 
@@ -392,9 +384,9 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         deck: Deck,
         dims: GridDimensions,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        stop_before_order: typing.Optional[typing.Tuple[int, int]],
-    ) -> typing.Optional[FloatArray[OneDimension]]:
+        operations: list[Operation] | None = None,
+        stop_before_order: tuple[int, int] | None,
+    ) -> FloatArray[OneDimension] | None:
         """
         Replay every event affecting this keyword's array - its own
         explicit data block(s) *and* every operator record targeting it -
@@ -424,23 +416,21 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         def _resolve_source_at(
             name: str,
-            as_of_order: typing.Tuple[int, int],
+            as_of_order: tuple[int, int],
             *,
-            operations: typing.Optional[typing.List[Operation]] = None,
-        ) -> typing.Optional[FloatArray[OneDimension]]:
+            operations: list[Operation] | None = None,
+        ) -> FloatArray[OneDimension] | None:
             # Guess the default_value for arbitrary source keywords:
             # multiplier-style arrays default to 1.0, property arrays to 0.0.
             # We cannot know for certain without a registered Keyword instance,
             # but this heuristic is correct for all standard Eclipse arrays.
             default = 1.0 if name.startswith("MULT") else 0.0
             probe = ArrayKeyword(name, default_value=default)
-            return probe._resolve(
-                deck, dims, operations=operations, stop_before_order=as_of_order
-            )
+            return probe._resolve(deck, dims, operations=operations, stop_before_order=as_of_order)
 
         for order, kind, payload in events:
             if kind == "assign":
-                tokens: typing.List[str] = payload  # type: ignore[assignment]
+                tokens: list[str] = payload  # type: ignore[assignment]
                 if len(tokens) == 0:
                     warnings.warn(
                         f"{self.name}: assign event has zero tokens; skipping.",
@@ -450,16 +440,13 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
                 # Total element count this assign event actually represents,
                 # accounting for unexpanded "N*value" groups, without building the expanded list.
-                total_count = sum(
-                    (parse_repeat_token(token) or (1, None))[0] for token in tokens
-                )
+                total_count = sum((parse_repeat_token(token) or (1, None))[0] for token in tokens)
                 if total_count == 1:
                     try:
                         array[:] = float(tokens[0])
                     except ValueError as exc:
                         raise DeckParseError(
-                            f"{self.name}: expected a numeric scalar, got "
-                            f"{tokens[0]!r}: {exc}"
+                            f"{self.name}: expected a numeric scalar, got {tokens[0]!r}: {exc}"
                         ) from exc
 
                 elif total_count == dims.n_cells:
@@ -488,7 +475,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
                     if self.column_shape is not None:
                         short_count = self._short_form_count(dims)
                         if total_count == short_count:
-                            expanded: typing.List[str] = []
+                            expanded: list[str] = []
                             for token in tokens:
                                 repeat = parse_repeat_token(token)
                                 if repeat is not None:
@@ -509,10 +496,11 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
                         expected_desc = f"1 or {dims.n_cells}"
                         if self.column_shape is not None:
                             short_count = self._short_form_count(dims)
-                            expected_desc += f" or {short_count} (short form: {' * '.join(self.column_shape)})"
+                            expected_desc += (
+                                f" or {short_count} (short form: {' * '.join(self.column_shape)})"
+                            )
                         raise DeckParseError(
-                            f"{self.name} expected {expected_desc} value(s); "
-                            f"got {total_count}."
+                            f"{self.name} expected {expected_desc} value(s); got {total_count}."
                         )
 
             else:  # kind == "operate"
@@ -574,12 +562,10 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         # Reshape arr to align with full array dimensions
         # Insert size-1 dims for missing axes, then broadcast
         target_shape = [1, 1, 1]
-        for local_i, ax in enumerate(self.column_shape):
+        for _local_i, ax in enumerate(self.column_shape):
             target_shape[axis_indices[ax]] = int(dim_map[ax])
         arr_expanded = arr.reshape(target_shape)
-        full[:] = np.broadcast_to(
-            arr_expanded, (int(dims.nx), int(dims.ny), int(dims.nz))
-        )
+        full[:] = np.broadcast_to(arr_expanded, (int(dims.nx), int(dims.ny), int(dims.nz)))
         return full.ravel(order="F")  # Eclipse flat order: i fastest
 
     def _timeline(
@@ -587,8 +573,8 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         deck: Deck,
         dims: GridDimensions,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-    ) -> typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]]:
+        operations: list[Operation] | None = None,
+    ) -> list[tuple[tuple[int, int], str, typing.Any]]:
         """
         Build the ordered `(order, kind, payload)` events affecting this
         keyword: `("assign", tokens)` for each of its own explicit
@@ -600,7 +586,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         :returns: Events sorted ascending (earliest in file first).
         """
-        events: typing.List[typing.Tuple[typing.Tuple[int, int], str, typing.Any]] = []
+        events: list[tuple[tuple[int, int], str, typing.Any]] = []
 
         for record in deck.records_for(self.name):
             # Compact tokens: an "N*value" repeat group stays as one token
@@ -640,7 +626,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         return events
 
 
-MONTH_MAP: typing.Dict[str, int] = {
+MONTH_MAP: dict[str, int] = {
     "JAN": 1,
     "FEB": 2,
     "MAR": 3,
@@ -676,9 +662,7 @@ def _parse_date(tokens: typing.Sequence[str], name: str) -> datetime.date:
     try:
         day = int(tokens[0])
     except ValueError as exc:
-        raise DeckParseError(
-            f"{name}: day token {tokens[0]!r} is not an integer."
-        ) from exc
+        raise DeckParseError(f"{name}: day token {tokens[0]!r} is not an integer.") from exc
 
     month_str = tokens[1].upper()
     month = MONTH_MAP.get(month_str)
@@ -691,16 +675,12 @@ def _parse_date(tokens: typing.Sequence[str], name: str) -> datetime.date:
     try:
         year = int(tokens[2])
     except ValueError as exc:
-        raise DeckParseError(
-            f"{name}: year token {tokens[2]!r} is not an integer."
-        ) from exc
+        raise DeckParseError(f"{name}: year token {tokens[2]!r} is not an integer.") from exc
 
     try:
         return datetime.date(year, month, day)
     except ValueError as exc:
-        raise DeckParseError(
-            f"{name}: invalid date {day}/{month}/{year}: {exc}"
-        ) from exc
+        raise DeckParseError(f"{name}: invalid date {day}/{month}/{year}: {exc}") from exc
 
 
 class FlagKeyword(Keyword[bool]):
@@ -718,10 +698,10 @@ class FlagKeyword(Keyword[bool]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
     ) -> bool:
         """
         :returns: `True` if the keyword is present in the deck,
@@ -744,11 +724,11 @@ class DateKeyword(Keyword[datetime.date]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[datetime.date]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> datetime.date | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None
@@ -758,7 +738,7 @@ class DateKeyword(Keyword[datetime.date]):
         return _parse_date(tokens, self.name)
 
 
-class DatesKeyword(Keyword[typing.List[datetime.date]]):
+class DatesKeyword(Keyword[list[datetime.date]]):
     """
     The `DATES` keyword: a sequence of one or more `/`-terminated
     date entries inside one `DATES … /` block, each of the form
@@ -781,16 +761,16 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[datetime.date]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[datetime.date] | None:
         records = deck.records_for(self.name)
         if not records:
             return None
 
-        dates: typing.List[datetime.date] = []
+        dates: list[datetime.date] = []
         for record in records:
             for segment in record.body.split("/"):
                 tokens = tokenize(segment)
@@ -800,14 +780,14 @@ class DatesKeyword(Keyword[typing.List[datetime.date]]):
         return dates or None
 
 
-PVTRow = typing.Dict[str, T]
+PVTRow = dict[str, T]
 """One row of a PVT/saturation table: a `{column_name: value}` dict."""
 
-PVTTable = typing.List[PVTRow[T]]
+PVTTable = list[PVTRow[T]]
 """One saturation/PVT table: a list of row dicts in ascending primary-key order."""
 
 
-class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
+class TableKeyword(Keyword[list[PVTTable[Number]]]):
     """
     A keyword whose body contains one or more tabulated data blocks,
     each terminated by `/`. Multiple keyword occurrences (e.g. one per
@@ -849,25 +829,25 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         name: str,
         columns: typing.Sequence[Field[Number]],
         *,
-        primary_key: typing.Optional[str] = None,
+        primary_key: str | None = None,
     ) -> None:
         super().__init__(name)
-        self.columns: typing.List[Field] = list(columns)
+        self.columns: list[Field] = list(columns)
         self.primary_key = primary_key
 
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[PVTTable[Number]]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[PVTTable[Number]] | None:
         records = deck.records_for(self.name)
         if not records:
             return None
 
-        all_tables: typing.List[PVTTable] = []
+        all_tables: list[PVTTable] = []
         for record in records:
             if self.primary_key is not None:
                 tables = self._parse_miscible(record.body)
@@ -924,7 +904,7 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
                 table.append(self._row_from_tokens(tokens[start : start + n_columns]))
         return table
 
-    def _parse_miscible(self, body: str) -> typing.List[PVTTable[Number]]:
+    def _parse_miscible(self, body: str) -> list[PVTTable[Number]]:
         """
         Parse a miscible (PVTO/PVTG-style) keyword body.
 
@@ -945,9 +925,9 @@ class TableKeyword(Keyword[typing.List[PVTTable[Number]]]):
         zero rows - a standalone primary-key line with no row data on it,
         which some decks use instead of the inline form.
         """
-        tables: typing.List[PVTTable] = []
+        tables: list[PVTTable] = []
         current_table: PVTTable = []
-        current_pk_value: typing.Optional[float] = None
+        current_pk_value: float | None = None
         pk_column_name = self.primary_key
         assert pk_column_name is not None  # guarded by caller
         n_columns = len(self.columns)
@@ -1007,9 +987,7 @@ def timedelta_to_timeunit(delta: datetime.timedelta, time_unit: TimeUnit) -> int
     return delta.days * c.HOURS_PER_DAY
 
 
-def get_schedule_times(
-    deck: Deck, time_unit: TimeUnit = "days"
-) -> typing.Dict[int, float]:
+def get_schedule_times(deck: Deck, time_unit: TimeUnit = "days") -> dict[int, float]:
     """
     One linear pass over `deck.records` (already in file order), mapping
     each record's `.start` offset to the elapsed-time clock value in effect
@@ -1033,7 +1011,7 @@ def get_schedule_times(
     # This makes sure `DATES`-based elapsed time is correct even when the first `DATES`
     # entry is not the same as `START`.
     start_record = deck.first_record_for("START")
-    start_date: typing.Optional[datetime.date] = None
+    start_date: datetime.date | None = None
     if start_record is not None:
         start_body = start_record.body.split("/", 1)[0]
         start_tokens = tokenize(start_body, expand_repeats=True)
@@ -1043,15 +1021,13 @@ def get_schedule_times(
             except DeckParseError:
                 pass  # Malformed `START`. Fall back to lazy discovery
 
-    times: typing.Dict[int, float] = {}
+    times: dict[int, float] = {}
     current_time = 0.0
 
     for record in deck.records:
         if record.keyword == "TSTEP":
             body = record.body.split("/", 1)[0]
-            step_sum = sum(
-                float(token) for token in tokenize(body, expand_repeats=True) if token
-            )
+            step_sum = sum(float(token) for token in tokenize(body, expand_repeats=True) if token)
             current_time += step_sum
             times[record.start] = current_time
 
@@ -1101,26 +1077,20 @@ class ScheduledRecordKeyword(RepeatedRecordKeyword[typing.Union[T, float]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
         time_unit: TimeUnit = "days",
-    ) -> typing.Optional[
-        typing.List[typing.Dict[str, typing.Optional[typing.Union[T, float]]]]
-    ]:
+    ) -> list[dict[str, T | float | None]] | None:
         records = deck.records_for(self.name)
         if not records:
             return None
 
         times = (
-            schedule_times
-            if schedule_times is not None
-            else get_schedule_times(deck, time_unit)
+            schedule_times if schedule_times is not None else get_schedule_times(deck, time_unit)
         )
-        results: typing.List[
-            typing.Dict[str, typing.Optional[typing.Union[T, float]]]
-        ] = []
+        results: list[dict[str, T | float | None]] = []
         for record in records:
             schedule_time = times.get(record.start, 0.0)
             for line in record.body.split("/"):

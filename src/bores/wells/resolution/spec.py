@@ -1,13 +1,10 @@
-import typing
 
 import attrs
 
 from bores.constants import c
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import FluidPhase, Integer, Number
-from bores.wells.controls import Limit
-from bores.wells.states import PhaseValues
+from bores.typing import Integer, Number
 
 __all__ = ["ControlResolverSpec"]
 
@@ -20,11 +17,11 @@ class ControlResolverSpec(Serializable):
     Solver tunables for well control resolution.
     """
 
-    max_fixed_point_iterations: typing.Optional[Integer] = None
-    rate_convergence_tolerance: typing.Optional[Number] = None
-    max_bisection_iterations: typing.Optional[Integer] = None
-    producer_bhp_floor: typing.Optional[Number] = None
-    injector_bhp_bracket_multiplier: typing.Optional[Number] = None
+    max_fixed_point_iterations: Integer | None = None
+    rate_convergence_tolerance: Number | None = None
+    max_bisection_iterations: Integer | None = None
+    producer_bhp_floor: Number | None = None
+    injector_bhp_bracket_multiplier: Number | None = None
 
     def __attrs_post_init__(self) -> None:
         if self.max_fixed_point_iterations is None:
@@ -59,8 +56,7 @@ class ControlResolverSpec(Serializable):
             )
         elif self.max_bisection_iterations < 1:
             raise ValidationError(
-                "`max_bisection_iterations` must be >= 1; got "
-                f"{self.max_bisection_iterations}."
+                f"`max_bisection_iterations` must be >= 1; got {self.max_bisection_iterations}."
             )
 
         if self.producer_bhp_floor is None:

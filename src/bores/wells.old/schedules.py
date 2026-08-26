@@ -67,12 +67,11 @@ class EventPredicates(Serializable, typing.Generic[WellT, Coordinates]):
         results = (predicate(well, state) for predicate in self.predicates)
         return any(results) if self.on_any else all(results)
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize the composite predicate."""
         return {
             "predicates": [
-                serialize_event_predicate(predicate, recurse)
-                for predicate in self.predicates
+                serialize_event_predicate(predicate, recurse) for predicate in self.predicates
             ],
             "on_any": self.on_any,
         }
@@ -81,13 +80,10 @@ class EventPredicates(Serializable, typing.Generic[WellT, Coordinates]):
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         """Deserialize the composite predicate."""
         if "predicates" not in data or "on_any" not in data:
-            raise DeserializationError(
-                "Invalid data for well predicates deserialization"
-            )
+            raise DeserializationError("Invalid data for well predicates deserialization")
 
         predicates = [
-            deserialize_event_predicate(predicate_data)
-            for predicate_data in data["predicates"]
+            deserialize_event_predicate(predicate_data) for predicate_data in data["predicates"]
         ]
         return cls(*predicates, on_any=data["on_any"])
 
@@ -117,13 +113,9 @@ class EventActions(Serializable, typing.Generic[WellT, Coordinates]):
         for action in self.actions:
             action(well, state)
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize the composite action."""
-        return {
-            "actions": [
-                serialize_event_action(action, recurse) for action in self.actions
-            ]
-        }
+        return {"actions": [serialize_event_action(action, recurse) for action in self.actions]}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
@@ -131,9 +123,7 @@ class EventActions(Serializable, typing.Generic[WellT, Coordinates]):
         if "actions" not in data:
             raise DeserializationError("Invalid data for well actions deserialization")
 
-        actions = [
-            deserialize_event_action(action_data) for action_data in data["actions"]
-        ]
+        actions = [deserialize_event_action(action_data) for action_data in data["actions"]]
         return cls(*actions)
 
 
@@ -141,13 +131,13 @@ class EventActions(Serializable, typing.Generic[WellT, Coordinates]):
 class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
     """A predicate that can be serialized and composed with complex expressions."""
 
-    _func: typing.Optional[PredicateFunc[WellT, ModelState[Coordinates]]] = attrs.field(
+    _func: PredicateFunc[WellT, ModelState[Coordinates]] | None = attrs.field(
         default=None, repr=False
     )
     """The underlying predicate function. If None, this is a composite predicate."""
-    _op: typing.Optional[typing.Literal["and", "or", "not"]] = attrs.field(default=None)
+    _op: typing.Literal["and", "or", "not"] | None = attrs.field(default=None)
     """The logical operation for composite predicates."""
-    _operands: typing.Tuple[Self, ...] = attrs.field(factory=tuple)
+    _operands: tuple[Self, ...] = attrs.field(factory=tuple)
     """The operand predicates for composite predicates."""
 
     @classmethod
@@ -156,9 +146,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         return cls(_func=func)
 
     @classmethod
-    def from_event_predicates(
-        cls, event_predicates: EventPredicates[WellT, Coordinates]
-    ) -> Self:
+    def from_event_predicates(cls, event_predicates: EventPredicates[WellT, Coordinates]) -> Self:
         """
         Create `EventPredicate` from `EventPredicates` for interoperability.
 
@@ -200,7 +188,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         raise ValueError("Invalid EventPredicate state: no func or op defined")
 
     def __and__(
-        self, other: typing.Union[Self, PredicateFunc[WellT, ModelState[Coordinates]]]
+        self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]
     ) -> Self:
         """Combine with AND logic: self & other"""
         if not isinstance(other, EventPredicate):
@@ -208,7 +196,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         return self.__class__(_op="and", _operands=(self, other))  # type: ignore
 
     def __or__(
-        self, other: typing.Union[Self, PredicateFunc[WellT, ModelState[Coordinates]]]
+        self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]
     ) -> Self:
         """Combine with OR logic: self | other"""
         if not isinstance(other, EventPredicate):
@@ -219,7 +207,7 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
         """Invert with NOT logic: ~self"""
         return self.__class__(_op="not", _operands=(self,))  # type: ignore
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize the predicate expression."""
         if self._func is not None:
             # Leaf node, serialize the underlying function
@@ -254,11 +242,11 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
 class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
     """An action that can be serialized and composed."""
 
-    _func: typing.Optional[ActionFunc[WellT, ModelState[Coordinates]]] = attrs.field(
+    _func: ActionFunc[WellT, ModelState[Coordinates]] | None = attrs.field(
         default=None, repr=False
     )
     """The underlying action function. If None, this is a composite action."""
-    _actions: typing.Tuple[Self, ...] = attrs.field(factory=tuple)
+    _actions: tuple[Self, ...] = attrs.field(factory=tuple)
     """The chained actions for composite actions."""
 
     @classmethod
@@ -292,7 +280,7 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
                 action(well, state)  # type: ignore
 
     def __and__(
-        self, other: typing.Union[Self, ActionFunc[WellT, ModelState[Coordinates]]]
+        self, other: Self | ActionFunc[WellT, ModelState[Coordinates]]
     ) -> Self:
         """Chain actions: self & other (execute both in sequence)"""
         if not isinstance(other, EventAction):
@@ -303,7 +291,7 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
         right_actions = other._actions if other._func is None else (other,)
         return self.__class__(_actions=left_actions + right_actions)  # type: ignore
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize the action."""
         if self._func is not None:
             # Leaf node, serialize the underlying function
@@ -333,8 +321,8 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
         raise DeserializationError(f"Unknown EventAction type: {action_type}")
 
 
-_HOOKS: typing.Dict[str, PredicateFunc[Well, ModelState]] = {}
-_ACTIONS: typing.Dict[str, ActionFunc[Well, ModelState]] = {}
+_HOOKS: dict[str, PredicateFunc[Well, ModelState]] = {}
+_ACTIONS: dict[str, ActionFunc[Well, ModelState]] = {}
 _predicate_lock = threading.Lock()
 _action_lock = threading.Lock()
 
@@ -348,7 +336,7 @@ def event_predicate(
 @typing.overload
 def event_predicate(
     func: None = None,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> typing.Callable[
     [PredicateFunc[WellT, ModelState[Coordinates]]],
@@ -359,22 +347,16 @@ def event_predicate(
 @typing.overload
 def event_predicate(
     func: PredicateFunc[WellT, ModelState[Coordinates]],
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> PredicateFunc[WellT, ModelState[Coordinates]]: ...
 
 
 def event_predicate(
-    func: typing.Optional[PredicateFunc] = None,
-    name: typing.Optional[str] = None,
+    func: PredicateFunc | None = None,
+    name: str | None = None,
     override: bool = False,
-) -> typing.Union[
-    PredicateFunc[WellT, ModelState[Coordinates]],
-    typing.Callable[
-        [PredicateFunc[WellT, ModelState[Coordinates]]],
-        PredicateFunc[WellT, ModelState[Coordinates]],
-    ],
-]:
+) -> PredicateFunc[WellT, ModelState[Coordinates]] | typing.Callable[[PredicateFunc[WellT, ModelState[Coordinates]]], PredicateFunc[WellT, ModelState[Coordinates]]]:
     """
     Register a well predicate function for serialization.
 
@@ -418,7 +400,7 @@ def event_action(
 @typing.overload
 def event_action(
     func: None = None,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> typing.Callable[
     [ActionFunc[WellT, ModelState[Coordinates]]],
@@ -429,22 +411,16 @@ def event_action(
 @typing.overload
 def event_action(
     func: ActionFunc[WellT, ModelState[Coordinates]],
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> ActionFunc[WellT, ModelState[Coordinates]]: ...
 
 
 def event_action(
-    func: typing.Optional[ActionFunc[WellT, ModelState[Coordinates]]] = None,
-    name: typing.Optional[str] = None,
+    func: ActionFunc[WellT, ModelState[Coordinates]] | None = None,
+    name: str | None = None,
     override: bool = False,
-) -> typing.Union[
-    ActionFunc[WellT, ModelState[Coordinates]],
-    typing.Callable[
-        [ActionFunc[WellT, ModelState[Coordinates]]],
-        ActionFunc[WellT, ModelState[Coordinates]],
-    ],
-]:
+) -> ActionFunc[WellT, ModelState[Coordinates]] | typing.Callable[[ActionFunc[WellT, ModelState[Coordinates]]], ActionFunc[WellT, ModelState[Coordinates]]]:
     """
     Register a well action function for serialization.
 
@@ -478,13 +454,13 @@ def event_action(
     return decorator
 
 
-def list_event_predicates() -> typing.List[str]:
+def list_event_predicates() -> list[str]:
     """List all registered well event predicates."""
     with _predicate_lock:
         return list(_HOOKS.keys())
 
 
-def list_event_actions() -> typing.List[str]:
+def list_event_actions() -> list[str]:
     """List all registered well event actions."""
     with _action_lock:
         return list(_ACTIONS.keys())
@@ -524,7 +500,7 @@ def get_event_action(name: str) -> ActionFunc[Well, ModelState]:
 
 def serialize_event_predicate(
     predicate: PredicateFunc[WellT, ModelState], recurse: bool = True
-) -> typing.Dict[str, typing.Any]:
+) -> dict[str, typing.Any]:
     """
     Serialize a well event predicate function.
 
@@ -583,16 +559,12 @@ def deserialize_event_predicate(
 
     elif predicate_type == "time_predicate":
         if "data" not in data:
-            raise DeserializationError(
-                "Invalid data for time predicate deserialization"
-            )
+            raise DeserializationError("Invalid data for time predicate deserialization")
         return TimePredicate.load(data["data"])
 
     elif predicate_type == "composite_predicates":
         if "data" not in data:
-            raise DeserializationError(
-                "Invalid data for composite predicates deserialization"
-            )
+            raise DeserializationError("Invalid data for composite predicates deserialization")
         return EventPredicates.load(data["data"])
 
     raise DeserializationError(
@@ -602,7 +574,7 @@ def deserialize_event_predicate(
 
 def serialize_event_action(
     action: ActionFunc[WellT, ModelState], recurse: bool = True
-) -> typing.Optional[typing.Dict[str, typing.Any]]:
+) -> dict[str, typing.Any] | None:
     """
     Serialize a well event action function.
 
@@ -665,9 +637,7 @@ def deserialize_event_action(
 
     elif action_type == "composite_actions":
         if "data" not in data:
-            raise DeserializationError(
-                "Invalid data for composite actions deserialization"
-            )
+            raise DeserializationError("Invalid data for composite actions deserialization")
         return EventActions.load(data["data"])
 
     raise DeserializationError(
@@ -692,9 +662,7 @@ class WellEvent(Serializable, typing.Generic[Coordinates]):
     action: ActionFunc[Well[Coordinates, WellFluid], typing.Any]
     """A callable action that takes the well and model state as arguments and performs the event action."""
 
-    def __call__(
-        self, well: Well[Coordinates, WellFluid], state: ModelState[Coordinates]
-    ) -> None:
+    def __call__(self, well: Well[Coordinates, WellFluid], state: ModelState[Coordinates]) -> None:
         """
         Apply this schedule to a well.
 
@@ -703,7 +671,7 @@ class WellEvent(Serializable, typing.Generic[Coordinates]):
         """
         self.action(well, state)
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize the well event."""
         return {
             "predicate": serialize_event_predicate(self.predicate, recurse),
@@ -738,11 +706,9 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
     ```
     """
 
-    events: typing.Dict[str, WellEvent[Coordinates]] = attrs.field(
-        factory=dict, init=False
-    )
+    events: dict[str, WellEvent[Coordinates]] = attrs.field(factory=dict, init=False)
     """A dictionary mapping time steps to scheduled events."""
-    _events_hashes: typing.Dict[int, str] = attrs.field(factory=dict, init=False)
+    _events_hashes: dict[int, str] = attrs.field(factory=dict, init=False)
     """A set to track hashes of added events for uniqueness."""
 
     def add(self, id_: str, /, event: WellEvent[Coordinates]) -> None:
@@ -755,7 +721,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
         self.events[id_] = event
         self._events_hashes[hash(event)] = id_
 
-    def remove(self, o: typing.Union[WellEvent[Coordinates], str], /) -> None:
+    def remove(self, o: WellEvent[Coordinates] | str, /) -> None:
         """
         Removes an event from the schedule if it exists.
 
@@ -779,7 +745,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
         self.events.clear()
         self._events_hashes.clear()
 
-    def get(self, id_: str, /) -> typing.Optional[WellEvent[Coordinates]]:
+    def get(self, id_: str, /) -> WellEvent[Coordinates] | None:
         """
         Retrieves an event from the schedule by its identifier.
 
@@ -811,7 +777,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
         self.events[id_] = event
         self._events_hashes[hash(event)] = id_
 
-    def __contains__(self, o: typing.Union[WellEvent, str], /) -> bool:
+    def __contains__(self, o: WellEvent | str, /) -> bool:
         """
         Checks if an event or its identifier is in the schedule.
 
@@ -863,7 +829,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
             combined_schedule.add(id_, event)
         return combined_schedule
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {"events": {id_: event.dump() for id_, event in self.events.items()}}
 
     @classmethod
@@ -871,10 +837,7 @@ class WellSchedule(Serializable, typing.Generic[Coordinates]):
         if "events" not in data:
             raise DeserializationError("Invalid data for well schedule deserialization")
 
-        events = {
-            id_: WellEvent.load(event_data)
-            for id_, event_data in data["events"].items()
-        }
+        events = {id_: WellEvent.load(event_data) for id_, event_data in data["events"].items()}
         schedule = cls()
         for id_, event in events.items():
             schedule.add(id_, event)
@@ -899,9 +862,7 @@ class WellSchedules(StoreSerializable, typing.Generic[Coordinates]):
     ```
     """
 
-    schedules: typing.Dict[str, WellSchedule[Coordinates]] = attrs.field(
-        factory=dict, init=False
-    )
+    schedules: dict[str, WellSchedule[Coordinates]] = attrs.field(factory=dict, init=False)
     """A dictionary mapping well names to their schedules."""
 
     def add(self, well_name: str, schedule: WellSchedule[Coordinates]) -> None:
@@ -913,7 +874,7 @@ class WellSchedules(StoreSerializable, typing.Generic[Coordinates]):
         """
         self.schedules[well_name] = schedule
 
-    def get(self, well_name: str) -> typing.Optional[WellSchedule[Coordinates]]:
+    def get(self, well_name: str) -> WellSchedule[Coordinates] | None:
         """
         Retrieves the schedule for a given well by its name.
 
@@ -991,20 +952,17 @@ class WellSchedules(StoreSerializable, typing.Generic[Coordinates]):
                 schedule.apply(well, state)  # type: ignore
         return None
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {
             "schedules": {
-                well_name: schedule.dump()
-                for well_name, schedule in self.schedules.items()
+                well_name: schedule.dump() for well_name, schedule in self.schedules.items()
             }
         }
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
         if "schedules" not in data:
-            raise DeserializationError(
-                "Invalid data for well schedules deserialization"
-            )
+            raise DeserializationError("Invalid data for well schedules deserialization")
 
         schedules = {
             well_name: WellSchedule.load(schedule_data)
@@ -1022,8 +980,8 @@ class TimePredicate(
 ):
     def __init__(
         self,
-        time_step: typing.Optional[int] = None,
-        time: typing.Optional[float] = None,
+        time_step: int | None = None,
+        time: float | None = None,
     ):
         """
         Initializes the well time predicate with either a specific time step or time.
@@ -1074,11 +1032,11 @@ class UpdateAction(
 ):
     def __init__(
         self,
-        control: typing.Optional[WellControl] = None,
-        skin_factor: typing.Optional[float] = None,
-        is_active: typing.Optional[bool] = None,
-        injected_fluid: typing.Optional[InjectedFluid] = None,
-        produced_fluids: typing.Optional[typing.Sequence[ProducedFluid]] = None,
+        control: WellControl | None = None,
+        skin_factor: float | None = None,
+        is_active: bool | None = None,
+        injected_fluid: InjectedFluid | None = None,
+        produced_fluids: typing.Sequence[ProducedFluid] | None = None,
     ):
         """
         Initializes the well update action with properties to update.
@@ -1138,8 +1096,8 @@ class UpdateAction(
 
 
 def time_predicate(
-    time_step: typing.Optional[int] = None,
-    time: typing.Optional[float] = None,
+    time_step: int | None = None,
+    time: float | None = None,
 ) -> PredicateFunc[Well, ModelState]:
     """
     Returns a predicate function that triggers at a specific time step or time.
@@ -1152,11 +1110,11 @@ def time_predicate(
 
 
 def update_well(
-    control: typing.Optional[WellControl] = None,
-    skin_factor: typing.Optional[float] = None,
-    is_active: typing.Optional[bool] = None,
-    injected_fluid: typing.Optional[InjectedFluid] = None,
-    produced_fluids: typing.Optional[typing.Sequence[ProducedFluid]] = None,
+    control: WellControl | None = None,
+    skin_factor: float | None = None,
+    is_active: bool | None = None,
+    injected_fluid: InjectedFluid | None = None,
+    produced_fluids: typing.Sequence[ProducedFluid] | None = None,
 ) -> ActionFunc[Well, ModelState]:
     """
     Returns an action function that modifies well configuration.

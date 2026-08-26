@@ -23,7 +23,7 @@ __all__ = ["JSONStore"]
 logger = logging.getLogger(__name__)
 
 
-class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
+class JSONStore(DataStore[SerializableT, list[typing.Any]]):
     """
     JSON-based storage.  Human-readable, no compression.  Good for configs.
 
@@ -42,7 +42,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
     ```python
     with store(mode="a"):
         for item in items:
-            store.append(item)   # in-memory only
+            store.append(item)  # in-memory only
     # <- file written once here by close()
     ```
 
@@ -55,7 +55,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
 
     def __init__(
         self,
-        filepath: typing.Union[PathLike, str],
+        filepath: PathLike | str,
     ):
         """
         Initialize the store
@@ -91,14 +91,10 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
                 with open(self.filepath, "rb") as f:
                     content = f.read()
                     self._handle = orjson.loads(content) if content.strip() else []
-            logger.debug(
-                f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath}"
-            )
+            logger.debug(f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath}")
         except Exception as exc:
             self._handle = None
-            raise StorageError(
-                f"Failed to open {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to open {self.__class__.__name__}: {exc}") from exc
 
     def close(self) -> None:
         """
@@ -115,9 +111,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
                 f"{self.__class__.__name__} closed (wrote {len(self._handle)} entries): {self.filepath}"
             )
         except Exception as exc:
-            raise StorageError(
-                f"Failed to close/write {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to close/write {self.__class__.__name__}: {exc}") from exc
         finally:
             self._handle = None
 
@@ -125,10 +119,8 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
     def dump(
         self,
         data: typing.Iterable[SerializableT],
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> None:
         items = []
         for index, item in enumerate(data):
@@ -152,7 +144,7 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
                 f.write(safe_json_dumps(items))
 
     @reraise_storage_error
-    def entries(self) -> typing.List[EntryMeta]:
+    def entries(self) -> list[EntryMeta]:
         if self._handle is not None:
             items = self._handle
         else:
@@ -173,10 +165,10 @@ class JSONStore(DataStore[SerializableT, typing.List[typing.Any]]):
     @reraise_storage_error
     def load(
         self,
-        typ: typing.Type[SerializableT],
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
+        typ: type[SerializableT],
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: DataValidator[SerializableT] | None = None,
     ) -> typing.Generator[SerializableT, None, None]:
         if self._handle is not None:
             items = list(self._handle)

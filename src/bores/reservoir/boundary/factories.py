@@ -26,10 +26,10 @@ __all__ = ["make_boundary_region", "make_axis_aligned_boundary_conditions"]
 def make_boundary_region(
     name: str,
     grid: Grid,
-    side: typing.Union[Side, str],
+    side: Side | str,
     condition: BoundaryCondition,
     *,
-    classified: typing.Optional[typing.Mapping[Side, IntArray[OneDimension]]] = None,
+    classified: typing.Mapping[Side, IntArray[OneDimension]] | None = None,
 ) -> BoundaryRegion:
     """
     Build a `BoundaryRegion` covering one axis-aligned flank of `grid`.
@@ -71,10 +71,10 @@ def make_boundary_region(
 
 def make_axis_aligned_boundary_conditions(
     grid: Grid,
-    sides: typing.Mapping[typing.Union[Side, str], BoundaryCondition],
+    sides: typing.Mapping[Side | str, BoundaryCondition],
     *,
-    default: typing.Optional[BoundaryCondition] = None,
-    unit_system: typing.Optional[UnitSystem] = None,
+    default: BoundaryCondition | None = None,
+    unit_system: UnitSystem | None = None,
 ) -> BoundaryConditions:
     """
     Build a complete `BoundaryConditions` from a `{side: condition}` mapping
@@ -117,7 +117,7 @@ def make_axis_aligned_boundary_conditions(
     classified = classify_boundary_faces(grid)
     resolved_sides = {resolve_side(key): condition for key, condition in sides.items()}
 
-    regions: typing.List[BoundaryRegion] = []
+    regions: list[BoundaryRegion] = []
     for side in Side:
         condition = resolved_sides.get(side, default)
         if condition is None:
@@ -126,8 +126,7 @@ def make_axis_aligned_boundary_conditions(
         positions = classified[side]
         if len(positions) == 0:
             logger.warning(
-                "No boundary faces classified for side %r on this grid; "
-                "skipping region for it.",
+                "No boundary faces classified for side %r on this grid; skipping region for it.",
                 side.value,
             )
             continue

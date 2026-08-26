@@ -40,7 +40,7 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 # Gmsh element type ID -> (n_vertices, cell_type_name)
 # Only 3-D volumetric elements supported for simulation grids.
-_GMSH_ELEM_TYPES: typing.Dict[int, typing.Tuple[int, str]] = {
+_GMSH_ELEM_TYPES: dict[int, tuple[int, str]] = {
     4: (4, "tetra"),
     5: (8, "hexahedron"),
     6: (6, "wedge"),
@@ -53,8 +53,8 @@ def load_msh(
     source: Path,
     *,
     encoding: str = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
@@ -63,8 +63,8 @@ def load_msh(
     source: str,
     *,
     encoding: str = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
@@ -73,8 +73,8 @@ def load_msh(
     source: bytes,
     *,
     encoding: str = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
@@ -82,8 +82,8 @@ def load_msh(
     source: _TextOrPath,
     *,
     encoding: str = "utf-8",
-    unit_system: typing.Optional[UnitSystem] = None,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    unit_system: UnitSystem | None = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
 ) -> Grid:
     """
     Load a Gmsh `.msh` file (ASCII format 2.2) from a path, string, or bytes.
@@ -134,7 +134,7 @@ def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
     raise GridImportError(f"Invalid source: {source!r}")
 
 
-def _extract_section(text: str, section_name: str) -> typing.Optional[str]:
+def _extract_section(text: str, section_name: str) -> str | None:
     """
     Extract the body of a `$SectionName … $EndSectionName` block.
 
@@ -152,7 +152,7 @@ def _extract_section(text: str, section_name: str) -> typing.Optional[str]:
 
 
 def _parse_msh(
-    text: str, metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
+    text: str, metadata: typing.Mapping[str, typing.Any] | None = None
 ) -> Grid:
     """
     Parse a Gmsh MSH v2.2 ASCII text blob into a `bores.grids.base.Grid`.
@@ -170,8 +170,7 @@ def _parse_msh(
         major = int(version_str.split(".")[0])
         if major != 2:
             raise UnsupportedGridFormatError(
-                f"Only Gmsh MSH format version 2 is supported; "
-                f"got version {version_str!r}."
+                f"Only Gmsh MSH format version 2 is supported; got version {version_str!r}."
             )
 
     # $Nodes
@@ -182,13 +181,11 @@ def _parse_msh(
     try:
         n_nodes = int(node_lines[0].strip())
     except (IndexError, ValueError) as exc:
-        raise GridImportError(
-            f"Cannot read node count from $Nodes section: {exc}"
-        ) from exc
+        raise GridImportError(f"Cannot read node count from $Nodes section: {exc}") from exc
 
     # Gmsh node IDs are 1-based; we map them to 0-based indices.
-    node_id_to_index: typing.Dict[int, int] = {}
-    coords: typing.List[typing.Tuple[float, float, float]] = []
+    node_id_to_index: dict[int, int] = {}
+    coords: list[tuple[float, float, float]] = []
     for line in node_lines[1 : n_nodes + 1]:
         parts = line.split()
         if len(parts) < 4:
@@ -211,12 +208,10 @@ def _parse_msh(
     try:
         n_elements = int(elements_lines[0].strip())
     except (IndexError, ValueError) as exc:
-        raise GridImportError(
-            f"Cannot read element count from $Elements section: {exc}"
-        ) from exc
+        raise GridImportError(f"Cannot read element count from $Elements section: {exc}") from exc
 
     # Accumulate cells grouped by type
-    cell_blocks_by_type: typing.Dict[str, typing.List[typing.List[int]]] = {}
+    cell_blocks_by_type: dict[str, list[list[int]]] = {}
     for line in elements_lines[1 : n_elements + 1]:
         parts = line.split()
         if len(parts) < 3:
@@ -263,6 +258,4 @@ def _parse_msh(
             metadata=meta,
         )
     except Exception as exc:
-        raise GridImportError(
-            f"Failed to construct grid from Gmsh elements: {exc}"
-        ) from exc
+        raise GridImportError(f"Failed to construct grid from Gmsh elements: {exc}") from exc

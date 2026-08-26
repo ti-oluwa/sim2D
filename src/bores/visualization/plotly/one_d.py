@@ -20,7 +20,7 @@ from bores.typing import TwoDimensionalGrid
 logger = logging.getLogger(__name__)
 
 
-_active_figures: typing.List[weakref.ref] = []
+_active_figures: list[weakref.ref] = []
 
 
 def _track_figure(figure: go.Figure) -> None:
@@ -85,7 +85,7 @@ class PlotConfig:
     """Figure height in pixels"""
 
     # Display options
-    title: typing.Optional[str] = None
+    title: str | None = None
     """Optional title for plots"""
 
     show_legend: bool = True
@@ -119,10 +119,10 @@ class PlotConfig:
     grid_color: str = "lightgray"
     """Color of grid lines"""
 
-    xaxis_grid_color: typing.Optional[str] = None
+    xaxis_grid_color: str | None = None
     """Color of x-axis grid lines (if None, uses grid_color)"""
 
-    yaxis_grid_color: typing.Optional[str] = None
+    yaxis_grid_color: str | None = None
     """Color of y-axis grid lines (if None, uses grid_color)"""
 
     axis_line_color: str = "black"
@@ -151,7 +151,7 @@ class PlotConfig:
     marker_size: int = 8
     """Default size for markers"""
 
-    bar_width: typing.Optional[float] = None
+    bar_width: float | None = None
     """Width for bars (None = auto)"""
 
     # Layout margins
@@ -178,9 +178,7 @@ class PlotConfig:
     show_hover: bool = True
     """Whether to show hover information"""
 
-    hover_mode: typing.Literal["x", "y", "closest", "x unified", "y unified"] = (
-        "x unified"
-    )
+    hover_mode: typing.Literal["x", "y", "closest", "x unified", "y unified"] = "x unified"
     """Hover mode for interactive plots"""
 
 
@@ -205,7 +203,7 @@ class BaseRenderer(ABC):
     plotly figures from series data.
     """
 
-    def __init__(self, config: typing.Optional[PlotConfig] = None):
+    def __init__(self, config: PlotConfig | None = None):
         """
         Initialize the renderer with optional configuration.
 
@@ -220,7 +218,7 @@ class BaseRenderer(ABC):
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
-        series_names: typing.Optional[typing.Sequence[str]] = None,
+        series_names: typing.Sequence[str] | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -237,15 +235,15 @@ class BaseRenderer(ABC):
 
     def normalize_data(
         self, data: SeriesData
-    ) -> typing.Tuple[typing.List[TwoDimensionalGrid], typing.List[str]]:
+    ) -> tuple[list[TwoDimensionalGrid], list[str]]:
         """
         Normalize input data into a standard format.
 
         :param data: Input data in various formats
         :return: Tuple of (list of arrays with shape (n, 2), list of names)
         """
-        series_list: typing.List[TwoDimensionalGrid] = []
-        names_list: typing.List[str] = []
+        series_list: list[TwoDimensionalGrid] = []
+        names_list: list[str] = []
 
         if isinstance(data, collections.abc.Mapping):
             # Mapping input: {name: data_array}
@@ -253,9 +251,7 @@ class BaseRenderer(ABC):
                 self.validate_series(series_data=series_data, name=name)  # type: ignore
                 series_list.append(series_data)  # type: ignore
                 names_list.append(name)  # type: ignore
-        elif isinstance(data, collections.abc.Sequence) and not isinstance(
-            data, np.ndarray
-        ):
+        elif isinstance(data, collections.abc.Sequence) and not isinstance(data, np.ndarray):
             # Sequence input: [data_array1, data_array2, ...]
             for i, series_data in enumerate(data):
                 self.validate_series(series_data=series_data, name=f"Series {i}")
@@ -281,9 +277,7 @@ class BaseRenderer(ABC):
         if series_data.ndim != 2:
             raise ValidationError(f"Series '{name}' requires 2D data array")
         if series_data.shape[1] != 2:
-            raise ValidationError(
-                f"Series '{name}' requires shape (n, 2) for (x, y) pairs"
-            )
+            raise ValidationError(f"Series '{name}' requires shape (n, 2) for (x, y) pairs")
 
     def normalize_param(
         self,
@@ -291,7 +285,7 @@ class BaseRenderer(ABC):
         default_value: typing.Any,
         num_series: int,
         param_name: str,
-    ) -> typing.List[typing.Any]:
+    ) -> list[typing.Any]:
         """
         Normalize a parameter to a list matching the number of series.
 
@@ -314,7 +308,7 @@ class BaseRenderer(ABC):
             return list(param)
         raise ValidationError(f"Invalid type for {param_name}")
 
-    def get_color(self, index: int, custom_color: typing.Optional[str] = None) -> str:
+    def get_color(self, index: int, custom_color: str | None = None) -> str:
         """
         Get color for a series, either custom or from palette.
 
@@ -329,16 +323,16 @@ class BaseRenderer(ABC):
     def update_layout(
         self,
         figure: go.Figure,
-        title: typing.Optional[str],
+        title: str | None,
         x_label: str,
         y_label: str,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
         log_x: bool = False,
         log_y: bool = False,
         num_series: int = 1,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
     ) -> None:
         """
         Apply common layout settings to a figure.
@@ -359,9 +353,7 @@ class BaseRenderer(ABC):
 
         # Configure legend
         legend_config = dict(
-            orientation="v"
-            if self.config.legend_position in ["left", "right"]
-            else "h",
+            orientation="v" if self.config.legend_position in ["left", "right"] else "h",
             x=1.02
             if self.config.legend_position == "right"
             else (0 if self.config.legend_position == "left" else 0.5),
@@ -385,18 +377,12 @@ class BaseRenderer(ABC):
             )
             if title_text
             else None,
-            xaxis_title=dict(
-                text=x_label, font=dict(size=self.config.axis_title_font_size)
-            ),
-            yaxis_title=dict(
-                text=y_label, font=dict(size=self.config.axis_title_font_size)
-            ),
+            xaxis_title=dict(text=x_label, font=dict(size=self.config.axis_title_font_size)),
+            yaxis_title=dict(text=y_label, font=dict(size=self.config.axis_title_font_size)),
             width=width if width is not None else self.config.width,
             height=height if height is not None else self.config.height,
             showlegend=self.config.show_legend and num_series > 1,
-            legend=legend_config
-            if self.config.show_legend and num_series > 1
-            else None,
+            legend=legend_config if self.config.show_legend and num_series > 1 else None,
             plot_bgcolor=self.config.plot_background_color,
             paper_bgcolor=self.config.background_color,
             font=dict(family=self.config.font_family, size=self.config.font_size),
@@ -454,28 +440,26 @@ class LineRenderer(BaseRenderer):
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
-        series_names: typing.Optional[typing.Sequence[str]] = None,
-        line_colors: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
-        line_widths: typing.Optional[
-            typing.Union[float, typing.Sequence[float]]
-        ] = None,
-        line_styles: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
+        series_names: typing.Sequence[str] | None = None,
+        line_colors: str | typing.Sequence[str] | None = None,
+        line_widths: float | typing.Sequence[float] | None = None,
+        line_styles: str | typing.Sequence[str] | None = None,
         show_markers: bool = True,
-        marker_sizes: typing.Optional[typing.Union[int, typing.Sequence[int]]] = None,
-        marker_symbols: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
-        marker_colors: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
+        marker_sizes: int | typing.Sequence[int] | None = None,
+        marker_symbols: str | typing.Sequence[str] | None = None,
+        marker_colors: str | typing.Sequence[str] | None = None,
         mode: typing.Literal["lines", "markers", "lines+markers"] = "lines+markers",
-        fill_area: typing.Optional[typing.Union[bool, typing.Sequence[bool]]] = None,
-        fill_colors: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
+        fill_area: bool | typing.Sequence[bool] | None = None,
+        fill_colors: str | typing.Sequence[str] | None = None,
         fill_opacity: float = 0.3,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
         log_x: bool = False,
         log_y: bool = False,
-        hover_template: typing.Optional[str] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
+        hover_template: str | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -587,7 +571,7 @@ class LineRenderer(BaseRenderer):
         )
 
         # Add each series to the figure
-        for i, (series_data, name) in enumerate(zip(series_list, names_list)):
+        for i, (series_data, name) in enumerate(zip(series_list, names_list, strict=False)):
             x_values = series_data[:, 0]
             y_values = series_data[:, 1]
 
@@ -620,9 +604,7 @@ class LineRenderer(BaseRenderer):
             # Create hover template
             if hover_template is None:
                 custom_hover = (
-                    f"<b>{name}</b><br>"
-                    f"{x_label}: %{{x}}<br>"
-                    f"{y_label}: %{{y}}<extra></extra>"
+                    f"<b>{name}</b><br>{x_label}: %{{x}}<br>{y_label}: %{{y}}<extra></extra>"
                 )
             else:
                 custom_hover = hover_template
@@ -684,20 +666,20 @@ class BarRenderer(BaseRenderer):
         data: SeriesData,
         x_label: str = "Category",
         y_label: str = "Value",
-        series_names: typing.Optional[typing.Sequence[str]] = None,
-        bar_colors: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
+        series_names: typing.Sequence[str] | None = None,
+        bar_colors: str | typing.Sequence[str] | None = None,
         bar_mode: typing.Literal["group", "stack", "overlay", "relative"] = "group",
-        bar_width: typing.Optional[float] = None,
+        bar_width: float | None = None,
         show_values: bool = False,
         value_format: str = ".4f",
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
         log_y: bool = False,
-        hover_template: typing.Optional[str] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
-        categories: typing.Optional[typing.Sequence[str]] = None,
+        hover_template: str | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        categories: typing.Sequence[str] | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -753,9 +735,7 @@ class BarRenderer(BaseRenderer):
         # Override with user-provided names
         if series_names is not None:
             if len(series_names) != num_series:
-                raise ValidationError(
-                    "Number of series names must match number of series"
-                )
+                raise ValidationError("Number of series names must match number of series")
             names_list = list(series_names)
 
         # Normalize colors
@@ -767,7 +747,7 @@ class BarRenderer(BaseRenderer):
         )
 
         # Add each series as a bar trace
-        for i, (series_data, name) in enumerate(zip(series_list, names_list)):
+        for i, (series_data, name) in enumerate(zip(series_list, names_list, strict=False)):
             x_values = series_data[:, 0]
             y_values = series_data[:, 1]
 
@@ -776,9 +756,7 @@ class BarRenderer(BaseRenderer):
             # Create hover template
             if hover_template is None:
                 custom_hover = (
-                    f"<b>{name}</b><br>"
-                    f"{x_label}: %{{x}}<br>"
-                    f"{y_label}: %{{y}}<extra></extra>"
+                    f"<b>{name}</b><br>{x_label}: %{{x}}<br>{y_label}: %{{y}}<extra></extra>"
                 )
             else:
                 custom_hover = hover_template
@@ -851,26 +829,20 @@ class TornadoRenderer(BaseRenderer):
     def render(
         self,
         figure: go.Figure,
-        data: typing.Union[
-            TwoDimensionalGrid,  # Shape (n, 3): [low, base, high]
-            typing.Mapping[
-                str, typing.Tuple[float, float, float]
-            ],  # {var: (low, base, high)}
-            SeriesData,  # Also accept standard series data
-        ],
+        data: TwoDimensionalGrid | typing.Mapping[str, tuple[float, float, float]] | SeriesData,
         x_label: str = "Impact",
         y_label: str = "Variable",
-        series_names: typing.Optional[typing.Sequence[str]] = None,
+        series_names: typing.Sequence[str] | None = None,
         positive_color: str = "#2ca02c",
         negative_color: str = "#d62728",
-        base_value: typing.Optional[float] = None,
+        base_value: float | None = None,
         show_values: bool = True,
         value_format: str = ".2f",
         sort_by_impact: bool = True,
-        hover_template: typing.Optional[str] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
+        hover_template: str | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -919,9 +891,7 @@ class TornadoRenderer(BaseRenderer):
             if not isinstance(data, np.ndarray):
                 raise ValidationError("Data must be numpy array or mapping")
             if data.ndim != 2:
-                raise ValidationError(
-                    "Data array must have shape (n, 3) for [low, base, high]"
-                )
+                raise ValidationError("Data array must have shape (n, 3) for [low, base, high]")
             values_array = data
             if series_names is not None:
                 if len(series_names) != len(values_array):
@@ -991,9 +961,7 @@ class TornadoRenderer(BaseRenderer):
         figure.update_layout(
             barmode="overlay",
             title=dict(  # noqa
-                text=title
-                or self.config.title
-                or "Tornado Plot - Sensitivity Analysis",
+                text=title or self.config.title or "Tornado Plot - Sensitivity Analysis",
                 x=0.5,
                 xanchor="center",
                 font=dict(size=self.config.title_font_size),  # noqa
@@ -1054,23 +1022,21 @@ class ScatterRenderer(BaseRenderer):
         data: SeriesData,
         x_label: str = "X",
         y_label: str = "Y",
-        series_names: typing.Optional[typing.Sequence[str]] = None,
-        marker_colors: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
-        marker_sizes: typing.Optional[typing.Union[int, typing.Sequence[int]]] = None,
-        marker_symbols: typing.Optional[typing.Union[str, typing.Sequence[str]]] = None,
+        series_names: typing.Sequence[str] | None = None,
+        marker_colors: str | typing.Sequence[str] | None = None,
+        marker_sizes: int | typing.Sequence[int] | None = None,
+        marker_symbols: str | typing.Sequence[str] | None = None,
         show_trendline: bool = False,
-        trendline_type: typing.Literal[
-            "linear", "polynomial", "exponential"
-        ] = "linear",
+        trendline_type: typing.Literal["linear", "polynomial", "exponential"] = "linear",
         polynomial_order: int = 2,
-        x_range: typing.Optional[typing.Tuple[float, float]] = None,
-        y_range: typing.Optional[typing.Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
         log_x: bool = False,
         log_y: bool = False,
-        hover_template: typing.Optional[str] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
+        hover_template: str | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -1120,9 +1086,7 @@ class ScatterRenderer(BaseRenderer):
         # Override with user-provided names
         if series_names is not None:
             if len(series_names) != num_series:
-                raise ValidationError(
-                    "Number of series names must match number of series"
-                )
+                raise ValidationError("Number of series names must match number of series")
             names_list = list(series_names)
 
         # Normalize parameters
@@ -1146,7 +1110,7 @@ class ScatterRenderer(BaseRenderer):
         )
 
         # Add each series as scatter trace
-        for i, (series_data, name) in enumerate(zip(series_list, names_list)):
+        for i, (series_data, name) in enumerate(zip(series_list, names_list, strict=False)):
             x_values = series_data[:, 0]
             y_values = series_data[:, 1]
 
@@ -1155,9 +1119,7 @@ class ScatterRenderer(BaseRenderer):
             # Create hover template
             if hover_template is None:
                 custom_hover = (
-                    f"<b>{name}</b><br>"
-                    f"{x_label}: %{{x}}<br>"
-                    f"{y_label}: %{{y}}<extra></extra>"
+                    f"<b>{name}</b><br>{x_label}: %{{x}}<br>{y_label}: %{{y}}<extra></extra>"
                 )
             else:
                 custom_hover = hover_template
@@ -1261,14 +1223,14 @@ class Plotter:
     Supports multiple plot types via registered renderers.
     """
 
-    def __init__(self, config: typing.Optional[PlotConfig] = None):
+    def __init__(self, config: PlotConfig | None = None):
         """
         Initialize visualizer with configuration.
 
         :param config: Configuration for all renderers
         """
         self._config = config or PlotConfig()
-        self._renderers: typing.Dict[PlotType, BaseRenderer] = {
+        self._renderers: dict[PlotType, BaseRenderer] = {
             PlotType.LINE: LineRenderer(self._config),
             PlotType.BAR: BarRenderer(self._config),
             PlotType.TORNADO: TornadoRenderer(self._config),
@@ -1280,9 +1242,7 @@ class Plotter:
         """Get the current plot configuration."""
         return self._config
 
-    def register_renderer(
-        self, plot_type: PlotType, renderer_instance: BaseRenderer
-    ) -> None:
+    def register_renderer(self, plot_type: PlotType, renderer_instance: BaseRenderer) -> None:
         """
         Register a renderer for a plot type.
 
@@ -1310,7 +1270,7 @@ class Plotter:
     def make_plot(
         self,
         data: SeriesData,
-        plot_type: typing.Union[PlotType, str] = PlotType.LINE,
+        plot_type: PlotType | str = PlotType.LINE,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -1338,16 +1298,14 @@ class Plotter:
     def make_plots(
         self,
         data_list: typing.Sequence[SeriesData],
-        plot_types: typing.Union[
-            PlotType, str, typing.Sequence[typing.Union[PlotType, str]]
-        ] = PlotType.LINE,
+        plot_types: PlotType | str | typing.Sequence[PlotType | str] = PlotType.LINE,
         rows: int = 1,
         cols: int = 1,
-        subplot_titles: typing.Optional[typing.Sequence[str]] = None,
+        subplot_titles: typing.Sequence[str] | None = None,
         shared_xaxes: bool = True,
         shared_yaxes: bool = True,
-        vertical_spacing: typing.Optional[float] = None,
-        horizontal_spacing: typing.Optional[float] = None,
+        vertical_spacing: float | None = None,
+        horizontal_spacing: float | None = None,
         **kwargs: typing.Any,
     ) -> go.Figure:
         """
@@ -1383,9 +1341,7 @@ class Plotter:
         if isinstance(plot_types, PlotType):
             plot_types_list = [plot_types] * len(data_list)
         elif isinstance(plot_types, collections.abc.Sequence):
-            plot_types_list = [
-                PlotType(pt) if isinstance(pt, str) else pt for pt in plot_types
-            ]
+            plot_types_list = [PlotType(pt) if isinstance(pt, str) else pt for pt in plot_types]
         else:
             plot_types_list = [plot_types] * len(data_list)
 
@@ -1396,7 +1352,7 @@ class Plotter:
             )
 
         # Create subplot figure
-        subplot_kwargs: typing.Dict[str, typing.Any] = {
+        subplot_kwargs: dict[str, typing.Any] = {
             "rows": rows,
             "cols": cols,
             "subplot_titles": subplot_titles,
@@ -1411,7 +1367,7 @@ class Plotter:
         figure = make_subplots(**subplot_kwargs)
 
         # Add each plot to its subplot
-        for idx, (data, plot_type) in enumerate(zip(data_list, plot_types_list)):
+        for idx, (data, plot_type) in enumerate(zip(data_list, plot_types_list, strict=False)):
             row = (idx // cols) + 1
             col = (idx % cols) + 1
 
@@ -1434,7 +1390,7 @@ class Plotter:
         _track_figure(figure)
         return figure
 
-    def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
+    def help(self, plot_type: PlotType | None = None) -> str:
         """
         Print help information about available plot types and their parameters.
 
@@ -1446,8 +1402,7 @@ class Plotter:
         from bores.visualization.plotly1d import viz, PlotType
 
         # Get help for all plot types
-        print(viz.help())
-        """
+        print(viz.help())"""
         if plot_type is not None:
             renderer = self.get_renderer(plot_type)
             return renderer.help()
@@ -1481,6 +1436,4 @@ def make_series_plot(
     """
     config = PlotConfig()
     renderer = LineRenderer(config)
-    return renderer.render(
-        data, x_label=x_label, y_label=y_label, title=title, **kwargs
-    )
+    return renderer.render(data, x_label=x_label, y_label=y_label, title=title, **kwargs)

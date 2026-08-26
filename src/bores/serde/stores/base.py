@@ -35,7 +35,7 @@ class EntryMeta(typing.NamedTuple):
     group_name: str
     """Internal storage key (opaque to callers)."""
 
-    meta: typing.Dict[str, str]
+    meta: dict[str, str]
     """JSON serializable metadata dictionary"""
 
 
@@ -96,7 +96,7 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
     can_append: bool = False
 
     def __init__(self) -> None:
-        self._handle: typing.Optional[HandleT] = None
+        self._handle: HandleT | None = None
         """The open handle. `None` means "no persistent handle; open/close per call"."""
 
     @abstractmethod
@@ -150,10 +150,8 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
     def dump(
         self,
         data: typing.Iterable[SerializableT],
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> None:
         """
         Persist *data*, always overwriting any existing content in the store.
@@ -179,10 +177,10 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
     @abstractmethod
     def load(
         self,
-        typ: typing.Type[SerializableT],
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
+        typ: type[SerializableT],
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: DataValidator[SerializableT] | None = None,
     ) -> typing.Generator[SerializableT, None, None]:
         """
         Load and yield items from the store in insertion order.
@@ -209,10 +207,8 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
     def append(
         self,
         item: SerializableT,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> EntryMeta:
         """
         Append a single item to the store without rewriting existing entries.
@@ -237,12 +233,10 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
             its assigned index, group name, and any stored metadata.
         :raises NotImplementedError: If the backend does not support appending.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__!r} does not implement `append(...)`"
-        )
+        raise NotImplementedError(f"{self.__class__.__name__!r} does not implement `append(...)`")
 
     @abstractmethod
-    def entries(self) -> typing.List[EntryMeta]:
+    def entries(self) -> list[EntryMeta]:
         """
         Return metadata for every stored item in insertion order.
 
@@ -272,7 +266,7 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
         """
         return len(self.entries())
 
-    def max_index(self) -> typing.Optional[int]:
+    def max_index(self) -> int | None:
         """
         Return the highest insertion-order index in the store, or `None` if empty.
 
@@ -288,8 +282,8 @@ class DataStore(ABC, typing.Generic[SerializableT, HandleT]):
 
 
 def validate_path(
-    filepath: typing.Union[PathLike, str],
-    expected_extension: typing.Optional[str] = None,
+    filepath: PathLike | str,
+    expected_extension: str | None = None,
     is_directory: bool = False,
     create_if_not_exists: bool = False,
 ) -> Path:
@@ -368,7 +362,7 @@ def _get_group_name(index: int) -> str:
     return f"entry_{index:010d}"
 
 
-def _get_index_from_group_name(name: str) -> typing.Optional[int]:
+def _get_index_from_group_name(name: str) -> int | None:
     """Parse group name of form `entry_NNNNNNNNNN` to integer index, or `None` if not our format."""
     if name.startswith("entry_") and len(name) == 16:
         try:
@@ -409,7 +403,7 @@ class StoreSerializable(Serializable):
     @classmethod
     def read(
         cls, store: DataStore[Self, typing.Any], **load_kwargs: typing.Any
-    ) -> typing.Optional[Self]:
+    ) -> Self | None:
         """
         Read and load a `Serializable` instance from a `DataStore`.
 
@@ -418,9 +412,7 @@ class StoreSerializable(Serializable):
         """
         return next(iter(store.load(cls, **load_kwargs)), None)
 
-    def save(
-        self, store: DataStore[Self, typing.Any], **dump_kwargs: typing.Any
-    ) -> None:
+    def save(self, store: DataStore[Self, typing.Any], **dump_kwargs: typing.Any) -> None:
         """
         Dump and save the `Serializable` instance to a `DataStore`.
 

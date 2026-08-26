@@ -94,13 +94,11 @@ class MobilityCache(typing.NamedTuple):
     """Derivative of total mobility w.r.t. gas saturation, d(lambda_T)/dS_g."""
 
 
-CACHE_FIELDS: typing.Tuple[str, ...] = MobilityCache._fields
+CACHE_FIELDS: tuple[str, ...] = MobilityCache._fields
 
 
 def make_new_cache(n_cells: int, dtype: npt.DTypeLike) -> MobilityCache:
-    return MobilityCache(
-        **{name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS}
-    )
+    return MobilityCache(**{name: np.zeros(n_cells, dtype=dtype) for name in CACHE_FIELDS})
 
 
 @numba.njit(cache=True, parallel=True)
@@ -226,7 +224,7 @@ def _update_mobility_cache(
 def compute_mobility_cache(
     pvt_cache: PVTCache,
     satfunc_cache: SatFuncCache,
-    out: typing.Optional[MobilityCache] = None,
+    out: MobilityCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> MobilityCache:
     """

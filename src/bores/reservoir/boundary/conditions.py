@@ -93,7 +93,7 @@ class BoundaryRegion(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `BoundaryRegion` with the condition rescaled to *target*.
@@ -134,7 +134,7 @@ class BoundaryRegion(StoreSerializable):
             condition=ConstantFluxBoundary(flux=0.0, unit_system=unit_system),
         )
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {
             "name": self.name,
             "face_positions": self.face_positions.tolist(),
@@ -208,12 +208,12 @@ class BoundaryConditions(StoreSerializable):
         in list order; later regions override earlier ones on overlapping faces.
     """
 
-    regions: typing.List[BoundaryRegion] = attrs.field(factory=list)
+    regions: list[BoundaryRegion] = attrs.field(factory=list)
     """
     Ordered list of boundary regions. Evaluated in list order; 
     later regions override earlier ones on overlapping faces.
     """
-    unit_system: typing.Optional[UnitSystem] = None
+    unit_system: UnitSystem | None = None
     """
     Target unit system for all regions. `None` requires every region in
     `regions` to already share the same unit system and then resolves to that
@@ -222,7 +222,7 @@ class BoundaryConditions(StoreSerializable):
 
     def __attrs_post_init__(self) -> None:
         # Warn on overlapping face assignments
-        seen: typing.Dict[int, str] = {}
+        seen: dict[int, str] = {}
         for region in self.regions:
             for position in region.face_positions:
                 position = int(position)
@@ -251,9 +251,7 @@ class BoundaryConditions(StoreSerializable):
             object.__setattr__(self, "unit_system", resolved)
         else:
             converted = [
-                region
-                if region.unit_system == unit_system
-                else region.convert(unit_system)
+                region if region.unit_system == unit_system else region.convert(unit_system)
                 for region in self.regions
             ]
             object.__setattr__(self, "regions", converted)
@@ -264,7 +262,7 @@ class BoundaryConditions(StoreSerializable):
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
-    ) -> typing.Tuple[
+    ) -> tuple[
         NumberArray[OneDimension], NumberArray[OneDimension], BooleanArray[OneDimension]
     ]:
         """
@@ -345,7 +343,7 @@ class BoundaryConditions(StoreSerializable):
             advanced regions swapped in.
         """
         changed = False
-        new_regions: typing.List[BoundaryRegion] = []
+        new_regions: list[BoundaryRegion] = []
         for region in self.regions:
             if len(region.face_positions) == 0:
                 new_regions.append(region)
@@ -379,7 +377,7 @@ class BoundaryConditions(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `BoundaryConditions` with every region's condition
@@ -398,7 +396,7 @@ class BoundaryConditions(StoreSerializable):
         )
 
     def add_region(
-        self, region: BoundaryRegion, unit_system: typing.Optional[UnitSystem] = None
+        self, region: BoundaryRegion, unit_system: UnitSystem | None = None
     ) -> Self:
         """
         Return a new `BoundaryConditions` with *region* appended.
@@ -411,9 +409,7 @@ class BoundaryConditions(StoreSerializable):
             list (lowest override priority among overlapping faces relative to
             later additions).
         """
-        return attrs.evolve(
-            self, regions=[*self.regions, region], unit_system=unit_system
-        )
+        return attrs.evolve(self, regions=[*self.regions, region], unit_system=unit_system)
 
     def remove_region(self, name: str) -> Self:
         """
@@ -428,8 +424,7 @@ class BoundaryConditions(StoreSerializable):
         remaining = [region for region in self.regions if region.name != name]
         if len(remaining) == len(self.regions):
             warnings.warn(
-                f"No boundary region named {name!r} found. "
-                "`remove_region` had no effect.",
+                f"No boundary region named {name!r} found. `remove_region` had no effect.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -448,9 +443,7 @@ class BoundaryConditions(StoreSerializable):
             if region.name == name:
                 return region
         available = [region.name for region in self.regions]
-        raise KeyError(
-            f"No boundary region named {name!r}. Available regions: {available}."
-        )
+        raise KeyError(f"No boundary region named {name!r}. Available regions: {available}.")
 
     @property
     def n_regions(self) -> int:
@@ -466,8 +459,7 @@ class BoundaryConditions(StoreSerializable):
         since the default is no-flow everywhere.
         """
         return all(
-            isinstance(region.condition, ConstantFluxBoundary)
-            and region.condition.is_no_flow()
+            isinstance(region.condition, ConstantFluxBoundary) and region.condition.is_no_flow()
             for region in self.regions
         )
 

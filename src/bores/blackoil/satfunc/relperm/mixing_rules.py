@@ -31,7 +31,6 @@ import numba
 import numpy as np
 from numba.extending import overload
 
-from bores.blackoil.satfunc.utils import build_pchip_interpolant
 from bores.errors import ValidationError
 from bores.typing import (
     MixingRuleDFunc,
@@ -97,7 +96,7 @@ class MixingRule:
     """
 
     func: typing.Union[MixingRuleFunc, "MixingRule"]
-    _dfunc: typing.Optional[MixingRuleDFunc] = attrs.field(default=None, alias="dfunc")
+    _dfunc: MixingRuleDFunc | None = attrs.field(default=None, alias="dfunc")
 
     def __attrs_post_init__(self) -> None:
         # If the wrapped callable advertises its own partial_derivatives,
@@ -498,52 +497,48 @@ def _central_difference_partial_derivatives(
     )
 
 
-_MIXING_RULES: typing.Dict[str, MixingRule] = {}
+_MIXING_RULES: dict[str, MixingRule] = {}
 """Registry of mixing rule functions."""
-_MIXING_RULE_SERIALIZERS: typing.Dict[
+_MIXING_RULE_SERIALIZERS: dict[
     MixingRule, typing.Callable[[MixingRule, bool], typing.Any]
 ] = {}
 """Registry of mixing rule serializers."""
-_MIXING_RULE_DESERIALIZERS: typing.Dict[
-    str, typing.Callable[[typing.Any], MixingRule]
-] = {}
+_MIXING_RULE_DESERIALIZERS: dict[str, typing.Callable[[typing.Any], MixingRule]] = {}
 """Registry of mixing rule deserializers."""
 _lock = threading.Lock()
 
 
 @typing.overload
-def mixing_rule(func: typing.Union[MixingRuleFunc, MixingRule]) -> MixingRule: ...
+def mixing_rule(func: MixingRuleFunc | MixingRule) -> MixingRule: ...
 
 
 @typing.overload
 def mixing_rule(
     func: None = None,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
-    serializer: typing.Optional[typing.Callable[[MixingRule, bool], T]] = None,
-    deserializer: typing.Optional[typing.Callable[[T], MixingRule]] = None,
-) -> typing.Callable[[typing.Union[MixingRuleFunc, MixingRule]], MixingRule]: ...
+    serializer: typing.Callable[[MixingRule, bool], T] | None = None,
+    deserializer: typing.Callable[[T], MixingRule] | None = None,
+) -> typing.Callable[[MixingRuleFunc | MixingRule], MixingRule]: ...
 
 
 @typing.overload
 def mixing_rule(
-    func: typing.Union[MixingRuleFunc, MixingRule],
-    name: typing.Optional[str] = None,
+    func: MixingRuleFunc | MixingRule,
+    name: str | None = None,
     override: bool = False,
-    serializer: typing.Optional[typing.Callable[[MixingRule, bool], T]] = None,
-    deserializer: typing.Optional[typing.Callable[[T], MixingRule]] = None,
+    serializer: typing.Callable[[MixingRule, bool], T] | None = None,
+    deserializer: typing.Callable[[T], MixingRule] | None = None,
 ) -> MixingRule: ...
 
 
 def mixing_rule(
-    func: typing.Optional[typing.Union[MixingRuleFunc, MixingRule]] = None,
-    name: typing.Optional[str] = None,
+    func: MixingRuleFunc | MixingRule | None = None,
+    name: str | None = None,
     override: bool = False,
-    serializer: typing.Optional[typing.Callable[[MixingRule, bool], T]] = None,
-    deserializer: typing.Optional[typing.Callable[[T], MixingRule]] = None,
-) -> typing.Union[
-    MixingRule, typing.Callable[[typing.Union[MixingRuleFunc, MixingRule]], MixingRule]
-]:
+    serializer: typing.Callable[[MixingRule, bool], T] | None = None,
+    deserializer: typing.Callable[[T], MixingRule] | None = None,
+) -> MixingRule | typing.Callable[[MixingRuleFunc | MixingRule], MixingRule]:
     """
     Decorator that registers a mixing rule function or `MixingRule` instance.
 
@@ -560,8 +555,7 @@ def mixing_rule(
 
     ```python
     @mixing_rule
-    def my_rule(kro_w, kro_g, krw, krg, kr_max,
-                water_saturation, oil_saturation, gas_saturation):
+    def my_rule(kro_w, kro_g, krw, krg, kr_max, water_saturation, oil_saturation, gas_saturation):
         return (kro_w + kro_g) / 2.0
     ```
 
@@ -592,7 +586,7 @@ def mixing_rule(
     """
 
     def _register(
-        f: typing.Union[MixingRuleFunc, MixingRule],
+        f: MixingRuleFunc | MixingRule,
     ) -> MixingRule:
         # Determine the registry key
         rule_name = name or getattr(f, "__name__", None)
@@ -662,7 +656,7 @@ def deserialize_mixing_rule(name: str) -> MixingRule:
     )
 
 
-def list_mixing_rules() -> typing.List[str]:
+def list_mixing_rules() -> list[str]:
     """
     List all registered mixing rule names.
 
@@ -743,7 +737,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -803,7 +797,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -892,7 +886,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -972,7 +966,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1023,7 +1017,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1094,7 +1088,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1171,7 +1165,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1246,7 +1240,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1313,7 +1307,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1339,12 +1333,8 @@ def _(
     kw = np.asarray(kro_w, dtype=np.float64)
     kg = np.asarray(kro_g, dtype=np.float64)
     both_zero = (kw <= 0.0) & (kg <= 0.0)
-    dkro_dkro_w = np.where(
-        both_zero, 0.0, np.where(kw > kg, 0.0, np.where(kg > kw, 1.0, 0.5))
-    )
-    dkro_dkro_g = np.where(
-        both_zero, 0.0, np.where(kg > kw, 0.0, np.where(kw > kg, 1.0, 0.5))
-    )
+    dkro_dkro_w = np.where(both_zero, 0.0, np.where(kw > kg, 0.0, np.where(kg > kw, 1.0, 0.5)))
+    dkro_dkro_g = np.where(both_zero, 0.0, np.where(kg > kw, 0.0, np.where(kw > kg, 1.0, 0.5)))
     z = _zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
@@ -1369,7 +1359,7 @@ def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
 
     def _aziz_settari_serializer(
         rule: MixingRule, recurse: bool = True
-    ) -> typing.Dict[str, Number]:
+    ) -> dict[str, Number]:
         return {"a": a, "b": b}
 
     def _aziz_settari_deserializer(data: typing.Any) -> MixingRule:
@@ -1409,7 +1399,7 @@ def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-    ) -> typing.Tuple[
+    ) -> tuple[
         NumberOrArray[NDimension],
         NumberOrArray[NDimension],
         NumberOrArray[NDimension],
@@ -1491,7 +1481,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1587,7 +1577,7 @@ def _(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
-) -> typing.Tuple[
+) -> tuple[
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
     NumberOrArray[NDimension],
@@ -1613,7 +1603,7 @@ def _(
 
 
 def get_mixing_rule_partial_derivatives(
-    rule: typing.Union[MixingRule, MixingRuleFunc],
+    rule: MixingRule | MixingRuleFunc,
     kro_w: NumberOrArray[NDimension],
     kro_g: NumberOrArray[NDimension],
     krw: NumberOrArray[NDimension],

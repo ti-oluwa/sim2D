@@ -34,7 +34,7 @@ class WellGroup(Serializable):
     name: str
     """Group name"""
 
-    parent: typing.Optional[str] = None
+    parent: str | None = None
     """
     `None` only for the implicit root (`name == "FIELD"`); every other
     group must have a parent (possibly `"FIELD"` itself).
@@ -50,7 +50,7 @@ class WellGroup(Serializable):
             )
 
 
-WellGroupTree = typing.Dict[typing.Union[str, WellGroup], "WellGroupTree"]
+WellGroupTree = dict[str | WellGroup, "WellGroupTree"]
 
 
 class WellGroups(
@@ -65,8 +65,7 @@ class WellGroups(
         for name, group in groups.items():
             if group.parent is not None and group.parent not in groups:
                 raise ValidationError(
-                    f"WellGroup {name!r}'s parent {group.parent!r} is not itself "
-                    "a declared group."
+                    f"WellGroup {name!r}'s parent {group.parent!r} is not itself a declared group."
                 )
         self.groups = groups
 
@@ -82,17 +81,15 @@ class WellGroups(
             raise KeyError(f"No group named {name!r}.")
         return group
 
-    def children(self, name: str) -> typing.Tuple[str, ...]:
+    def children(self, name: str) -> tuple[str, ...]:
         """Direct child group names of `name` only (not grandchildren)."""
         if name not in self.groups:
             raise KeyError(f"No group named {name!r}.")
-        return tuple(
-            name for name, group in self.groups.items() if group.parent == name
-        )
+        return tuple(name for name, group in self.groups.items() if group.parent == name)
 
-    def descendants(self, name: str) -> typing.Tuple[str, ...]:
+    def descendants(self, name: str) -> tuple[str, ...]:
         """Every group under `name`, at any depth (not including `name` itself)."""
-        result: typing.List[str] = []
+        result: list[str] = []
         frontier = list(self.children(name))
         while frontier:
             current = frontier.pop()
@@ -147,7 +144,7 @@ class WellGroups(
                 for child in sorted(self.children(name))
             }
 
-        root_key: typing.Union[str, WellGroup]
+        root_key: str | WellGroup
         root_key = self.group(root) if objects else root
         return {root_key: build(root)}
 
@@ -195,7 +192,7 @@ class WellGroups(
             pipe = "│   "
             blank = "    "
 
-        lines: typing.List[str] = [root]
+        lines: list[str] = [root]
 
         def visit(name: str, prefix: str) -> None:
             children = sorted(self.children(name))
@@ -305,9 +302,9 @@ class GroupControl(Serializable):
     active.
     """
 
-    mode: typing.Union[GroupProducerControlMode, GroupInjectorControlMode]
-    target_rate: typing.Optional[Number] = None
-    injected_phase: typing.Optional[FluidPhase] = None
+    mode: GroupProducerControlMode | GroupInjectorControlMode
+    target_rate: Number | None = None
+    injected_phase: FluidPhase | None = None
     """Set only for an injection group (`mode` is a `GroupInjectorControlMode`)."""
     unit_system: UnitSystem = UnitSystem.FIELD
 
@@ -316,7 +313,7 @@ class GroupControl(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a  new `GroupControl` in the *target* unit system.
@@ -345,9 +342,7 @@ class GroupControl(Serializable):
                 if self.mode is GroupProducerControlMode.GRAT
                 else factors["liquid_surface_rate"]
             )
-        return attrs.evolve(
-            self, target_rate=self.target_rate * factor, unit_system=target
-        )
+        return attrs.evolve(self, target_rate=self.target_rate * factor, unit_system=target)
 
 
 class GroupControls(
@@ -366,7 +361,7 @@ class GroupControls(
     def __init__(
         self,
         controls: typing.Mapping[str, GroupControl],
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Initialize the `GroupControls` object.
@@ -397,7 +392,7 @@ class GroupControls(
         self.controls = dict(controls)
         self.unit_system = unit_system
 
-    def get(self, name: str) -> typing.Optional[GroupControl]:
+    def get(self, name: str) -> GroupControl | None:
         return self.controls.get(name)
 
     def set(self, name: str, control: GroupControl) -> None:
@@ -443,7 +438,7 @@ class GroupControls(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a  new `GroupControls` object in the *target* unit system.

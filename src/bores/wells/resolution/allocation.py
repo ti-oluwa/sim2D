@@ -8,7 +8,6 @@ a shortfall when an allocated well can't actually reach its share (e.g.
 hits its own BHP limit). That redistribution loop is not implemented.
 """
 
-import typing
 
 import attrs
 
@@ -26,14 +25,14 @@ from bores.wells.model import WellSystem
 
 __all__ = ["allocate_group_targets"]
 
-PRODUCER_MODE_MAP: typing.Dict[GroupProducerControlMode, ProducerControlMode] = {
+PRODUCER_MODE_MAP: dict[GroupProducerControlMode, ProducerControlMode] = {
     GroupProducerControlMode.ORAT: ProducerControlMode.ORAT,
     GroupProducerControlMode.WRAT: ProducerControlMode.WRAT,
     GroupProducerControlMode.GRAT: ProducerControlMode.GRAT,
     GroupProducerControlMode.LRAT: ProducerControlMode.LRAT,
     GroupProducerControlMode.RESV: ProducerControlMode.RESV,
 }
-INJECTOR_MODE_MAP: typing.Dict[GroupInjectorControlMode, InjectorControlMode] = {
+INJECTOR_MODE_MAP: dict[GroupInjectorControlMode, InjectorControlMode] = {
     GroupInjectorControlMode.RATE: InjectorControlMode.RATE,
     GroupInjectorControlMode.RESV: InjectorControlMode.RESV,
 }
@@ -41,7 +40,7 @@ INJECTOR_MODE_MAP: typing.Dict[GroupInjectorControlMode, InjectorControlMode] = 
 
 def allocate_group_targets(
     group_name: str, well_model: WellSystem
-) -> typing.Dict[str, WellControl]:
+) -> dict[str, WellControl]:
     """
     Allocate `group_name`'s current `GroupControl` target across its
     member wells whose control mode is `GRUP`, by guide rate.
@@ -78,12 +77,10 @@ def allocate_group_targets(
             "directly allocatable rate target."
         )
     if group_control.target_rate is None:
-        raise ValidationError(
-            f"`WellGroup` {group_name!r}'s control has no target_rate."
-        )
+        raise ValidationError(f"`WellGroup` {group_name!r}'s control has no target_rate.")
 
     member_names = well_model.get_wells_in_group(group_name)
-    eligible: typing.List[str] = []
+    eligible: list[str] = []
     for name in member_names:
         control = well_model.controls.get(name)
         if control is None:
@@ -103,7 +100,7 @@ def allocate_group_targets(
     if not eligible:
         return {}
 
-    weights: typing.Dict[str, Number] = {}
+    weights: dict[str, Number] = {}
     for name in eligible:
         guide_rate = well_model.controls[name].guide_rate
         if guide_rate is not None:
@@ -112,7 +109,7 @@ def allocate_group_targets(
             weights[name] = 1.0
     total_weight = sum(weights.values())
 
-    updated: typing.Dict[str, WellControl] = {}
+    updated: dict[str, WellControl] = {}
     for name in eligible:
         share = group_control.target_rate * (weights[name] / total_weight)
         current = well_model.controls[name]

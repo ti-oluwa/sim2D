@@ -30,7 +30,6 @@ in this module because they only ever appear in the SUMMARY (and
 SCHEDULE) sections and share no shape with the vector selectors above.
 """
 
-import typing
 
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck, DeckParseError, tokenize
@@ -57,7 +56,7 @@ __all__ = [
 ]
 
 
-class SummaryVectorKeyword(Keyword[typing.List[str]]):
+class SummaryVectorKeyword(Keyword[list[str]]):
     """
     A SUMMARY-section vector selector (`FOPR`, `WOPR`, `ROIP`, ...).
 
@@ -78,11 +77,11 @@ class SummaryVectorKeyword(Keyword[typing.List[str]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[str]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[str] | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None
@@ -144,7 +143,7 @@ RWIP = SummaryVectorKeyword("RWIP")
 """`RWIP [region1 ...] /` - reservoir water in place, per region (see `ROIP`)."""
 
 
-class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
+class MnemonicReportKeyword(Keyword[dict[str, int | None]]):
     """
     A reporting-control keyword whose body is a list of `MNEMONIC` or
     `MNEMONIC=N` entries (`RPTRST`, `RPTSCHED`).
@@ -159,17 +158,17 @@ class MnemonicReportKeyword(Keyword[typing.Dict[str, typing.Optional[int]]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.Dict[str, typing.Optional[int]]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> dict[str, int | None] | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None
 
         tokens = tokenize(record.body.split("/", 1)[0])
-        result: typing.Dict[str, typing.Optional[int]] = {}
+        result: dict[str, int | None] = {}
         for token in tokens:
             if "=" in token:
                 mnemonic, _, raw_value = token.partition("=")

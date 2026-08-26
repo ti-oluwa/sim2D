@@ -45,9 +45,7 @@ def compute_fluid_density(pressure: Number, temperature: Number, fluid: str) -> 
     return density * c.KILOGRAM_PER_CUBIC_METER_TO_POUNDS_PER_CUBIC_FEET
 
 
-def compute_fluid_viscosity(
-    pressure: Number, temperature: Number, fluid: str
-) -> Number:
+def compute_fluid_viscosity(pressure: Number, temperature: Number, fluid: str) -> Number:
     """
     Compute fluid dynamic viscosity from EOS using CoolProp.
 
@@ -92,9 +90,7 @@ def compute_fluid_compressibility_factor(
     )
 
 
-def compute_fluid_compressibility(
-    pressure: Number, temperature: Number, fluid: str
-) -> Number:
+def compute_fluid_compressibility(pressure: Number, temperature: Number, fluid: str) -> Number:
     """
     Computes the isothermal compressibility of a fluid at a given pressure and temperature.
 
@@ -127,8 +123,8 @@ def compute_total_fluid_compressibility(
     oil_saturation: Number,
     water_compressibility: Number,
     oil_compressibility: Number,
-    gas_saturation: typing.Optional[Number] = None,
-    gas_compressibility: typing.Optional[Number] = None,
+    gas_saturation: Number | None = None,
+    gas_compressibility: Number | None = None,
 ) -> Number:
     """
     Calculates the total fluid compressibility as a saturation-weighted average of
@@ -206,9 +202,7 @@ def compute_hydrocarbon_in_place(
     :return: Free hydrocarbon/water in place (OIP/WIP in STB, and GIP in SCF).
     """
     if hydrocarbon_type not in {"oil", "gas", "water"}:
-        raise ValidationError(
-            "Hydrocarbon type must be either 'oil', 'gas', or 'water'."
-        )
+        raise ValidationError("Hydrocarbon type must be either 'oil', 'gas', or 'water'.")
     if area <= 0 or thickness <= 0:
         raise ValidationError("Area and thickness must be positive values.")
     if porosity < 0 or porosity > 1:

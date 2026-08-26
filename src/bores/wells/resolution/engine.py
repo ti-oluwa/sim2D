@@ -5,7 +5,6 @@ import typing
 from bores.errors import ValidationError
 from bores.typing import Integer, NumberArray, OneDimension
 from bores.wells.compile import (
-    UNSET_INT,
     CompiledWellSystem,
     InjectorControlModeTag,
     ProducerControlModeTag,
@@ -43,7 +42,7 @@ def resolve_control(
     connection_samples: typing.Sequence[ConnectionSample],
     resolution: CompiledWellResolution,
     resolver_spec: CompiledControlResolverSpec,
-    surface_fluid_properties: typing.Optional[SurfaceFluidProperties] = None,
+    surface_fluid_properties: SurfaceFluidProperties | None = None,
 ) -> None:
     """
     Resolves one well's control and writes the result into `resolution`'s
@@ -86,8 +85,7 @@ def resolve_control(
     active_open = [
         i
         for i in range(perf_start, perf_end)
-        if perforations.completion_statuses[i] == 1
-        and perforations.schedule_statuses[i] == 1
+        if perforations.completion_statuses[i] == 1 and perforations.schedule_statuses[i] == 1
     ]
     if not active_open or len(active_open) != len(connection_samples):
         raise ValidationError(
@@ -95,7 +93,7 @@ def resolve_control(
             f"active/open connections but was given {len(connection_samples)} "
             "connection_samples - these must match 1:1."
         )
-    
+
     workspace = build_perforation_workspace(
         well_indices=typing.cast(
             NumberArray[OneDimension], perforations.well_indices[active_open]
@@ -141,9 +139,7 @@ def resolve_control(
             )
         elif control_mode == InjectorControlModeTag.THP:
             if surface_fluid_properties is None:
-                raise ValidationError(
-                    "A THP-mode injector requires `surface_fluid_properties`."
-                )
+                raise ValidationError("A THP-mode injector requires `surface_fluid_properties`.")
             min_pressure, max_pressure = get_default_pressure_bracket(
                 connection_samples, is_injector=True, resolver_spec=resolver_spec
             )
@@ -211,9 +207,7 @@ def resolve_control(
             )
         elif control_mode == ProducerControlModeTag.THP:
             if surface_fluid_properties is None:
-                raise ValidationError(
-                    "A THP-mode producer requires `surface_fluid_properties`."
-                )
+                raise ValidationError("A THP-mode producer requires `surface_fluid_properties`.")
             min_pressure, max_pressure = get_default_pressure_bracket(
                 connection_samples, is_injector=False, resolver_spec=resolver_spec
             )

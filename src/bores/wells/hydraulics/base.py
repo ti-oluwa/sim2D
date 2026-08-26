@@ -49,21 +49,21 @@ class PressureDrop(typing.NamedTuple):
 class SurfaceFluidProperties(typing.NamedTuple):
     """Fluid properties at surface conditions, for computing tubing head pressure."""
 
-    density: typing.Optional[Number] = None
+    density: Number | None = None
     """Mixture density at surface conditions. Required unless `phase_densities` is given."""
 
-    viscosity: typing.Optional[Number] = None
+    viscosity: Number | None = None
     """Mixture viscosity at surface conditions. Required unless `phase_viscosities` is given."""
 
-    phase_densities: typing.Optional[PhaseValues] = None
+    phase_densities: PhaseValues | None = None
     """Density of each phase at surface conditions. Required for a
     two-phase slip correlation such as Beggs & Brill."""
 
-    phase_viscosities: typing.Optional[PhaseValues] = None
+    phase_viscosities: PhaseValues | None = None
     """Viscosity of each phase at surface conditions. Required for a
     two-phase slip correlation such as Beggs & Brill."""
 
-    gas_liquid_surface_tension: typing.Optional[Number] = None
+    gas_liquid_surface_tension: Number | None = None
     """Surface tension between the gas and liquid phases. Required for a
     two-phase slip correlation such as Beggs & Brill."""
 
@@ -83,7 +83,7 @@ class WellBoreModel(typing.NamedTuple):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Converts this model to a different unit system.
@@ -102,9 +102,7 @@ class WellBoreModel(typing.NamedTuple):
 
 
 @numba.njit(cache=True)
-def compute_mixture_density(
-    phase_rates: PhaseValues, phase_densities: PhaseValues
-) -> Number:
+def compute_mixture_density(phase_rates: PhaseValues, phase_densities: PhaseValues) -> Number:
     """
     Computes the no-slip, rate-weighted mixture density of a multiphase stream.
 
@@ -116,9 +114,7 @@ def compute_mixture_density(
     """
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
     if total_rate == 0.0:
-        raise ValueError(
-            "phase_rates sums to zero; use the static no-flow case instead"
-        )
+        raise ValueError("phase_rates sums to zero; use the static no-flow case instead")
     return (
         phase_rates.oil * phase_densities.oil
         + phase_rates.water * phase_densities.water
@@ -127,9 +123,7 @@ def compute_mixture_density(
 
 
 @numba.njit(cache=True)
-def compute_mixture_viscosity(
-    phase_rates: PhaseValues, phase_viscosities: PhaseValues
-) -> Number:
+def compute_mixture_viscosity(phase_rates: PhaseValues, phase_viscosities: PhaseValues) -> Number:
     """
     Computes the no-slip, rate-weighted mixture viscosity of a multiphase stream.
 
@@ -141,9 +135,7 @@ def compute_mixture_viscosity(
     """
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
     if total_rate == 0.0:
-        raise ValueError(
-            "phase_rates sums to zero; use the static no-flow case instead"
-        )
+        raise ValueError("phase_rates sums to zero; use the static no-flow case instead")
     return (
         phase_rates.oil * phase_viscosities.oil
         + phase_rates.water * phase_viscosities.water
@@ -152,9 +144,7 @@ def compute_mixture_viscosity(
 
 
 @numba.njit(cache=True)
-def compute_mixture_velocity(
-    phase_rates: PhaseValues, tubing_inner_diameter: Number
-) -> Number:
+def compute_mixture_velocity(phase_rates: PhaseValues, tubing_inner_diameter: Number) -> Number:
     """
     Computes the no-slip superficial velocity of a multiphase stream in tubing.
 
@@ -166,9 +156,7 @@ def compute_mixture_velocity(
     if tubing_inner_diameter <= 0.0:
         raise ValueError("`tubing_inner_diameter` must be positive")
     cross_sectional_area = math.pi * (tubing_inner_diameter / 2.0) ** 2
-    return (
-        phase_rates.oil + phase_rates.water + phase_rates.gas
-    ) / cross_sectional_area
+    return (phase_rates.oil + phase_rates.water + phase_rates.gas) / cross_sectional_area
 
 
 def compute_surface_mixture_density(
@@ -209,9 +197,7 @@ def compute_surface_mixture_viscosity(
     if properties.viscosity is not None:
         return properties.viscosity
     if properties.phase_viscosities is None:
-        raise ValueError(
-            "`SurfaceFluidProperties` needs viscosity or `phase_viscosities`"
-        )
+        raise ValueError("`SurfaceFluidProperties` needs viscosity or `phase_viscosities`")
     return compute_mixture_viscosity(
         phase_rates=phase_rates, phase_viscosities=properties.phase_viscosities
     )
@@ -252,16 +238,12 @@ def compute_friction_factor(
             return 64.0 / reynolds_number
         if reynolds_number < turbulent_reynolds_limit:
             return 0.316 * reynolds_number**-0.25
-        return (
-            0.25
-            / (math.log10(relative_roughness / 3.7 + 5.74 / reynolds_number**0.9)) ** 2
-        )
+        return 0.25 / (math.log10(relative_roughness / 3.7 + 5.74 / reynolds_number**0.9)) ** 2
 
     friction_factor = 0.02
     for _ in range(friction_max_iterations):
         rhs = -2.0 * math.log10(
-            relative_roughness / 3.7
-            + 2.51 / (reynolds_number * math.sqrt(friction_factor))
+            relative_roughness / 3.7 + 2.51 / (reynolds_number * math.sqrt(friction_factor))
         )
         updated = 1.0 / rhs**2
         if abs(updated - friction_factor) < friction_tolerance:
@@ -289,8 +271,8 @@ def compute_hydrostatic_pressure(
     gravitational_acceleration: Number,
     length: Number,
     unit_system: UnitSystem,
-    gravitational_factor: typing.Optional[Number] = None,
-    hydrostatic_area_factor: typing.Optional[Number] = None,
+    gravitational_factor: Number | None = None,
+    hydrostatic_area_factor: Number | None = None,
 ) -> Number:
     """
     Computes the hydrostatic pressure of a fluid column.
@@ -306,16 +288,12 @@ def compute_hydrostatic_pressure(
     resolved_gravitational_constant = (
         gravitational_factor
         if gravitational_factor is not None
-        else get_unit_system_constant(
-            prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
-        )
+        else get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system)
     )
     resolved_area_factor = (
         hydrostatic_area_factor
         if hydrostatic_area_factor is not None
-        else get_unit_system_constant(
-            prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
-        )
+        else get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system)
     )
     return (density * gravitational_acceleration * length) / (
         resolved_gravitational_constant * resolved_area_factor
@@ -365,17 +343,12 @@ def compute_segment_pressure_drop(
     """
     vertical_length = length * math.cos(inclination_from_vertical)
     hydrostatic_drop = (
-        mixture_density
-        * gravitational_acceleration
-        * vertical_length
-        * hydrostatic_scale
+        mixture_density * gravitational_acceleration * vertical_length * hydrostatic_scale
     )
 
     mean_velocity = 0.5 * (mixture_velocity_in + mixture_velocity_out)
     relative_roughness = (
-        0.0
-        if math.isnan(tubing_roughness)
-        else tubing_roughness / tubing_inner_diameter
+        0.0 if math.isnan(tubing_roughness) else tubing_roughness / tubing_inner_diameter
     )
     reynolds_number = (
         mixture_density * abs(mean_velocity) * tubing_inner_diameter / mixture_viscosity
@@ -398,9 +371,7 @@ def compute_segment_pressure_drop(
             * (mixture_density * mean_velocity**2 / 2.0)
         )
 
-    acceleration_drop = (
-        mixture_density * (mixture_velocity_out**2 - mixture_velocity_in**2) / 2.0
-    )
+    acceleration_drop = mixture_density * (mixture_velocity_out**2 - mixture_velocity_in**2) / 2.0
     return PressureDrop(
         hydrostatic=hydrostatic_drop,
         friction=friction_drop,
@@ -414,8 +385,8 @@ def compute_static_hydrostatic_drop(
     gravitational_acceleration: Number,
     *,
     unit_system: UnitSystem,
-    gravitational_factor: typing.Optional[Number] = None,
-    hydrostatic_area_factor: typing.Optional[Number] = None,
+    gravitational_factor: Number | None = None,
+    hydrostatic_area_factor: Number | None = None,
 ) -> PressureDrop:
     """
     Computes the pressure drop across a static (no-flow) tubing column.
@@ -454,13 +425,9 @@ def compute_static_mixture_density(
     :returns: Saturation-weighted mixture density.
     :raises ValueError: If `phase_saturations` sums to zero.
     """
-    total_saturation = (
-        phase_saturations.oil + phase_saturations.water + phase_saturations.gas
-    )
+    total_saturation = phase_saturations.oil + phase_saturations.water + phase_saturations.gas
     if total_saturation == 0.0:
-        raise ValueError(
-            "`phase_saturations` sums to zero; cannot derive a static density"
-        )
+        raise ValueError("`phase_saturations` sums to zero; cannot derive a static density")
     return (
         phase_saturations.oil * phase_densities.oil
         + phase_saturations.water * phase_densities.water

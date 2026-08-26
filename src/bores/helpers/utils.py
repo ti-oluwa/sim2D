@@ -50,7 +50,7 @@ def pad_grid(
 
 
 @numba.njit(cache=True)
-def get_pad_mask(grid_shape: typing.Tuple[int, ...], pad_width: int = 1) -> np.ndarray:
+def get_pad_mask(grid_shape: tuple[int, ...], pad_width: int = 1) -> np.ndarray:
     """
     Generate a boolean mask for the padded grid indicating the padded regions.
 
@@ -90,9 +90,7 @@ def unpad_grid(
     if ndim == 2:
         unpadded_grid = grid[pad_width:-pad_width, pad_width:-pad_width]
     elif ndim == 3:
-        unpadded_grid = grid[
-            pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width
-        ]
+        unpadded_grid = grid[pad_width:-pad_width, pad_width:-pad_width, pad_width:-pad_width]
     else:
         raise ValueError(
             f"Unsupported grid dimension: {ndim}. Only 2D and 3D grids are supported."
@@ -103,7 +101,7 @@ def unpad_grid(
 
 def coarsen_grid(
     data: np.ndarray,
-    batch_size: typing.Tuple[int, ...],
+    batch_size: tuple[int, ...],
     method: typing.Literal["mean", "sum", "max", "min", "harmonic"] = "mean",
     epsilon: float = 1e-10,
 ) -> np.ndarray:
@@ -132,13 +130,13 @@ def coarsen_grid(
 
     Example:
     ```python
-    data2d = np.arange(16, dtype=float).reshape(4,4)
-    coarsen_grid(data2d, batch_size=(2,2))
+    data2d = np.arange(16, dtype=float).reshape(4, 4)
+    coarsen_grid(data2d, batch_size=(2, 2))
     # array([[ 2.5,  4.5],
     #        [10.5, 12.5]])
 
-    data3d = np.arange(64, dtype=float).reshape(4,4,4)
-    coarsen_grid(data3d, batch_size=(2,2,2), method='max')
+    data3d = np.arange(64, dtype=float).reshape(4, 4, 4)
+    coarsen_grid(data3d, batch_size=(2, 2, 2), method="max")
     # array([[[ 5.,  7.],
     #         [13., 15.]],
     #        [[21., 23.],
@@ -153,13 +151,11 @@ def coarsen_grid(
     # Validate method
     valid_methods = ("mean", "sum", "max", "min", "harmonic")
     if method not in valid_methods:
-        raise ValidationError(
-            f"Unsupported method '{method}'. Must be one of {valid_methods}"
-        )
+        raise ValidationError(f"Unsupported method '{method}'. Must be one of {valid_methods}")
 
     # Calculate padding needed
     pad_width = []
-    for dim, b in zip(data.shape, batch_size):
+    for dim, b in zip(data.shape, batch_size, strict=False):
         remainder = dim % b
         if remainder == 0:
             pad_width.append((0, 0))
@@ -173,14 +169,12 @@ def coarsen_grid(
     elif method == "sum":
         pad_value = 0.0
 
-    data_padded = np.pad(
-        data, pad_width=pad_width, mode="constant", constant_values=pad_value
-    )
+    data_padded = np.pad(data, pad_width=pad_width, mode="constant", constant_values=pad_value)
 
     # Reshape to group blocks along each dimension
     # E.g., (100, 50) with batch (2, 5) -> (50, 2, 10, 5) -> aggregate over axes (1, 3)
     reshape_shape = []
-    for dim, b in zip(data_padded.shape, batch_size):
+    for dim, b in zip(data_padded.shape, batch_size, strict=False):
         reshape_shape.extend([dim // b, b])
 
     data_reshaped = data_padded.reshape(reshape_shape)
@@ -232,7 +226,7 @@ def _coarsen_2d_permeability_grids(
     ky: TwoDimensionalGrid,
     batch_size: TwoDimensions,
     epsilon: float = 1e-10,
-) -> typing.Tuple[TwoDimensionalGrid, TwoDimensionalGrid]:
+) -> tuple[TwoDimensionalGrid, TwoDimensionalGrid]:
     """
     Coarsen 2D permeability grids using direction-appropriate averaging.
 
@@ -252,10 +246,9 @@ def _coarsen_2d_permeability_grids(
     Example:
     ```python
     # 4x4 grid with layered permeability
-    kx = np.array([[100, 100, 100, 100],
-                    [  1,   1,   1,   1],
-                    [100, 100, 100, 100],
-                    [  1,   1,   1,   1]], dtype=float)
+    kx = np.array(
+        [[100, 100, 100, 100], [1, 1, 1, 1], [100, 100, 100, 100], [1, 1, 1, 1]], dtype=float
+    )
     ky = kx.copy()
 
     kx_c, ky_c = _coarsen_2d_permeability_grids(kx, ky, batch_size=(2, 2))
@@ -294,12 +287,8 @@ def _coarsen_2d_permeability_grids(
 
     # Pad grids with NaN
     if pad_x > 0 or pad_y > 0:
-        kx_padded = np.pad(
-            kx, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan
-        )
-        ky_padded = np.pad(
-            ky, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan
-        )
+        kx_padded = np.pad(kx, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan)
+        ky_padded = np.pad(ky, ((0, pad_x), (0, pad_y)), mode="constant", constant_values=np.nan)
     else:
         kx_padded = kx
         ky_padded = ky
@@ -347,7 +336,7 @@ def _coarsen_3d_permeability_grids(
     kz: ThreeDimensionalGrid,
     batch_size: ThreeDimensions,
     epsilon: float = 1e-10,
-) -> typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
+) -> tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
     """
     Coarsen 3D permeability grids using direction-appropriate averaging.
 
@@ -373,10 +362,7 @@ def _coarsen_3d_permeability_grids(
     ky = np.random.uniform(10, 100, (4, 4, 4))
     kz = np.random.uniform(1, 10, (4, 4, 4))  # Lower vertical perm
 
-    kx_c, ky_c, kz_c = _coarsen_3d_permeability_grids(
-        kx, ky, kz,
-        batch_size=(2, 2, 2)
-    )
+    kx_c, ky_c, kz_c = _coarsen_3d_permeability_grids(kx, ky, kz, batch_size=(2, 2, 2))
     # Result: 2x2x2 coarsened grids
     ```
 
@@ -405,9 +391,7 @@ def _coarsen_3d_permeability_grids(
 
     bx, by, bz = batch_size
     if bx < 1 or by < 1 or bz < 1:
-        raise ValidationError(
-            f"All batch_size elements must be >= 1, got ({bx}, {by}, {bz})"
-        )
+        raise ValidationError(f"All batch_size elements must be >= 1, got ({bx}, {by}, {bz})")
 
     nx, ny, nz = kx.shape
 
@@ -481,9 +465,7 @@ def _coarsen_3d_permeability_grids(
     return kx_coarse, ky_coarse, kz_coarse
 
 
-def _axis_harmonic_mean(
-    data: npt.NDArray, axis: int, epsilon: float = 1e-10
-) -> npt.NDArray:
+def _axis_harmonic_mean(data: npt.NDArray, axis: int, epsilon: float = 1e-10) -> npt.NDArray:
     """
     Compute harmonic mean along a specific axis, handling NaN values.
 
@@ -515,15 +497,12 @@ def _axis_harmonic_mean(
 
 
 def coarsen_permeability_grids(
-    kx: typing.Union[TwoDimensionalGrid, ThreeDimensionalGrid],
-    ky: typing.Union[TwoDimensionalGrid, ThreeDimensionalGrid],
-    kz: typing.Optional[ThreeDimensionalGrid] = None,
-    batch_size: typing.Union[TwoDimensions, ThreeDimensions, None] = None,
+    kx: TwoDimensionalGrid | ThreeDimensionalGrid,
+    ky: TwoDimensionalGrid | ThreeDimensionalGrid,
+    kz: ThreeDimensionalGrid | None = None,
+    batch_size: TwoDimensions | ThreeDimensions | None = None,
     epsilon: float = 1e-10,
-) -> typing.Union[
-    typing.Tuple[TwoDimensionalGrid, TwoDimensionalGrid],
-    typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
-]:
+) -> tuple[TwoDimensionalGrid, TwoDimensionalGrid] | tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
     """
     Coarsen permeability grids using direction-appropriate averaging.
 
@@ -581,7 +560,7 @@ def coarsen_permeability_grids(
 
 
 FlattenStrategy = typing.Union[
-    typing.Callable[[npt.NDArray], typing.Union[float, np.floating, npt.NDArray]],
+    typing.Callable[[npt.NDArray], float | np.floating | npt.NDArray],
     typing.Literal["max", "min", "mean", "sum", "top", "bottom", "weighted_mean"],
 ]
 
@@ -589,7 +568,7 @@ FlattenStrategy = typing.Union[
 def flatten_multilayer_grid_to_surface(
     multilayer_grid: ThreeDimensionalGrid,
     strategy: FlattenStrategy = "max",
-    weights: typing.Optional[ThreeDimensionalGrid] = None,
+    weights: ThreeDimensionalGrid | None = None,
     ignore_nan: bool = True,
 ) -> TwoDimensionalGrid:
     """
@@ -627,19 +606,14 @@ def flatten_multilayer_grid_to_surface(
 
     # Average pressure (thickness-weighted)
     p_avg = flatten_multilayer_grid_to_surface(
-        pressure_grid,
-        strategy="weighted_mean",
-        weights=thickness_grid
+        pressure_grid, strategy="weighted_mean", weights=thickness_grid
     )
 
     # Top-of-reservoir porosity
     phi_top = flatten_multilayer_grid_to_surface(porosity_grid, strategy="top")
 
     # Custom strategy: 90th percentile
-    p90 = flatten_multilayer_grid_to_surface(
-        perm_grid,
-        strategy=lambda z: np.nanpercentile(z, 90)
-    )
+    p90 = flatten_multilayer_grid_to_surface(perm_grid, strategy=lambda z: np.nanpercentile(z, 90))
     ```
 
     Notes:
@@ -754,17 +728,15 @@ def flatten_multilayer_grid_to_surface(
         except Exception as exc:
             raise ValidationError(f"Custom strategy function failed: {exc}") from exc
 
-    raise ValidationError(
-        f"`strategy` must be a string or callable, got {type(strategy)}"
-    )
+    raise ValidationError(f"`strategy` must be a string or callable, got {type(strategy)}")
 
 
 def flatten_multilayer_grids(
-    grids: typing.Dict[str, ThreeDimensionalGrid],
-    strategy: typing.Union[FlattenStrategy, typing.Dict[str, FlattenStrategy]] = "max",
-    weights: typing.Optional[typing.Dict[str, ThreeDimensionalGrid]] = None,
+    grids: dict[str, ThreeDimensionalGrid],
+    strategy: FlattenStrategy | dict[str, FlattenStrategy] = "max",
+    weights: dict[str, ThreeDimensionalGrid] | None = None,
     ignore_nan: bool = True,
-) -> typing.Dict[str, TwoDimensionalGrid]:
+) -> dict[str, TwoDimensionalGrid]:
     """
     Flatten multiple 3D grids to 2D surfaces using specified strategies.
 
@@ -780,9 +752,9 @@ def flatten_multilayer_grids(
     Example:
     ```python
     grids_3d = {
-        'oil_saturation': so_grid,
-        'water_saturation': sw_grid,
-        'pressure': p_grid,
+        "oil_saturation": so_grid,
+        "water_saturation": sw_grid,
+        "pressure": p_grid,
     }
 
     # Use same strategy for all
@@ -790,18 +762,14 @@ def flatten_multilayer_grids(
 
     # Use different strategies per grid
     strategies = {
-        'oil_saturation': 'max',
-        'water_saturation': 'mean',
-        'pressure': 'weighted_mean',
+        "oil_saturation": "max",
+        "water_saturation": "mean",
+        "pressure": "weighted_mean",
     }
     weights_dict = {
-        'pressure': thickness_grid,
+        "pressure": thickness_grid,
     }
-    grids_2d = flatten_multilayer_grids(
-        grids_3d,
-        strategy=strategies,
-        weights=weights_dict
-    )
+    grids_2d = flatten_multilayer_grids(grids_3d, strategy=strategies, weights=weights_dict)
     ```
     """
     result = {}
@@ -824,7 +792,7 @@ def flatten_multilayer_grids(
     return result
 
 
-_ORIENTATION_TO_AXIS: typing.Dict[Orientation, int] = {
+_ORIENTATION_TO_AXIS: dict[Orientation, int] = {
     Orientation.X: 0,
     Orientation.Y: 1,
     Orientation.Z: 2,
@@ -832,7 +800,7 @@ _ORIENTATION_TO_AXIS: typing.Dict[Orientation, int] = {
 
 
 def _resolve_axis(
-    orientation: typing.Union[Orientation, typing.Literal["x", "y", "z"]],
+    orientation: Orientation | typing.Literal["x", "y", "z"],
     ndim: int,
 ) -> int:
     """Resolve an `Orientation` (or string) to a numpy axis index."""
@@ -852,9 +820,7 @@ def _resolve_axis(
 def layer_to_link_permeability(
     cell_permeability: npt.NDArray,
     cell_lenghts: npt.NDArray,
-    orientation: typing.Union[
-        Orientation, typing.Literal["x", "y", "z"]
-    ] = Orientation.Z,
+    orientation: Orientation | typing.Literal["x", "y", "z"] = Orientation.Z,
 ) -> npt.NDArray:
     """
     Convert per-cell permeability to inter-cell interface (link) permeability.
@@ -866,7 +832,7 @@ def layer_to_link_permeability(
     dimension-weighted harmonic mean link permeability is:
 
     ```
-    k_link[i] = (d[i] + d[i+1]) / (d[i]/k[i] + d[i+1]/k[i+1])
+    k_link[i] = (d[i] + d[i + 1]) / (d[i] / k[i] + d[i + 1] / k[i + 1])
     ```
 
     where `d[i]` is the cell dimension in the direction of flow (ft).
@@ -906,14 +872,14 @@ def layer_to_link_permeability(
     from bores.grids.utils import layer_to_link_permeability
 
     # Vertical (z) direction - SPE1 layers
-    kz = np.array([250.0, 25.0, 50.0])   # mD
-    dz = np.array([ 20.0, 30.0, 50.0])   # ft
+    kz = np.array([250.0, 25.0, 50.0])  # mD
+    dz = np.array([20.0, 30.0, 50.0])  # ft
     kz_links = layer_to_link_permeability(kz, dz, Orientation.Z)
     # array([39.0625, 36.3636])
 
     # Horizontal (x) direction
-    kx = np.array([500.0, 50.0, 200.0])   # mD
-    dx = np.array([1000.0, 1000.0, 1000.0])   # ft
+    kx = np.array([500.0, 50.0, 200.0])  # mD
+    dx = np.array([1000.0, 1000.0, 1000.0])  # ft
     kx_links = layer_to_link_permeability(kx, dx, Orientation.X)
     # array([90.9091, 80.0])
 
@@ -938,9 +904,7 @@ def layer_to_link_permeability(
             f"but `cell_lenghts` has length {len(cell_lenghts)}."
         )
     if n_cells < 2:
-        raise ValueError(
-            f"Need at least 2 cells to compute interface links, got {n_cells}."
-        )
+        raise ValueError(f"Need at least 2 cells to compute interface links, got {n_cells}.")
     if np.any(cell_permeability <= 0):
         raise ValueError("All `cell_permeability` values must be strictly positive.")
     if np.any(cell_lenghts <= 0):
@@ -967,11 +931,9 @@ def layer_to_link_permeability(
 def link_to_layer_permeability(
     interface_permeability: npt.NDArray,
     cell_lenghts: npt.NDArray,
-    anchor_permeability: typing.Union[float, npt.NDArray],
+    anchor_permeability: float | npt.NDArray,
     anchor_index: int = 0,
-    orientation: typing.Union[
-        Orientation, typing.Literal["x", "y", "z"]
-    ] = Orientation.Z,
+    orientation: Orientation | typing.Literal["x", "y", "z"] = Orientation.Z,
 ) -> npt.NDArray:
     """
     Recover per-cell permeability from inter-cell interface (link) permeability.
@@ -987,10 +949,10 @@ def link_to_layer_permeability(
 
     ```
     # forward  (recovering cell i+1 from cell i)
-    k[i+1] = d[i+1] / ((d[i] + d[i+1]) / k_link[i] - d[i] / k[i])
+    k[i + 1] = d[i + 1] / ((d[i] + d[i + 1]) / k_link[i] - d[i] / k[i])
 
     # backward (recovering cell i from cell i+1)
-    k[i] = d[i] / ((d[i] + d[i+1]) / k_link[i] - d[i+1] / k[i+1])
+    k[i] = d[i] / ((d[i] + d[i + 1]) / k_link[i] - d[i + 1] / k[i + 1])
     ```
 
     The output has the same shape as `interface_permeability` except that the
@@ -1054,17 +1016,13 @@ def link_to_layer_permeability(
             f"{n_interfaces} interfaces ({n_cells} cells)."
         )
     if not (0 <= anchor_index < n_cells):
-        raise ValueError(
-            f"`anchor_index` must be in [0, {n_cells - 1}], got {anchor_index}."
-        )
+        raise ValueError(f"`anchor_index` must be in [0, {n_cells - 1}], got {anchor_index}.")
     if np.any(np.asarray(anchor_permeability) <= 0):
         raise ValueError("`anchor_permeability` must be strictly positive.")
     if np.any(cell_lenghts <= 0):
         raise ValueError("All `cell_lenghts` values must be strictly positive.")
     if np.any(interface_permeability <= 0):
-        raise ValueError(
-            "All `interface_permeability` values must be strictly positive."
-        )
+        raise ValueError("All `interface_permeability` values must be strictly positive.")
 
     output_shape = list(interface_permeability.shape)
     output_shape[axis] = n_cells
@@ -1084,9 +1042,7 @@ def link_to_layer_permeability(
     _set(
         recovered,
         anchor_index,
-        np.broadcast_to(
-            anchor_permeability, _get(recovered, anchor_index).shape
-        ).copy(),
+        np.broadcast_to(anchor_permeability, _get(recovered, anchor_index).shape).copy(),
     )
 
     # Propagate forward: anchor_index -> last cell
@@ -1150,9 +1106,7 @@ def make_saturation_grid(
     if n_points < 2:
         raise ValueError(f"`n_points` must be >= 2, got {n_points}")
     if not (0.0 <= s_min < s_max <= 1.0):
-        raise ValueError(
-            f"Require 0 ≤ s_min < s_max ≤ 1, got `s_min={s_min}`, `s_max={s_max}`"
-        )
+        raise ValueError(f"Require 0 ≤ s_min < s_max ≤ 1, got `s_min={s_min}`, `s_max={s_max}`")
 
     if spacing == "cosine":
         i = np.arange(n_points, dtype=dtype)

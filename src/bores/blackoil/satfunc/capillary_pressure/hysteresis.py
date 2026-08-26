@@ -44,9 +44,7 @@ __all__ = ["KilloughCapillaryPressureTable"]
 
 
 def _get_oil_water_capillary_pressure(
-    oil_water_capillary_pressure_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ],
+    oil_water_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -63,9 +61,7 @@ def _get_oil_water_capillary_pressure(
     :param kwargs: Additional keyword arguments forwarded to parametric tables.
     :return: Oil-water capillary pressure Pcow = Po - Pw (scalar or array).
     """
-    oil_water_wetting_phase = (
-        oil_water_capillary_pressure_table.get_oil_water_wetting_phase()
-    )
+    oil_water_wetting_phase = oil_water_capillary_pressure_table.get_oil_water_wetting_phase()
     if isinstance(oil_water_capillary_pressure_table, TwoPhaseCapillaryPressureTable):
         if oil_water_wetting_phase == FluidPhase.WATER:
             wetting_saturation = water_saturation
@@ -88,9 +84,7 @@ def _get_oil_water_capillary_pressure(
 
 
 def _get_gas_oil_capillary_pressure(
-    gas_oil_capillary_pressure_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ],
+    gas_oil_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -130,9 +124,7 @@ def _get_gas_oil_capillary_pressure(
 
 
 def _get_oil_water_capillary_pressure_derivative(
-    oil_water_capillary_pressure_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ],
+    oil_water_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -153,9 +145,7 @@ def _get_oil_water_capillary_pressure_derivative(
     :param kwargs: Additional keyword arguments forwarded to parametric tables.
     :return: Derivative of Pcow w.r.t. the reference saturation axis (scalar or array).
     """
-    oil_water_wetting_phase = (
-        oil_water_capillary_pressure_table.get_oil_water_wetting_phase()
-    )
+    oil_water_wetting_phase = oil_water_capillary_pressure_table.get_oil_water_wetting_phase()
 
     if isinstance(oil_water_capillary_pressure_table, TwoPhaseCapillaryPressureTable):
         if oil_water_wetting_phase == FluidPhase.WATER:
@@ -179,9 +169,7 @@ def _get_oil_water_capillary_pressure_derivative(
 
 
 def _get_gas_oil_capillary_pressure_derivative(
-    gas_oil_capillary_pressure_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ],
+    gas_oil_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -257,24 +245,16 @@ class KilloughCapillaryPressureTable(
 
     __type__ = "killough_capillary_pressure_model"
 
-    oil_water_drainage_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ]
+    oil_water_drainage_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable
     """Primary drainage capillary pressure table for the oil-water system."""
 
-    gas_oil_drainage_table: typing.Union[
-        TwoPhaseCapillaryPressureTable, CapillaryPressureTable
-    ]
+    gas_oil_drainage_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable
     """Primary drainage capillary pressure table for the gas-oil system."""
 
-    oil_water_imbibition_table: typing.Optional[
-        typing.Union[TwoPhaseCapillaryPressureTable, CapillaryPressureTable]
-    ] = None
+    oil_water_imbibition_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable | None = None
     """Primary imbibition Pc table for the oil-water system. Defaults to the drainage table."""
 
-    gas_oil_imbibition_table: typing.Optional[
-        typing.Union[TwoPhaseCapillaryPressureTable, CapillaryPressureTable]
-    ] = None
+    gas_oil_imbibition_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable | None = None
     """Primary imbibition Pc table for the gas-oil system. Defaults to the drainage table."""
 
     scanning_interpolation_exponent: Number = 1.0
@@ -283,29 +263,21 @@ class KilloughCapillaryPressureTable(
     supports_vector: bool = attrs.field(init=False, repr=False, default=True)
 
     def __attrs_post_init__(self) -> None:
-        if isinstance(
-            self.oil_water_drainage_table, TwoPhaseCapillaryPressureTable
-        ) and {
+        if isinstance(self.oil_water_drainage_table, TwoPhaseCapillaryPressureTable) and {
             self.oil_water_drainage_table.wetting_phase,
             self.oil_water_drainage_table.non_wetting_phase,
         } != {FluidPhase.WATER, FluidPhase.OIL}:
-            raise ValidationError(
-                "`oil_water_drainage_table` must involve water and oil phases."
-            )
+            raise ValidationError("`oil_water_drainage_table` must involve water and oil phases.")
 
         if isinstance(self.gas_oil_drainage_table, TwoPhaseCapillaryPressureTable) and {
             self.gas_oil_drainage_table.wetting_phase,
             self.gas_oil_drainage_table.non_wetting_phase,
         } != {FluidPhase.OIL, FluidPhase.GAS}:
-            raise ValidationError(
-                "`gas_oil_drainage_table` must involve oil and gas phases."
-            )
+            raise ValidationError("`gas_oil_drainage_table` must involve oil and gas phases.")
 
         if (
             self.oil_water_imbibition_table is not None
-            and isinstance(
-                self.oil_water_imbibition_table, TwoPhaseCapillaryPressureTable
-            )
+            and isinstance(self.oil_water_imbibition_table, TwoPhaseCapillaryPressureTable)
             and {
                 self.oil_water_imbibition_table.wetting_phase,
                 self.oil_water_imbibition_table.non_wetting_phase,
@@ -318,18 +290,14 @@ class KilloughCapillaryPressureTable(
 
         if (
             self.gas_oil_imbibition_table is not None
-            and isinstance(
-                self.gas_oil_imbibition_table, TwoPhaseCapillaryPressureTable
-            )
+            and isinstance(self.gas_oil_imbibition_table, TwoPhaseCapillaryPressureTable)
             and {
                 self.gas_oil_imbibition_table.wetting_phase,
                 self.gas_oil_imbibition_table.non_wetting_phase,
             }
             != {FluidPhase.OIL, FluidPhase.GAS}
         ):
-            raise ValidationError(
-                "`gas_oil_imbibition_table` must involve oil and gas phases."
-            )
+            raise ValidationError("`gas_oil_imbibition_table` must involve oil and gas phases.")
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         """
@@ -353,17 +321,13 @@ class KilloughCapillaryPressureTable(
         self,
         water_saturation: npt.NDArray,
         gas_saturation: npt.NDArray,
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]],
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]],
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ],
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ],
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]],
-    ) -> typing.Tuple[
+        max_water_saturation: NumberOrArray[NDimension] | None,
+        max_gas_saturation: NumberOrArray[NDimension] | None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None,
+    ) -> tuple[
         npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
     ]:
         """
@@ -393,9 +357,7 @@ class KilloughCapillaryPressureTable(
         use_water_hysteresis = (
             max_water_saturation is not None and water_imbibition_flag is not None
         )
-        use_gas_hysteresis = (
-            max_gas_saturation is not None and gas_imbibition_flag is not None
-        )
+        use_gas_hysteresis = max_gas_saturation is not None and gas_imbibition_flag is not None
 
         if use_water_hysteresis:
             maximum_water_saturation = np.atleast_1d(max_water_saturation)  # type: ignore
@@ -430,9 +392,7 @@ class KilloughCapillaryPressureTable(
             gas_imbibition_flag = typing.cast(
                 BooleanArray[NDimension], np.zeros_like(gas_saturation, dtype=np.bool_)
             )
-            gas_reversal_saturation = typing.cast(
-                NumberArray[NDimension], gas_saturation.copy()
-            )
+            gas_reversal_saturation = typing.cast(NumberArray[NDimension], gas_saturation.copy())
 
         (
             maximum_water_saturation,
@@ -463,16 +423,12 @@ class KilloughCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_water_saturation: NumberOrArray[NDimension] | None = None,
+        max_gas_saturation: NumberOrArray[NDimension] | None = None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None = None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressures:
         """
@@ -525,13 +481,9 @@ class KilloughCapillaryPressureTable(
         )
 
         oil_water_drainage_table = self.oil_water_drainage_table
-        oil_water_imbibition_table = (
-            self.oil_water_imbibition_table or oil_water_drainage_table
-        )
+        oil_water_imbibition_table = self.oil_water_imbibition_table or oil_water_drainage_table
         gas_oil_drainage_table = self.gas_oil_drainage_table
-        gas_oil_imbibition_table = (
-            self.gas_oil_imbibition_table or gas_oil_drainage_table
-        )
+        gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Oil-water Pc: scan over water saturation
         oil_water_capillary_pressure_drainage = _get_oil_water_capillary_pressure(
@@ -598,16 +550,12 @@ class KilloughCapillaryPressureTable(
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-        max_water_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        max_gas_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        water_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        gas_imbibition_flag: typing.Optional[
-            typing.Union[bool, BooleanArray[NDimension]]
-        ] = None,
-        water_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
-        gas_reversal_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        max_water_saturation: NumberOrArray[NDimension] | None = None,
+        max_gas_saturation: NumberOrArray[NDimension] | None = None,
+        water_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        gas_imbibition_flag: bool | BooleanArray[NDimension] | None = None,
+        water_reversal_saturation: NumberOrArray[NDimension] | None = None,
+        gas_reversal_saturation: NumberOrArray[NDimension] | None = None,
         **kwargs: typing.Any,
     ) -> CapillaryPressureDerivatives:
         """
@@ -665,13 +613,9 @@ class KilloughCapillaryPressureTable(
         )
 
         oil_water_drainage_table = self.oil_water_drainage_table
-        oil_water_imbibition_table = (
-            self.oil_water_imbibition_table or oil_water_drainage_table
-        )
+        oil_water_imbibition_table = self.oil_water_imbibition_table or oil_water_drainage_table
         gas_oil_drainage_table = self.gas_oil_drainage_table
-        gas_oil_imbibition_table = (
-            self.gas_oil_imbibition_table or gas_oil_drainage_table
-        )
+        gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Oil-water
         oil_water_capillary_pressure_drainage = _get_oil_water_capillary_pressure(

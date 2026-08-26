@@ -27,7 +27,7 @@ class ZeroFlowViolation:
     the configured tolerance.
     """
 
-    cell: typing.Tuple[int, int, int]
+    cell: tuple[int, int, int]
     """`(i, j, k)` index of the offending cell."""
     net_water_flux: float
     """Net water flux into the cell (lbm/day). Positive = net inflow."""
@@ -56,11 +56,11 @@ class ZeroFlowCheckResult:
     """Maximum `|net_flux| / pore_volume` observed across all cells (day⁻¹)."""
     max_absolute_flux: float
     """Maximum `sum(|phase_fluxes|)` across all cells (lbm/day)."""
-    worst_cell: typing.Optional[typing.Tuple[int, int, int]]
+    worst_cell: tuple[int, int, int] | None
     """`(i, j, k)` index of the cell with the highest relative flux, or `None` when the grid is empty."""
     violation_count: int
     """Total number of cells whose relative flux exceeds `relative_tolerance`."""
-    violations: typing.List[ZeroFlowViolation]
+    violations: list[ZeroFlowViolation]
     """All cells (up to `max_reported_violations`) whose relative flux exceeds `relative_tolerance`,
     sorted descending by `relative_flux`."""
     relative_tolerance: float
@@ -74,8 +74,8 @@ def seed_injection_saturations(
     wells: Wells[ThreeDimensions],
     wells_indices: WellsIndices,
     config: Config,
-    minimum_injector_water_saturation: typing.Optional[float] = None,
-    minimum_injector_gas_saturation: typing.Optional[float] = None,
+    minimum_injector_water_saturation: float | None = None,
+    minimum_injector_gas_saturation: float | None = None,
     inplace: bool = False,
 ) -> FluidProperties[ThreeDimensions]:
     """
@@ -252,8 +252,8 @@ def apply_minimum_injector_saturations(
     fluid_properties: FluidProperties[ThreeDimensions],
     wells: Wells[ThreeDimensions],
     wells_indices: WellsIndices,
-    minimum_injector_water_saturation: typing.Optional[float],
-    minimum_injector_gas_saturation: typing.Optional[float],
+    minimum_injector_water_saturation: float | None,
+    minimum_injector_gas_saturation: float | None,
     dtype: npt.DTypeLike,
 ) -> FluidProperties[ThreeDimensions]:
     """
@@ -297,10 +297,7 @@ def apply_minimum_injector_saturations(
     - This function does **not** rebuild relative-permeability or mobility grids. That must be
       done by the caller immediately after it returns and before the pressure solve.
     """
-    if (
-        minimum_injector_water_saturation is None
-        and minimum_injector_gas_saturation is None
-    ):
+    if minimum_injector_water_saturation is None and minimum_injector_gas_saturation is None:
         return fluid_properties
 
     water_saturation_grid = fluid_properties.water_saturation_grid.copy()
@@ -493,27 +490,25 @@ def check_zero_flow_initialization(
     pressure_grid = fluid_properties.pressure_grid
     cell_count_x, cell_count_y, cell_count_z = pressure_grid.shape
 
-    _, relative_mobility_grids, capillary_pressure_grids = (
-        build_rock_fluid_properties_grids(
-            water_saturation_grid=fluid_properties.water_saturation_grid,
-            oil_saturation_grid=fluid_properties.oil_saturation_grid,
-            gas_saturation_grid=fluid_properties.gas_saturation_grid,
-            irreducible_water_saturation_grid=rock_properties.irreducible_water_saturation_grid,
-            residual_oil_saturation_water_grid=rock_properties.residual_oil_saturation_water_grid,
-            residual_oil_saturation_gas_grid=rock_properties.residual_oil_saturation_gas_grid,
-            residual_gas_saturation_grid=rock_properties.residual_gas_saturation_grid,
-            water_viscosity_grid=fluid_properties.water_viscosity_grid,
-            oil_viscosity_grid=fluid_properties.oil_effective_viscosity_grid,
-            gas_viscosity_grid=fluid_properties.gas_viscosity_grid,
-            porosity_grid=rock_properties.porosity_grid,
-            permeability_grid=rock_properties.absolute_permeability.mean,
-            relative_permeability_table=config.rock_fluid_tables.relative_permeability_table,
-            capillary_pressure_table=config.rock_fluid_tables.capillary_pressure_table,
-            hysteresis_state=None,
-            disable_capillary_effects=config.disable_capillary_effects,
-            capillary_strength_factor=config.capillary_strength_factor,
-            phase_appearance_tolerance=config.phase_appearance_tolerance,
-        )
+    _, relative_mobility_grids, capillary_pressure_grids = build_rock_fluid_properties_grids(
+        water_saturation_grid=fluid_properties.water_saturation_grid,
+        oil_saturation_grid=fluid_properties.oil_saturation_grid,
+        gas_saturation_grid=fluid_properties.gas_saturation_grid,
+        irreducible_water_saturation_grid=rock_properties.irreducible_water_saturation_grid,
+        residual_oil_saturation_water_grid=rock_properties.residual_oil_saturation_water_grid,
+        residual_oil_saturation_gas_grid=rock_properties.residual_oil_saturation_gas_grid,
+        residual_gas_saturation_grid=rock_properties.residual_gas_saturation_grid,
+        water_viscosity_grid=fluid_properties.water_viscosity_grid,
+        oil_viscosity_grid=fluid_properties.oil_effective_viscosity_grid,
+        gas_viscosity_grid=fluid_properties.gas_viscosity_grid,
+        porosity_grid=rock_properties.porosity_grid,
+        permeability_grid=rock_properties.absolute_permeability.mean,
+        relative_permeability_table=config.rock_fluid_tables.relative_permeability_table,
+        capillary_pressure_table=config.rock_fluid_tables.capillary_pressure_table,
+        hysteresis_state=None,
+        disable_capillary_effects=config.disable_capillary_effects,
+        capillary_strength_factor=config.capillary_strength_factor,
+        phase_appearance_tolerance=config.phase_appearance_tolerance,
     )
 
     (
@@ -521,9 +516,7 @@ def check_zero_flow_initialization(
         oil_relative_mobility_grid,
         gas_relative_mobility_grid,
     ) = relative_mobility_grids
-    oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid = (
-        capillary_pressure_grids
-    )
+    oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid = capillary_pressure_grids
 
     # Build no-flow ghost-cell boundary arrays for the flux computation
     padded_shape = (cell_count_x + 2, cell_count_y + 2, cell_count_z + 2)
@@ -534,9 +527,7 @@ def check_zero_flow_initialization(
         c.ACCELERATION_DUE_TO_GRAVITY_FEET_PER_SECONDS_SQUARE
         / c.GRAVITATIONAL_FACTOR_LBM_FT_PER_LBF_S2
     )
-    md_per_cp_to_ft2_per_psi_per_day = (
-        c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
-    )
+    md_per_cp_to_ft2_per_psi_per_day = c.MILLIDARCIES_PER_CENTIPOISE_TO_SQUARE_FEET_PER_PSI_PER_DAY
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
 
     water_density_grid = fluid_properties.water_density_grid
@@ -546,9 +537,7 @@ def check_zero_flow_initialization(
     gas_solubility_in_water_grid = fluid_properties.gas_solubility_in_water_grid
     gas_formation_volume_factor_grid = fluid_properties.gas_formation_volume_factor_grid
     oil_formation_volume_factor_grid = fluid_properties.oil_formation_volume_factor_grid
-    water_formation_volume_factor_grid = (
-        fluid_properties.water_formation_volume_factor_grid
-    )
+    water_formation_volume_factor_grid = fluid_properties.water_formation_volume_factor_grid
 
     # Compute per-phase net fluxes
     (
@@ -605,9 +594,7 @@ def check_zero_flow_initialization(
     safe_maximum_total_mass_grid = np.where(
         maximum_total_mass_grid > 0.0, maximum_total_mass_grid, np.inf
     )
-    relative_mass_flux_grid = (
-        net_total_mass_flux_grid / safe_maximum_total_mass_grid
-    )  # day⁻¹
+    relative_mass_flux_grid = net_total_mass_flux_grid / safe_maximum_total_mass_grid  # day⁻¹
 
     # Identify active cells (i.e with non-zero porosity)
     active_mask = rock_properties.porosity_grid > 0.0
@@ -645,7 +632,7 @@ def check_zero_flow_initialization(
     violation_count = int(np.sum(violation_mask))
     passed = violation_count == 0
 
-    violations: typing.List[ZeroFlowViolation] = []
+    violations: list[ZeroFlowViolation] = []
     if violation_count > 0:
         violation_indices = np.argwhere(violation_mask)
         # Sort by descending relative flux

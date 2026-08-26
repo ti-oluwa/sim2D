@@ -40,7 +40,7 @@ _TextOrPath = typing.Union[str, bytes, Path]
 
 # `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
-_VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
+_VOLUMETRIC_CELL_TYPES: frozenset[str] = frozenset(
     {
         "tetra",
         "hexahedron",
@@ -52,7 +52,7 @@ _VOLUMETRIC_CELL_TYPES: typing.FrozenSet[str] = frozenset(
 )
 
 # Map from `meshio` quadratic type to the linear equivalent and node count.
-_QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {
+_QUADRATIC_TO_LINEAR: dict[str, tuple[str, int]] = {
     "tetra10": ("tetra", 4),
     "hexahedron20": ("hexahedron", 8),
 }
@@ -62,9 +62,9 @@ _QUADRATIC_TO_LINEAR: typing.Dict[str, typing.Tuple[str, int]] = {
 def load_mesh(
     source: Path,
     *,
-    file_format: typing.Optional[str] = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    file_format: str | None = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
@@ -72,9 +72,9 @@ def load_mesh(
 def load_mesh(
     source: str,
     *,
-    file_format: typing.Optional[str] = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    file_format: str | None = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
@@ -82,18 +82,18 @@ def load_mesh(
 def load_mesh(
     source: bytes,
     *,
-    file_format: typing.Optional[str] = ...,
-    unit_system: typing.Optional[UnitSystem] = ...,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = ...,
+    file_format: str | None = ...,
+    unit_system: UnitSystem | None = ...,
+    metadata: typing.Mapping[str, typing.Any] | None = ...,
 ) -> Grid: ...
 
 
 def load_mesh(
     source: _TextOrPath,
     *,
-    file_format: typing.Optional[str] = None,
-    unit_system: typing.Optional[UnitSystem] = None,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    file_format: str | None = None,
+    unit_system: UnitSystem | None = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
 ) -> Grid:
     """
     Load any mesh format supported by `meshio` from a path or bytes.
@@ -122,7 +122,7 @@ def dump_mesh(
     destination: Path,
     *,
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = ...,
+    cell_data: dict[str, np.ndarray] | None = ...,
 ) -> None: ...
 
 
@@ -132,7 +132,7 @@ def dump_mesh(
     destination: None = None,
     *,
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = ...,
+    cell_data: dict[str, np.ndarray] | None = ...,
 ) -> bytes: ...
 
 
@@ -142,17 +142,17 @@ def dump_mesh(
     destination: str,
     *,
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = ...,
+    cell_data: dict[str, np.ndarray] | None = ...,
 ) -> None: ...
 
 
 def dump_mesh(
     grid: Grid,
-    destination: typing.Union[_PathOrStr, None] = None,
+    destination: _PathOrStr | None = None,
     *,
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, np.ndarray]] = None,
-) -> typing.Optional[bytes]:
+    cell_data: dict[str, np.ndarray] | None = None,
+) -> bytes | None:
     """
     Write a `bores.grids.base.Grid` to any format supported by `meshio`.
 
@@ -181,16 +181,14 @@ def dump_mesh(
     :raises UnsupportedGridFormatError: If `meshio` is not installed or
         the format is not recognised.
     """
-    return _dump(
-        grid, destination=destination, file_format=file_format, cell_data=cell_data
-    )
+    return _dump(grid, destination=destination, file_format=file_format, cell_data=cell_data)
 
 
 def _load(
     source: _TextOrPath,
     *,
-    file_format: typing.Optional[str] = None,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    file_format: str | None = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
 ) -> Grid:
     """
     Load any `meshio`-supported mesh and convert to a
@@ -227,7 +225,7 @@ def _load(
 
 
 def _mesh_to_grid(
-    mesh: meshio.Mesh, metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
+    mesh: meshio.Mesh, metadata: typing.Mapping[str, typing.Any] | None = None
 ) -> Grid:
     """
     Convert a `meshio.Mesh` object to a `bores.grids.base.Grid`.
@@ -275,13 +273,11 @@ def _mesh_to_grid(
             metadata=meta,
         )
     except Exception as exc:
-        raise GridImportError(
-            f"Failed to build Grid from meshio cell blocks: {exc}"
-        ) from exc
+        raise GridImportError(f"Failed to build Grid from meshio cell blocks: {exc}") from exc
 
 
 def _grid_to_mesh(
-    grid: Grid, *, cell_data: typing.Optional[typing.Dict[str, npt.NDArray]]
+    grid: Grid, *, cell_data: dict[str, npt.NDArray] | None
 ) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `meshio.Mesh`.
@@ -320,11 +316,9 @@ def _grid_to_mesh(
         all_vertices[base + 5] = [high[0], low[1], high[2]]
         all_vertices[base + 6] = [high[0], high[1], high[2]]
         all_vertices[base + 7] = [low[0], high[1], high[2]]
-        connectivity[cell_idx] = np.arange(
-            base, base + vertices_per_cell, dtype=np.int32
-        )
+        connectivity[cell_idx] = np.arange(base, base + vertices_per_cell, dtype=np.int32)
 
-    meshio_cell_data: typing.Dict[str, typing.List[np.ndarray]] = {}
+    meshio_cell_data: dict[str, list[np.ndarray]] = {}
     if cell_data:
         for field_name, field_array in cell_data.items():
             arr = np.asarray(field_array, dtype=np.float64, copy=False)
@@ -345,10 +339,10 @@ def _grid_to_mesh(
 def _dump(
     grid: Grid,
     *,
-    destination: typing.Union[_PathOrStr, None],
+    destination: _PathOrStr | None,
     file_format: str,
-    cell_data: typing.Optional[typing.Dict[str, npt.NDArray]],
-) -> typing.Optional[bytes]:
+    cell_data: dict[str, npt.NDArray] | None,
+) -> bytes | None:
     """
     Write a `bores.grids.base.Grid` using `meshio`.
 

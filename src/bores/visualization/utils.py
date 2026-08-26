@@ -94,10 +94,10 @@ class LabelCoordinate:
 
     def as_physical(
         self,
-        cell_dimension: typing.Tuple[float, float],
+        cell_dimension: tuple[float, float],
         depth_grid: ThreeDimensionalGrid,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
-    ) -> typing.Tuple[float, float, float]:
+        coordinate_offsets: tuple[int, int, int] | None = None,
+    ) -> tuple[float, float, float]:
         """
         Convert index coordinates to physical coordinates.
 
@@ -127,9 +127,7 @@ class LabelCoordinate:
             z_physical = -depth_grid[actual_x, actual_y, actual_z]
         else:
             # Fallback to simple index-based positioning
-            z_physical = (
-                -(offsets[2] + self.z) * 10.0
-            )  # Assume 10 ft average depth per layer
+            z_physical = -(offsets[2] + self.z) * 10.0  # Assume 10 ft average depth per layer
 
         return x_physical, y_physical, typing.cast(float, z_physical)
 
@@ -144,16 +142,16 @@ class _SafeValuesDict(dict):
 class LabelFormatValues(TypedDict):
     """Format values for label text generation."""
 
-    x_index: typing.Union[int, float]
-    y_index: typing.Union[int, float]
-    z_index: typing.Union[int, float]
-    x_physical: typing.Optional[float]
-    y_physical: typing.Optional[float]
-    z_physical: typing.Optional[float]
-    value: typing.Union[int, float, str]
-    formatted_value: typing.Optional[str]
-    property_name: typing.Optional[str]
-    unit: typing.Optional[str]
+    x_index: int | float
+    y_index: int | float
+    z_index: int | float
+    x_physical: float | None
+    y_physical: float | None
+    z_physical: float | None
+    value: int | float | str
+    formatted_value: str | None
+    property_name: str | None
+    unit: str | None
 
 
 @attrs.frozen
@@ -182,20 +180,20 @@ class Label:
 
     font_size: int = 12
     font_color: str = "#333333"  # Default dark gray
-    background_color: typing.Optional[str] = "rgba(240, 240, 240, 0.9)"
-    border_color: typing.Optional[str] = None
+    background_color: str | None = "rgba(240, 240, 240, 0.9)"
+    border_color: str | None = None
     border_width: int = 1
-    offset: typing.Tuple[float, float, float] = (0, 0, 0)
+    offset: tuple[float, float, float] = (0, 0, 0)
     visible: bool = True
-    name: typing.Optional[str] = None
+    name: str | None = None
 
     def get_text(
         self,
-        data_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        metadata: typing.Optional[PropertyMeta] = None,
-        format_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        data_grid: ThreeDimensionalGrid | None = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        metadata: PropertyMeta | None = None,
+        format_kwargs: dict[str, typing.Any] | None = None,
     ) -> str:
         """
         Generate the label text based on data at the label position.
@@ -252,9 +250,7 @@ class Label:
             values["property_name"] = metadata.display_name
 
         values["value"] = raw_value if raw_value is not None else "N/A"
-        values["formatted_value"] = (
-            formatted_value if formatted_value is not None else "N/A"
-        )
+        values["formatted_value"] = formatted_value if formatted_value is not None else "N/A"
 
         # Add any additional format kwargs
         if format_kwargs:
@@ -263,13 +259,13 @@ class Label:
 
     def as_annotation(
         self,
-        data_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        metadata: typing.Optional[PropertyMeta] = None,
-        format_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
-    ) -> typing.Dict[str, typing.Any]:
+        data_grid: ThreeDimensionalGrid | None = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        metadata: PropertyMeta | None = None,
+        format_kwargs: dict[str, typing.Any] | None = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
+    ) -> dict[str, typing.Any]:
         """
         Convert label to Plotly 3D annotation format.
 
@@ -288,7 +284,7 @@ class Label:
         use_physical = cell_dimension is not None and depth_grid is not None
 
         if use_physical:
-            cell_dimension = typing.cast(typing.Tuple[float, float], cell_dimension)
+            cell_dimension = typing.cast(tuple[float, float], cell_dimension)
             depth_grid = typing.cast(ThreeDimensionalGrid, depth_grid)
             # Convert to physical coordinates
             try:
@@ -355,7 +351,7 @@ class Labels:
     A collection of labels for 3D plots, allowing dynamic label creation and management.
     """
 
-    def __init__(self, labels: typing.Optional[typing.Iterable[Label]] = None):
+    def __init__(self, labels: typing.Iterable[Label] | None = None):
         self._labels = list(labels) if labels is not None else []
 
     def add(self, label: Label) -> None:
@@ -364,8 +360,8 @@ class Labels:
 
     def add_grid_labels(
         self,
-        data_shape: typing.Tuple[int, int, int],
-        spacing: typing.Tuple[int, int, int] = (10, 10, 5),
+        data_shape: tuple[int, int, int],
+        spacing: tuple[int, int, int] = (10, 10, 5),
         template: str = "({x_index}, {y_index}, {z_index})",
         **label_kwargs,
     ) -> None:
@@ -389,7 +385,7 @@ class Labels:
 
     def add_boundary_labels(
         self,
-        data_shape: typing.Tuple[int, int, int],
+        data_shape: tuple[int, int, int],
         template: str = "Boundary ({x_index}, {y_index}, {z_index})",
         **label_kwargs,
     ) -> None:
@@ -426,8 +422,8 @@ class Labels:
 
     def add_well_labels(
         self,
-        well_positions: typing.List[typing.Tuple[int, int, int]],
-        well_names: typing.Optional[typing.List[str]] = None,
+        well_positions: list[tuple[int, int, int]],
+        well_names: list[str] | None = None,
         template: str = "Well - '{name}' ({x_index}, {y_index}, {z_index}): {formatted_value} ({unit})",
         **label_kwargs,
     ) -> None:
@@ -440,9 +436,7 @@ class Labels:
         :param label_kwargs: Additional Label constructor arguments
         """
         for i, (x, y, z) in enumerate(well_positions):
-            name = (
-                well_names[i] if well_names and i < len(well_names) else f"Well_{i + 1}"
-            )
+            name = well_names[i] if well_names and i < len(well_names) else f"Well_{i + 1}"
             position = LabelCoordinate(x, y, z)
             label_kwargs.setdefault("font_size", 12)
             label_kwargs.setdefault("font_color", "#333")
@@ -460,13 +454,13 @@ class Labels:
 
     def as_annotations(
         self,
-        data_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        metadata: typing.Optional[PropertyMeta] = None,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
-        format_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    ) -> typing.List[typing.Dict[str, typing.Any]]:
+        data_grid: ThreeDimensionalGrid | None = None,
+        metadata: PropertyMeta | None = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
+        format_kwargs: dict[str, typing.Any] | None = None,
+    ) -> list[dict[str, typing.Any]]:
         """
         Convert all visible labels to Plotly annotations.
 
@@ -513,9 +507,7 @@ class Labels:
                     annotations.append(annotation)
 
             except Exception as exc:
-                logger.warning(
-                    f"Failed to create annotation for label {label.name}: {exc}"
-                )
+                logger.warning(f"Failed to create annotation for label {label.name}: {exc}")
                 continue
         return annotations
 
@@ -542,11 +534,9 @@ def coarsen_grid_and_coords(
     x_coords: OneDimensionalGrid,
     y_coords: OneDimensionalGrid,
     z_coords: None,
-    batch_size: typing.Optional[NDimension],
+    batch_size: NDimension | None,
     method: typing.Literal["mean", "sum", "max", "min"],
-) -> typing.Tuple[
-    NDimensionalGrid[NDimension], OneDimensionalGrid, OneDimensionalGrid, None
-]: ...
+) -> tuple[NDimensionalGrid[NDimension], OneDimensionalGrid, OneDimensionalGrid, None]: ...
 
 
 @typing.overload
@@ -555,9 +545,9 @@ def coarsen_grid_and_coords(
     x_coords: OneDimensionalGrid,
     y_coords: OneDimensionalGrid,
     z_coords: NDimensionalGrid[NDimension],
-    batch_size: typing.Optional[NDimension],
+    batch_size: NDimension | None,
     method: typing.Literal["mean", "sum", "max", "min"],
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     OneDimensionalGrid,
     OneDimensionalGrid,
@@ -569,14 +559,14 @@ def coarsen_grid_and_coords(
     data: NDimensionalGrid[NDimension],
     x_coords: OneDimensionalGrid,
     y_coords: OneDimensionalGrid,
-    z_coords: typing.Optional[NDimensionalGrid[NDimension]] = None,
-    batch_size: typing.Optional[NDimension] = None,
+    z_coords: NDimensionalGrid[NDimension] | None = None,
+    batch_size: NDimension | None = None,
     method: typing.Literal["mean", "sum", "max", "min"] = "mean",
-) -> typing.Tuple[
+) -> tuple[
     NDimensionalGrid[NDimension],
     OneDimensionalGrid,
     OneDimensionalGrid,
-    typing.Optional[NDimensionalGrid[NDimension]],
+    NDimensionalGrid[NDimension] | None,
 ]:
     """
     Coarsen a 2D or 3D grid and compute coarsened coordinates using padding instead of trimming.
@@ -595,7 +585,7 @@ def coarsen_grid_and_coords(
 
     # Pad data to be divisible by `batch_size`
     pad_width = []
-    for dim, b in zip(data.shape, batch_size):
+    for dim, b in zip(data.shape, batch_size, strict=False):
         remainder = dim % b
         pad_width.append((0, b - remainder if remainder > 0 else 0))
 
@@ -610,9 +600,7 @@ def coarsen_grid_and_coords(
     else:
         raise ValidationError(f"Unsupported method '{method}'")
 
-    data_padded = np.pad(
-        data, pad_width=pad_width, mode="constant", constant_values=pad_value
-    )
+    data_padded = np.pad(data, pad_width=pad_width, mode="constant", constant_values=pad_value)
 
     # Coarsen data
     coarsened_data = coarsen_grid(data_padded, batch_size=batch_size, method=method)
@@ -648,9 +636,7 @@ def coarsen_grid_and_coords(
             pad_y = by - ny % by if ny % by > 0 else 0
             pad_z = bz - nzp1 % bz if nzp1 % bz > 0 else 0
 
-            z_padded = np.pad(
-                z_coords, ((0, pad_x), (0, pad_y), (0, pad_z)), mode="edge"
-            )
+            z_padded = np.pad(z_coords, ((0, pad_x), (0, pad_y), (0, pad_z)), mode="edge")
             nxp, nyp, nzp1p = z_padded.shape
 
             # Reshape and coarsen along all axes
@@ -666,16 +652,16 @@ def coarsen_grid_and_coords(
         typing.cast(NDimensionalGrid[NDimension], coarsened_data),
         typing.cast(OneDimensionalGrid, x_batch),
         typing.cast(OneDimensionalGrid, y_batch),
-        typing.cast(typing.Optional[NDimensionalGrid[NDimension]], z_batch),
+        typing.cast(NDimensionalGrid[NDimension] | None, z_batch),
     )
 
 
 def slice_3d_grid(
     data: ThreeDimensionalGrid,
-    x_slice: typing.Optional[typing.Union[int, slice, typing.Tuple[int, int]]] = None,
-    y_slice: typing.Optional[typing.Union[int, slice, typing.Tuple[int, int]]] = None,
-    z_slice: typing.Optional[typing.Union[int, slice, typing.Tuple[int, int]]] = None,
-) -> typing.Tuple[ThreeDimensionalGrid, typing.Tuple[slice, slice, slice]]:
+    x_slice: int | slice | tuple[int, int] | None = None,
+    y_slice: int | slice | tuple[int, int] | None = None,
+    z_slice: int | slice | tuple[int, int] | None = None,
+) -> tuple[ThreeDimensionalGrid, tuple[slice, slice, slice]]:
     """
     Apply slicing operations to a 3D grid.
 
@@ -701,7 +687,7 @@ def slice_3d_grid(
     nx, ny, nz = data.shape
 
     def normalize_slice_spec(
-        spec: typing.Optional[typing.Union[int, slice, typing.Tuple[int, int]]],
+        spec: int | slice | tuple[int, int] | None,
         dimension_size: int,
         axis_name: str,
     ) -> slice:
@@ -742,8 +728,7 @@ def slice_3d_grid(
             return spec
 
         raise ValidationError(
-            f"Invalid '{axis_name}_slice': {spec}. "
-            f"Expected int, slice, or (start, end) tuple"
+            f"Invalid '{axis_name}_slice': {spec}. Expected int, slice, or (start, end) tuple"
         )
 
     # Normalize all slice specifications
@@ -769,7 +754,7 @@ _missing = object()
 
 
 def get_data(
-    source: typing.Union[ModelState[ThreeDimensions], BlackOil],
+    source: ModelState[ThreeDimensions] | BlackOil,
     name: str,
 ) -> ThreeDimensionalGrid:
     """
@@ -855,7 +840,7 @@ class FrameExporter(typing.Protocol):
 class GifExporter:
     """Export animation frames as an animated GIF."""
 
-    def __init__(self, path: typing.Union[str, os.PathLike], loop: int = 0) -> None:
+    def __init__(self, path: str | os.PathLike, loop: int = 0) -> None:
         """
         :param path: Output file path (e.g. `"animation.gif"`)
         :param loop: Number of loops (0 = infinite)
@@ -883,7 +868,7 @@ class Mp4Exporter:
 
     def __init__(
         self,
-        path: typing.Union[str, os.PathLike],
+        path: str | os.PathLike,
         codec: str = "libx264",
         quality: int = 8,
     ) -> None:
@@ -914,7 +899,7 @@ class Mp4Exporter:
 class WebPExporter:
     """Export animation frames as an animated WebP image."""
 
-    def __init__(self, path: typing.Union[str, os.PathLike], loop: int = 0) -> None:
+    def __init__(self, path: str | os.PathLike, loop: int = 0) -> None:
         """
         :param path: Output file path (e.g. `"animation.webp"`)
         :param loop: Number of loops (0 = infinite)
@@ -944,9 +929,9 @@ class HtmlExporter:
 
     def __init__(
         self,
-        path: typing.Union[str, os.PathLike],
+        path: str | os.PathLike,
         auto_open: bool = False,
-        include_plotlyjs: typing.Union[bool, str] = True,
+        include_plotlyjs: bool | str = True,
     ) -> None:
         """
         :param path: Output file path (e.g. `"animation.html"`)
@@ -971,7 +956,7 @@ class HtmlExporter:
         logger.info("Wrote HTML animation to %s", self.path)
 
 
-_SAVER_REGISTRY: typing.Dict[str, type] = {
+_SAVER_REGISTRY: dict[str, type] = {
     ".gif": GifExporter,
     ".mp4": Mp4Exporter,
     ".webp": WebPExporter,
@@ -980,9 +965,9 @@ _SAVER_REGISTRY: typing.Dict[str, type] = {
 
 
 def resolve_exporter(
-    save: typing.Union[FrameExporter, HtmlExporter, str, None],
-    output_gif: typing.Optional[str] = None,
-) -> typing.Union[FrameExporter, HtmlExporter, None]:
+    save: FrameExporter | HtmlExporter | str | None,
+    output_gif: str | None = None,
+) -> FrameExporter | HtmlExporter | None:
     """
     Resolve a *save* argument into a concrete exporter.
 
@@ -1005,8 +990,7 @@ def resolve_exporter(
         cls = _SAVER_REGISTRY.get(ext)
         if cls is None:
             raise ValidationError(
-                f"Unsupported animation format '{ext}'. "
-                f"Supported: {', '.join(_SAVER_REGISTRY)}"
+                f"Unsupported animation format '{ext}'. Supported: {', '.join(_SAVER_REGISTRY)}"
             )
         return cls(save)  # type: ignore[call-arg]
 

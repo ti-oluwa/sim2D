@@ -55,9 +55,7 @@ def _make_hashable(obj: typing.Any) -> typing.Any:
         return tuple(_make_hashable(item) for item in obj)
 
     if isinstance(obj, Mapping):
-        return tuple(
-            sorted((_make_hashable(k), _make_hashable(v)) for k, v in obj.items())
-        )
+        return tuple(sorted((_make_hashable(k), _make_hashable(v)) for k, v in obj.items()))
 
     # If we can't make it hashable, convert to string representation
     try:
@@ -69,9 +67,9 @@ def _make_hashable(obj: typing.Any) -> typing.Any:
 
 def _get_cell_mask(
     cells: typing.Any,  # CellFilter type
-    grid_shape: typing.Tuple[int, ...],
-    wells: typing.Optional[typing.Any] = None,  # Wells type
-) -> typing.Optional[np.ndarray]:
+    grid_shape: tuple[int, ...],
+    wells: typing.Any | None = None,  # Wells type
+) -> np.ndarray | None:
     """
     Create a boolean mask for filtering cells based on the cells parameter.
 
@@ -207,7 +205,7 @@ def _get_cell_mask(
     return mask
 
 
-CellLocation = typing.Tuple[int, int, int]
+CellLocation = tuple[int, int, int]
 """A single cell location as (i, j, k) coordinates."""
 
 CellFilter = typing.Union[
@@ -216,10 +214,8 @@ CellFilter = typing.Union[
     typing.Any,  # Well/Wells object (has name, perforating_intervals, orientation)
     typing.Sequence[typing.Any],  # Sequence of Well objects
     CellLocation,  # Single cell (i, j, k)
-    typing.Union[
-        typing.Tuple[CellLocation, ...], typing.List[CellLocation]
-    ],  # Tuple/list of cells
-    typing.Tuple[slice, slice, slice],  # Slice region
+    tuple[CellLocation, ...] | list[CellLocation],  # Tuple/list of cells
+    tuple[slice, slice, slice],  # Slice region
 ]
 """
 Filter specification for selecting specific cells, wells, or regions.
@@ -299,7 +295,7 @@ class Cells:
         return self._hash
 
     @classmethod
-    def from_filter(cls, cells: typing.Optional[CellFilter] = None) -> Self:
+    def from_filter(cls, cells: CellFilter | None = None) -> Self:
         """
         Create a Cells instance from a CellFilter specification.
 
@@ -312,9 +308,9 @@ class Cells:
 
     def get_mask(
         self,
-        grid_shape: typing.Tuple[int, ...],
-        wells: typing.Optional[typing.Any] = None,
-    ) -> typing.Optional[np.ndarray]:
+        grid_shape: tuple[int, ...],
+        wells: typing.Any | None = None,
+    ) -> np.ndarray | None:
         """
         Get the boolean mask for this cell filter.
 

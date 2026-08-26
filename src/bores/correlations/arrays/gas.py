@@ -1,5 +1,4 @@
 import logging
-import typing
 
 import numba  # type: ignore[import-untyped]
 import numpy as np
@@ -180,32 +179,22 @@ def compute_gas_compressibility_factor_papay(
     :return: Compressibility factor Z (dimensionless)
     """
     if min_(pressure) <= 0 or min_(temperature) <= 0 or min_(gas_gravity) <= 0:
-        raise ValidationError(
-            "Pressure, temperature, and gas specific gravity must be positive."
-        )
+        raise ValidationError("Pressure, temperature, and gas specific gravity must be positive.")
 
-    pseudo_critical_pressure, pseudo_critical_temperature = (
-        compute_gas_pseudocritical_properties(
-            gas_gravity=gas_gravity,
-            h2s_mole_fraction=h2s_mole_fraction,
-            co2_mole_fraction=co2_mole_fraction,
-            n2_mole_fraction=n2_mole_fraction,
-        )
+    pseudo_critical_pressure, pseudo_critical_temperature = compute_gas_pseudocritical_properties(
+        gas_gravity=gas_gravity,
+        h2s_mole_fraction=h2s_mole_fraction,
+        co2_mole_fraction=co2_mole_fraction,
+        n2_mole_fraction=n2_mole_fraction,
     )
 
     pseudo_reduced_pressure = pressure / pseudo_critical_pressure
-    pseudo_reduced_temperature = (
-        fahrenheit_to_rankine(temperature) / pseudo_critical_temperature
-    )
+    pseudo_reduced_temperature = fahrenheit_to_rankine(temperature) / pseudo_critical_temperature
     # Papay's correlation for gas compressibility factor
     compressibility_factor = (
         1
         - (
-            (
-                3.52
-                * pseudo_reduced_pressure
-                * np.exp(-0.869 * pseudo_reduced_temperature)
-            )
+            (3.52 * pseudo_reduced_pressure * np.exp(-0.869 * pseudo_reduced_temperature))
             / pseudo_reduced_temperature
         )
         + ((0.274 * pseudo_reduced_pressure**2) / pseudo_reduced_temperature**2)
@@ -262,18 +251,14 @@ def compute_gas_compressibility_factor_hall_yarborough(
         Oil & Gas Journal, June 18, 1973, pp. 82-92.
     """
     if min_(pressure) <= 0 or min_(temperature) <= 0 or min_(gas_gravity) <= 0:
-        raise ValidationError(
-            "Pressure, temperature, and gas gravity must be positive."
-        )
+        raise ValidationError("Pressure, temperature, and gas gravity must be positive.")
 
     # Get pseudocritical properties with Wichert-Aziz correction
-    pseudo_critical_pressure, pseudo_critical_temperature = (
-        compute_gas_pseudocritical_properties(
-            gas_gravity=gas_gravity,
-            h2s_mole_fraction=h2s_mole_fraction,
-            co2_mole_fraction=co2_mole_fraction,
-            n2_mole_fraction=n2_mole_fraction,
-        )
+    pseudo_critical_pressure, pseudo_critical_temperature = compute_gas_pseudocritical_properties(
+        gas_gravity=gas_gravity,
+        h2s_mole_fraction=h2s_mole_fraction,
+        co2_mole_fraction=co2_mole_fraction,
+        n2_mole_fraction=n2_mole_fraction,
     )
 
     Pr = pressure / pseudo_critical_pressure
@@ -401,13 +386,11 @@ def compute_gas_compressibility_factor_dranchuk_abou_kassem(
         )
 
     # Get pseudocritical properties
-    pseudo_critical_pressure, pseudo_critical_temperature = (
-        compute_gas_pseudocritical_properties(
-            gas_gravity=gas_gravity,
-            h2s_mole_fraction=h2s_mole_fraction,
-            co2_mole_fraction=co2_mole_fraction,
-            n2_mole_fraction=n2_mole_fraction,
-        )
+    pseudo_critical_pressure, pseudo_critical_temperature = compute_gas_pseudocritical_properties(
+        gas_gravity=gas_gravity,
+        h2s_mole_fraction=h2s_mole_fraction,
+        co2_mole_fraction=co2_mole_fraction,
+        n2_mole_fraction=n2_mole_fraction,
     )
 
     Pr = pressure / pseudo_critical_pressure
@@ -578,7 +561,7 @@ def compute_gas_pseudocritical_properties(
     h2s_mole_fraction: NumberOrArray[NDimension] = 0.0,
     co2_mole_fraction: NumberOrArray[NDimension] = 0.0,
     n2_mole_fraction: NumberOrArray[NDimension] = 0.0,
-) -> typing.Tuple[NumberArray[NDimension], NumberArray[NDimension]]:
+) -> tuple[NumberArray[NDimension], NumberArray[NDimension]]:
     """
     Computes pseudocritical pressure and temperature of natural gas in psi and °F.
 
@@ -626,9 +609,7 @@ def compute_gas_pseudocritical_properties(
 
     # Sutton's pseudocritical properties (psia and Rankine)
     pseudocritical_pressure = 756.8 - 131.0 * gas_gravity - 3.6 * gas_gravity**2
-    pseudocritical_temperature_rankine = (
-        169.2 + 349.5 * gas_gravity - 74.0 * gas_gravity**2
-    )
+    pseudocritical_temperature_rankine = 169.2 + 349.5 * gas_gravity - 74.0 * gas_gravity**2
 
     if max_(total_acid_gas_fraction) > 0.001:
         A = h2s_mole_fraction + co2_mole_fraction
@@ -646,9 +627,7 @@ def compute_gas_pseudocritical_properties(
         )
 
     dtype = gas_gravity.dtype
-    return pseudocritical_pressure.astype(
-        dtype
-    ), pseudocritical_temperature_rankine.astype(dtype)  # type: ignore[return-value]
+    return pseudocritical_pressure.astype(dtype), pseudocritical_temperature_rankine.astype(dtype)  # type: ignore[return-value]
 
 
 def compute_gas_density(
@@ -672,9 +651,7 @@ def compute_gas_density(
     gas_molecular_weight_lbm_per_lbmole = compute_gas_molecular_weight(gas_gravity)
     # Density in lbm/ft3
     gas_density = (pressure * gas_molecular_weight_lbm_per_lbmole) / (
-        np.multiply(
-            gas_compressibility_factor, c.IDEAL_GAS_CONSTANT_IMPERIAL, dtype=dtype
-        )
+        np.multiply(gas_compressibility_factor, c.IDEAL_GAS_CONSTANT_IMPERIAL, dtype=dtype)
         * temperature_in_rankine
     )
     return gas_density  # type: ignore[return-value]
@@ -715,9 +692,7 @@ def compute_gas_viscosity(
     temperature_in_rankine = temperature + dtype.type(459.67)
     # g/mol is numerically equal to lb/lbmol
     gas_molecular_weight_lbm_per_lbmole = gas_molecular_weight
-    density_in_grams_per_cm3 = (
-        gas_density * c.POUNDS_PER_CUBIC_FEET_TO_GRAMS_PER_CUBIC_METER
-    )
+    density_in_grams_per_cm3 = gas_density * c.POUNDS_PER_CUBIC_FEET_TO_GRAMS_PER_CUBIC_METER
 
     k = (
         (9.4 + (0.02 * gas_molecular_weight_lbm_per_lbmole))
@@ -725,17 +700,11 @@ def compute_gas_viscosity(
         / (209 + (19 * gas_molecular_weight_lbm_per_lbmole) + temperature_in_rankine)  # type: ignore
     )
 
-    x = (
-        3.5
-        + (986 / temperature_in_rankine)
-        + (0.01 * gas_molecular_weight_lbm_per_lbmole)
-    )
+    x = 3.5 + (986 / temperature_in_rankine) + (0.01 * gas_molecular_weight_lbm_per_lbmole)
     y = 2.4 - (0.2 * x)
 
     exponent = x * (density_in_grams_per_cm3**y)
-    exponent = np.minimum(
-        np.maximum(exponent, -700), 700, out=exponent
-    )  # cap to prevent overflow
+    exponent = np.minimum(np.maximum(exponent, -700), 700, out=exponent)  # cap to prevent overflow
 
     gas_viscosity = (k * 1e-4) * np.exp(exponent)
     return np.maximum(0.0, gas_viscosity).astype(temperature.dtype)
@@ -746,7 +715,7 @@ def compute_gas_compressibility(
     pressure: NumberArray[NDimension],
     temperature: NumberArray[NDimension],
     gas_gravity: NumberArray[NDimension],
-    gas_compressibility_factor: typing.Optional[NumberOrArray] = None,
+    gas_compressibility_factor: NumberOrArray | None = None,
     h2s_mole_fraction: NumberOrArray[NDimension] = 0.0,
     co2_mole_fraction: NumberOrArray[NDimension] = 0.0,
     n2_mole_fraction: NumberOrArray[NDimension] = 0.0,
@@ -766,9 +735,7 @@ def compute_gas_compressibility(
     :return: Gas compressibility in psi⁻¹.
     """
     if min_(pressure) <= 0 or min_(temperature) <= 0 or min_(gas_gravity) <= 0:
-        raise ValidationError(
-            "Pressure, temperature, and gas specific gravity must be positive."
-        )
+        raise ValidationError("Pressure, temperature, and gas specific gravity must be positive.")
 
     if gas_compressibility_factor is not None:
         Z = gas_compressibility_factor

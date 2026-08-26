@@ -332,7 +332,7 @@ class CompiledWellControls(typing.NamedTuple):
 class CompiledGroupControls(typing.NamedTuple):
     """Every group's current control target, one row per group."""
 
-    names: typing.Tuple[str, ...]
+    names: tuple[str, ...]
     """Shape `(n_groups,)`."""
 
     group_kinds: IntArray[OneDimension]
@@ -358,7 +358,7 @@ class CompiledWellSystem(typing.NamedTuple):
     and `unit_system` aren't valid `@njit` argument types.
     """
 
-    names: typing.Tuple[str, ...]
+    names: tuple[str, ...]
     """Shape `(n_wells,)`. Every other array here is positional against this order."""
 
     well_kinds: IntArray[OneDimension]
@@ -378,7 +378,7 @@ class CompiledWellSystem(typing.NamedTuple):
     controls: CompiledWellControls
     """Compiled well control data aligned with `names` and `well_kinds`."""
 
-    group_controls: typing.Optional[CompiledGroupControls]
+    group_controls: CompiledGroupControls | None
     """Compiled group-control data, or `None` when no group controls exist."""
 
     unit_system: UnitSystem
@@ -410,9 +410,7 @@ def _resolve_perforations_geometry(
     well: Well,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
     **resolve_kwargs: typing.Any,
-) -> typing.Tuple[
-    typing.Tuple[PerforationIndex, ...], typing.Dict[Integer, AnyPerforation]
-]:
+) -> tuple[tuple[PerforationIndex, ...], dict[Integer, AnyPerforation]]:
     """
     Resolves connection geometry and connection factor for every
     perforation on a well, open or shut.
@@ -435,9 +433,8 @@ def _resolve_perforations_geometry(
         attrs.evolve(perforation, status=CompletionStatus.OPEN)
         for perforation in well.perforations
     )
-    original_by_id: typing.Dict[Integer, AnyPerforation] = {
-        id(shadow): original
-        for shadow, original in zip(shadow_perforations, well.perforations)
+    original_by_id: dict[Integer, AnyPerforation] = {
+        id(shadow): original for shadow, original in zip(shadow_perforations, well.perforations, strict=False)
     }
     shadow_well = attrs.evolve(well, perforations=shadow_perforations)
     shadow_wells = Wells(wells={well.name: shadow_well})
@@ -471,16 +468,16 @@ def compile_perforations(
     :returns: `CompiledPerforations`, one row per (well, perforation, cell) triple.
     """
     well_offsets = [0]
-    cell_indices: typing.List[Integer] = []
-    well_indices: typing.List[Number] = []
-    wellbore_radii: typing.List[Number] = []
-    skins: typing.List[Number] = []
-    partial_penetration_fractions: typing.List[Number] = []
-    representative_depths: typing.List[Number] = []
-    inclinations_from_vertical: typing.List[Number] = []
-    completion_statuses: typing.List[Integer] = []
-    schedule_statuses: typing.List[Integer] = []
-    saturation_regions: typing.List[Integer] = []
+    cell_indices: list[Integer] = []
+    well_indices: list[Number] = []
+    wellbore_radii: list[Number] = []
+    skins: list[Number] = []
+    partial_penetration_fractions: list[Number] = []
+    representative_depths: list[Number] = []
+    inclinations_from_vertical: list[Number] = []
+    completion_statuses: list[Integer] = []
+    schedule_statuses: list[Integer] = []
+    saturation_regions: list[Integer] = []
 
     for name in names:
         well = wells[name]
@@ -498,35 +495,21 @@ def compile_perforations(
             )
             wellbore_radii.append(original.wellbore_radius)
             skins.append(original.skin)
-            partial_penetration_fractions.append(
-                connection.partial_penetration_fraction
-            )
+            partial_penetration_fractions.append(connection.partial_penetration_fraction)
             representative_depths.append(connection.representative_depth)
             inclinations_from_vertical.append(connection.inclination_from_vertical)
-            completion_statuses.append(
-                get_completion_status_tag(status=original.status)
-            )
-            schedule_statuses.append(
-                get_well_status_tag(status=original.schedule_status)
-            )
+            completion_statuses.append(get_completion_status_tag(status=original.status))
+            schedule_statuses.append(get_well_status_tag(status=original.schedule_status))
             saturation_regions.append(
-                original.saturation_region
-                if original.saturation_region is not None
-                else UNSET_INT
+                original.saturation_region if original.saturation_region is not None else UNSET_INT
             )
         well_offsets.append(len(cell_indices))
 
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     return CompiledPerforations(
-        well_offsets=typing.cast(
-            IntArray[OneDimension], np.asarray(well_offsets, dtype=np.int64)
-        ),
-        cell_indices=typing.cast(
-            IntArray[OneDimension], np.asarray(cell_indices, dtype=np.int64)
-        ),
-        well_indices=typing.cast(
-            NumberArray[OneDimension], np.asarray(well_indices, dtype=dtype)
-        ),
+        well_offsets=typing.cast(IntArray[OneDimension], np.asarray(well_offsets, dtype=np.int64)),
+        cell_indices=typing.cast(IntArray[OneDimension], np.asarray(cell_indices, dtype=np.int64)),
+        well_indices=typing.cast(NumberArray[OneDimension], np.asarray(well_indices, dtype=dtype)),
         wellbore_radii=typing.cast(
             NumberArray[OneDimension], np.asarray(wellbore_radii, dtype=dtype)
         ),
@@ -557,8 +540,8 @@ def compile_perforations(
 
 def _compile_limits(
     limits: typing.Sequence[Limit],
-) -> typing.Tuple[
-    typing.List[Integer], typing.List[Integer], typing.List[Number], typing.List[Number]
+) -> tuple[
+    list[Integer], list[Integer], list[Number], list[Number]
 ]:
     """
     Flattens one well's or group's limits into parallel arrays.
@@ -567,30 +550,22 @@ def _compile_limits(
     :returns: `(kinds, quantity_tags, min_values, max_values)`, all the same length as `limits`.
     :raises ValidationError: If `limits` contains an unrecognized `Limit` subtype.
     """
-    kinds: typing.List[Integer] = []
-    quantity_tags: typing.List[Integer] = []
-    min_values: typing.List[Number] = []
-    max_values: typing.List[Number] = []
+    kinds: list[Integer] = []
+    quantity_tags: list[Integer] = []
+    min_values: list[Number] = []
+    max_values: list[Number] = []
 
     for limit in limits:
         if isinstance(limit, BHPLimit):
             kinds.append(LimitKind.BHP)
             quantity_tags.append(UNSET_INT)
-            min_values.append(
-                limit.min_value if limit.min_value is not None else np.nan
-            )
-            max_values.append(
-                limit.max_value if limit.max_value is not None else np.nan
-            )
+            min_values.append(limit.min_value if limit.min_value is not None else np.nan)
+            max_values.append(limit.max_value if limit.max_value is not None else np.nan)
         elif isinstance(limit, THPLimit):
             kinds.append(LimitKind.THP)
             quantity_tags.append(UNSET_INT)
-            min_values.append(
-                limit.min_value if limit.min_value is not None else np.nan
-            )
-            max_values.append(
-                limit.max_value if limit.max_value is not None else np.nan
-            )
+            min_values.append(limit.min_value if limit.min_value is not None else np.nan)
+            max_values.append(limit.max_value if limit.max_value is not None else np.nan)
         elif isinstance(limit, RateLimit):
             kinds.append(LimitKind.RATE)
             quantity_tags.append(RATE_QUANTITY_TAG[limit.quantity])
@@ -631,29 +606,25 @@ def compile_well_controls(
     :returns: `CompiledWellControls`.
     :raises ValidationError: If a control is neither a `ProducerControl` nor `InjectorControl`.
     """
-    well_kinds: typing.List[Integer] = []
-    control_modes: typing.List[Integer] = []
-    injected_phases: typing.List[Integer] = []
-    target_rates: typing.List[Number] = []
-    target_bhps: typing.List[Number] = []
-    target_thps: typing.List[Number] = []
-    efficiency_factors: typing.List[Number] = []
-    guide_rates: typing.List[Number] = []
+    well_kinds: list[Integer] = []
+    control_modes: list[Integer] = []
+    injected_phases: list[Integer] = []
+    target_rates: list[Number] = []
+    target_bhps: list[Number] = []
+    target_thps: list[Number] = []
+    efficiency_factors: list[Number] = []
+    guide_rates: list[Number] = []
 
     limits_well_offsets = [0]
-    limits_kinds: typing.List[Integer] = []
-    limits_quantity_tags: typing.List[Integer] = []
-    limits_min_values: typing.List[Number] = []
-    limits_max_values: typing.List[Number] = []
+    limits_kinds: list[Integer] = []
+    limits_quantity_tags: list[Integer] = []
+    limits_min_values: list[Number] = []
+    limits_max_values: list[Number] = []
 
     for name in names:
         well = wells[name]
         control = controls.get(name)
-        kind = (
-            WellKind.INJECTOR
-            if well.well_type is WellType.INJECTOR
-            else WellKind.PRODUCER
-        )
+        kind = WellKind.INJECTOR if well.well_type is WellType.INJECTOR else WellKind.PRODUCER
         well_kinds.append(kind)
 
         if control is None:
@@ -693,9 +664,7 @@ def compile_well_controls(
         else:
             raise ValidationError(f"Unknown WellControl type: {type(control)!r}.")
 
-        kinds, quantity_tags, min_values, max_values = _compile_limits(
-            limits=control_limits
-        )
+        kinds, quantity_tags, min_values, max_values = _compile_limits(limits=control_limits)
         limits_kinds.extend(kinds)
         limits_quantity_tags.extend(quantity_tags)
         limits_min_values.extend(min_values)
@@ -707,9 +676,7 @@ def compile_well_controls(
         well_offsets=typing.cast(
             IntArray[OneDimension], np.asarray(limits_well_offsets, dtype=np.int64)
         ),
-        kinds=typing.cast(
-            IntArray[OneDimension], np.asarray(limits_kinds, dtype=np.int32)
-        ),
+        kinds=typing.cast(IntArray[OneDimension], np.asarray(limits_kinds, dtype=np.int32)),
         quantity_tags=typing.cast(
             IntArray[OneDimension], np.asarray(limits_quantity_tags, dtype=np.int32)
         ),
@@ -721,37 +688,27 @@ def compile_well_controls(
         ),
     )
     return CompiledWellControls(
-        well_kinds=typing.cast(
-            IntArray[OneDimension], np.asarray(well_kinds, dtype=np.int32)
-        ),
+        well_kinds=typing.cast(IntArray[OneDimension], np.asarray(well_kinds, dtype=np.int32)),
         control_modes=typing.cast(
             IntArray[OneDimension], np.asarray(control_modes, dtype=np.int32)
         ),
         injected_phases=typing.cast(
             IntArray[OneDimension], np.asarray(injected_phases, dtype=np.int32)
         ),
-        target_rates=typing.cast(
-            NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)
-        ),
-        target_bhps=typing.cast(
-            NumberArray[OneDimension], np.asarray(target_bhps, dtype=dtype)
-        ),
-        target_thps=typing.cast(
-            NumberArray[OneDimension], np.asarray(target_thps, dtype=dtype)
-        ),
+        target_rates=typing.cast(NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)),
+        target_bhps=typing.cast(NumberArray[OneDimension], np.asarray(target_bhps, dtype=dtype)),
+        target_thps=typing.cast(NumberArray[OneDimension], np.asarray(target_thps, dtype=dtype)),
         efficiency_factors=typing.cast(
             NumberArray[OneDimension], np.asarray(efficiency_factors, dtype=dtype)
         ),
-        guide_rates=typing.cast(
-            NumberArray[OneDimension], np.asarray(guide_rates, dtype=dtype)
-        ),
+        guide_rates=typing.cast(NumberArray[OneDimension], np.asarray(guide_rates, dtype=dtype)),
         limits=limits,
     )
 
 
 def compile_group_controls(
-    group_controls: typing.Optional[GroupControls], dtype: npt.DTypeLike = None
-) -> typing.Optional[CompiledGroupControls]:
+    group_controls: GroupControls | None, dtype: npt.DTypeLike = None
+) -> CompiledGroupControls | None:
     """
     Builds `CompiledGroupControls` from a `GroupControls`.
 
@@ -770,10 +727,10 @@ def compile_group_controls(
         return None
 
     names = sorted(group_controls.controls.keys())
-    group_kinds: typing.List[Integer] = []
-    control_modes: typing.List[Integer] = []
-    injected_phases: typing.List[Integer] = []
-    target_rates: typing.List[Number] = []
+    group_kinds: list[Integer] = []
+    control_modes: list[Integer] = []
+    injected_phases: list[Integer] = []
+    target_rates: list[Number] = []
 
     for name in names:
         control = group_controls.controls[name]
@@ -790,28 +747,20 @@ def compile_group_controls(
             control_modes.append(GROUP_PRODUCER_MODE_TAG[control.mode])
             injected_phases.append(UNSET_INT)
         else:
-            raise ValidationError(
-                f"Unknown GroupControl mode type: {type(control.mode)!r}."
-            )
-        target_rates.append(
-            control.target_rate if control.target_rate is not None else np.nan
-        )
+            raise ValidationError(f"Unknown GroupControl mode type: {type(control.mode)!r}.")
+        target_rates.append(control.target_rate if control.target_rate is not None else np.nan)
 
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     return CompiledGroupControls(
         names=tuple(names),
-        group_kinds=typing.cast(
-            IntArray[OneDimension], np.asarray(group_kinds, dtype=np.int32)
-        ),
+        group_kinds=typing.cast(IntArray[OneDimension], np.asarray(group_kinds, dtype=np.int32)),
         control_modes=typing.cast(
             IntArray[OneDimension], np.asarray(control_modes, dtype=np.int32)
         ),
         injected_phases=typing.cast(
             IntArray[OneDimension], np.asarray(injected_phases, dtype=np.int32)
         ),
-        target_rates=typing.cast(
-            NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)
-        ),
+        target_rates=typing.cast(NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)),
     )
 
 
@@ -820,7 +769,7 @@ def compile_well_system(
     controls: WellControls,
     grid: Grid,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
-    group_controls: typing.Optional[GroupControls] = None,
+    group_controls: GroupControls | None = None,
     dtype: npt.DTypeLike = None,
     **resolve_kwargs: typing.Any,
 ) -> CompiledWellSystem:
@@ -885,8 +834,6 @@ def compile_well_system(
         reference_depths=reference_depths,
         perforations=perforations,
         controls=well_controls,
-        group_controls=compile_group_controls(
-            group_controls=group_controls, dtype=dtype
-        ),
+        group_controls=compile_group_controls(group_controls=group_controls, dtype=dtype),
         unit_system=wells.unit_system,
     )

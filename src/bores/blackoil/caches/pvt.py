@@ -161,7 +161,7 @@ class PVTCache(typing.NamedTuple):
     """The 1-based PVTNUM each cell was evaluated against."""
 
 
-CACHE_NAN_FIELDS: typing.Tuple[str, ...] = tuple(
+CACHE_NAN_FIELDS: tuple[str, ...] = tuple(
     name for name in PVTCache._fields if name not in ("is_saturated", "pvt_region")
 )
 
@@ -181,8 +181,8 @@ def compute_pvt_cache(
     solution_gas_oil_ratio: CellArray,
     pvt_region: IntCellArray,
     pvt: PVT,
-    salinity: typing.Optional[CellArray] = None,
-    out: typing.Optional[PVTCache] = None,
+    salinity: CellArray | None = None,
+    out: PVTCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTCache:
     """
@@ -261,9 +261,7 @@ def compute_pvt_cache(
             if is_saturated is not None:
                 cache.is_saturated[mask] = np.atleast_1d(is_saturated)
 
-            bubble_point = oil.bubble_point_pressure(
-                temperature=t, solution_gor=rs_estimate
-            )
+            bubble_point = oil.bubble_point_pressure(temperature=t, solution_gor=rs_estimate)
 
             cache.oil_formation_volume_factor[mask] = oil.formation_volume_factor(  # type: ignore[arg-type]
                 p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point

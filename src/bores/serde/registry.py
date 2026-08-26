@@ -14,17 +14,15 @@ _SerializableT = typing.TypeVar("_SerializableT", bound=Serializable)
 
 
 def make_serializable_type_registrar(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
+    base_cls: type[SerializableT],
+    registry: dict[str, type[SerializableT]],
     key_attr: str = "__type__",
-    lock: typing.Optional[threading.Lock] = None,
-    key_factory: typing.Optional[
-        typing.Callable[[typing.Type[SerializableT]], str]
-    ] = None,
+    lock: threading.Lock | None = None,
+    key_factory: typing.Callable[[type[SerializableT]], str] | None = None,
     override: bool = False,
     auto_register_serializer: bool = True,
     auto_register_deserializer: bool = True,
-) -> typing.Callable[[typing.Type[_SerializableT]], typing.Type[_SerializableT]]:
+) -> typing.Callable[[type[_SerializableT]], type[_SerializableT]]:
     """
     Decorator factory to create a registrar for `Serializable` subclasses.
 
@@ -43,7 +41,7 @@ def make_serializable_type_registrar(
 
     lock = lock or threading.Lock()
 
-    def registrar(cls: typing.Type[_SerializableT]) -> typing.Type[_SerializableT]:
+    def registrar(cls: type[_SerializableT]) -> type[_SerializableT]:
         """Decorator to register a `Serializable` subclass."""
         if not issubclass(cls, base_cls):
             raise ValidationError(f"Class {cls!r} is not a subclass of {base_cls!r}")
@@ -77,10 +75,10 @@ def make_serializable_type_registrar(
 
 
 def make_registry_serializer(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
+    base_cls: type[SerializableT],
+    registry: dict[str, type[SerializableT]],
     key_attr: str = "__type__",
-) -> typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]:
+) -> typing.Callable[[SerializableT], dict[str, typing.Any]]:
     """
     Create a serializer function for a registry of `Serializable` subclasses.
 
@@ -89,12 +87,10 @@ def make_registry_serializer(
     :return: A serializer function.
     """
 
-    def serializer(obj: SerializableT) -> typing.Dict[str, typing.Any]:
+    def serializer(obj: SerializableT) -> dict[str, typing.Any]:
         key = getattr(obj, key_attr, None)
         if not key or key not in registry:
-            raise ValidationError(
-                f"Unsupported {base_cls.__name__!r} type: {type(obj)!r}"
-            )
+            raise ValidationError(f"Unsupported {base_cls.__name__!r} type: {type(obj)!r}")
 
         return {key: obj.dump()}
 
@@ -103,8 +99,8 @@ def make_registry_serializer(
 
 
 def make_registry_deserializer(
-    base_cls: typing.Type[SerializableT],
-    registry: typing.Dict[str, typing.Type[SerializableT]],
+    base_cls: type[SerializableT],
+    registry: dict[str, type[SerializableT]],
 ) -> typing.Callable[[typing.Mapping[str, typing.Any]], SerializableT]:
     """
     Create a deserializer function for a registry of `Serializable` subclasses.
@@ -120,9 +116,7 @@ def make_registry_deserializer(
 
         key, value = next(iter(data.items()))
         if key not in registry:
-            raise DeserializationError(
-                f"Unsupported {base_cls.__name__!r} type: {key!r}"
-            )
+            raise DeserializationError(f"Unsupported {base_cls.__name__!r} type: {key!r}")
 
         cls = registry[key]
         return cls.load(value)

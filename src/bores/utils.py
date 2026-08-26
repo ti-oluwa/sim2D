@@ -378,8 +378,8 @@ def scale(a: Number, /, factor: Number) -> Number: ...
 @typing.overload
 def scale(a: None, /, factor: Number) -> None: ...
 def scale(
-    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
-) -> typing.Optional[NumberOrArray[NDimension]]:
+    a: NumberOrArray[NDimension] | None, /, factor: Number
+) -> NumberOrArray[NDimension] | None:
     """Return `a * factor` as the same dtype; identity when factor == 1.0."""
     if a is None or factor == 1.0:
         return a
@@ -391,16 +391,14 @@ def scale(
 
 
 @typing.overload
-def scale_non_empty(
-    a: NumberArray[NDimension], /, factor: Number
-) -> NumberArray[NDimension]: ...
+def scale_non_empty(a: NumberArray[NDimension], /, factor: Number) -> NumberArray[NDimension]: ...
 @typing.overload
 def scale_non_empty(a: Number, /, factor: Number) -> Number: ...
 @typing.overload
 def scale_non_empty(a: None, /, factor: Number) -> None: ...
 def scale_non_empty(
-    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number
-) -> typing.Optional[NumberOrArray[NDimension]]:
+    a: NumberOrArray[NDimension] | None, /, factor: Number
+) -> NumberOrArray[NDimension] | None:
     """Scale only if the optional array or float is non-empty and truthy."""
     if isinstance(a, np.ndarray):
         non_empty = a is not None and a.size > 0
@@ -418,8 +416,8 @@ def scale_and_offset(a: Number, /, factor: Number, offset: Number) -> Number: ..
 @typing.overload
 def scale_and_offset(a: None, /, factor: Number, offset: Number) -> None: ...
 def scale_and_offset(
-    a: typing.Optional[NumberOrArray[NDimension]], /, factor: Number, offset: Number
-) -> typing.Optional[NumberOrArray[NDimension]]:
+    a: NumberOrArray[NDimension] | None, /, factor: Number, offset: Number
+) -> NumberOrArray[NDimension] | None:
     """Return `a * factor + offset` as the same dtype; identity when trivial."""
     if a is None or (factor == 1.0 and offset == 0.0):
         return a

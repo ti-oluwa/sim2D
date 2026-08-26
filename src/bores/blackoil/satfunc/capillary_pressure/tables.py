@@ -118,12 +118,12 @@ class CapillaryPressureTable(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         raise NotImplementedError
 
 
-_CAPILLARY_PRESSURE_TABLES: typing.Dict[str, typing.Type[CapillaryPressureTable]] = {}
+_CAPILLARY_PRESSURE_TABLES: dict[str, type[CapillaryPressureTable]] = {}
 """Registry for capillary pressure table types."""
 _capillary_pressure_table_lock = threading.Lock()
 capillary_pressure_table = make_serializable_type_registrar(
@@ -137,7 +137,7 @@ capillary_pressure_table = make_serializable_type_registrar(
 )
 
 
-def list_capillary_pressure_tables() -> typing.List[str]:
+def list_capillary_pressure_tables() -> list[str]:
     """
     List all registered capillary pressure table types.
 
@@ -147,7 +147,7 @@ def list_capillary_pressure_tables() -> typing.List[str]:
         return list(_CAPILLARY_PRESSURE_TABLES.keys())
 
 
-def get_capillary_pressure_table(name: str) -> typing.Type[CapillaryPressureTable]:
+def get_capillary_pressure_table(name: str) -> type[CapillaryPressureTable]:
     """
     Get a registered capillary pressure table type by name.
 
@@ -226,10 +226,10 @@ class TwoPhaseCapillaryPressureTable(
 
     __type__ = "two_phase_capillary_pressure_table"
 
-    wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
+    wetting_phase: FluidPhase | str = attrs.field(converter=FluidPhase)
     """The wetting fluid phase, e.g. WATER (oil-water system) or OIL (gas-oil system)."""
 
-    non_wetting_phase: typing.Union[FluidPhase, str] = attrs.field(converter=FluidPhase)
+    non_wetting_phase: FluidPhase | str = attrs.field(converter=FluidPhase)
     """The non-wetting fluid phase, e.g. OIL (oil-water system) or GAS (gas-oil system)."""
 
     reference_saturation: NumberArray[OneDimension]
@@ -246,9 +246,7 @@ class TwoPhaseCapillaryPressureTable(
     (psi / bar / atm / Pa).
     """
 
-    reference_phase: typing.Literal["wetting", "non_wetting"] = attrs.field(
-        default="wetting"
-    )
+    reference_phase: typing.Literal["wetting", "non_wetting"] = attrs.field(default="wetting")
     """
     Which phase the `reference_saturation` axis represents.
 
@@ -293,7 +291,7 @@ class TwoPhaseCapillaryPressureTable(
     (and the derivative interpolant) to another `UnitSystem`.
     """
 
-    dtype: typing.Optional[npt.DTypeLike] = attrs.field(default=None)
+    dtype: npt.DTypeLike | None = attrs.field(default=None)
     """
     Array dtype for all stored arrays and all query return values.
 
@@ -322,9 +320,7 @@ class TwoPhaseCapillaryPressureTable(
         if len(self.reference_saturation) < 2:
             raise ValidationError("At least 2 points required for interpolation.")
         if not np.all(np.diff(self.reference_saturation) >= 0):
-            raise ValidationError(
-                "`reference_saturation` must be monotonically increasing."
-            )
+            raise ValidationError("`reference_saturation` must be monotonically increasing.")
 
         # Resolve and enforce dtype on both stored arrays
         dtype = np.dtype(self.dtype) if self.dtype is not None else get_dtype()
@@ -399,13 +395,9 @@ class TwoPhaseCapillaryPressureTable(
 
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore
-        return typing.cast(
-            NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
-        )
+        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape, copy=False))
 
-    def _query_d_interp(
-        self, reference: NumberOrArray[NDimension]
-    ) -> NumberOrArray[NDimension]:
+    def _query_d_interp(self, reference: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
         """
         Evaluate the analytical PCHIP derivative at `reference`, returning
         zero (in `self.dtype`) outside the knot range.
@@ -429,14 +421,12 @@ class TwoPhaseCapillaryPressureTable(
 
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore
-        return typing.cast(
-            NumberOrArray[NDimension], result.reshape(sat.shape, copy=False)
-        )
+        return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape, copy=False))
 
     def get_capillary_pressure(
         self,
         wetting_saturation: NumberOrArray[NDimension],
-        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        non_wetting_saturation: NumberOrArray[NDimension] | None = None,
     ) -> NumberOrArray[NDimension]:
         """
         Get capillary pressure at the given saturation(s).
@@ -451,16 +441,14 @@ class TwoPhaseCapillaryPressureTable(
         """
         ref = self._resolve_reference(
             wetting_saturation,
-            non_wetting_saturation
-            if non_wetting_saturation is not None
-            else wetting_saturation,
+            non_wetting_saturation if non_wetting_saturation is not None else wetting_saturation,
         )
         return self._query_interp(ref)
 
     def get_capillary_pressure_derivative(
         self,
         wetting_saturation: NumberOrArray[NDimension],
-        non_wetting_saturation: typing.Optional[NumberOrArray[NDimension]] = None,
+        non_wetting_saturation: NumberOrArray[NDimension] | None = None,
     ) -> NumberOrArray[NDimension]:
         """
         Derivative of capillary pressure with respect to the reference
@@ -476,9 +464,7 @@ class TwoPhaseCapillaryPressureTable(
         """
         ref = self._resolve_reference(
             wetting_saturation,
-            non_wetting_saturation
-            if non_wetting_saturation is not None
-            else wetting_saturation,
+            non_wetting_saturation if non_wetting_saturation is not None else wetting_saturation,
         )
         return self._query_d_interp(ref)
 
@@ -690,7 +676,7 @@ class TwoPhaseCapillaryPressureTable(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `TwoPhaseCapillaryPressureTable` with `capillary_pressure`
@@ -778,7 +764,7 @@ class TwoPhaseCapillaryPressureTable(
         region_index = max(satnum - 1, 0)
         unit_system = deck_file.unit_system
 
-        def _require(keyword: str) -> typing.List[typing.Dict[str, typing.Any]]:
+        def _require(keyword: str) -> list[dict[str, typing.Any]]:
             all_regions = deck_file.get(keyword)
             if all_regions is None or region_index >= len(all_regions):
                 raise ValidationError(
@@ -829,9 +815,7 @@ class TwoPhaseCapillaryPressureTable(
                 dtype=dtype,
             )
 
-        raise ValidationError(
-            f"`system` must be 'oil_water' or 'gas_oil'; got {system!r}."
-        )
+        raise ValidationError(f"`system` must be 'oil_water' or 'gas_oil'; got {system!r}.")
 
 
 @capillary_pressure_table
@@ -890,9 +874,7 @@ class ThreePhaseCapillaryPressureTable(
             self.oil_water_table.wetting_phase,
             self.oil_water_table.non_wetting_phase,
         } != {FluidPhase.WATER, FluidPhase.OIL}:
-            raise ValidationError(
-                "`oil_water_table` must be between water and oil phases."
-            )
+            raise ValidationError("`oil_water_table` must be between water and oil phases.")
         if {self.gas_oil_table.wetting_phase, self.gas_oil_table.non_wetting_phase} != {
             FluidPhase.OIL,
             FluidPhase.GAS,
@@ -1125,7 +1107,7 @@ class ThreePhaseCapillaryPressureTable(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ThreePhaseCapillaryPressureTable` with both sub-tables
@@ -1202,7 +1184,7 @@ class ThreePhaseCapillaryPressureTable(
                 return False
             return region_index < len(all_regions) and bool(all_regions[region_index])
 
-        shared_kwargs: typing.Dict[str, typing.Any] = dict(
+        shared_kwargs: dict[str, typing.Any] = dict(
             satnum=satnum,
             number_of_base_points=number_of_base_points,
             number_of_endpoint_extra_points=number_of_endpoint_extra_points,

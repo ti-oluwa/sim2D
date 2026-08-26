@@ -37,7 +37,7 @@ __all__ = [
 class PerforationIndex(Serializable):
     """One resolved (perforation, cell) pair - a connection."""
 
-    perforation: typing.Union[Perforation, MDPerforation]
+    perforation: Perforation | MDPerforation
     """The perforation this connection belongs to."""
 
     cell_index: Integer
@@ -57,7 +57,7 @@ class PerforationIndex(Serializable):
     horizontal one. `wells.hydraulics` reads this directly; nothing in
     that package derives an inclination itself."""
 
-    well_index: typing.Optional[Number] = None
+    well_index: Number | None = None
     """Connection factor for this connection. `None` until computed."""
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -68,7 +68,7 @@ class PerforationIndex(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a  new `PerforationIndex` in the *target* unit system.
@@ -103,10 +103,7 @@ def resolve_perforation_orientation(perforation: Perforation) -> Orientation:
     :param perforation: The perforation being resolved.
     :returns: `Orientation.X`, `Orientation.Y`, or `Orientation.Z`.
     """
-    if (
-        perforation.direction is not None
-        and perforation.direction is not Orientation.UNSET
-    ):
+    if perforation.direction is not None and perforation.direction is not Orientation.UNSET:
         return perforation.direction
     return Orientation.Z
 
@@ -160,16 +157,14 @@ def _get_vertical_column_candidates(
 
     assert grid.cell_centroids is not None
     centroids_xy = grid.cell_centroids[raw_candidates, :2]
-    horizontal_distances = np.sqrt(
-        (centroids_xy[:, 0] - x) ** 2 + (centroids_xy[:, 1] - y) ** 2
-    )
+    horizontal_distances = np.sqrt((centroids_xy[:, 0] - x) ** 2 + (centroids_xy[:, 1] - y) ** 2)
     filtered = raw_candidates[horizontal_distances <= tolerance]
     return typing.cast(IntArray[OneDimension], np.sort(filtered))
 
 
 def _compute_local_vertical_extent_aabb(
     grid: Grid, cell_index: int, x: Number, y: Number
-) -> typing.Optional[typing.Tuple[Number, Number]]:
+) -> tuple[Number, Number] | None:
     """
     Get vertical extent of cell `cell_index`'s axis-aligned bounding box.
 
@@ -245,7 +240,7 @@ def _point_in_polygon_2d(
 
 
 def _point_in_polygon_3d(
-    point: typing.Tuple[Number, Number, Number],
+    point: tuple[Number, Number, Number],
     polygon_xyz: NumberArray[TwoDimensions],
     normal: NumberArray[OneDimension],
     tolerance: Number = 1e-9,
@@ -284,7 +279,7 @@ def _point_in_polygon_3d(
 
 def _compute_local_vertical_extent_exact(
     grid: Grid, cell_index: int, x: Number, y: Number
-) -> typing.Optional[typing.Tuple[Number, Number]]:
+) -> tuple[Number, Number] | None:
     """
     Get exact vertical extent of cell `cell_index` at horizontal position
     `(x, y)`.
@@ -308,7 +303,7 @@ def _compute_local_vertical_extent_exact(
     :returns: `(top_depth, bottom_depth)`, or `None` if `(x, y)` does not actually
         fall within this cell's horizontal footprint.
     """
-    crossings: typing.List[float] = []
+    crossings: list[float] = []
     for face_idx in grid.get_cell_face_indices(cell_index):
         normal = grid.get_face_normal_for_cell(face_idx, cell_index)
         normal_z = normal[2]
@@ -334,9 +329,9 @@ def resolve_perforations_indices(
     grid: Grid,
     well: Well,
     *,
-    horizontal_tolerance: typing.Optional[Number] = None,
+    horizontal_tolerance: Number | None = None,
     method: typing.Literal["aabb", "exact"] = "aabb",
-) -> typing.Tuple[PerforationIndex, ...]:
+) -> tuple[PerforationIndex, ...]:
     """
     Resolve every open `Perforation` on `well` to the `Grid` cell(s) it
     intersects. Only valid for a `well` with no `trajectory` - see
@@ -365,8 +360,7 @@ def resolve_perforations_indices(
     """
     if well.trajectory is not None:
         raise ValidationError(
-            f"Well {well.name!r} has a trajectory; use "
-            "resolve_md_perforations_indices instead."
+            f"Well {well.name!r} has a trajectory; use resolve_md_perforations_indices instead."
         )
 
     if grid.unit_system != well.unit_system:
@@ -388,15 +382,13 @@ def resolve_perforations_indices(
         else _compute_local_vertical_extent_exact
     )
 
-    results: typing.List[PerforationIndex] = []
+    results: list[PerforationIndex] = []
     for perforation in well.open_perforations:
         assert isinstance(perforation, Perforation)
         inclination = (
-            0.0
-            if resolve_perforation_orientation(perforation) is Orientation.Z
-            else math.pi / 2.0
+            0.0 if resolve_perforation_orientation(perforation) is Orientation.Z else math.pi / 2.0
         )
-        matches: typing.List[PerforationIndex] = []
+        matches: list[PerforationIndex] = []
 
         if perforation.is_point_perforation:
             depth = perforation.top_depth
@@ -457,7 +449,7 @@ def resolve_perforations_indices(
 def _check_cell_contains_point(
     grid: Grid,
     cell_index: Integer,
-    point: typing.Tuple[Number, Number, Number],
+    point: tuple[Number, Number, Number],
     tolerance: Number = 1e-6,
 ) -> bool:
     """
@@ -485,8 +477,8 @@ def _check_cell_contains_point(
 
 
 def _locate_cell(
-    grid: Grid, point: typing.Tuple[Number, Number, Number], search_radius: Number
-) -> typing.Optional[Integer]:
+    grid: Grid, point: tuple[Number, Number, Number], search_radius: Number
+) -> Integer | None:
     """
     Find the grid cell containing `point`.
 
@@ -518,12 +510,12 @@ def _locate_cell(
 
 
 def _get_segment_face_intersection(
-    start: typing.Tuple[Number, Number, Number],
-    direction: typing.Tuple[Number, Number, Number],
+    start: tuple[Number, Number, Number],
+    direction: tuple[Number, Number, Number],
     grid: Grid,
     face_index: Integer,
     cell_index: Integer,
-) -> typing.Optional[Number]:
+) -> Number | None:
     """
     Get a parameter `t` (`point = start + t * direction`) at which the ray from
     `start` along `direction` crosses `face_index`'s plane *and* actually
@@ -540,9 +532,7 @@ def _get_segment_face_intersection(
     :returns: `t`, or `None`.
     """
     normal = grid.get_face_normal_for_cell(face_index, cell_index)
-    denominator = (
-        normal[0] * direction[0] + normal[1] * direction[1] + normal[2] * direction[2]
-    )
+    denominator = normal[0] * direction[0] + normal[1] * direction[1] + normal[2] * direction[2]
     if abs(denominator) < 1e-12:
         return None
 
@@ -567,12 +557,12 @@ def _get_segment_face_intersection(
 
 def _walk_segment_through_grid(
     grid: Grid,
-    start: typing.Tuple[Number, Number, Number],
-    end: typing.Tuple[Number, Number, Number],
+    start: tuple[Number, Number, Number],
+    end: tuple[Number, Number, Number],
     start_md: Number,
     end_md: Number,
     search_radius: Number,
-) -> typing.List[typing.Tuple[Integer, Number, Number]]:
+) -> list[tuple[Integer, Number, Number]]:
     """
     Walk the straight 3-D segment from `start` to `end` through `grid`,
     cell by cell.
@@ -603,14 +593,14 @@ def _walk_segment_through_grid(
     if current_cell is None:
         return []
 
-    results: typing.List[typing.Tuple[Integer, Number, Number]] = []
+    results: list[tuple[Integer, Number, Number]] = []
     current_t = 0.0
     md_span = end_md - start_md
     max_visits = 4 * grid.n_cells + 64
 
     for _ in range(max_visits):
-        best_t: typing.Optional[Number] = None
-        best_face: typing.Optional[Integer] = None
+        best_t: Number | None = None
+        best_face: Integer | None = None
         for face_idx in grid.get_cell_face_indices(current_cell):
             t = _get_segment_face_intersection(
                 start=start,
@@ -626,19 +616,23 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside `current_cell` without crossing another face.
-            results.append((
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + 1.0 * md_span,
-            ))
+            results.append(
+                (
+                    current_cell,
+                    start_md + current_t * md_span,
+                    start_md + 1.0 * md_span,
+                )
+            )
             break
 
         exit_t = min(best_t, 1.0)
-        results.append((
-            current_cell,
-            start_md + current_t * md_span,
-            start_md + exit_t * md_span,
-        ))
+        results.append(
+            (
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + exit_t * md_span,
+            )
+        )
         if best_t >= 1.0 - 1e-9:
             break
 
@@ -660,8 +654,8 @@ def resolve_md_perforations_indices(
     grid: Grid,
     well: Well,
     *,
-    search_radius: typing.Optional[Number] = None,
-) -> typing.Tuple[PerforationIndex, ...]:
+    search_radius: Number | None = None,
+) -> tuple[PerforationIndex, ...]:
     """
     Resolve every open `MDPerforation` on `well` to the `Grid` cell(s) its
     measured-depth interval passes through. Only valid for a `well` with a
@@ -690,8 +684,7 @@ def resolve_md_perforations_indices(
     """
     if well.trajectory is None:
         raise ValidationError(
-            f"Well {well.name!r} has no trajectory; use "
-            "resolve_perforations_indices instead."
+            f"Well {well.name!r} has no trajectory; use resolve_perforations_indices instead."
         )
 
     if grid.unit_system != well.unit_system:
@@ -708,7 +701,7 @@ def resolve_md_perforations_indices(
         else get_default_horizontal_tolerance(grid, x, y)
     )
 
-    results: typing.List[PerforationIndex] = []
+    results: list[PerforationIndex] = []
     for perforation in well.open_perforations:
         assert isinstance(perforation, MDPerforation)
         top_md = perforation.top_md
@@ -719,9 +712,9 @@ def resolve_md_perforations_indices(
         # separate point-lookup code path.
 
         stations = trajectory.stations_between(top_md, bottom_md)
-        matches: typing.List[PerforationIndex] = []
+        matches: list[PerforationIndex] = []
 
-        for previous, current in zip(stations, stations[1:]):
+        for previous, current in zip(stations, stations[1:], strict=False):
             start = (previous.x, previous.y, previous.z)
             end = (current.x, current.y, current.z)
             leg_dx, leg_dy, leg_dz = (
@@ -753,12 +746,9 @@ def resolve_md_perforations_indices(
                         partial_penetration_fraction=(
                             1.0
                             if perforation.is_point_perforation
-                            else sub_length
-                            / (perforation.bottom_md - perforation.top_md)
+                            else sub_length / (perforation.bottom_md - perforation.top_md)
                         ),
-                        representative_depth=trajectory.position_at(
-                            0.5 * (entry_md + exit_md)
-                        )[2],
+                        representative_depth=trajectory.position_at(0.5 * (entry_md + exit_md))[2],
                         inclination_from_vertical=inclination,
                         unit_system=well.unit_system,
                     )

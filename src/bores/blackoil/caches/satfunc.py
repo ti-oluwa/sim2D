@@ -88,7 +88,7 @@ class SatFuncCache(typing.NamedTuple):
     """The 1-based SATNUM each cell was evaluated against."""
 
 
-CACHE_NAN_FIELDS: typing.Tuple[str, ...] = tuple(
+CACHE_NAN_FIELDS: tuple[str, ...] = tuple(
     name for name in SatFuncCache._fields if name != "saturation_region"
 )
 
@@ -107,11 +107,11 @@ def compute_satfunc_cache(
     gas_saturation: CellArray,
     saturation_region: IntCellArray,
     satfunc: SatFunc,
-    irreducible_water_saturation: typing.Optional[CellArray] = None,
-    residual_oil_saturation_water: typing.Optional[CellArray] = None,
-    residual_oil_saturation_gas: typing.Optional[CellArray] = None,
-    residual_gas_saturation: typing.Optional[CellArray] = None,
-    out: typing.Optional[SatFuncCache] = None,
+    irreducible_water_saturation: CellArray | None = None,
+    residual_oil_saturation_water: CellArray | None = None,
+    residual_oil_saturation_gas: CellArray | None = None,
+    residual_gas_saturation: CellArray | None = None,
+    out: SatFuncCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> SatFuncCache:
     """
@@ -184,21 +184,19 @@ def compute_satfunc_cache(
         # table's own fallback applies otherwise.
         saturation_state_kwargs = {}
         if irreducible_water_saturation is not None:
-            saturation_state_kwargs["irreducible_water_saturation"] = (
-                irreducible_water_saturation[mask]
-            )
+            saturation_state_kwargs["irreducible_water_saturation"] = irreducible_water_saturation[
+                mask
+            ]
         if residual_oil_saturation_water is not None:
             saturation_state_kwargs["residual_oil_saturation_water"] = (
                 residual_oil_saturation_water[mask]
             )
         if residual_oil_saturation_gas is not None:
-            saturation_state_kwargs["residual_oil_saturation_gas"] = (
-                residual_oil_saturation_gas[mask]
-            )
+            saturation_state_kwargs["residual_oil_saturation_gas"] = residual_oil_saturation_gas[
+                mask
+            ]
         if residual_gas_saturation is not None:
-            saturation_state_kwargs["residual_gas_saturation"] = (
-                residual_gas_saturation[mask]
-            )
+            saturation_state_kwargs["residual_gas_saturation"] = residual_gas_saturation[mask]
 
         relperm_table = tables.relative_permeability
         relperm = relperm_table.evaluate(sw, so, sg, **saturation_state_kwargs)
@@ -206,9 +204,7 @@ def compute_satfunc_cache(
         cache.oil_relative_permeability[mask] = relperm["oil"]
         cache.gas_relative_permeability[mask] = relperm["gas"]
 
-        relperm_derivatives = relperm_table.derivatives(
-            sw, so, sg, **saturation_state_kwargs
-        )
+        relperm_derivatives = relperm_table.derivatives(sw, so, sg, **saturation_state_kwargs)
         cache.dkrw_dsw[mask] = relperm_derivatives["dkrw_dsw"]
         cache.dkro_dsw[mask] = relperm_derivatives["dkro_dsw"]
         cache.dkrg_dsw[mask] = relperm_derivatives["dkrg_dsw"]

@@ -48,7 +48,7 @@ class ConnectionTransmissibilities:
 
     interior: NumberArray[OneDimension]
     boundary: NumberArray[OneDimension]
-    nnc: typing.Optional[NumberArray[OneDimension]]
+    nnc: NumberArray[OneDimension] | None
     unit_system: UnitSystem
 
     def convert(
@@ -56,7 +56,7 @@ class ConnectionTransmissibilities:
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `ConnectionTransmissibilities` with transmissibilities
@@ -70,15 +70,11 @@ class ConnectionTransmissibilities:
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
         # Transmissibility is K * A/d
-        transmissibility_factor = (
-            factors["permeability"] * factors["area"] / factors["length"]
-        )
+        transmissibility_factor = factors["permeability"] * factors["area"] / factors["length"]
         return self.__class__(
             interior=scale(self.interior, transmissibility_factor),
             boundary=scale(self.boundary, transmissibility_factor),
-            nnc=(
-                None if self.nnc is None else scale(self.nnc, transmissibility_factor)
-            ),
+            nnc=(None if self.nnc is None else scale(self.nnc, transmissibility_factor)),
             unit_system=target,
         )
 
@@ -86,7 +82,7 @@ class ConnectionTransmissibilities:
 def get_face_transmissibility_map(
     grid: Grid,
     transmissibilities: ConnectionTransmissibilities,
-) -> typing.Dict[int, Number]:
+) -> dict[int, Number]:
     """
     Build a {global_face_index: transmissibility} dict for single-face lookups.
 
@@ -97,7 +93,7 @@ def get_face_transmissibility_map(
     :param transmissibilities: Precomputed transmissibilities for that grid.
     :returns: Dict mapping global face index to transmissibility value.
     """
-    result: typing.Dict[int, Number] = {}
+    result: dict[int, Number] = {}
     for position, global_face_idx in enumerate(grid.interior_face_indices):
         result[int(global_face_idx)] = transmissibilities.interior[position]
     for position, global_face_idx in enumerate(grid.boundary_face_indices):
@@ -109,8 +105,8 @@ def compute_connection_transmissibilities(
     grid: Grid,
     rock: Rock,
     *,
-    net_to_gross: typing.Optional[NumberOrArray[OneDimension]] = None,
-    unit_system: typing.Optional[UnitSystem] = None,
+    net_to_gross: NumberOrArray[OneDimension] | None = None,
+    unit_system: UnitSystem | None = None,
     dtype: npt.DTypeLike = None,
 ) -> ConnectionTransmissibilities:
     """
@@ -155,7 +151,7 @@ def compute_connection_transmissibilities(
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     target_unit_system = unit_system if unit_system is not None else grid.unit_system
-    unit_conversion_table: typing.Optional[UnitConversionTable] = None
+    unit_conversion_table: UnitConversionTable | None = None
     if target_unit_system != grid.unit_system:
         unit_conversion_table = build_unit_conversion_table()
         # Normalise grid to the target unit system.
@@ -176,9 +172,7 @@ def compute_connection_transmissibilities(
     n_cells = grid.n_cells
     for name, arr in (("Kx", kx), ("Ky", ky), ("Kz", kz), ("NTG", ntg)):
         if arr.shape != (n_cells,):
-            raise ValueError(
-                f"{name} array has shape {arr.shape}; expected ({n_cells},)."
-            )
+            raise ValueError(f"{name} array has shape {arr.shape}; expected ({n_cells},).")
 
     effective_kx = kx * ntg
     effective_ky = ky * ntg
@@ -214,24 +208,22 @@ def compute_connection_transmissibilities(
     )
 
     if grid.has_transmissibility_multipliers:
-        interior_transmissibilities, boundary_transmissibilities = (
-            _apply_directional_multipliers(
-                interior_transmissibilities=interior_transmissibilities,
-                boundary_transmissibilities=boundary_transmissibilities,
-                interior_face_indices=interior_face_indices,
-                boundary_face_indices=boundary_face_indices,
-                face_cell_indices=grid.face_cell_indices,
-                face_unit_normals=grid.face_unit_normals,
-                positive_x_multipliers=grid.positive_x_transmissibility_multipliers,
-                negative_x_multipliers=grid.negative_x_transmissibility_multipliers,
-                positive_y_multipliers=grid.positive_y_transmissibility_multipliers,
-                negative_y_multipliers=grid.negative_y_transmissibility_multipliers,
-                positive_z_multipliers=grid.positive_z_transmissibility_multipliers,
-                negative_z_multipliers=grid.negative_z_transmissibility_multipliers,
-            )
+        interior_transmissibilities, boundary_transmissibilities = _apply_directional_multipliers(
+            interior_transmissibilities=interior_transmissibilities,
+            boundary_transmissibilities=boundary_transmissibilities,
+            interior_face_indices=interior_face_indices,
+            boundary_face_indices=boundary_face_indices,
+            face_cell_indices=grid.face_cell_indices,
+            face_unit_normals=grid.face_unit_normals,
+            positive_x_multipliers=grid.positive_x_transmissibility_multipliers,
+            negative_x_multipliers=grid.negative_x_transmissibility_multipliers,
+            positive_y_multipliers=grid.positive_y_transmissibility_multipliers,
+            negative_y_multipliers=grid.negative_y_transmissibility_multipliers,
+            positive_z_multipliers=grid.positive_z_transmissibility_multipliers,
+            negative_z_multipliers=grid.negative_z_transmissibility_multipliers,
         )
 
-    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None
+    nnc_transmissibilities: NumberArray[OneDimension] | None = None
     if grid.n_nnc > 0:
         assert grid.nnc_cell_indices is not None
         assert grid.nnc_connection_types is not None
@@ -262,19 +254,14 @@ def compute_connection_transmissibilities(
             )
 
     # Apply MULTFLT to face-based connections
-    if (
-        grid.fault_face_indices is not None
-        and grid.fault_transmissibility_multipliers is not None
-    ):
-        interior_transmissibilities, boundary_transmissibilities = (
-            _apply_fault_face_multipliers(
-                interior_transmissibilities=interior_transmissibilities,
-                boundary_transmissibilities=boundary_transmissibilities,
-                interior_face_indices=interior_face_indices,
-                boundary_face_indices=boundary_face_indices,
-                fault_face_indices=grid.fault_face_indices,
-                fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
-            )
+    if grid.fault_face_indices is not None and grid.fault_transmissibility_multipliers is not None:
+        interior_transmissibilities, boundary_transmissibilities = _apply_fault_face_multipliers(
+            interior_transmissibilities=interior_transmissibilities,
+            boundary_transmissibilities=boundary_transmissibilities,
+            interior_face_indices=interior_face_indices,
+            boundary_face_indices=boundary_face_indices,
+            fault_face_indices=grid.fault_face_indices,
+            fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
         )
 
     return ConnectionTransmissibilities(
@@ -343,11 +330,7 @@ def _compute_interior_tpfa_transmissibilities(
         dy_a = fy - cell_centroids[owner, 1]
         dz_a = fz - cell_centroids[owner, 2]
         d_a = (dx_a * dx_a + dy_a * dy_a + dz_a * dz_a) ** 0.5
-        k_a = (
-            nx * effective_kx[owner]
-            + ny * effective_ky[owner]
-            + nz * effective_kz[owner]
-        )
+        k_a = nx * effective_kx[owner] + ny * effective_ky[owner] + nz * effective_kz[owner]
         T_a = k_a * area / d_a if d_a > 0.0 else 0.0
 
         dx_b = fx - cell_centroids[neighbour, 0]
@@ -418,11 +401,7 @@ def _compute_boundary_half_transmissibilities(
         dz = fz - cell_centroids[owner, 2]
         d = (dx * dx + dy * dy + dz * dz) ** 0.5
 
-        k = (
-            nx * effective_kx[owner]
-            + ny * effective_ky[owner]
-            + nz * effective_kz[owner]
-        )
+        k = nx * effective_kx[owner] + ny * effective_ky[owner] + nz * effective_kz[owner]
         if d > 0.0:
             transmissibilities[idx] = k * area / d
 
@@ -521,13 +500,13 @@ def _apply_directional_multipliers(
     boundary_face_indices: IntArray[OneDimension],
     face_cell_indices: IntArray[TwoDimensions],
     face_unit_normals: NumberArray,
-    positive_x_multipliers: typing.Optional[NumberArray[OneDimension]],
-    negative_x_multipliers: typing.Optional[NumberArray[OneDimension]],
-    positive_y_multipliers: typing.Optional[NumberArray[OneDimension]],
-    negative_y_multipliers: typing.Optional[NumberArray[OneDimension]],
-    positive_z_multipliers: typing.Optional[NumberArray[OneDimension]],
-    negative_z_multipliers: typing.Optional[NumberArray[OneDimension]],
-) -> typing.Tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
+    positive_x_multipliers: NumberArray[OneDimension] | None,
+    negative_x_multipliers: NumberArray[OneDimension] | None,
+    positive_y_multipliers: NumberArray[OneDimension] | None,
+    negative_y_multipliers: NumberArray[OneDimension] | None,
+    positive_z_multipliers: NumberArray[OneDimension] | None,
+    negative_z_multipliers: NumberArray[OneDimension] | None,
+) -> tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
     """
     Scale face transmissibilities by per-cell directional MULT arrays (in-place).
 
@@ -614,7 +593,7 @@ def _apply_fault_face_multipliers(
     boundary_face_indices: IntArray[OneDimension],
     fault_face_indices: typing.Mapping[str, IntArray[OneDimension]],
     fault_transmissibility_multipliers: typing.Mapping[str, Number],
-) -> typing.Tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
+) -> tuple[NumberArray[OneDimension], NumberArray[OneDimension]]:
     """
     Apply `MULTFLT` multipliers to face-based fault connections (in-place).
 
@@ -629,10 +608,10 @@ def _apply_fault_face_multipliers(
     :param fault_transmissibility_multipliers: `{name: multiplier}`.
     :returns: Updated transmissibility arrays.
     """
-    global_to_interior: typing.Dict[int, int] = {
+    global_to_interior: dict[int, int] = {
         int(global_idx): pos for pos, global_idx in enumerate(interior_face_indices)
     }
-    global_to_boundary: typing.Dict[int, int] = {
+    global_to_boundary: dict[int, int] = {
         int(global_idx): pos for pos, global_idx in enumerate(boundary_face_indices)
     }
 

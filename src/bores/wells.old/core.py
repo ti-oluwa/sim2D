@@ -121,9 +121,7 @@ def compute_well_index(
     :return: The well index in (mD*ft).
     """
     return (permeability * interval_thickness * net_to_gross) / (
-        np.log(effective_drainage_radius / wellbore_radius)
-        + regime_constant
-        + skin_factor
+        np.log(effective_drainage_radius / wellbore_radius) + regime_constant + skin_factor
     )
 
 
@@ -227,7 +225,7 @@ def compute_2D_effective_drainage_radius(
     For the isotropic case (kx = ky) this reduces to:
 
     ```
-    r_o = 0.28 * sqrt(dx^2 + dy^2) / sqrt(2)
+    r_o = 0.28 * sqrt(dx ^ 2 + dy ^ 2) / sqrt(2)
     ```
 
     which gives r_o = 0.2 * dx for a uniform square grid (dx = dy),
@@ -260,7 +258,7 @@ def compute_oil_well_rate(
     pressure: float,
     bottom_hole_pressure: float,
     phase_mobility: float,
-    fluid_compressibility: typing.Optional[float] = None,
+    fluid_compressibility: float | None = None,
     incompressibility_threshold: float = 1e-6,
 ) -> float:
     """
@@ -324,8 +322,7 @@ def compute_oil_well_rate(
 
     pressure_difference = bottom_hole_pressure - pressure
     is_compressible = (
-        fluid_compressibility is not None
-        and fluid_compressibility >= incompressibility_threshold
+        fluid_compressibility is not None and fluid_compressibility >= incompressibility_threshold
     )
     if is_compressible:
         argument = fluid_compressibility * pressure_difference  # type: ignore
@@ -357,7 +354,7 @@ def compute_required_bhp_for_oil_rate(
     well_index: float,
     pressure: float,
     phase_mobility: float,
-    fluid_compressibility: typing.Optional[float] = None,
+    fluid_compressibility: float | None = None,
     incompressibility_threshold: float = 1e-6,
 ) -> float:
     """
@@ -410,8 +407,7 @@ def compute_required_bhp_for_oil_rate(
 
     denominator = 7.08e-3 * well_index * phase_mobility
     is_compressible = (
-        fluid_compressibility is not None
-        and fluid_compressibility >= incompressibility_threshold
+        fluid_compressibility is not None and fluid_compressibility >= incompressibility_threshold
     )
     if is_compressible:
         # Exact inverse of Q = (7.08e-3 * W * M / c) * [exp(c * dP) - 1]:
@@ -446,10 +442,10 @@ def compute_gas_well_rate(
     phase_mobility: float,
     average_compressibility_factor: float = 1.0,
     use_pseudo_pressure: bool = True,
-    pseudo_pressure_table: typing.Optional[PseudoPressureTable] = None,
-    formation_volume_factor: typing.Optional[float] = None,
-    gas_gravity: typing.Optional[float] = None,
-    gas_viscosity: typing.Optional[float] = None,
+    pseudo_pressure_table: PseudoPressureTable | None = None,
+    formation_volume_factor: float | None = None,
+    gas_gravity: float | None = None,
+    gas_viscosity: float | None = None,
 ) -> float:
     """
     Compute the gas well rate at reservoir conditions (ft³/day).
@@ -472,7 +468,7 @@ def compute_gas_well_rate(
     low-to-moderate pressures below ~2000 psi):
 
     ```
-    Q_scf = 1000 / 1422.3 * (W * M / T) * (Pbhp^2 - P^2) / Z
+    Q_scf = 1000 / 1422.3 * (W * M / T) * (Pbhp ^ 2 - P ^ 2) / Z
     Q_res = Q_scf * Bg
     ```
 
@@ -529,9 +525,9 @@ def compute_gas_well_rate(
             raise ValidationError(
                 "`pseudo_pressure_table` must be provided when `use_pseudo_pressure` is True."
             )
-        pressure_difference = pseudo_pressure_table(
-            bottom_hole_pressure
-        ) - pseudo_pressure_table(pressure)
+        pressure_difference = pseudo_pressure_table(bottom_hole_pressure) - pseudo_pressure_table(
+            pressure
+        )
         viscosity = gas_viscosity if gas_viscosity is not None else 1.0
         well_rate_scf = prefactor * viscosity * pressure_difference
     else:
@@ -549,9 +545,9 @@ def compute_required_bhp_for_gas_rate(
     phase_mobility: float,
     average_compressibility_factor: float = 1.0,
     use_pseudo_pressure: bool = True,
-    pseudo_pressure_table: typing.Optional[PseudoPressureTable] = None,
-    formation_volume_factor: typing.Optional[float] = None,
-    gas_viscosity: typing.Optional[float] = None,
+    pseudo_pressure_table: PseudoPressureTable | None = None,
+    formation_volume_factor: float | None = None,
+    gas_viscosity: float | None = None,
 ) -> float:
     """
     Compute the bottom-hole pressure required to achieve a target gas rate.
@@ -606,13 +602,9 @@ def compute_required_bhp_for_gas_rate(
         required_pseudo_pressure = (
             pseudo_pressure_table(pressure) + target_rate_scf * factor / viscosity
         )
-        return float(
-            pseudo_pressure_table.inverse(pseudo_pressure=required_pseudo_pressure)
-        )
+        return float(pseudo_pressure_table.inverse(pseudo_pressure=required_pseudo_pressure))
 
-    required_bhp_squared = (
-        pressure**2 + target_rate_scf * factor * average_compressibility_factor
-    )
+    required_bhp_squared = pressure**2 + target_rate_scf * factor * average_compressibility_factor
     if required_bhp_squared < 0:
         raise ComputationError("Negative pressure squared.")
 
@@ -623,7 +615,7 @@ def compute_required_bhp_for_gas_rate(
 class WellFluid(Fluid):
     """Base class for fluid properties in wells."""
 
-    specific_gravity: typing.Optional[float] = attrs.field(
+    specific_gravity: float | None = attrs.field(
         default=None, validator=attrs.validators.optional(attrs.validators.ge(0))
     )
     """
@@ -637,7 +629,7 @@ class WellFluid(Fluid):
     When `pvt_table` is provided this field is optional.
     """
 
-    molecular_weight: typing.Optional[float] = attrs.field(
+    molecular_weight: float | None = attrs.field(
         default=None, validator=attrs.validators.optional(attrs.validators.ge(0))
     )
     """
@@ -651,8 +643,8 @@ class WellFluid(Fluid):
         self,
         pressure: NumberOrArray,
         temperature: NumberOrArray,
-        salinity: typing.Optional[NumberOrArray] = None,
-    ) -> typing.Optional[NumberOrArray]:
+        salinity: NumberOrArray | None = None,
+    ) -> NumberOrArray | None:
         """
         Get the specific gravity of the fluid at given pressure and temperature.
 
@@ -678,8 +670,8 @@ class WellFluid(Fluid):
         self,
         pressure: NumberOrArray,
         temperature: NumberOrArray,
-        salinity: typing.Optional[NumberOrArray] = None,
-    ) -> typing.Optional[NumberOrArray]:
+        salinity: NumberOrArray | None = None,
+    ) -> NumberOrArray | None:
         """
         Get the molecular weight of the fluid at given pressure and temperature.
 
@@ -707,21 +699,19 @@ class WellFluid(Fluid):
 class InjectedFluid(WellFluid):
     """Properties of the fluid being injected into or produced by a well."""
 
-    salinity: typing.Optional[float] = None
+    salinity: float | None = None
     """Salinity of the fluid (if water) in (ppm NaCl)."""
 
     is_miscible: bool = False
     """Whether this fluid is miscible with oil (e.g., CO2, N2)"""
 
     todd_longstaff_omega: float = attrs.field(
-        validator=attrs.validators.and_(
-            attrs.validators.ge(0.0), attrs.validators.le(1.0)
-        ),
+        validator=attrs.validators.and_(attrs.validators.ge(0.0), attrs.validators.le(1.0)),
         default=0.67,
     )
     """Todd-Longstaff mixing parameter for miscible displacement (0 to 1)."""
 
-    minimum_miscibility_pressure: typing.Optional[float] = None
+    minimum_miscibility_pressure: float | None = None
     """Minimum miscibility pressure for this fluid-oil system (psi)"""
 
     miscibility_transition_width: float = attrs.field(  # type: ignore
@@ -731,13 +721,11 @@ class InjectedFluid(WellFluid):
 
     concentration: float = attrs.field(
         default=1.0,
-        validator=attrs.validators.and_(
-            attrs.validators.ge(0.0), attrs.validators.le(1.0)
-        ),
+        validator=attrs.validators.and_(attrs.validators.ge(0.0), attrs.validators.le(1.0)),
     )
     """Concentration (preferably volume-based) of the fluid in the mixture (0 to 1). Relevant for miscible fluids."""
 
-    density: typing.Optional[float] = None
+    density: float | None = None
     """
     Fluid density (lbm/ft³) at reservoir conditions.
 
@@ -746,7 +734,7 @@ class InjectedFluid(WellFluid):
     measured or equation-of-state density is available.
     """
 
-    viscosity: typing.Optional[float] = None
+    viscosity: float | None = None
     """
     Fluid viscosity (cP) at reservoir conditions.
 
@@ -811,9 +799,7 @@ class InjectedFluid(WellFluid):
                 return result
 
         if self.specific_gravity is None:
-            raise ValidationError(
-                "`specific_gravity` is required if fluid has not `pvt_table`."
-            )
+            raise ValidationError("`specific_gravity` is required if fluid has not `pvt_table`.")
 
         vectorize_pressure = isinstance(pressure, np.ndarray)
         vectorize_temperature = isinstance(temperature, np.ndarray)
@@ -824,16 +810,12 @@ class InjectedFluid(WellFluid):
             temperature = np.full_like(pressure, temperature)
 
         if self.phase == FluidPhase.WATER:
-            gas_free_water_fvf = kwargs.get(
-                "gas_free_water_formation_volume_factor", None
-            )
+            gas_free_water_fvf = kwargs.get("gas_free_water_formation_volume_factor", None)
             if gas_free_water_fvf is None:
                 if use_vector:
-                    gas_free_water_fvf = (
-                        compute_gas_free_water_formation_volume_factor_vectorized(
-                            pressure=pressure,  # type: ignore
-                            temperature=temperature,  # type: ignore
-                        )
+                    gas_free_water_fvf = compute_gas_free_water_formation_volume_factor_vectorized(
+                        pressure=pressure,  # type: ignore
+                        temperature=temperature,  # type: ignore
                     )
                 else:
                     gas_free_water_fvf = compute_gas_free_water_formation_volume_factor(
@@ -955,13 +937,9 @@ class InjectedFluid(WellFluid):
             )
 
         if self.specific_gravity is None:
-            raise ValidationError(
-                "`specific_gravity` is required if fluid has not `pvt_table`."
-            )
+            raise ValidationError("`specific_gravity` is required if fluid has not `pvt_table`.")
         if self.molecular_weight is None:
-            raise ValidationError(
-                "`molecular_weight` is required if fluid has not `pvt_table`."
-            )
+            raise ValidationError("`molecular_weight` is required if fluid has not `pvt_table`.")
 
         gas_density = kwargs.get("gas_density", None)
         if gas_density is None:
@@ -1013,9 +991,9 @@ class InjectedFluid(WellFluid):
         self,
         relative_permeability: NumberOrArray,
         endpoint_relative_permeability: float,
-        pressure: typing.Optional[NumberOrArray] = None,
-        temperature: typing.Optional[NumberOrArray] = None,
-        viscosity: typing.Optional[NumberOrArray] = None,
+        pressure: NumberOrArray | None = None,
+        temperature: NumberOrArray | None = None,
+        viscosity: NumberOrArray | None = None,
         eta: float = 1e-3,
         **kwargs: typing.Any,
     ) -> NumberOrArray:
@@ -1073,9 +1051,7 @@ class InjectedFluid(WellFluid):
                 raise ValidationError(
                     "`pressure` and `temperature` are both required when `viscosity` is not explicitly provided."
                 )
-            viscosity = self.get_viscosity(
-                pressure=pressure, temperature=temperature, **kwargs
-            )
+            viscosity = self.get_viscosity(pressure=pressure, temperature=temperature, **kwargs)
 
         use_vector = isinstance(relative_permeability, np.ndarray) or isinstance(
             viscosity, np.ndarray
@@ -1088,9 +1064,7 @@ class InjectedFluid(WellFluid):
             )
             return effective_relative_permeability / viscosity
 
-        effective_relative_permeability = max(
-            relative_permeability, relative_permeability_floor
-        )
+        effective_relative_permeability = max(relative_permeability, relative_permeability_floor)
         return effective_relative_permeability / viscosity
 
     def get_compressibility(
@@ -1125,9 +1099,7 @@ class InjectedFluid(WellFluid):
         """
         if self.pvt_table is not None:
             salinity = self.salinity if self.phase == FluidPhase.WATER else None
-            result = self.pvt_table.compressibility(
-                pressure, temperature, salinity=salinity
-            )
+            result = self.pvt_table.compressibility(pressure, temperature, salinity=salinity)
             if result is not None:
                 return result
 
@@ -1140,16 +1112,12 @@ class InjectedFluid(WellFluid):
             temperature = np.full_like(pressure, temperature)
 
         if self.phase == FluidPhase.WATER:
-            gas_free_water_fvf = kwargs.get(
-                "gas_free_water_formation_volume_factor", None
-            )
+            gas_free_water_fvf = kwargs.get("gas_free_water_formation_volume_factor", None)
             if gas_free_water_fvf is None:
                 if use_vector:
-                    gas_free_water_fvf = (
-                        compute_gas_free_water_formation_volume_factor_vectorized(
-                            pressure=pressure,  # type: ignore
-                            temperature=temperature,  # type: ignore
-                        )
+                    gas_free_water_fvf = compute_gas_free_water_formation_volume_factor_vectorized(
+                        pressure=pressure,  # type: ignore
+                        temperature=temperature,  # type: ignore
                     )
                 else:
                     gas_free_water_fvf = compute_gas_free_water_formation_volume_factor(
@@ -1259,9 +1227,7 @@ class InjectedFluid(WellFluid):
             )
 
         if self.specific_gravity is None:
-            raise ValidationError(
-                "`specific_gravity` is required if fluid has not `pvt_table`."
-            )
+            raise ValidationError("`specific_gravity` is required if fluid has not `pvt_table`.")
 
         gas_z_factor = kwargs.get("gas_compressibility_factor", None)
         if gas_z_factor is None:
@@ -1345,8 +1311,8 @@ def get_pseudo_pressure_table(
     fluid: Fluid,
     temperature: float,
     use_pseudo_pressure: bool,
-    pvt_tables: typing.Optional[PVTTables] = None,
-) -> typing.Tuple[bool, typing.Optional[PseudoPressureTable]]:
+    pvt_tables: PVTTables | None = None,
+) -> tuple[bool, PseudoPressureTable | None]:
     """
     Get existing pseudo-pressure table or setup a new one for gas well fluid if needed.
 
@@ -1368,7 +1334,7 @@ def compute_average_compressibility_factor(
     pressure: float,
     temperature: float,
     gas_gravity: float,
-    bottom_hole_pressure: typing.Optional[float] = None,
+    bottom_hole_pressure: float | None = None,
 ) -> float:
     """
     Compute average gas compressibility factor.

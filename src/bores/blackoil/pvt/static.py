@@ -1,16 +1,13 @@
-import typing
 
 import attrs
-import numpy as np
 from typing_extensions import Self
 
 from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.correlations import scalars
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.precision import get_dtype
 from bores.serde.stores import StoreSerializable
-from bores.typing import CellArray, Number, UnitSystem
+from bores.typing import Number, UnitSystem
 from bores.utils import scale
 
 __all__ = ["StaticPVT"]
@@ -27,7 +24,7 @@ class StaticPVT(StoreSerializable):
     """
 
     # Oil
-    stock_tank_oil_density: typing.Optional[Number] = None
+    stock_tank_oil_density: Number | None = None
     """
     Stock-tank oil density at standard conditions.
 
@@ -37,7 +34,7 @@ class StaticPVT(StoreSerializable):
     """
 
     # Water
-    water_reference_pressure: typing.Optional[Number] = None
+    water_reference_pressure: Number | None = None
     """
     Reference pressure at which `water_reference_fvf` and
     `water_reference_compressibility` are defined.
@@ -47,7 +44,7 @@ class StaticPVT(StoreSerializable):
     Units: psi (FIELD), bar (METRIC), atm (LAB), Pa (SI).
     """
 
-    water_reference_fvf: typing.Optional[Number] = None
+    water_reference_fvf: Number | None = None
     """
     Water formation volume factor at `water_reference_pressure` (Bw_ref).
 
@@ -55,7 +52,7 @@ class StaticPVT(StoreSerializable):
     Approximately 1.00-1.08 depending on salinity and temperature.
     """
 
-    water_reference_viscosity: typing.Optional[Number] = None
+    water_reference_viscosity: Number | None = None
     """
     Water viscosity at reference conditions (μw_ref).
 
@@ -63,7 +60,7 @@ class StaticPVT(StoreSerializable):
     Approximately 0.3-1.0 cP at reservoir temperature.
     """
 
-    water_reference_compressibility: typing.Optional[Number] = None
+    water_reference_compressibility: Number | None = None
     """
     Water compressibility at `water_reference_pressure` (cw_ref).
 
@@ -71,7 +68,7 @@ class StaticPVT(StoreSerializable):
     Typically 3-5 x 10⁻⁶ psi⁻¹.
     """
 
-    stock_tank_water_density: typing.Optional[Number] = None
+    stock_tank_water_density: Number | None = None
     """
     Stock-tank water density at standard conditions.
 
@@ -81,7 +78,7 @@ class StaticPVT(StoreSerializable):
     """
 
     # Gas
-    stock_tank_gas_density: typing.Optional[Number] = None
+    stock_tank_gas_density: Number | None = None
     """
     Stock-tank gas density at standard conditions.
 
@@ -91,7 +88,7 @@ class StaticPVT(StoreSerializable):
             ρg,res = stock_tank_gas_density / Bg                           [dry gas]
     """
 
-    water_viscosibility: typing.Optional[Number] = None
+    water_viscosibility: Number | None = None
     """
     Water viscosibility - rate of change of water viscosity with pressure
     (d ln μw / dP), item 5 of the `PVTW` record.
@@ -100,7 +97,7 @@ class StaticPVT(StoreSerializable):
     Zero for incompressible-viscosity water (the common default).
     """
 
-    water_salinity: typing.Optional[Number] = None
+    water_salinity: Number | None = None
     """
     Formation water salinity (ppm NaCl).
 
@@ -118,7 +115,7 @@ class StaticPVT(StoreSerializable):
     """
 
     @property
-    def oil_specific_gravity(self) -> typing.Optional[Number]:
+    def oil_specific_gravity(self) -> Number | None:
         """
         Oil specific gravity relative to fresh water at standard conditions (dimensionless).
         """
@@ -138,7 +135,7 @@ class StaticPVT(StoreSerializable):
         return self.stock_tank_oil_density / reference_water_density
 
     @property
-    def gas_gravity(self) -> typing.Optional[Number]:
+    def gas_gravity(self) -> Number | None:
         """
         Gas specific gravity relative to air (dimensionless).
         """
@@ -156,7 +153,7 @@ class StaticPVT(StoreSerializable):
         return self.stock_tank_gas_density / reference_air_density
 
     @property
-    def oil_api_gravity(self) -> typing.Optional[Number]:
+    def oil_api_gravity(self) -> Number | None:
         """
         Oil API gravity (°API), computed as 141.5 / SG - 131.5.
 
@@ -167,7 +164,7 @@ class StaticPVT(StoreSerializable):
         return scalars.compute_oil_api_gravity(self.oil_specific_gravity)
 
     @property
-    def gas_molecular_weight(self) -> typing.Optional[Number]:
+    def gas_molecular_weight(self) -> Number | None:
         """
         Gas molecular weight (g/mol) computed from the gas gravity.
         """
@@ -200,7 +197,7 @@ class StaticPVT(StoreSerializable):
         region_idx = max(pvtnum - 1, 0)
 
         # Extract DENSITY record for this region
-        density_record: typing.Optional[typing.Dict[str, Number]] = None
+        density_record: dict[str, Number] | None = None
         density_all = deck_file.get("DENSITY")
         if density_all is not None and region_idx < len(density_all):
             region_density_rows = density_all[region_idx]
@@ -208,7 +205,7 @@ class StaticPVT(StoreSerializable):
                 density_record = region_density_rows[0]
 
         # Extract PVTW record for this region
-        pvtw_record: typing.Optional[typing.Dict[str, Number]] = None
+        pvtw_record: dict[str, Number] | None = None
         pvtw_all = deck_file.get("PVTW")
         if pvtw_all is not None and region_idx < len(pvtw_all):
             region_pvtw_rows = pvtw_all[region_idx]
@@ -222,9 +219,9 @@ class StaticPVT(StoreSerializable):
             )
 
         # Extract stock-tank densities from DENSITY record
-        stock_tank_oil_density: typing.Optional[Number] = None
-        stock_tank_water_density: typing.Optional[Number] = None
-        stock_tank_gas_density: typing.Optional[Number] = None
+        stock_tank_oil_density: Number | None = None
+        stock_tank_water_density: Number | None = None
+        stock_tank_gas_density: Number | None = None
         if density_record is not None:
             stock_tank_oil_density = density_record.get("oil")
             stock_tank_water_density = density_record.get("water")
@@ -254,7 +251,7 @@ class StaticPVT(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `PVT` with dimensional quantities rescaled to
@@ -272,27 +269,15 @@ class StaticPVT(StoreSerializable):
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
             water_salinity=self.water_salinity,
-            water_reference_pressure=scale(
-                self.water_reference_pressure, factors["pressure"]
-            ),
+            water_reference_pressure=scale(self.water_reference_pressure, factors["pressure"]),
             water_reference_fvf=scale(self.water_reference_fvf, factors["liquid_fvf"]),
-            water_reference_viscosity=scale(
-                self.water_reference_viscosity, factors["viscosity"]
-            ),
+            water_reference_viscosity=scale(self.water_reference_viscosity, factors["viscosity"]),
             water_reference_compressibility=scale(
                 self.water_reference_compressibility, factors["compressibility"]
             ),
-            water_viscosibility=scale(
-                self.water_viscosibility, factors["compressibility"]
-            ),
-            stock_tank_oil_density=scale(
-                self.stock_tank_oil_density, factors["density"]
-            ),
-            stock_tank_water_density=scale(
-                self.stock_tank_water_density, factors["density"]
-            ),
-            stock_tank_gas_density=scale(
-                self.stock_tank_gas_density, factors["density"]
-            ),
+            water_viscosibility=scale(self.water_viscosibility, factors["compressibility"]),
+            stock_tank_oil_density=scale(self.stock_tank_oil_density, factors["density"]),
+            stock_tank_water_density=scale(self.stock_tank_water_density, factors["density"]),
+            stock_tank_gas_density=scale(self.stock_tank_gas_density, factors["density"]),
             unit_system=target,
         )

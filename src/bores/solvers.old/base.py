@@ -80,7 +80,7 @@ def _warn_production_rate(
     warnings.warn(
         f"Warning: Production well '{well_name}' at cell {cell} has a positive rate of {production_rate:.4f} {rate_unit}, "
         f"indicating it is no longer producing fluid at {time:.3f} seconds. Production rates should be negative. Please check well configuration.",
-        UserWarning,
+        UserWarning, stacklevel=2,
     )
 
 
@@ -98,7 +98,7 @@ def _warn_injection_rate(
     warnings.warn(
         f"Warning: Injection well '{well_name}' at cell {cell} has a negative rate of {injection_rate:.4f} {rate_unit}, "
         f"indicating it is no longer injecting fluid at {time:.3f} seconds. Injection rates should be postive. Please check well configuration.",
-        UserWarning,
+        UserWarning, stacklevel=2,
     )
 
 
@@ -112,7 +112,7 @@ def _warn_production_pressure(
     warnings.warn(
         f"Warning: Production well '{well_name}' at cell {cell} has a high BHP of {bhp:.4f}psi, cell pressure is {cell_pressure:.4f}psi, "
         f"indicating it is no longer producing fluid at {time:.3f} seconds. Production pressure should be lower than reservoir pressure. Please check well configuration.",
-        UserWarning,
+        UserWarning, stacklevel=2,
     )
 
 
@@ -126,7 +126,7 @@ def _warn_injection_pressure(
     warnings.warn(
         f"Warning: Injection well '{well_name}' at cell {cell} has a low BHP of {bhp:.4f}psi, cell pressure is {cell_pressure:.4f}psi, "
         f"indicating it is no longer injecting fluid at {time:.3f} seconds. Injection pressure should be higher than reservoir pressure. Please check well configuration.",
-        UserWarning,
+        UserWarning, stacklevel=2,
     )
 
 
@@ -145,9 +145,9 @@ class Solution(typing.Generic[T, M]):
     """The numerical scheme used for the solve (sub)step."""
     success: bool = True
     """Indicates if the solve (sub)step was successful."""
-    message: typing.Optional[str] = None
+    message: str | None = None
     """A message providing additional information about the result."""
-    metadata: typing.Optional[M] = None
+    metadata: M | None = None
     """Optional metadata related to the solve (sub)step."""
 
 
@@ -178,7 +178,7 @@ def from_1D_index(
     cell_count_x: int,
     cell_count_y: int,
     cell_count_z: int,
-) -> typing.Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """
     Convert 1D interior cell index back to 3D grid indices.
 
@@ -211,10 +211,10 @@ def compute_mobility_grids(
     oil_relative_mobility_grid: ThreeDimensionalGrid,
     gas_relative_mobility_grid: ThreeDimensionalGrid,
     md_per_cp_to_ft2_per_psi_per_day: float,
-) -> typing.Tuple[
-    typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
-    typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
-    typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
+) -> tuple[
+    tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
+    tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
+    tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid],
 ]:
     """
     Compute mobility grids for all three phases in all three directions (x, y, z).
@@ -234,53 +234,35 @@ def compute_mobility_grids(
     """
     # X-direction mobilities
     water_mobility_grid_x = (
-        absolute_permeability_x
-        * water_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_x * water_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     oil_mobility_grid_x = (
-        absolute_permeability_x
-        * oil_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_x * oil_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     gas_mobility_grid_x = (
-        absolute_permeability_x
-        * gas_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_x * gas_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
 
     # Y-direction mobilities
     water_mobility_grid_y = (
-        absolute_permeability_y
-        * water_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_y * water_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     oil_mobility_grid_y = (
-        absolute_permeability_y
-        * oil_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_y * oil_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     gas_mobility_grid_y = (
-        absolute_permeability_y
-        * gas_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_y * gas_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
 
     # Z-direction mobilities
     water_mobility_grid_z = (
-        absolute_permeability_z
-        * water_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_z * water_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     oil_mobility_grid_z = (
-        absolute_permeability_z
-        * oil_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_z * oil_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
     gas_mobility_grid_z = (
-        absolute_permeability_z
-        * gas_relative_mobility_grid
-        * md_per_cp_to_ft2_per_psi_per_day
+        absolute_permeability_z * gas_relative_mobility_grid * md_per_cp_to_ft2_per_psi_per_day
     )
 
     # Group by direction: (water, oil, gas) for each direction
@@ -296,7 +278,7 @@ def normalize_saturations(
     oil_saturation_grid: ThreeDimensionalGrid,
     gas_saturation_grid: ThreeDimensionalGrid,
     saturation_epsilon: float,
-) -> typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
+) -> tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
     """
     Clamp saturations values (in-place) to zero and normalize saturations to sum = 1.
 
@@ -335,7 +317,7 @@ def normalize_saturations(
 
 
 def build_amg_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix], cycle: str = "V", **kwargs: typing.Any
+    A_csr: csr_array | csr_matrix, cycle: str = "V", **kwargs: typing.Any
 ) -> LinearOperator:
     """
     Creates an Algebraic Multigrid (AMG) preconditioner using PyAMG.
@@ -351,7 +333,7 @@ def build_amg_preconditioner(
 
 
 def build_diagonal_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix],
+    A_csr: csr_array | csr_matrix,
 ) -> LinearOperator:
     """
     Creates a diagonal preconditioner from the coefficient matrix.
@@ -370,7 +352,7 @@ def build_diagonal_preconditioner(
 
 
 def build_block_jacobi_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix],
+    A_csr: csr_array | csr_matrix,
     block_size: int = 3,
 ) -> LinearOperator:
     """
@@ -441,7 +423,7 @@ def build_block_jacobi_preconditioner(
 
 
 def build_ilu_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix], **kwargs: typing.Any
+    A_csr: csr_array | csr_matrix, **kwargs: typing.Any
 ) -> LinearOperator:
     """
     Creates an Incomplete LU (ILU) preconditioner using `spilu`.
@@ -464,7 +446,7 @@ def build_ilu_preconditioner(
 
 
 def build_polynomial_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix],
+    A_csr: csr_array | csr_matrix,
     degree: int = 2,
 ) -> LinearOperator:
     """
@@ -523,12 +505,12 @@ _CPR_ILU_KWARGS = {
 
 
 def build_cpr_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix],
+    A_csr: csr_array | csr_matrix,
     *,
     n_variables_per_cell: int = 3,
     pressure_variable_index: int = 0,
-    amg_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    ilu_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+    amg_kwargs: dict[str, typing.Any] | None = None,
+    ilu_kwargs: dict[str, typing.Any] | None = None,
 ) -> LinearOperator:
     """
     Creates a Constrained Pressure Residual (CPR) preconditioner for a fully-implicit
@@ -590,9 +572,7 @@ def build_cpr_preconditioner(
     try:
         M_amg = build_amg_preconditioner(A_pp, **amg_kwargs)  # type: ignore
     except Exception as exc:
-        raise PreconditionerError(
-            f"AMG construction for pressure block failed: {exc}"
-        ) from exc
+        raise PreconditionerError(f"AMG construction for pressure block failed: {exc}") from exc
 
     # Build ILU preconditioner for the full matrix
     try:
@@ -631,14 +611,14 @@ def build_cpr_preconditioner(
 def _spsolve(
     A: typing.Any,
     b: typing.Any,
-    x0: typing.Optional[typing.Any],
+    x0: typing.Any | None,
     *,
     rtol: float,
     atol: float,
-    maxiter: typing.Optional[int],
-    M: typing.Optional[typing.Any],
-    callback: typing.Optional[typing.Callable[[npt.NDArray], None]],
-) -> typing.Tuple[npt.NDArray, int]:
+    maxiter: int | None,
+    M: typing.Any | None,
+    callback: typing.Callable[[npt.NDArray], None] | None,
+) -> tuple[npt.NDArray, int]:
     """Direct (SPSOLVE) solver wrapper compatible with the standard `SolverFunc` interface"""
     return spsolve(A, b), 0  # type: ignore[return-value]
 
@@ -646,16 +626,16 @@ def _spsolve(
 def _lgmres(
     A: typing.Any,
     b: typing.Any,
-    x0: typing.Optional[typing.Any],
+    x0: typing.Any | None,
     *,
     rtol: float,
     atol: float,
-    maxiter: typing.Optional[int],
-    M: typing.Optional[typing.Any],
-    callback: typing.Optional[typing.Callable[[npt.NDArray], None]],
+    maxiter: int | None,
+    M: typing.Any | None,
+    callback: typing.Callable[[npt.NDArray], None] | None,
     inner_m: int = 50,
     outer_k: int = 5,
-) -> typing.Tuple[npt.NDArray, int]:
+) -> tuple[npt.NDArray, int]:
     """
     LGMRES solver wrapper compatible with the standard `SolverFunc` interface,
     with configurable inner/outer iteration parameters.
@@ -680,15 +660,15 @@ def _lgmres(
 def _minres(
     A: typing.Any,
     b: typing.Any,
-    x0: typing.Optional[typing.Any],
+    x0: typing.Any | None,
     *,
     rtol: float,
     atol: float,
-    maxiter: typing.Optional[int],
-    M: typing.Optional[typing.Any],
-    callback: typing.Optional[typing.Callable[[npt.NDArray], None]],
+    maxiter: int | None,
+    M: typing.Any | None,
+    callback: typing.Callable[[npt.NDArray], None] | None,
     shift: float = 0.0,
-) -> typing.Tuple[npt.NDArray, int]:
+) -> tuple[npt.NDArray, int]:
     """
     MINRES solver wrapper compatible with the standard `SolverFunc` interface.
 
@@ -709,11 +689,7 @@ def _minres(
     """
     b_arr: npt.NDArray = np.asarray(b)
     b_norm = float(np.linalg.norm(b_arr))
-    eps = (
-        float(np.finfo(b_arr.dtype).eps)
-        if np.issubdtype(b_arr.dtype, np.floating)
-        else 1e-15
-    )
+    eps = float(np.finfo(b_arr.dtype).eps) if np.issubdtype(b_arr.dtype, np.floating) else 1e-15
 
     # Derive a single effective rtol that covers both the relative and
     # absolute stopping criterion requested by the caller.
@@ -736,14 +712,14 @@ def _minres(
 def _qmr(
     A: typing.Any,
     b: typing.Any,
-    x0: typing.Optional[typing.Any],
+    x0: typing.Any | None,
     *,
     rtol: float,
     atol: float,
-    maxiter: typing.Optional[int],
-    M: typing.Optional[typing.Any],
-    callback: typing.Optional[typing.Callable[[npt.NDArray], None]],
-) -> typing.Tuple[npt.NDArray, int]:
+    maxiter: int | None,
+    M: typing.Any | None,
+    callback: typing.Callable[[npt.NDArray], None] | None,
+) -> tuple[npt.NDArray, int]:
     """
     QMR solver wrapper compatible with the standard `SolverFunc` interface.
 
@@ -769,11 +745,7 @@ def _qmr(
     """
     b_arr: npt.NDArray = np.asarray(b)
     b_norm = float(np.linalg.norm(b_arr))
-    eps = (
-        float(np.finfo(b_arr.dtype).eps)
-        if np.issubdtype(b_arr.dtype, np.floating)
-        else 1e-15
-    )
+    eps = float(np.finfo(b_arr.dtype).eps) if np.issubdtype(b_arr.dtype, np.floating) else 1e-15
 
     denom = max(b_norm, eps)
     effective_rtol = min(rtol, atol / denom)
@@ -783,8 +755,8 @@ def _qmr(
     # Using M as M1 (left preconditioner) and leaving M2=None (identity) is the
     # conventional choice and ensures the *left*-preconditioned residual is
     # what gets driven to zero, consistent with the rest of this codebase.
-    M1: typing.Optional[typing.Any] = M
-    M2: typing.Optional[typing.Any] = None
+    M1: typing.Any | None = M
+    M2: typing.Any | None = None
     return qmr(  # type: ignore[return-value]
         A,
         b,
@@ -842,8 +814,8 @@ class CachedPreconditionerFactory:
 
     def __init__(
         self,
-        factory: typing.Union[str, PreconditionerFactory],
-        name: typing.Optional[str] = None,
+        factory: str | PreconditionerFactory,
+        name: str | None = None,
         update_frequency: int = 10,
         recompute_threshold: float = 0.5,
     ):
@@ -866,8 +838,8 @@ class CachedPreconditionerFactory:
         self.update_frequency = update_frequency
         self.recompute_threshold = recompute_threshold
 
-        self._cached_M: typing.Optional[LinearOperator] = None
-        self._cached_A_data: typing.Optional[npt.NDArray] = None
+        self._cached_M: LinearOperator | None = None
+        self._cached_A_data: npt.NDArray | None = None
         self._call_count = 0
 
     @property
@@ -875,8 +847,8 @@ class CachedPreconditionerFactory:
         return self._name
 
     def __call__(
-        self, A_csr: typing.Union[csr_array, csr_matrix]
-    ) -> typing.Optional[LinearOperator]:
+        self, A_csr: csr_array | csr_matrix
+    ) -> LinearOperator | None:
         """
         Get preconditioner, reusing cache if possible.
 
@@ -902,7 +874,7 @@ class CachedPreconditionerFactory:
         self._call_count += 1
         return self._cached_M
 
-    def _should_recompute(self, A_csr: typing.Union[csr_array, csr_matrix]) -> bool:
+    def _should_recompute(self, A_csr: csr_array | csr_matrix) -> bool:
         """Determine if preconditioner should be rebuilt."""
         # First call - must build
         if self._cached_M is None:
@@ -985,7 +957,7 @@ def preconditioner_factory(func: PreconditionerFactory) -> PreconditionerFactory
 @typing.overload
 def preconditioner_factory(
     func: None = None,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> typing.Callable[[PreconditionerFactory], PreconditionerFactory]: ...
 
@@ -993,19 +965,16 @@ def preconditioner_factory(
 @typing.overload
 def preconditioner_factory(
     func: PreconditionerFactory,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> PreconditionerFactory: ...
 
 
 def preconditioner_factory(
-    func: typing.Optional[PreconditionerFactory] = None,
-    name: typing.Optional[str] = None,
+    func: PreconditionerFactory | None = None,
+    name: str | None = None,
     override: bool = False,
-) -> typing.Union[
-    PreconditionerFactory,
-    typing.Callable[[PreconditionerFactory], PreconditionerFactory],
-]:
+) -> PreconditionerFactory | typing.Callable[[PreconditionerFactory], PreconditionerFactory]:
     """
     Decorator to register a preconditioner factory function.
 
@@ -1041,7 +1010,7 @@ def preconditioner_factory(
     return decorator
 
 
-def list_preconditioner_factories() -> typing.List[str]:
+def list_preconditioner_factories() -> list[str]:
     """
     List the names of all registered preconditioner factories.
 
@@ -1076,7 +1045,7 @@ def solver_func(func: SolverFunc) -> SolverFunc: ...
 @typing.overload
 def solver_func(
     func: None = None,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> typing.Callable[[SolverFunc], SolverFunc]: ...
 
@@ -1084,19 +1053,16 @@ def solver_func(
 @typing.overload
 def solver_func(
     func: SolverFunc,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> SolverFunc: ...
 
 
 def solver_func(
-    func: typing.Optional[SolverFunc] = None,
-    name: typing.Optional[str] = None,
+    func: SolverFunc | None = None,
+    name: str | None = None,
     override: bool = False,
-) -> typing.Union[
-    SolverFunc,
-    typing.Callable[[SolverFunc], SolverFunc],
-]:
+) -> SolverFunc | typing.Callable[[SolverFunc], SolverFunc]:
     """
     Decorator to register a solver function.
 
@@ -1131,7 +1097,7 @@ def solver_func(
     return decorator
 
 
-def list_solver_funcs() -> typing.List[str]:
+def list_solver_funcs() -> list[str]:
     """
     List the names of all registered solver functions.
 
@@ -1141,7 +1107,7 @@ def list_solver_funcs() -> typing.List[str]:
         return list(_SOLVER_FUNCS.keys())
 
 
-def get_solver_func(name: str) -> typing.Optional[SolverFunc]:
+def get_solver_func(name: str) -> SolverFunc | None:
     """
     Get a registered solver function by name.
 
@@ -1159,9 +1125,9 @@ def get_solver_func(name: str) -> typing.Optional[SolverFunc]:
 
 
 def _get_preconditioner(
-    A_csr: typing.Union[csr_array, csr_matrix],
-    preconditioner: typing.Optional[Preconditioner],
-) -> typing.Optional[LinearOperator]:
+    A_csr: csr_array | csr_matrix,
+    preconditioner: Preconditioner | None,
+) -> LinearOperator | None:
     """
     Get or build a preconditioner based on the specification.
 
@@ -1189,8 +1155,8 @@ def _get_preconditioner(
 
 
 def _get_solver_func(
-    solver: typing.Union[Solver, typing.Iterable[Solver]],
-) -> typing.List[SolverFunc]:
+    solver: Solver | typing.Iterable[Solver],
+) -> list[SolverFunc]:
     """
     Get solver functions from a solver specification.
 
@@ -1224,15 +1190,15 @@ def _get_solver_func(
 
 
 def solve_linear_system(
-    A_csr: typing.Union[csr_array, csr_matrix],
+    A_csr: csr_array | csr_matrix,
     b: npt.NDArray,
     maximum_iterations: int,
-    rtol: typing.Optional[float] = None,
-    atol: typing.Optional[float] = None,
-    solver: typing.Union[Solver, typing.Iterable[Solver]] = "bicgstab",
-    preconditioner: typing.Optional[Preconditioner] = "ilu",
+    rtol: float | None = None,
+    atol: float | None = None,
+    solver: Solver | typing.Iterable[Solver] = "bicgstab",
+    preconditioner: Preconditioner | None = "ilu",
     fallback_to_direct: bool = False,
-) -> typing.Tuple[npt.NDArray, typing.Optional[LinearOperator]]:
+) -> tuple[npt.NDArray, LinearOperator | None]:
     """
     Solves the linear system A·x = b using an (iterative) solver with a fallback strategy.
 
@@ -1322,14 +1288,12 @@ SystemScalingMethod = typing.Literal["row", "diagonal"]
 def scale_linear_system(
     jacobian_csr: csr_matrix,
     residual_vector: npt.NDArray[np.floating],
-    methods: typing.Optional[
-        typing.Union[SystemScalingMethod, typing.List[SystemScalingMethod]]
-    ] = None,
+    methods: SystemScalingMethod | list[SystemScalingMethod] | None = None,
     epsilon: float = 1e-12,
-) -> typing.Tuple[
+) -> tuple[
     csr_matrix,
     npt.NDArray[np.floating],
-    typing.Optional[npt.NDArray[np.floating]],
+    npt.NDArray[np.floating] | None,
 ]:
     """
     Scale a linear system to improve numerical conditioning.
@@ -1400,9 +1364,7 @@ def scale_linear_system(
 
     # Column (diagonal) scaling (J * D_c)
     if "diagonal" in methods:  # type: ignore
-        abs_diagonal = (
-            abs_diagonal if abs_diagonal is not None else np.abs(J.diagonal())
-        )
+        abs_diagonal = abs_diagonal if abs_diagonal is not None else np.abs(J.diagonal())
         abs_diagonal[abs_diagonal < epsilon] = 1.0
         inverse_diag_scale = 1.0 / abs_diagonal
 

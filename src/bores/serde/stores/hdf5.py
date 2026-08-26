@@ -116,10 +116,10 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
 
     def __init__(
         self,
-        filepath: typing.Union[PathLike, str],
+        filepath: PathLike | str,
         compression: typing.Literal["gzip", "lzf", "szip"] = "gzip",
         compression_opts: int = 3,
-        chunks: typing.Optional[typing.Tuple[int, ...]] = None,
+        chunks: tuple[int, ...] | None = None,
     ):
         """
         Initialize the store
@@ -159,13 +159,9 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
             self._handle = h5py.File(str(self.filepath), mode=mode, **kwargs)
             # Seed the in-memory counter
             self._pending_count = int(self._handle.attrs.get("count", 0))
-            logger.debug(
-                f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath!r}"
-            )
+            logger.debug(f"{self.__class__.__name__} opened (mode={mode!r}): {self.filepath!r}")
         except Exception as exc:
-            raise StorageError(
-                f"Failed to open {self.__class__.__name__}: {exc}"
-            ) from exc
+            raise StorageError(f"Failed to open {self.__class__.__name__}: {exc}") from exc
 
     def close(self) -> None:
         """
@@ -182,9 +178,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
             self._handle.close()
             logger.debug(f"{self.__class__.__name__} closed: {self.filepath}")
         except Exception as exc:
-            logger.warning(
-                f"Error closing {self.__class__.__name__}: {exc}", exc_info=True
-            )
+            logger.warning(f"Error closing {self.__class__.__name__}: {exc}", exc_info=True)
         finally:
             self._handle = None
             self._pending_count = 0
@@ -208,8 +202,8 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
                 f.close()
 
     def _get_chunks(
-        self, shape: typing.Tuple[int, ...]
-    ) -> typing.Optional[typing.Tuple[int, ...]]:
+        self, shape: tuple[int, ...]
+    ) -> tuple[int, ...] | None:
         if self.chunks:
             return self.chunks
         if len(shape) == 3:
@@ -240,9 +234,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
 
             elif isinstance(value, np.ndarray):
                 if value.dtype == object:
-                    raise TypeError(
-                        f"HDF5 cannot store object-dtype arrays: {group.name}/{key}"
-                    )
+                    raise TypeError(f"HDF5 cannot store object-dtype arrays: {group.name}/{key}")
                 self._create_dataset(group=group, name=key, data=value)
 
             elif isinstance(value, (np.integer, np.floating)):
@@ -252,9 +244,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
 
             elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
                 if not value:
-                    self._create_dataset(
-                        group=group, name=key, data=np.empty((0,), dtype=np.int8)
-                    )
+                    self._create_dataset(group=group, name=key, data=np.empty((0,), dtype=np.int8))
                     continue
                 if isinstance(value[0], Mapping):
                     seq_group = group.require_group(key)
@@ -273,9 +263,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
         f: h5py.File,
         index: int,
         item: SerializableT,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> EntryMeta:
         group_name = _get_group_name(index)
         item_group = f.require_group(group_name)
@@ -289,8 +277,8 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
         )
         return EntryMeta(idx=index, group_name=group_name, meta={})
 
-    def _read_entry(self, group: h5py.Group) -> typing.Dict[str, typing.Any]:
-        data: typing.Dict[str, typing.Any] = {}
+    def _read_entry(self, group: h5py.Group) -> dict[str, typing.Any]:
+        data: dict[str, typing.Any] = {}
         for key in group:
             item = group[key]
             if isinstance(item, h5py.Dataset):
@@ -307,10 +295,8 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
     def dump(
         self,
         data: typing.Iterable[SerializableT],
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> None:
         had_open_handle = self._handle is not None
         if had_open_handle:
@@ -340,10 +326,8 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
     def append(
         self,
         item: SerializableT,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: DataValidator[SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
     ) -> EntryMeta:
         mode = "a" if self.filepath.exists() else "w"
         with self._get_file(mode) as f:
@@ -367,7 +351,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
         return entry
 
     @reraise_storage_error
-    def entries(self) -> typing.List[EntryMeta]:
+    def entries(self) -> list[EntryMeta]:
         if not self.filepath.exists():
             return []
 
@@ -389,10 +373,10 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
     @reraise_storage_error
     def load(
         self,
-        typ: typing.Type[SerializableT],
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[DataValidator[SerializableT]] = None,
+        typ: type[SerializableT],
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: DataValidator[SerializableT] | None = None,
     ) -> typing.Generator[SerializableT, None, None]:
         with self._get_file("r") as f:
             if indices is not None:
@@ -419,9 +403,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
                             meta=orjson.loads(group.attrs.get("_meta", "{}")),
                         )
                         if predicate is None or predicate(entry_meta):
-                            item_group = typing.cast(
-                                h5py.Group, f[entry_meta.group_name]
-                            )
+                            item_group = typing.cast(h5py.Group, f[entry_meta.group_name])
                             logger.debug(
                                 f"{self.__class__.__name__}: loading entry {entry_meta.idx}"
                             )

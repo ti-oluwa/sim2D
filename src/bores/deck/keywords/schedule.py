@@ -44,7 +44,6 @@ import numpy as np
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck, DeckParseError, tokenize
 from bores.deck.keywords.base import (
-    DateKeyword,
     DatesKeyword,
     Field,
     Keyword,
@@ -88,7 +87,7 @@ See `bores.deck.keywords.base.DatesKeyword`. `parse` returns a
 """
 
 
-class TStepKeyword(Keyword[typing.List[float]]):
+class TStepKeyword(Keyword[list[float]]):
     """
     The `TSTEP` keyword: a flat list of time-step sizes terminated by
     `/`.
@@ -115,16 +114,16 @@ class TStepKeyword(Keyword[typing.List[float]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.List[float]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> list[float] | None:
         records = deck.records_for(self.name)
         if not records:
             return None
 
-        steps: typing.List[float] = []
+        steps: list[float] = []
         for record in records:
             body = record.body.split("/", 1)[0]
             tokens = tokenize(body)
@@ -697,9 +696,7 @@ GECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
         Field(name="min_gas_rate", type=np.float64, required=False, default=None),
         Field(name="max_water_cut", type=np.float64, required=False, default=None),
         Field(name="max_gor", type=np.float64, required=False, default=None),
-        Field(
-            name="max_water_gas_ratio", type=np.float64, required=False, default=None
-        ),
+        Field(name="max_water_gas_ratio", type=np.float64, required=False, default=None),
         Field(
             name="workover_procedure",
             type=lambda v: str(v).upper(),

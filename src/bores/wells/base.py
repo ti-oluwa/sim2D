@@ -151,28 +151,28 @@ class Perforation(Serializable):
     `CompletionStatus.SHUT` for when it does activate.
     """
 
-    saturation_region: typing.Optional[int] = None
+    saturation_region: int | None = None
 
-    connection_factor_override: typing.Optional[Number] = None
+    connection_factor_override: Number | None = None
     """
     Deck `COMPDAT` item 8 (`CF`). When present, wells indices computation uses this
     directly instead of computing a Peaceman/equivalent-radius well index.
     """
 
-    connection_factor_multiplier: typing.Optional[Number] = None
+    connection_factor_multiplier: Number | None = None
     """
     Deck `WPIMULT`. Scales the computed well index rather than replacing
     it. Applied after `connection_factor_override`, if that's also set,
     though the two would not normally both be present on one perforation.
     """
 
-    direction: typing.Optional[Orientation] = None
+    direction: Orientation | None = None
     """
     `bores.typing.Orientation` (`X`/`Y`/`Z`/`UNSET`). `None` means
     `wells.indices` resolves a direction.
     """
 
-    partial_penetration_fraction: typing.Optional[Number] = None
+    partial_penetration_fraction: Number | None = None
     """
     **Not set by the user.** 
 
@@ -184,14 +184,11 @@ class Perforation(Serializable):
     def __attrs_post_init__(self) -> None:
         if self.bottom_depth < self.top_depth:
             raise ValidationError(
-                f"`bottom_depth` ({self.bottom_depth}) must be >= "
-                f"`top_depth` ({self.top_depth})."
+                f"`bottom_depth` ({self.bottom_depth}) must be >= `top_depth` ({self.top_depth})."
             )
         if self.wellbore_radius <= 0:
             raise ValidationError("`wellbore_radius` must be positive.")
-        if self.connection_factor_override is not None and (
-            self.connection_factor_override <= 0
-        ):
+        if self.connection_factor_override is not None and (self.connection_factor_override <= 0):
             raise ValidationError("`connection_factor_override` must be positive.")
         if self.partial_penetration_fraction is not None and not (
             0 < self.partial_penetration_fraction <= 1
@@ -263,22 +260,22 @@ class MDPerforation(Serializable):
     `CompletionStatus.SHUT` for when it does activate.
     """
 
-    saturation_region: typing.Optional[int] = None
+    saturation_region: int | None = None
 
-    connection_factor_override: typing.Optional[Number] = None
+    connection_factor_override: Number | None = None
     """
     When present, `wells.indices` uses this directly instead of
     computing an equivalent-radius well index.
     """
 
-    connection_factor_multiplier: typing.Optional[Number] = None
+    connection_factor_multiplier: Number | None = None
     """
     Deck `WPIMULT`. Scales the computed well index rather than replacing
     it. Applied after `connection_factor_override`, if that's also set,
     though the two would not normally both be present on one perforation.
     """
 
-    partial_penetration_fraction: typing.Optional[Number] = None
+    partial_penetration_fraction: Number | None = None
     """
     **Not set by the user.** Populated by `wells.perforations.resolve_perforations_indices`. 
     `None` on a freshly constructed `MDPerforation` is the correct/expected state. 
@@ -293,9 +290,7 @@ class MDPerforation(Serializable):
             )
         if self.wellbore_radius <= 0:
             raise ValidationError("`wellbore_radius` must be positive.")
-        if self.connection_factor_override is not None and (
-            self.connection_factor_override <= 0
-        ):
+        if self.connection_factor_override is not None and (self.connection_factor_override <= 0):
             raise ValidationError("`connection_factor_override` must be positive.")
         if self.partial_penetration_fraction is not None and not (
             0 < self.partial_penetration_fraction <= 1
@@ -338,7 +333,7 @@ class Well(Serializable):
 
     well_type: WellType
 
-    surface_location: typing.Tuple[Number, Number] = attrs.field(converter=tuple)  # type: ignore
+    surface_location: tuple[Number, Number] = attrs.field(converter=tuple)  # type: ignore
     """
     `(x, y)` in `Grid` coordinate units - the wellhead location,
     regardless of whether the well is vertical or has a `trajectory`.
@@ -347,7 +342,7 @@ class Well(Serializable):
     reference_depth: Number
     """BHP/THP reporting datum, deck `WELSPECS` item 5."""
 
-    perforations: typing.Tuple[AnyPerforation, ...] = attrs.field(converter=tuple)
+    perforations: tuple[AnyPerforation, ...] = attrs.field(converter=tuple)
     """
     `Perforation` (TVD) if `trajectory` is `None`;
     `MDPerforation` (measured depth) if it's set. Do not mix.
@@ -355,7 +350,7 @@ class Well(Serializable):
     Must not be empty. 
     """
 
-    trajectory: typing.Optional[WellTrajectory] = None
+    trajectory: WellTrajectory | None = None
     """
     Deviation survey. 
 
@@ -365,18 +360,18 @@ class Well(Serializable):
     **Set**: a deviated/horizontal well, and `perforations` must be `MDPerforation`.
     """
 
-    preferred_phase: typing.Optional[FluidPhase] = None
+    preferred_phase: FluidPhase | None = None
     """
     Deck `WELSPECS` item 6. `None` allowed for manual construction where
     it's not yet decided.
     """
 
-    group: typing.Optional[str] = None
+    group: str | None = None
     """
     Deck `WELSPECS` item 2. `None` if ungrouped.
     """
 
-    pvt_region: typing.Optional[int] = None
+    pvt_region: int | None = None
 
     unit_system: UnitSystem = UnitSystem.FIELD
 
@@ -390,21 +385,18 @@ class Well(Serializable):
     matching current/pre-schedule-aware behavior.
     """
 
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None
+    metadata: typing.Mapping[str, typing.Any] | None = None
     """Free-form, mirrors `Grid.metadata`."""
 
     def __attrs_post_init__(self) -> None:
         if not self.name:
             raise ValidationError("`name` must be a non-empty string.")
         if not self.perforations:
-            raise ValidationError(
-                f"Well {self.name!r} must have at least one perforation."
-            )
+            raise ValidationError(f"Well {self.name!r} must have at least one perforation.")
 
         if self.trajectory is not None:
             if not all(
-                isinstance(perforation, MDPerforation)
-                for perforation in self.perforations
+                isinstance(perforation, MDPerforation) for perforation in self.perforations
             ):
                 raise ValidationError(
                     f"Well {self.name!r} has a `trajectory`; every entry in "
@@ -427,10 +419,7 @@ class Well(Serializable):
                         f"{self.trajectory.bottom_measured_depth}]."
                     )
         else:
-            if not all(
-                isinstance(perforation, Perforation)
-                for perforation in self.perforations
-            ):
+            if not all(isinstance(perforation, Perforation) for perforation in self.perforations):
                 raise ValidationError(
                     f"Well {self.name!r} has no `trajectory`; every entry in "
                     "`perforations` must be a `Perforation`, not `MDPerforation`. "
@@ -443,7 +432,7 @@ class Well(Serializable):
         return len(self.perforations)
 
     @property
-    def open_perforations(self) -> typing.Tuple[AnyPerforation, ...]:
+    def open_perforations(self) -> tuple[AnyPerforation, ...]:
         """Perforations with `CompletionStatus.OPEN` only."""
         return tuple(
             perforation
@@ -452,7 +441,7 @@ class Well(Serializable):
         )
 
     @property
-    def active_perforations(self) -> typing.Tuple[AnyPerforation, ...]:
+    def active_perforations(self) -> tuple[AnyPerforation, ...]:
         """Perforations with `WellStatus.ACTIVE` only."""
         return tuple(
             perforation
@@ -490,7 +479,7 @@ class Well(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `Well` with all dimensioned fields converted to *target*.
@@ -506,8 +495,8 @@ class Well(Serializable):
         factors = get_conversion_factors(self.unit_system, target, table=table)
         length_factor = factors["length"]
 
-        trajectory: typing.Optional[WellTrajectory]
-        perforations: typing.Tuple[AnyPerforation, ...]
+        trajectory: WellTrajectory | None
+        perforations: tuple[AnyPerforation, ...]
 
         if self.trajectory is not None:
             trajectory = WellTrajectory(
@@ -569,7 +558,7 @@ class Wells(
     def __init__(
         self,
         wells: typing.Mapping[str, Well],
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         :param wells: Mapping from well name to Well.
@@ -601,9 +590,7 @@ class Wells(
             wells = dict(wells)
         else:
             wells = {
-                name: well
-                if well.unit_system == unit_system
-                else well.convert(unit_system)
+                name: well if well.unit_system == unit_system else well.convert(unit_system)
                 for name, well in wells.items()
             }
 
@@ -624,31 +611,27 @@ class Wells(
         return well
 
     @property
-    def names(self) -> typing.Tuple[str, ...]:
+    def names(self) -> tuple[str, ...]:
         """All well names, in insertion order."""
         return tuple(self.wells.keys())
 
     @property
-    def producers(self) -> typing.Tuple[Well, ...]:
+    def producers(self) -> tuple[Well, ...]:
         """All wells with `well_type is WellType.PRODUCER`."""
-        return tuple(
-            well for well in self.wells.values() if well.well_type is WellType.PRODUCER
-        )
+        return tuple(well for well in self.wells.values() if well.well_type is WellType.PRODUCER)
 
     @property
-    def injectors(self) -> typing.Tuple[Well, ...]:
+    def injectors(self) -> tuple[Well, ...]:
         """All wells with `well_type is WellType.INJECTOR`."""
-        return tuple(
-            well for well in self.wells.values() if well.well_type is WellType.INJECTOR
-        )
+        return tuple(well for well in self.wells.values() if well.well_type is WellType.INJECTOR)
 
     @property
-    def active(self) -> typing.Tuple[Well, ...]:
+    def active(self) -> tuple[Well, ...]:
         """All wells with `schedule_status is WellStatus.ACTIVE`."""
         return tuple(well for well in self.wells.values() if well.is_active)
 
     @property
-    def pending(self) -> typing.Tuple[Well, ...]:
+    def pending(self) -> tuple[Well, ...]:
         """All wells with `schedule_status is WellStatus.PENDING`."""
         return tuple(well for well in self.wells.values() if not well.is_active)
 
@@ -679,14 +662,12 @@ class Wells(
     def __contains__(self, name: object) -> bool:
         return name in self.wells
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {"wells": {name: well.dump() for name, well in self.wells.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
-        wells = {
-            name: Well.load(well_data) for name, well_data in data["wells"].items()
-        }
+        wells = {name: Well.load(well_data) for name, well_data in data["wells"].items()}
         return cls(wells=wells)
 
     def convert(
@@ -694,7 +675,7 @@ class Wells(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a new `Wells` object in the *target* unit system.
@@ -706,9 +687,6 @@ class Wells(
         if target == self.unit_system:
             return self
         return self.__class__(
-            wells={
-                name: well.convert(target, table=table)
-                for name, well in self.wells.items()
-            },
+            wells={name: well.convert(target, table=table) for name, well in self.wells.items()},
             unit_system=target,
         )

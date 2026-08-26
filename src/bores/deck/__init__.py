@@ -13,7 +13,7 @@ operator resolution.
 from bores.deck import DeckFile
 
 df = DeckFile("model.DATA")
-poro  = df.get("PORO")   # ndarray (n_cells,) or None
+poro = df.get("PORO")  # ndarray (n_cells,) or None
 coord = df.get("COORD")  # ndarray (ny+1, nx+1, 6) or None
 ```
 """

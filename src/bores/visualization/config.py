@@ -91,6 +91,7 @@ def config_summary() -> str:
     Example:
     ```python
     from bores.visualization.config import config_summary
+
     print(config_summary())
     ```
     """

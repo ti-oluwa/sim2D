@@ -52,7 +52,7 @@ class SatFuncTables(StoreSerializable):
     relative_permeability: RelativePermeabilityTable
     """Relative permeability table for the rock-fluid system."""
 
-    capillary_pressure: typing.Optional[CapillaryPressureTable] = None
+    capillary_pressure: CapillaryPressureTable | None = None
     """Capillary pressure table for the rock-fluid system, or `None` if not present."""
 
     # Default to field, then let the capillary pressure table override it if available
@@ -69,7 +69,7 @@ class SatFuncTables(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `SatFuncTables` with capillary pressure in every
@@ -89,7 +89,7 @@ class SatFuncTables(StoreSerializable):
 
 
 def _resolve_saturation_endpoint(
-    arg_value: typing.Optional[Number], table: typing.Any, attr_name: str, caller: str
+    arg_value: Number | None, table: typing.Any, attr_name: str, caller: str
 ) -> Number:
     """
     Return `arg_value` if provided, otherwise fall back to the named
@@ -134,7 +134,7 @@ def _oil_water_point_sweep_along_water_saturation(
     water_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Clamp a water saturation value to the oil-water mobile window and return
     the corresponding (Sw, So, Sg) triple with Sg fixed at zero.
@@ -149,9 +149,7 @@ def _oil_water_point_sweep_along_water_saturation(
         irreducible_water_saturation,
         1.0 - residual_oil_saturation_water,
     )
-    oil_saturation = _clamp(
-        1.0 - water_saturation, 0.0, 1.0 - irreducible_water_saturation
-    )
+    oil_saturation = _clamp(1.0 - water_saturation, 0.0, 1.0 - irreducible_water_saturation)
     return water_saturation, oil_saturation, 0.0
 
 
@@ -160,7 +158,7 @@ def _oil_water_point_sweep_along_oil_saturation(
     oil_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Clamp an oil saturation value to the oil-water mobile window and return
     the corresponding (Sw, So, Sg) triple with Sg fixed at zero.
@@ -185,7 +183,7 @@ def _gas_oil_point_sweep_along_gas_saturation(
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
     residual_gas_saturation: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Clamp a gas saturation value to the gas-oil mobile window and return the
     corresponding (Sw, So, Sg) triple with Sw fixed at swc.
@@ -216,7 +214,7 @@ def _gas_oil_point_sweep_along_oil_saturation(
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
     residual_gas_saturation: Number,
-) -> typing.Tuple[Number, Number, Number]:
+) -> tuple[Number, Number, Number]:
     """
     Clamp an oil saturation value to the gas-oil mobile window and return the
     corresponding (Sw, So, Sg) triple with Sw fixed at swc.
@@ -279,12 +277,12 @@ def _sample_oil_water_relative_permeabilities(
     sweep_axis_is_water_saturation: bool,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
-    model_kwargs: typing.Dict[str, typing.Any],
+    model_kwargs: dict[str, typing.Any],
     oil_water_wetting_phase: FluidPhase,
     number_of_output_points: int,
     spacing: Spacing,
     dtype: npt.DTypeLike,
-) -> typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Sample oil-water relative permeability values across the oil-water saturation range.
 
@@ -376,12 +374,12 @@ def _sample_gas_oil_relative_permeabilities(
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
     residual_gas_saturation: Number,
-    model_kwargs: typing.Dict[str, typing.Any],
+    model_kwargs: dict[str, typing.Any],
     gas_oil_wetting_phase: FluidPhase,
     number_of_output_points: int,
     spacing: Spacing,
     dtype: npt.DTypeLike,
-) -> typing.Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Sample gas-oil relative permeability values across the gas-oil saturation range.
 
@@ -475,11 +473,11 @@ def _sample_oil_water_capillary_pressure(
     sweep_axis_is_water_saturation: bool,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
-    model_kwargs: typing.Dict[str, typing.Any],
+    model_kwargs: dict[str, typing.Any],
     number_of_output_points: int,
     spacing: Spacing,
     dtype: npt.DTypeLike,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Sample oil-water capillary pressure values across the oil-water saturation range.
 
@@ -548,11 +546,11 @@ def _sample_gas_oil_capillary_pressure(
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
     residual_gas_saturation: Number,
-    model_kwargs: typing.Dict[str, typing.Any],
+    model_kwargs: dict[str, typing.Any],
     number_of_output_points: int,
     spacing: Spacing,
     dtype: npt.DTypeLike,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Sample gas-oil capillary pressure values across the gas-oil saturation range.
 
@@ -616,21 +614,21 @@ def _sample_gas_oil_capillary_pressure(
 def as_three_phase_relperm_table(
     table: RelativePermeabilityTable,
     *,
-    irreducible_water_saturation: typing.Optional[Number] = None,
-    residual_oil_saturation_water: typing.Optional[Number] = None,
-    residual_oil_saturation_gas: typing.Optional[Number] = None,
-    residual_gas_saturation: typing.Optional[Number] = None,
-    model_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    oil_water_wetting_phase: typing.Optional[typing.Union[FluidPhase, str]] = None,
-    gas_oil_wetting_phase: typing.Optional[typing.Union[FluidPhase, str]] = None,
+    irreducible_water_saturation: Number | None = None,
+    residual_oil_saturation_water: Number | None = None,
+    residual_oil_saturation_gas: Number | None = None,
+    residual_gas_saturation: Number | None = None,
+    model_kwargs: dict[str, typing.Any] | None = None,
+    oil_water_wetting_phase: FluidPhase | str | None = None,
+    gas_oil_wetting_phase: FluidPhase | str | None = None,
     oil_water_reference_phase: typing.Literal["wetting", "non_wetting"] = "wetting",
     gas_oil_reference_phase: typing.Literal["wetting", "non_wetting"] = "non_wetting",
     n_points: int = 200,
     n_endpoint_extra: int = 20,
     spacing: Spacing = "cosine",
-    oil_water_reference_saturation: typing.Optional[npt.ArrayLike] = None,
-    gas_oil_reference_saturation: typing.Optional[npt.ArrayLike] = None,
-    mixing_rule: typing.Optional[typing.Union[MixingRule, str]] = None,
+    oil_water_reference_saturation: npt.ArrayLike | None = None,
+    gas_oil_reference_saturation: npt.ArrayLike | None = None,
+    mixing_rule: MixingRule | str | None = None,
     dtype: npt.DTypeLike = None,
 ) -> ThreePhaseRelPermTable:
     """
@@ -666,9 +664,7 @@ def as_three_phase_relperm_table(
     :param mixing_rule: Three-phase oil relative permeability mixing rule.
     :return: `ThreePhaseRelPermTable` with piecewise-linear sub-tables.
     """
-    dtype = np.dtype(
-        dtype if dtype is not None else getattr(table, "dtype", get_dtype())
-    )
+    dtype = np.dtype(dtype if dtype is not None else getattr(table, "dtype", get_dtype()))
     resolved_irreducible_water_saturation = _resolve_saturation_endpoint(
         arg_value=irreducible_water_saturation,
         table=table,
@@ -718,16 +714,12 @@ def as_three_phase_relperm_table(
         else FluidPhase.WATER
     )
     gas_oil_non_wetting_phase = (
-        FluidPhase.GAS
-        if gas_oil_wetting_phase_resolved == FluidPhase.OIL
-        else FluidPhase.OIL
+        FluidPhase.GAS if gas_oil_wetting_phase_resolved == FluidPhase.OIL else FluidPhase.OIL
     )
 
-    sweep_oil_water_axis_is_water_saturation = (
-        _check_oil_water_sweep_axis_is_water_saturation(
-            wetting_phase=oil_water_wetting_phase_resolved,
-            reference_phase=oil_water_reference_phase,
-        )
+    sweep_oil_water_axis_is_water_saturation = _check_oil_water_sweep_axis_is_water_saturation(
+        wetting_phase=oil_water_wetting_phase_resolved,
+        reference_phase=oil_water_reference_phase,
     )
     sweep_gas_oil_axis_is_gas_saturation = _check_gas_oil_sweep_axis_is_gas_saturation(
         wetting_phase=gas_oil_wetting_phase_resolved,
@@ -735,9 +727,7 @@ def as_three_phase_relperm_table(
     )
 
     if oil_water_reference_saturation is not None:
-        oil_water_reference_saturations = np.asarray(
-            oil_water_reference_saturation, dtype=dtype
-        )
+        oil_water_reference_saturations = np.asarray(oil_water_reference_saturation, dtype=dtype)
     else:
         if sweep_oil_water_axis_is_water_saturation:
             oil_water_lower_bound = resolved_irreducible_water_saturation
@@ -755,23 +745,17 @@ def as_three_phase_relperm_table(
         )
 
     if gas_oil_reference_saturation is not None:
-        gas_oil_reference_saturations = np.asarray(
-            gas_oil_reference_saturation, dtype=dtype
-        )
+        gas_oil_reference_saturations = np.asarray(gas_oil_reference_saturation, dtype=dtype)
     else:
         if sweep_gas_oil_axis_is_gas_saturation:
             gas_oil_lower_bound = resolved_residual_gas_saturation
             gas_oil_upper_bound = (
-                1.0
-                - resolved_irreducible_water_saturation
-                - resolved_residual_oil_saturation_gas
+                1.0 - resolved_irreducible_water_saturation - resolved_residual_oil_saturation_gas
             )
         else:
             gas_oil_lower_bound = resolved_residual_oil_saturation_gas
             gas_oil_upper_bound = (
-                1.0
-                - resolved_irreducible_water_saturation
-                - resolved_residual_gas_saturation
+                1.0 - resolved_irreducible_water_saturation - resolved_residual_gas_saturation
             )
         gas_oil_reference_saturations = build_saturation_reference_field(
             number_of_base_points=n_points,
@@ -835,9 +819,7 @@ def as_three_phase_relperm_table(
     gas_oil_table = TwoPhaseRelPermTable(
         wetting_phase=gas_oil_wetting_phase_resolved,
         non_wetting_phase=gas_oil_non_wetting_phase,
-        reference_saturation=typing.cast(
-            NumberArray[OneDimension], gas_oil_reference_saturations
-        ),
+        reference_saturation=typing.cast(NumberArray[OneDimension], gas_oil_reference_saturations),
         wetting_phase_relative_permeability=typing.cast(
             NumberArray[OneDimension], gas_oil_wetting_phase_kr
         ),
@@ -860,21 +842,21 @@ def as_three_phase_relperm_table(
 def as_three_phase_capillary_pressure_table(
     table: CapillaryPressureTable,
     *,
-    irreducible_water_saturation: typing.Optional[Number] = None,
-    residual_oil_saturation_water: typing.Optional[Number] = None,
-    residual_oil_saturation_gas: typing.Optional[Number] = None,
-    residual_gas_saturation: typing.Optional[Number] = None,
-    model_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-    oil_water_wetting_phase: typing.Optional[typing.Union[FluidPhase, str]] = None,
-    gas_oil_wetting_phase: typing.Optional[typing.Union[FluidPhase, str]] = None,
+    irreducible_water_saturation: Number | None = None,
+    residual_oil_saturation_water: Number | None = None,
+    residual_oil_saturation_gas: Number | None = None,
+    residual_gas_saturation: Number | None = None,
+    model_kwargs: dict[str, typing.Any] | None = None,
+    oil_water_wetting_phase: FluidPhase | str | None = None,
+    gas_oil_wetting_phase: FluidPhase | str | None = None,
     oil_water_reference_phase: typing.Literal["wetting", "non_wetting"] = "wetting",
     gas_oil_reference_phase: typing.Literal["wetting", "non_wetting"] = "non_wetting",
     n_points: int = 200,
     n_endpoint_extra: int = 30,
     spacing: Spacing = "cosine",
-    oil_water_reference_saturation: typing.Optional[npt.ArrayLike] = None,
-    gas_oil_reference_saturation: typing.Optional[npt.ArrayLike] = None,
-    unit_system: typing.Optional[UnitSystem] = None,
+    oil_water_reference_saturation: npt.ArrayLike | None = None,
+    gas_oil_reference_saturation: npt.ArrayLike | None = None,
+    unit_system: UnitSystem | None = None,
     dtype: npt.DTypeLike = None,
 ) -> ThreePhaseCapillaryPressureTable:
     """
@@ -910,9 +892,7 @@ def as_three_phase_capillary_pressure_table(
         sub-table. Overrides the auto-generated field when supplied.
     :return: `ThreePhaseCapillaryPressureTable` backed by piecewise-linear sub-tables.
     """
-    dtype = np.dtype(
-        dtype if dtype is not None else getattr(table, "dtype", get_dtype())
-    )
+    dtype = np.dtype(dtype if dtype is not None else getattr(table, "dtype", get_dtype()))
     current_unit_system = table.unit_system
     if current_unit_system is None:
         raise ValidationError(
@@ -969,16 +949,12 @@ def as_three_phase_capillary_pressure_table(
         else FluidPhase.WATER
     )
     gas_oil_non_wetting_phase = (
-        FluidPhase.GAS
-        if gas_oil_wetting_phase_resolved == FluidPhase.OIL
-        else FluidPhase.OIL
+        FluidPhase.GAS if gas_oil_wetting_phase_resolved == FluidPhase.OIL else FluidPhase.OIL
     )
 
-    sweep_oil_water_axis_is_water_saturation = (
-        _check_oil_water_sweep_axis_is_water_saturation(
-            wetting_phase=oil_water_wetting_phase_resolved,
-            reference_phase=oil_water_reference_phase,
-        )
+    sweep_oil_water_axis_is_water_saturation = _check_oil_water_sweep_axis_is_water_saturation(
+        wetting_phase=oil_water_wetting_phase_resolved,
+        reference_phase=oil_water_reference_phase,
     )
     sweep_gas_oil_axis_is_gas_saturation = _check_gas_oil_sweep_axis_is_gas_saturation(
         wetting_phase=gas_oil_wetting_phase_resolved,
@@ -1006,23 +982,17 @@ def as_three_phase_capillary_pressure_table(
         )
 
     if gas_oil_reference_saturation is not None:
-        gas_oil_reference_saturations = np.asarray(
-            gas_oil_reference_saturation, dtype=dtype
-        )
+        gas_oil_reference_saturations = np.asarray(gas_oil_reference_saturation, dtype=dtype)
     else:
         if sweep_gas_oil_axis_is_gas_saturation:
             gas_oil_lower_bound = resolved_residual_gas_saturation
             gas_oil_upper_bound = (
-                1.0
-                - resolved_irreducible_water_saturation
-                - resolved_residual_oil_saturation_gas
+                1.0 - resolved_irreducible_water_saturation - resolved_residual_oil_saturation_gas
             )
         else:
             gas_oil_lower_bound = resolved_residual_oil_saturation_gas
             gas_oil_upper_bound = (
-                1.0
-                - resolved_irreducible_water_saturation
-                - resolved_residual_gas_saturation
+                1.0 - resolved_irreducible_water_saturation - resolved_residual_gas_saturation
             )
         gas_oil_reference_saturations = build_saturation_reference_field(
             number_of_base_points=n_points,
@@ -1079,9 +1049,7 @@ def as_three_phase_capillary_pressure_table(
     gas_oil_table = TwoPhaseCapillaryPressureTable(
         wetting_phase=gas_oil_wetting_phase_resolved,
         non_wetting_phase=gas_oil_non_wetting_phase,
-        reference_saturation=typing.cast(
-            NumberArray[OneDimension], gas_oil_reference_saturations
-        ),
+        reference_saturation=typing.cast(NumberArray[OneDimension], gas_oil_reference_saturations),
         capillary_pressure=typing.cast(
             NumberArray[OneDimension], gas_oil_capillary_pressure_values
         ),

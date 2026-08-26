@@ -41,7 +41,7 @@ def strip_comments(text: str) -> str:
     return _COMMENT_RE.sub("", text)
 
 
-def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
+def _resolve_includes(text: str, source_dir: Path | None) -> str:
     """
     Recursively inline `INCLUDE 'path' /` directives.
 
@@ -68,15 +68,11 @@ def _resolve_includes(text: str, source_dir: typing.Optional[Path]) -> str:
 
         include_path = source_dir / relative_path
         if not include_path.is_file():
-            raise DeckParseError(
-                f"`INCLUDE` references {include_path!r}, which does not exist."
-            )
+            raise DeckParseError(f"`INCLUDE` references {include_path!r}, which does not exist.")
         try:
             included_text = include_path.read_text(encoding="ascii", errors="replace")
         except OSError as exc:
-            raise DeckParseError(
-                f"Cannot read `INCLUDE` file {include_path!r}: {exc}"
-            ) from exc
+            raise DeckParseError(f"Cannot read `INCLUDE` file {include_path!r}: {exc}") from exc
         return _resolve_includes(included_text, include_path.parent)
 
     return _INCLUDE_RE.sub(_replace, text)
@@ -92,7 +88,7 @@ def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
     :returns: Clean text ready for `Deck` scanning.
     :raises DeckParseError: If a file cannot be read.
     """
-    source_dir: typing.Optional[Path] = None
+    source_dir: Path | None = None
 
     if isinstance(source, bytes):
         text = source.decode(encoding)
@@ -109,9 +105,7 @@ def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
             try:
                 text = candidate.read_text(encoding=encoding)
             except (OSError, UnicodeDecodeError) as exc:
-                raise DeckParseError(
-                    f"Cannot read deck file {source!r}: {exc}"
-                ) from exc
+                raise DeckParseError(f"Cannot read deck file {source!r}: {exc}") from exc
         else:
             raise DeckParseError(f"Cannot read deck file. Invalid source: {source!r}")
 
@@ -126,7 +120,7 @@ _REPEAT_RE = re.compile(r"^(\d+)\*(.*)$")
 _QUOTED_RE = re.compile(r"""(['"])((?:(?!\1).)*)\1""")
 
 
-def parse_repeat_token(token: str) -> typing.Optional[typing.Tuple[int, str]]:
+def parse_repeat_token(token: str) -> tuple[int, str] | None:
     """
     If `token` is `N*value` repeat syntax, return `(N, value)`; else `None`.
 
@@ -147,7 +141,7 @@ def parse_repeat_token(token: str) -> typing.Optional[typing.Tuple[int, str]]:
     return count, value
 
 
-def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
+def tokenize(text: str, *, expand_repeats: bool = True) -> list[str]:
     """
     Split text into whitespace-separated tokens, expanding `N*value`
     repeat syntax and preserving quoted strings (with embedded whitespace)
@@ -182,7 +176,7 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
     :returns: Flat list of tokens (quotes stripped; repeats expanded or not
         per `expand_repeats`).
     """
-    placeholders: typing.List[str] = []
+    placeholders: list[str] = []
 
     def _stash(match: re.Match[str]) -> str:
         placeholders.append(match.group(2))
@@ -190,7 +184,7 @@ def tokenize(text: str, *, expand_repeats: bool = True) -> typing.List[str]:
 
     stashed_text = _QUOTED_RE.sub(_stash, text)
 
-    tokens: typing.List[str] = []
+    tokens: list[str] = []
     for raw_token in stashed_text.split():
         repeat = parse_repeat_token(raw_token)
         if repeat is None:
@@ -267,8 +261,8 @@ FREE_TEXT_KEYWORDS = frozenset({"TITLE"})
 class ScanResult(typing.NamedTuple):
     """Result of scanning an Eclipse deck."""
 
-    records: typing.List[Record]
-    keyword_records: typing.Dict[str, typing.List[Record]]
+    records: list[Record]
+    keyword_records: dict[str, list[Record]]
 
 
 class Deck:
@@ -306,7 +300,7 @@ class Deck:
         """
         self.text = text
         self.records, self._keyword_records = self._scan(text)
-        self._hash: typing.Optional[int] = None
+        self._hash: int | None = None
 
     @staticmethod
     def _scan(text: str) -> ScanResult:
@@ -319,8 +313,8 @@ class Deck:
         """
         keyword_lines = list(_KEYWORD_LINE_RE.finditer(text))
 
-        records: typing.List[Record] = []
-        keyword_records: typing.Dict[str, typing.List[Record]] = {}
+        records: list[Record] = []
+        keyword_records: dict[str, list[Record]] = {}
 
         for idx, match in enumerate(keyword_lines):
             keyword = match.group("keyword").upper()
@@ -329,9 +323,7 @@ class Deck:
             # The next keyword line (if any) bounds how far this keyword's body
             # may extend, even if no '/' is found before it.
             next_keyword_start = (
-                keyword_lines[idx + 1].start()
-                if idx + 1 < len(keyword_lines)
-                else len(text)
+                keyword_lines[idx + 1].start() if idx + 1 < len(keyword_lines) else len(text)
             )
             window = text[body_start:next_keyword_start]
             slash_position = window.find("/")
@@ -375,17 +367,17 @@ class Deck:
             keyword_records.setdefault(keyword, []).append(record)
         return ScanResult(records=records, keyword_records=keyword_records)
 
-    def records_for(self, keyword: str) -> typing.List[Record]:
+    def records_for(self, keyword: str) -> list[Record]:
         """Return every record for `keyword`, in file order."""
         return self._keyword_records.get(keyword.upper(), [])
 
-    def first_record_for(self, keyword: str) -> typing.Optional[Record]:
+    def first_record_for(self, keyword: str) -> Record | None:
         """Return the first record for `keyword`, or `None` if absent."""
         records = self._keyword_records.get(keyword.upper())
         return records[0] if records else None
 
     @property
-    def keywords(self) -> typing.List[str]:
+    def keywords(self) -> list[str]:
         """Return every unique keyword in the deck, in file order."""
         return list(self._keyword_records.keys())
 
@@ -398,7 +390,7 @@ class Deck:
         `MAXVALUE`/`MINVALUE` operator targets. A keyword set purely via
         e.g. `EQUALS 'DZ' ... /` has no record of its own and this
         returns `False` for it, even though its value is fully resolvable.
-        
+
         `Deck` is a pure scan of literal text; operator-target resolution
         needs `GridDimensions` (not yet known at this point) and lives one
         layer up, in `bores.deck.file.DeckFile.has`, which checks both.

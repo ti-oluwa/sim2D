@@ -37,16 +37,16 @@ class Config(
     rock_fluid_tables: SatFuncTables
     """Rock and fluid property tables for the simulation."""
 
-    wells: typing.Optional[Wells[ThreeDimensions]] = None
+    wells: Wells[ThreeDimensions] | None = None
     """Well configuration for the simulation."""
 
-    well_schedules: typing.Optional[WellSchedules[ThreeDimensions]] = None
+    well_schedules: WellSchedules[ThreeDimensions] | None = None
     """Well schedules for dynamic well control during the simulation."""
 
-    boundary_conditions: typing.Optional[BoundaryConditions[ThreeDimensions]] = None
+    boundary_conditions: BoundaryConditions[ThreeDimensions] | None = None
     """Boundary conditions for the simulation."""
 
-    pvt_tables: typing.Optional[PVTTables] = None
+    pvt_tables: PVTTables | None = None
     """PVT tables for fluid property lookups during the simulation."""
 
     constants: Constants = attrs.field(factory=Constants)
@@ -126,9 +126,7 @@ class Config(
     - Oil viscosity (μo) - indirectly through Rs
     - Oil density (ρo) - indirectly through Rs and Bo
     """
-    phase_appearance_tolerance: float = attrs.field(
-        default=1e-6, validator=attrs.validators.ge(0)
-    )
+    phase_appearance_tolerance: float = attrs.field(default=1e-6, validator=attrs.validators.ge(0))
     """
     Tolerance for determining phase appearance/disappearance based on saturation levels.
 
@@ -137,16 +135,16 @@ class Config(
     with saturations below this threshold as absent from the system.
     """
 
-    pressure_solver: typing.Union[SolverStr, typing.Iterable[SolverStr]] = "bicgstab"
+    pressure_solver: SolverStr | typing.Iterable[SolverStr] = "bicgstab"
     """Pressure system solver(s) (can be a list of solver to use in sequence)."""
 
-    transport_solver: typing.Union[SolverStr, typing.Iterable[SolverStr]] = "bicgstab"
+    transport_solver: SolverStr | typing.Iterable[SolverStr] = "bicgstab"
     """Transport system solver(s) (can be a list of solver to use in sequence)."""
 
-    pressure_preconditioner: typing.Optional[PreconditionerStr] = "ilu"
+    pressure_preconditioner: PreconditionerStr | None = "ilu"
     """Preconditioner to use for pressure system solvers."""
 
-    transport_preconditioner: typing.Optional[PreconditionerStr] = "ilu"
+    transport_preconditioner: PreconditionerStr | None = "ilu"
     """Preconditioner to use for transport system solvers."""
 
     pressure_convergence_tolerance: float = attrs.field(
@@ -196,9 +194,7 @@ class Config(
     )
     """Maximum Newton-Raphson non-linear iterations for implicit solvers."""
 
-    newton_tolerance: float = attrs.field(
-        default=1e-5, validator=attrs.validators.le(1e-2)
-    )
+    newton_tolerance: float = attrs.field(default=1e-5, validator=attrs.validators.le(1e-2))
     """Relative residual tolerance for Newton convergence in implicit solvers."""
 
     maximum_line_search_cuts: int = attrs.field(
@@ -210,9 +206,7 @@ class Config(
     )
     """Maximum line search cuts/bisections per Newton step."""
 
-    saturation_jacobian_assembly_method: typing.Literal["numerical", "analytical"] = (
-        "analytical"
-    )
+    saturation_jacobian_assembly_method: typing.Literal["numerical", "analytical"] = "analytical"
     """
     Method used to assemble the Jacobian matrix in the implicit saturation
     Newton loop.
@@ -288,9 +282,7 @@ class Config(
     where Newton updates oscillate or make negligible progress.
     """
 
-    maximum_pressure_change: float = attrs.field(
-        default=1000.0, validator=attrs.validators.ge(0)
-    )
+    maximum_pressure_change: float = attrs.field(default=1000.0, validator=attrs.validators.ge(0))
     """
     Maximum allowable pressure change (in psi) per time step.
 
@@ -383,7 +375,7 @@ class Config(
         default=5e-2, validator=attrs.validators.ge(0)
     )
 
-    minimum_injector_gas_saturation: typing.Optional[float] = attrs.field(
+    minimum_injector_gas_saturation: float | None = attrs.field(
         default=None, validator=attrs.validators.optional(attrs.validators.ge(0))
     )
     """
@@ -404,7 +396,7 @@ class Config(
     injector cells.
     """
 
-    minimum_injector_water_saturation: typing.Optional[float] = attrs.field(
+    minimum_injector_water_saturation: float | None = attrs.field(
         default=None, validator=attrs.validators.optional(attrs.validators.ge(0))
     )
     """
@@ -456,9 +448,7 @@ class Config(
     )
     """Ratio to compute oil drainage residual from imbibition value during gas flooding."""
 
-    residual_gas_drainage_ratio: float = attrs.field(
-        default=0.5, validator=attrs.validators.ge(0)
-    )
+    residual_gas_drainage_ratio: float = attrs.field(default=0.5, validator=attrs.validators.ge(0))
     """Ratio to compute gas drainage residual from imbibition value."""
 
     capture_timer_state: bool = True
@@ -471,9 +461,7 @@ class Config(
     large or if many states are captured.
     """
 
-    _lock: threading.Lock = attrs.field(
-        factory=threading.Lock, init=False, repr=False, hash=False
-    )
+    _lock: threading.Lock = attrs.field(factory=threading.Lock, init=False, repr=False, hash=False)
     """Internal lock for thread-safe operations."""
 
     def __attrs_post_init__(self) -> None:
@@ -488,8 +476,7 @@ class Config(
             )
         if (
             self.minimum_injector_water_saturation is not None
-            and self.minimum_injector_water_saturation
-            <= self.phase_appearance_tolerance
+            and self.minimum_injector_water_saturation <= self.phase_appearance_tolerance
         ):
             raise ValueError(
                 "`minimum_injector_water_saturation` must be greater than `phase_appearance_tolerance` to avoid numerical issues with phase appearance."

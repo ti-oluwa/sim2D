@@ -13,9 +13,7 @@ import numpy.typing as npt
 
 
 @numba.njit(cache=True)
-def cubic_min(
-    a: float, fa: float, dfa: float, b: float, fb: float, dfb: float
-) -> float:
+def cubic_min(a: float, fa: float, dfa: float, b: float, fb: float, dfb: float) -> float:
     """
     Minimiser of the cubic through two points with prescribed derivatives.
 
@@ -53,7 +51,7 @@ def line_search(
     maximum_cuts: int = 8,
     sufficient_decrease: float = 1e-4,
     min_step: float = 1e-8,
-) -> typing.Tuple[npt.NDArray, float, float]:
+) -> tuple[npt.NDArray, float, float]:
     """
     Safeguarded cubic line search along the Newton step direction.
 

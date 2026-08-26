@@ -50,31 +50,31 @@ PHASE_RATE_QUANTITY = {
 def make_producer(
     name: str,
     *,
-    surface_location: typing.Tuple[Number, Number],
-    perforation_depths: typing.Tuple[Number, Number],
-    reference_depth: typing.Optional[Number] = None,
-    target_rate: typing.Optional[Number] = None,
+    surface_location: tuple[Number, Number],
+    perforation_depths: tuple[Number, Number],
+    reference_depth: Number | None = None,
+    target_rate: Number | None = None,
     rate_quantity: RateQuantity = RateQuantity.OIL,
-    target_bhp: typing.Optional[Number] = None,
-    target_thp: typing.Optional[Number] = None,
-    min_bhp: typing.Optional[Number] = None,
-    max_rate: typing.Optional[Number] = None,
-    limits: typing.Optional[typing.Sequence[Limit]] = None,
+    target_bhp: Number | None = None,
+    target_thp: Number | None = None,
+    min_bhp: Number | None = None,
+    max_rate: Number | None = None,
+    limits: typing.Sequence[Limit] | None = None,
     efficiency_factor: Number = 1.0,
-    guide_rate: typing.Optional[Number] = None,
+    guide_rate: Number | None = None,
     wellbore_radius: Number = 0.25,
     skin: Number = 0.0,
-    saturation_region: typing.Optional[int] = None,
-    connection_factor_override: typing.Optional[Number] = None,
-    connection_factor_multiplier: typing.Optional[Number] = None,
-    direction: typing.Optional[Orientation] = None,
-    preferred_phase: typing.Optional[FluidPhase] = None,
-    pvt_region: typing.Optional[int] = None,
-    group: typing.Optional[str] = None,
+    saturation_region: int | None = None,
+    connection_factor_override: Number | None = None,
+    connection_factor_multiplier: Number | None = None,
+    direction: Orientation | None = None,
+    preferred_phase: FluidPhase | None = None,
+    pvt_region: int | None = None,
+    group: str | None = None,
     schedule_status: WellStatus = WellStatus.ACTIVE,
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-) -> typing.Tuple[Well, ProducerControl]:
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+) -> tuple[Well, ProducerControl]:
     """
     Builds a producer `Well` and its `ProducerControl`, for direct
     (non-deck) API use.
@@ -113,18 +113,14 @@ def make_producer(
     :raises ValidationError: If none of `target_rate`, `target_bhp`, or `target_thp` is given.
     """
     if target_rate is None and target_bhp is None and target_thp is None:
-        raise ValidationError(
-            "Supply one of `target_rate`, `target_bhp`, or `target_thp`."
-        )
+        raise ValidationError("Supply one of `target_rate`, `target_bhp`, or `target_thp`.")
 
     top_depth, bottom_depth = perforation_depths
     well = Well(
         name=name,
         well_type=WellType.PRODUCER,
         surface_location=surface_location,
-        reference_depth=reference_depth
-        if reference_depth is not None
-        else bottom_depth,
+        reference_depth=reference_depth if reference_depth is not None else bottom_depth,
         perforations=(
             Perforation(
                 top_depth=top_depth,
@@ -146,7 +142,7 @@ def make_producer(
         metadata=metadata,
     )
 
-    resolved_limits: typing.List[Limit] = []
+    resolved_limits: list[Limit] = []
     if min_bhp is not None:
         resolved_limits.append(BHPLimit(min_value=min_bhp))
     if max_rate is not None:
@@ -189,29 +185,29 @@ def make_injector(
     name: str,
     *,
     injected_phase: FluidPhase,
-    surface_location: typing.Tuple[Number, Number],
-    perforation_depths: typing.Tuple[Number, Number],
-    reference_depth: typing.Optional[Number] = None,
-    target_rate: typing.Optional[Number] = None,
-    target_bhp: typing.Optional[Number] = None,
-    target_thp: typing.Optional[Number] = None,
-    max_bhp: typing.Optional[Number] = None,
-    max_rate: typing.Optional[Number] = None,
-    limits: typing.Optional[typing.Sequence[Limit]] = None,
+    surface_location: tuple[Number, Number],
+    perforation_depths: tuple[Number, Number],
+    reference_depth: Number | None = None,
+    target_rate: Number | None = None,
+    target_bhp: Number | None = None,
+    target_thp: Number | None = None,
+    max_bhp: Number | None = None,
+    max_rate: Number | None = None,
+    limits: typing.Sequence[Limit] | None = None,
     efficiency_factor: Number = 1.0,
-    guide_rate: typing.Optional[Number] = None,
+    guide_rate: Number | None = None,
     wellbore_radius: Number = 0.25,
     skin: Number = 0.0,
-    saturation_region: typing.Optional[int] = None,
-    connection_factor_override: typing.Optional[Number] = None,
-    connection_factor_multiplier: typing.Optional[Number] = None,
-    direction: typing.Optional[Orientation] = None,
-    pvt_region: typing.Optional[int] = None,
-    group: typing.Optional[str] = None,
+    saturation_region: int | None = None,
+    connection_factor_override: Number | None = None,
+    connection_factor_multiplier: Number | None = None,
+    direction: Orientation | None = None,
+    pvt_region: int | None = None,
+    group: str | None = None,
     schedule_status: WellStatus = WellStatus.ACTIVE,
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-) -> typing.Tuple[Well, InjectorControl]:
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+) -> tuple[Well, InjectorControl]:
     """
     Builds an injector `Well` and its `InjectorControl`, for direct
     (non-deck) API use.
@@ -249,18 +245,14 @@ def make_injector(
     :raises ValidationError: If none of `target_rate`, `target_bhp`, or `target_thp` is given.
     """
     if target_rate is None and target_bhp is None and target_thp is None:
-        raise ValidationError(
-            "Supply one of `target_rate`, `target_bhp`, or `target_thp`."
-        )
+        raise ValidationError("Supply one of `target_rate`, `target_bhp`, or `target_thp`.")
 
     top_depth, bottom_depth = perforation_depths
     well = Well(
         name=name,
         well_type=WellType.INJECTOR,
         surface_location=surface_location,
-        reference_depth=reference_depth
-        if reference_depth is not None
-        else bottom_depth,
+        reference_depth=reference_depth if reference_depth is not None else bottom_depth,
         perforations=(
             Perforation(
                 top_depth=top_depth,
@@ -282,7 +274,7 @@ def make_injector(
         metadata=metadata,
     )
 
-    resolved_limits: typing.List[Limit] = []
+    resolved_limits: list[Limit] = []
     if max_bhp is not None:
         resolved_limits.append(BHPLimit(max_value=max_bhp))
     if max_rate is not None:
@@ -339,7 +331,7 @@ def make_group_control(
     *,
     target_rate: Number,
     quantity: RateQuantity = RateQuantity.OIL,
-    injected_phase: typing.Optional[FluidPhase] = None,
+    injected_phase: FluidPhase | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
 ) -> GroupControl:
     """

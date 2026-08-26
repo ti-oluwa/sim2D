@@ -29,41 +29,27 @@ __all__ = ["make_cartesian_grid"]
 
 def make_cartesian_grid(
     *,
-    nx: typing.Optional[Integer] = None,
-    ny: typing.Optional[Integer] = None,
-    nz: typing.Optional[Integer] = None,
+    nx: Integer | None = None,
+    ny: Integer | None = None,
+    nz: Integer | None = None,
     dx: NumberOrArray[OneDimension] = 1.0,
     dy: NumberOrArray[OneDimension] = 1.0,
     dz: NumberOrArray[OneDimension] = 1.0,
-    origin: typing.Tuple[Number, Number, Number] = (0.0, 0.0, 0.0),
+    origin: tuple[Number, Number, Number] = (0.0, 0.0, 0.0),
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    map_axes: typing.Optional[MapAxes] = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+    map_axes: MapAxes | None = None,
     apply_map_axes: bool = True,
-    fault_records: typing.Optional[typing.Sequence[FaultRecord]] = None,
-    fault_transmissibility_multipliers: typing.Optional[
-        typing.Mapping[str, Number]
-    ] = None,
-    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
-    positive_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
+    fault_records: typing.Sequence[FaultRecord] | None = None,
+    fault_transmissibility_multipliers: typing.Mapping[str, Number] | None = None,
+    nnc_cell_indices: IntArray[TwoDimensions] | None = None,
+    nnc_transmissibilities: NumberArray[OneDimension] | None = None,
+    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
 ) -> Grid:
     """
     Factory for axis-aligned structured Cartesian hexahedral grids.
@@ -127,9 +113,7 @@ def make_cartesian_grid(
 
     vertex_coordinates = _build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
 
-    resolved_map_axes = (
-        map_axes if map_axes is not None else (metadata or {}).get("map_axes")
-    )
+    resolved_map_axes = map_axes if map_axes is not None else (metadata or {}).get("map_axes")
     if resolved_map_axes is not None:
         # `MAPUNITS` (map_axes' own unit_system) can differ from GRIDUNIT
         # (this grid's unit_system) so we normalise once, upfront, so both the
@@ -162,8 +146,8 @@ def make_cartesian_grid(
         int(ConnectionType.BOUNDARY_FACE),
     ).astype(np.int8)
 
-    fault_face_indices: typing.Optional[typing.Dict[str, IntArray[OneDimension]]] = None
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
+    fault_face_indices: dict[str, IntArray[OneDimension]] | None = None
+    fault_nnc_pairs: list[tuple[int, int, str]] = []
     if fault_records:
         fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
             fault_records=fault_records,
@@ -180,33 +164,27 @@ def make_cartesian_grid(
             boundary_fault_faces = face_indices[boundary_fault_mask]
             interior_fault_faces = face_indices[~boundary_fault_mask]
 
-            face_connection_types[interior_fault_faces] = int(
-                ConnectionType.INTERIOR_FAULT_FACE
-            )
-            face_connection_types[boundary_fault_faces] = int(
-                ConnectionType.BOUNDARY_FAULT_FACE
-            )
+            face_connection_types[interior_fault_faces] = int(ConnectionType.INTERIOR_FAULT_FACE)
+            face_connection_types[boundary_fault_faces] = int(ConnectionType.BOUNDARY_FAULT_FACE)
 
     # Merge all NNC sources: [fault NNCs] + [user NNCs]
-    all_nnc_parts: typing.List[
-        typing.Tuple[
+    all_nnc_parts: list[
+        tuple[
             npt.NDArray[np.int32],
             npt.NDArray[np.int8],
             npt.NDArray[np.float64],
         ]
     ] = []
 
-    fault_nnc_indices: typing.Dict[str, typing.List[int]] = {}
+    fault_nnc_indices: dict[str, list[int]] = {}
     if fault_nnc_pairs:
-        fault_pairs = np.asarray(
-            [(a, b) for a, b, _ in fault_nnc_pairs], dtype=np.int32
-        ).reshape(-1, 2)
+        fault_pairs = np.asarray([(a, b) for a, b, _ in fault_nnc_pairs], dtype=np.int32).reshape(
+            -1, 2
+        )
         fault_nnc_connection_types = np.full(
             len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
         )
-        fault_nnc_transmissibilities = np.full(
-            len(fault_nnc_pairs), np.nan, dtype=np.float64
-        )
+        fault_nnc_transmissibilities = np.full(len(fault_nnc_pairs), np.nan, dtype=np.float64)
         all_nnc_parts.append(
             (
                 fault_pairs,
@@ -236,27 +214,23 @@ def make_cartesian_grid(
             )
         )
 
-    merged_nnc_pairs: typing.Optional[npt.NDArray[np.int32]] = None
-    merged_nnc_connection_types: typing.Optional[npt.NDArray[np.int8]] = None
-    merged_nnc_transmissibilities: typing.Optional[npt.NDArray[np.float64]] = None
-    merged_nnc_fault_indices: typing.Optional[
-        typing.Dict[str, IntArray[OneDimension]]
-    ] = None
+    merged_nnc_pairs: npt.NDArray[np.int32] | None = None
+    merged_nnc_connection_types: npt.NDArray[np.int8] | None = None
+    merged_nnc_transmissibilities: npt.NDArray[np.float64] | None = None
+    merged_nnc_fault_indices: dict[str, IntArray[OneDimension]] | None = None
 
     if all_nnc_parts:
         merged_nnc_pairs = np.vstack([p for p, _, _ in all_nnc_parts]).astype(np.int32)
-        merged_nnc_connection_types = np.concatenate(
-            [t for _, t, _ in all_nnc_parts]
-        ).astype(np.int8, copy=False)
+        merged_nnc_connection_types = np.concatenate([t for _, t, _ in all_nnc_parts]).astype(
+            np.int8, copy=False
+        )
         merged_transmissibilities = np.concatenate([t for _, _, t in all_nnc_parts])
         merged_nnc_transmissibilities = (
-            merged_transmissibilities
-            if np.any(np.isfinite(merged_transmissibilities))
-            else None
+            merged_transmissibilities if np.any(np.isfinite(merged_transmissibilities)) else None
         )
         if fault_nnc_pairs:
             merged_nnc_fault_indices = typing.cast(
-                typing.Dict[str, IntArray[OneDimension]],
+                dict[str, IntArray[OneDimension]],
                 {
                     name: np.asarray(idxs, dtype=np.int32)
                     for name, idxs in fault_nnc_indices.items()
@@ -312,9 +286,9 @@ def _resolve_fault_face_indices(
     nz: Integer,
     n_x_faces: Integer,
     n_y_faces: Integer,
-) -> typing.Tuple[
-    typing.Dict[str, IntArray[OneDimension]],
-    typing.List[typing.Tuple[int, int, str]],
+) -> tuple[
+    dict[str, IntArray[OneDimension]],
+    list[tuple[int, int, str]],
 ]:
     """
     Resolve `FaultRecord` IJK ranges to Cartesian face index arrays.
@@ -342,8 +316,8 @@ def _resolve_fault_face_indices(
     cell_stride_j = nx
     cell_stride_k = nx * ny
 
-    result: typing.Dict[str, typing.List[int]] = {}
-    fault_nnc_pairs: typing.List[typing.Tuple[int, int, str]] = []
+    result: dict[str, list[int]] = {}
+    fault_nnc_pairs: list[tuple[int, int, str]] = []
 
     for record in fault_records:
         face_dir = record.face_direction.upper()
@@ -356,12 +330,12 @@ def _resolve_fault_face_indices(
             )
             continue
 
-        face_indices: typing.List[int] = []
+        face_indices: list[int] = []
 
         for k in range(record.k1 - 1, record.k2):
             for j in range(record.j1 - 1, record.j2):
                 for i in range(record.i1 - 1, record.i2):
-                    face_idx: typing.Optional[int] = None
+                    face_idx: int | None = None
                     if face_dir in ("X", "X-"):
                         i_plane = i + 1
                         is_interior = 0 <= i < nx - 1 and 0 <= j < ny and 0 <= k < nz
@@ -379,11 +353,7 @@ def _resolve_fault_face_indices(
                         is_interior = 0 <= i < nx and 0 <= j < ny and 0 <= k < nz - 1
                         if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
                             face_idx = (
-                                n_x_faces
-                                + n_y_faces
-                                + i * ny * (nz + 1)
-                                + j * (nz + 1)
-                                + k_plane
+                                n_x_faces + n_y_faces + i * ny * (nz + 1) + j * (nz + 1) + k_plane
                             )
 
                     if face_idx is None:
@@ -392,22 +362,14 @@ def _resolve_fault_face_indices(
                     if not is_interior:
                         # Boundary face - no interior neighbour; record as fault derived NNC
                         # if both cells exist within the grid extents.
-                        if (
-                            face_dir in ("X", "X-")
-                            and 0 <= i < nx
-                            and 0 <= j < ny
-                            and 0 <= k < nz
-                        ):
+                        if face_dir in ("X", "X-") and 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
                             nb_i = i + 1
                             if 0 <= nb_i < nx:
                                 cell_a = i + j * cell_stride_j + k * cell_stride_k
                                 cell_b = nb_i + j * cell_stride_j + k * cell_stride_k
                                 fault_nnc_pairs.append((cell_a, cell_b, record.name))
                         elif (
-                            face_dir in ("Y", "Y-")
-                            and 0 <= i < nx
-                            and 0 <= j < ny
-                            and 0 <= k < nz
+                            face_dir in ("Y", "Y-") and 0 <= i < nx and 0 <= j < ny and 0 <= k < nz
                         ):
                             nb_j = j + 1
                             if 0 <= nb_j < ny:
@@ -415,10 +377,7 @@ def _resolve_fault_face_indices(
                                 cell_b = i + nb_j * cell_stride_j + k * cell_stride_k
                                 fault_nnc_pairs.append((cell_a, cell_b, record.name))
                         elif (
-                            face_dir in ("Z", "Z-")
-                            and 0 <= i < nx
-                            and 0 <= j < ny
-                            and 0 <= k < nz
+                            face_dir in ("Z", "Z-") and 0 <= i < nx and 0 <= j < ny and 0 <= k < nz
                         ):
                             nb_k = k + 1
                             if 0 <= nb_k < nz:
@@ -437,22 +396,19 @@ def _resolve_fault_face_indices(
                 result[record.name] = face_indices
 
     return (  # type: ignore[return-value]
-        {
-            name: np.unique(np.asarray(idxs, dtype=np.int32))
-            for name, idxs in result.items()
-        },
+        {name: np.unique(np.asarray(idxs, dtype=np.int32)) for name, idxs in result.items()},
         fault_nnc_pairs,
     )
 
 
 def _resolve_spacing(
-    nx: typing.Optional[Integer],
-    ny: typing.Optional[Integer],
-    nz: typing.Optional[Integer],
+    nx: Integer | None,
+    ny: Integer | None,
+    nz: Integer | None,
     dx: NumberOrArray[OneDimension],
     dy: NumberOrArray[OneDimension],
     dz: NumberOrArray[OneDimension],
-) -> typing.Tuple[
+) -> tuple[
     FloatArray[OneDimension],
     FloatArray[OneDimension],
     FloatArray[OneDimension],
@@ -472,15 +428,13 @@ def _resolve_spacing(
 
     def _to_array(
         value: NumberOrArray[OneDimension],
-        count: typing.Optional[Integer],
+        count: Integer | None,
         axis: str,
     ) -> FloatArray[OneDimension]:
         arr = np.atleast_1d(value).astype(np.float64, copy=False).ravel()
         if arr.size == 1:
             if count is None:
-                raise ValidationError(
-                    f"n{axis} must be provided when d{axis} is a scalar."
-                )
+                raise ValidationError(f"n{axis} must be provided when d{axis} is a scalar.")
             arr = np.full(count, arr[0])
         elif count is not None and len(arr) != count:
             raise ValidationError(
@@ -503,7 +457,7 @@ def _build_vertex_coordinates(
     dx: FloatArray[OneDimension],
     dy: FloatArray[OneDimension],
     dz: FloatArray[OneDimension],
-    origin: typing.Tuple[Number, Number, Number],
+    origin: tuple[Number, Number, Number],
 ) -> VertexCoordinates:
     """
     Build the `(n_vertices, 3)` vertex coordinate array via meshgrid.
@@ -533,7 +487,7 @@ def _build_vertex_coordinates(
 
 def _build_face_arrays(
     nx: Integer, ny: Integer, nz: Integer
-) -> typing.Tuple[
+) -> tuple[
     IntArray[OneDimension],
     IntArray[OneDimension],
     IntArray[TwoDimensions],
@@ -557,8 +511,8 @@ def _build_face_arrays(
     cell_stride_j = nx
     cell_stride_k = nx * ny
 
-    face_vertex_indices_parts: typing.List[npt.NDArray[np.int32]] = []
-    face_cell_indices_parts: typing.List[npt.NDArray[np.int32]] = []
+    face_vertex_indices_parts: list[npt.NDArray[np.int32]] = []
+    face_cell_indices_parts: list[npt.NDArray[np.int32]] = []
 
     i_planes = np.arange(nx + 1, dtype=np.int32)
     j_cells = np.arange(ny, dtype=np.int32)
@@ -637,9 +591,7 @@ def _build_face_arrays(
     )
 
     all_face_vertices = np.concatenate(face_vertex_indices_parts)
-    all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(
-        np.int32, copy=False
-    )
+    all_face_cell_indices = np.vstack(face_cell_indices_parts).astype(np.int32, copy=False)
 
     n_total_faces = nx_faces + len(ii_y) + len(ii_z)
     verts_per_face = 4

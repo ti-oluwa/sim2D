@@ -29,7 +29,7 @@ class StreamProgress(typing.TypedDict):
     saved_count: int
     checkpoints_count: int
     batch_pending: int
-    store_backend: typing.Optional[str]
+    store_backend: str | None
     memory_usage: float
 
 
@@ -86,7 +86,7 @@ class DataStream(typing.Generic[SerializableT]):
     store = HDF5Store("run01.h5")
     with DataStream(ReservoirState, source=run(), store=store, background_io=True) as stream:
         for item in stream.until(some_condition):
-            analyse(item)          # background thread writes while we analyse
+            analyse(item)  # background thread writes while we analyse
 
     # Replay the whole run later
     for item in stream.replay():
@@ -104,22 +104,18 @@ class DataStream(typing.Generic[SerializableT]):
 
     def __init__(
         self,
-        item_type: typing.Type[SerializableT],
-        source: typing.Optional[typing.Iterable[SerializableT]] = None,
-        store: typing.Optional[DataStore[SerializableT, typing.Any]] = None,
+        item_type: type[SerializableT],
+        source: typing.Iterable[SerializableT] | None = None,
+        store: DataStore[SerializableT, typing.Any] | None = None,
         batch_size: int = 50,
-        validator: typing.Optional[
-            typing.Callable[[SerializableT], SerializableT]
-        ] = None,
-        meta: typing.Optional[
-            typing.Callable[[SerializableT], typing.Dict[str, typing.Any]]
-        ] = None,
+        validator: typing.Callable[[SerializableT], SerializableT] | None = None,
+        meta: typing.Callable[[SerializableT], dict[str, typing.Any]] | None = None,
         auto_save: bool = True,
         auto_replay: bool = True,
-        save: typing.Union[typing.Callable[[SerializableT], bool], bool] = True,
-        checkpoint_store: typing.Optional[DataStore[SerializableT, typing.Any]] = None,
-        checkpoint_interval: typing.Optional[int] = None,
-        max_batch_memory_usage: typing.Optional[float] = None,
+        save: typing.Callable[[SerializableT], bool] | bool = True,
+        checkpoint_store: DataStore[SerializableT, typing.Any] | None = None,
+        checkpoint_interval: int | None = None,
+        max_batch_memory_usage: float | None = None,
         background_io: bool = False,
         max_queue_size: int = 100,
         io_thread_name: str = "stream-io-worker",
@@ -198,9 +194,7 @@ class DataStream(typing.Generic[SerializableT]):
                     "but not persisted."
                 )
             if self.auto_save:
-                logger.debug(
-                    "`auto_save=True` but no store provided. This setting has no effect."
-                )
+                logger.debug("`auto_save=True` but no store provided. This setting has no effect.")
             if self.save is not None:
                 logger.warning(
                     "`save` provided but no store configured. Predicate will be ignored."
@@ -211,9 +205,7 @@ class DataStream(typing.Generic[SerializableT]):
                     "will not occur without persistence."
                 )
             if self.background_io:
-                logger.warning(
-                    "`background_io=True` but no store provided. Async I/O disabled."
-                )
+                logger.warning("`background_io=True` but no store provided. Async I/O disabled.")
                 self.background_io = False
 
         if store is not None and not store.can_append:
@@ -232,20 +224,20 @@ class DataStream(typing.Generic[SerializableT]):
             )
 
         # Internal item
-        self._batch: typing.List[SerializableT] = []
+        self._batch: list[SerializableT] = []
         self._yield_count: int = 0
         self._saved_count: int = 0
         self._checkpoints_count: int = 0
         self._started: bool = False
         self._uses_save_func = callable(save)
         self._consumed: bool = False
-        self._item_size_mb: typing.Optional[float] = None
+        self._item_size_mb: float | None = None
 
         # Async I/O infrastructure
-        self._io_queue: typing.Optional[queue.Queue] = None
-        self._io_thread: typing.Optional[threading.Thread] = None
-        self._io_error: typing.Optional[Exception] = None
-        self._shutdown_event: typing.Optional[threading.Event] = None
+        self._io_queue: queue.Queue | None = None
+        self._io_thread: threading.Thread | None = None
+        self._io_error: Exception | None = None
+        self._shutdown_event: threading.Event | None = None
         self._saved_count_lock = threading.Lock()  # Protects _saved_count in async mode
 
         # Store-only (replay) mode
@@ -311,15 +303,13 @@ class DataStream(typing.Generic[SerializableT]):
                             break
 
                         # Process batch
-                        batch: typing.List[SerializableT] = item
+                        batch: list[SerializableT] = item
                         logger.debug(f"I/O worker writing batch of {len(batch)} items")
 
                         try:
                             count = 0
                             for item in batch:
-                                store.append(
-                                    item, validator=self.validator, meta=self.meta
-                                )
+                                store.append(item, validator=self.validator, meta=self.meta)
                                 count += 1
 
                             with self._saved_count_lock:
@@ -433,9 +423,7 @@ class DataStream(typing.Generic[SerializableT]):
                     "Use `replay()` or set `auto_replay=True`."
                 )
             else:
-                raise StreamError(
-                    "Stream already consumed and no store available for replay."
-                )
+                raise StreamError("Stream already consumed and no store available for replay.")
 
         # No items provided, this shouldn't happen as `_consumed` should already be set to false
         # but still handle it
@@ -454,9 +442,7 @@ class DataStream(typing.Generic[SerializableT]):
             return
 
         io_mode = "async" if self.background_io else "sync"
-        logger.debug(
-            f"Streaming -> {self.store} ({io_mode}, batch_size={self.batch_size})"
-        )
+        logger.debug(f"Streaming -> {self.store} ({io_mode}, batch_size={self.batch_size})")
 
         try:
             for item in self.source:
@@ -486,9 +472,7 @@ class DataStream(typing.Generic[SerializableT]):
 
         # Mark the stream as consumed
         self._consumed = True
-        logger.debug(
-            f"Stream exhausted: {self._yield_count} yielded, {self._saved_count} saved"
-        )
+        logger.debug(f"Stream exhausted: {self._yield_count} yielded, {self._saved_count} saved")
 
     def __enter__(self) -> Self:
         """
@@ -506,9 +490,9 @@ class DataStream(typing.Generic[SerializableT]):
 
     def __exit__(
         self,
-        exc_type: typing.Optional[typing.Type[BaseException]],
-        exc_val: typing.Optional[BaseException],
-        exc_tb: typing.Optional[typing.Any],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: typing.Any | None,
     ) -> None:
         """
         Context manager exit. Flushes any remaining items and ensure async I/O completion.
@@ -566,7 +550,7 @@ class DataStream(typing.Generic[SerializableT]):
         logger.debug("Manually closing stream...")
         self.__exit__(None, None, None)
 
-    def last(self) -> typing.Optional[SerializableT]:
+    def last(self) -> SerializableT | None:
         """
         Get the last item from the stream.
 
@@ -583,7 +567,7 @@ class DataStream(typing.Generic[SerializableT]):
             results = list(self.store.load(self.item_type, indices=[max_idx]))
             return results[0] if results else None
 
-        last_item: typing.Optional[SerializableT] = None
+        last_item: SerializableT | None = None
         for item in self:
             last_item = item
 
@@ -616,7 +600,7 @@ class DataStream(typing.Generic[SerializableT]):
             ItemType,
             source=produce(),
             checkpoint_interval=100,
-            checkpoint_store=HDF5Store("./checkpoints.h5")
+            checkpoint_store=HDF5Store("./checkpoints.h5"),
         )
         stream.consume()  # Checkpoints created, stream exhausted
         ```
@@ -634,11 +618,9 @@ class DataStream(typing.Generic[SerializableT]):
 
     def replay(
         self,
-        indices: typing.Optional[typing.Sequence[int]] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
-        validator: typing.Optional[
-            typing.Callable[[SerializableT], SerializableT]
-        ] = None,
+        indices: typing.Sequence[int] | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
+        validator: typing.Callable[[SerializableT], SerializableT] | None = None,
     ) -> typing.Iterator[SerializableT]:
         """
         Load and iterate over previously saved items from the store.
@@ -682,9 +664,7 @@ class DataStream(typing.Generic[SerializableT]):
                 self._yield_count += 1
                 yield item
         except StorageError as exc:
-            raise StreamError(
-                f"An error occured while replaying stream: {exc}"
-            ) from exc
+            raise StreamError(f"An error occured while replaying stream: {exc}") from exc
         finally:
             if items is not None:
                 _close_iter(items)
@@ -762,17 +742,11 @@ class DataStream(typing.Generic[SerializableT]):
         batch_size = len(self._batch)
 
         if self.background_io:
-            logger.debug(
-                f"Enqueuing batch of {batch_size} items to I/O thread (block={block})"
-            )
+            logger.debug(f"Enqueuing batch of {batch_size} items to I/O thread (block={block})")
 
             # Check for errors before enqueuing
             self._check_io_error()
-            if (
-                self._io_queue is None
-                or self.store is None
-                or self._shutdown_event is None
-            ):
+            if self._io_queue is None or self.store is None or self._shutdown_event is None:
                 raise StreamError("I/O infrastructure not properly initialized")
 
             try:
@@ -787,9 +761,7 @@ class DataStream(typing.Generic[SerializableT]):
                     self._wait_for_queue()
 
             except queue.Full as exc:
-                logger.error(
-                    f"I/O queue full ({self.max_queue_size}). Cannot buffer more items."
-                )
+                logger.error(f"I/O queue full ({self.max_queue_size}). Cannot buffer more items.")
                 raise StreamError(
                     "I/O queue exhausted. Simulation running faster than disk writes. "
                     "Increase `max_queue_size` or reduce `batch_size`."
@@ -807,9 +779,7 @@ class DataStream(typing.Generic[SerializableT]):
                         )
 
                 self._saved_count += batch_size
-                logger.debug(
-                    f"Flushed {batch_size} items (total saved: {self._saved_count})"
-                )
+                logger.debug(f"Flushed {batch_size} items (total saved: {self._saved_count})")
             except Exception as exc:
                 logger.error(f"Failed to flush batch: {exc}")
                 raise
@@ -817,7 +787,7 @@ class DataStream(typing.Generic[SerializableT]):
                 # Reassign to new list to free memory immediately
                 self._batch = []
 
-    def get_pending_batch(self) -> typing.List[SerializableT]:
+    def get_pending_batch(self) -> list[SerializableT]:
         """
         Get a copy of items in the current batch (not yet flushed to store).
 
@@ -933,9 +903,7 @@ class DataStream(typing.Generic[SerializableT]):
         if self.checkpoint_store is None:
             return
         try:
-            entry = self.checkpoint_store.append(
-                item, validator=self.validator, meta=self.meta
-            )
+            entry = self.checkpoint_store.append(item, validator=self.validator, meta=self.meta)
             self._checkpoints_count += 1
             logger.info(
                 f"Checkpoint saved (checkpoint index={entry.idx}, yield_count={self._yield_count})"
@@ -948,8 +916,8 @@ class DataStream(typing.Generic[SerializableT]):
 
     def checkpoint(
         self,
-        index: typing.Optional[int] = None,
-        predicate: typing.Optional[typing.Callable[[EntryMeta], bool]] = None,
+        index: int | None = None,
+        predicate: typing.Callable[[EntryMeta], bool] | None = None,
     ) -> SerializableT:
         """
         Load a specific checkpoint.
@@ -971,22 +939,16 @@ class DataStream(typing.Generic[SerializableT]):
             checkpoint exists.
         """
         if self.checkpoint_store is None:
-            raise StreamError(
-                "Checkpointing not configured. No `checkpoint_store` found."
-            )
+            raise StreamError("Checkpointing not configured. No `checkpoint_store` found.")
         if (index is None) == (predicate is None):
             raise StreamError("Exactly one of `index` or `predicate` must be given.")
 
         if index is not None:
             results = list(self.checkpoint_store.load(self.item_type, indices=[index]))
         else:
-            results = list(
-                self.checkpoint_store.load(self.item_type, predicate=predicate)
-            )
+            results = list(self.checkpoint_store.load(self.item_type, predicate=predicate))
         if not results:
-            raise StreamError(
-                f"No checkpoint found for index={index!r} predicate={predicate!r}."
-            )
+            raise StreamError(f"No checkpoint found for index={index!r} predicate={predicate!r}.")
         return results[0]
 
     def checkpoints(self) -> typing.Generator[SerializableT, None, None]:
@@ -1000,7 +962,7 @@ class DataStream(typing.Generic[SerializableT]):
             raise StreamError("No `checkpoint_store` configured.")
         yield from self.checkpoint_store.load(self.item_type)
 
-    def list_checkpoints(self) -> typing.List[EntryMeta]:
+    def list_checkpoints(self) -> list[EntryMeta]:
         """
         List metadata for all available checkpoints, in insertion order.
 
@@ -1012,9 +974,7 @@ class DataStream(typing.Generic[SerializableT]):
         :raises `StreamError`: If checkpointing not configured
         """
         if self.checkpoint_store is None:
-            raise StreamError(
-                "Checkpointing not configured. No `checkpoint_store` found"
-            )
+            raise StreamError("Checkpointing not configured. No `checkpoint_store` found")
         return list(self.checkpoint_store.entries())
 
     def progress(self) -> StreamProgress:

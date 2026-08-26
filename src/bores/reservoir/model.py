@@ -41,19 +41,13 @@ def _validate_rock(rock: Rock, n_cells: int) -> Rock:
         "rock.net_to_gross": rock.net_to_gross,
         "rock.connate_water_saturation": rock.connate_water_saturation,
         "rock.irreducible_water_saturation": rock.irreducible_water_saturation,
-        "rock.residual_oil_saturation_water_flood": (
-            rock.residual_oil_saturation_water_flood
-        ),
-        "rock.residual_oil_saturation_gas_flood": (
-            rock.residual_oil_saturation_gas_flood
-        ),
+        "rock.residual_oil_saturation_water_flood": (rock.residual_oil_saturation_water_flood),
+        "rock.residual_oil_saturation_gas_flood": (rock.residual_oil_saturation_gas_flood),
         "rock.residual_gas_saturation": rock.residual_gas_saturation,
     }
     for name, arr in checks.items():
         if arr.shape != (n_cells,):
-            raise ValidationError(
-                f"`{name}` has shape {arr.shape}; expected ({n_cells},)."
-            )
+            raise ValidationError(f"`{name}` has shape {arr.shape}; expected ({n_cells},).")
     return rock
 
 
@@ -87,9 +81,9 @@ class Reservoir(
         self,
         grid: Grid,
         rock: Rock,
-        regions: typing.Optional[Regions] = None,
-        faults: typing.Optional[typing.Collection[Fault]] = None,
-        unit_system: typing.Optional[UnitSystem] = None,
+        regions: Regions | None = None,
+        faults: typing.Collection[Fault] | None = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Initialize the reservoir model.
@@ -104,9 +98,7 @@ class Reservoir(
         n_cells = grid.n_cells
         _validate_rock(rock, n_cells)
 
-        target_unit_system = (
-            unit_system if unit_system is not None else grid.unit_system
-        )
+        target_unit_system = unit_system if unit_system is not None else grid.unit_system
         unit_conversion_table = build_unit_conversion_table()
         if target_unit_system != grid.unit_system:
             # Normalise grid to the target unit system.
@@ -132,10 +124,8 @@ class Reservoir(
 
         Matches `grid.unit_system` by construction.
         """
-        self._transmissibilities: typing.Optional[ConnectionTransmissibilities] = None
-        self._face_transmissibility_map: typing.Optional[typing.Dict[int, Number]] = (
-            None
-        )
+        self._transmissibilities: ConnectionTransmissibilities | None = None
+        self._face_transmissibility_map: dict[int, Number] | None = None
 
     @property
     def n_cells(self) -> int:
@@ -237,7 +227,7 @@ class Reservoir(
         return self._transmissibilities
 
     @property
-    def face_transmissibility_map(self) -> typing.Dict[int, Number]:
+    def face_transmissibility_map(self) -> dict[int, Number]:
         if self._face_transmissibility_map is None:
             self._face_transmissibility_map = get_face_transmissibility_map(
                 self.grid, self.transmissibilities
@@ -260,7 +250,7 @@ class Reservoir(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `Reservoir` with all property groups rescaled to `target`.
@@ -275,7 +265,7 @@ class Reservoir(
             return self
 
         table = table or build_unit_conversion_table()
-        factors = get_conversion_factors(self.unit_system, target, table=table)
+        get_conversion_factors(self.unit_system, target, table=table)
         new_model = self.__class__(
             grid=self.grid.convert(target, table=table),
             rock=self.rock.convert(target, table=table),
@@ -301,7 +291,7 @@ class Reservoir(
             )
         return t
 
-    def summary(self) -> typing.Dict[str, typing.Any]:
+    def summary(self) -> dict[str, typing.Any]:
         """
         Return a lightweight diagnostic summary dictionary.
 
@@ -319,9 +309,7 @@ class Reservoir(
             "n_nnc": self.grid.n_nnc,
             "unit_system": self.unit_system.value,
             "total_pore_volume": float(pv.sum()),
-            "has_transmissibility_multipliers": (
-                self.grid.has_transmissibility_multipliers
-            ),
+            "has_transmissibility_multipliers": (self.grid.has_transmissibility_multipliers),
         }
 
     def __repr__(self) -> str:

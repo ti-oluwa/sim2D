@@ -27,30 +27,18 @@ __all__ = ["make_polyhedral_grid"]
 def make_polyhedral_grid(
     *,
     vertex_coordinates: VertexCoordinates,
-    cell_blocks: typing.Sequence[typing.Dict[str, typing.Any]],
-    custom_cell_faces: typing.Optional[typing.Dict[str, ElementFaces]] = None,
+    cell_blocks: typing.Sequence[dict[str, typing.Any]],
+    custom_cell_faces: dict[str, ElementFaces] | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
-    positive_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+    nnc_cell_indices: IntArray[TwoDimensions] | None = None,
+    nnc_transmissibilities: NumberArray[OneDimension] | None = None,
+    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
 ) -> Grid:
     """
     Factory for general mixed-element polyhedral meshes.
@@ -66,7 +54,6 @@ def make_polyhedral_grid(
     Example usage:
 
     ```python
-
     # From meshio-style cell blocks:
     grid = make_polyhedral_grid(
         vertex_coordinates=mesh.points,
@@ -116,7 +103,7 @@ def make_polyhedral_grid(
     if custom_cell_faces:
         combined_face_table.update(custom_cell_faces)
 
-    all_per_cell_faces: typing.List[typing.List[FaceVertexIndices]] = []
+    all_per_cell_faces: list[list[FaceVertexIndices]] = []
 
     for block_idx, block in enumerate(cell_blocks):
         cell_type_name = _resolve_cell_type_name(block, combined_face_table, block_idx)
@@ -125,8 +112,7 @@ def make_polyhedral_grid(
 
         if connectivity.ndim != 2:
             raise ValidationError(
-                f"Block {block_idx}: connectivity must be 2-D; "
-                f"got ndim={connectivity.ndim}."
+                f"Block {block_idx}: connectivity must be 2-D; got ndim={connectivity.ndim}."
             )
 
         expected_n_verts = max(max(face) for face in face_table) + 1
@@ -138,7 +124,7 @@ def make_polyhedral_grid(
             )
 
         for global_vert_indices in connectivity:
-            cell_faces: typing.List[FaceVertexIndices] = [
+            cell_faces: list[FaceVertexIndices] = [
                 [global_vert_indices[local_v] for local_v in face_local]
                 for face_local in face_table
             ]
@@ -147,9 +133,9 @@ def make_polyhedral_grid(
     if not all_per_cell_faces:
         raise ValidationError("No cells found across all provided cell blocks.")
 
-    points, face_vertex_indices, face_vertex_offsets, face_cell_indices = (
-        build_csr_face_arrays(points, all_per_cell_faces)  # type: ignore[arg-type]
-    )
+    points, face_vertex_indices, face_vertex_offsets, face_cell_indices = build_csr_face_arrays(
+        points, all_per_cell_faces
+    )  # type: ignore[arg-type]
     return Grid(
         vertex_coordinates=points,
         face_vertex_indices=face_vertex_indices,
@@ -169,8 +155,8 @@ def make_polyhedral_grid(
 
 
 def _resolve_cell_type_name(
-    block: typing.Dict[str, typing.Any],
-    combined_face_table: typing.Dict[str, ElementFaces],
+    block: dict[str, typing.Any],
+    combined_face_table: dict[str, ElementFaces],
     block_idx: Integer,
 ) -> str:
     """

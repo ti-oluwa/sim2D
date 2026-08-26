@@ -30,9 +30,7 @@ from bores.typing import (
     FloatArray,
     FluidPhase,
     InterpolationMethod,
-    NDimension,
     Number,
-    NumberArray,
     OneDimension,
     ThreeDimensions,
     TwoDimensions,
@@ -75,7 +73,7 @@ class PVTRegion(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `PVTRegion` with all region tables converted to *target*.
@@ -116,9 +114,9 @@ class PVT(StoreSerializable):
 
     def __init__(
         self,
-        regions: typing.Dict[int, PVTRegion],
+        regions: dict[int, PVTRegion],
         *,
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Build a `PVT` from a pre-built regions dict.
@@ -161,9 +159,7 @@ class PVT(StoreSerializable):
         regions = self.regions.get(pvtnum)
         if regions is None:
             available = sorted(self.regions.keys())
-            raise KeyError(
-                f"PVT region {pvtnum} not found. Available regions: {available}."
-            )
+            raise KeyError(f"PVT region {pvtnum} not found. Available regions: {available}.")
         return regions
 
     @property
@@ -188,7 +184,7 @@ class PVT(StoreSerializable):
         cls,
         deck_file: DeckFile,
         *,
-        temperature: typing.Union[Temperature, Number],
+        temperature: Temperature | Number,
         interpolation_method: InterpolationMethod = "linear",
         validate: bool = True,
         warn_on_extrapolation: bool = False,
@@ -225,7 +221,7 @@ class PVT(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `PVT` with all region tables converted to *target*.
@@ -252,12 +248,8 @@ class PVT(StoreSerializable):
     def __contains__(self, key: object) -> bool:
         return key in self.regions
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return {
-            "regions": {
-                str(pvtnum): region.dump() for pvtnum, region in self.regions.items()
-            }
-        }
+    def __dump__(self) -> dict[str, typing.Any]:
+        return {"regions": {str(pvtnum): region.dump() for pvtnum, region in self.regions.items()}}
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:
@@ -302,8 +294,8 @@ def _generate_temperature_axis(
     dtype: npt.DTypeLike,
     *,
     interpolation_method: InterpolationMethod = "linear",
-    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
-    n_points: typing.Optional[int] = None,
+    depth_range: tuple[Number, Number] | None = None,
+    n_points: int | None = None,
     max_points: int = 25,
 ) -> npt.NDArray:
     """
@@ -392,18 +384,16 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
     :param n_t: Number of temperature knots (usually 2 for degenerate axis).
     :returns: 2-D array of shape `(n_p, n_t)`.
     """
-    return np.tile(values_1d[:, np.newaxis], (1, n_t)).astype(
-        values_1d.dtype, copy=False
-    )
+    return np.tile(values_1d[:, np.newaxis], (1, n_t)).astype(values_1d.dtype, copy=False)
 
 
 def _build_oil_data_from_pvto(
-    pvto_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, Number]],
+    pvto_records: list[dict[str, typing.Any]],
+    density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
     interpolation_method: InterpolationMethod = "linear",
-    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
+    depth_range: tuple[Number, Number] | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -451,7 +441,7 @@ def _build_oil_data_from_pvto(
     n_t = len(temperatures)
 
     # Group records by Rs value
-    solution_gor_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
+    solution_gor_to_rows: dict[float, list[dict]] = {}
     for row in pvto_records:
         row["rs"] *= mscf_to_scf
         solution_gor = row["rs"]
@@ -472,9 +462,7 @@ def _build_oil_data_from_pvto(
     saturated_oil_viscosity = np.empty(n_rs, dtype=dtype)
 
     for i, solution_gor_key in enumerate(solution_gor_keys):
-        rows = sorted(
-            solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"]
-        )
+        rows = sorted(solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"])
         saturated_row = rows[0]
         bubble_point_pressure_values[i] = saturated_row["pressure"]
         saturated_oil_fvf[i] = saturated_row["bo"]
@@ -493,9 +481,7 @@ def _build_oil_data_from_pvto(
         max(10, n_rs),
         dtype=dtype,
     )
-    pressures = np.unique(
-        np.concatenate([bubble_point_pressure_values, extension])
-    ).astype(dtype)
+    pressures = np.unique(np.concatenate([bubble_point_pressure_values, extension])).astype(dtype)
     n_p = len(pressures)
 
     # Reference undersaturated branch: most Eclipse decks only attach an
@@ -510,9 +496,7 @@ def _build_oil_data_from_pvto(
     # case a deck attaches it somewhere other than the top Rs) and apply it
     # relative to each single-row group's own saturated point.
     reference_key = max(solution_gor_keys, key=lambda k: len(solution_gor_to_rows[k]))
-    reference_rows = sorted(
-        solution_gor_to_rows[reference_key], key=lambda row: row["pressure"]
-    )
+    reference_rows = sorted(solution_gor_to_rows[reference_key], key=lambda row: row["pressure"])
     if len(reference_rows) < 2:
         raise ValidationError(
             "`PVTO` table has no Rs group with an undersaturated (>1 row) "
@@ -520,13 +504,9 @@ def _build_oil_data_from_pvto(
             "single-row Rs groups."
         )
 
-    reference_pressure_arr = np.array(
-        [row["pressure"] for row in reference_rows], dtype=dtype
-    )
+    reference_pressure_arr = np.array([row["pressure"] for row in reference_rows], dtype=dtype)
     reference_oil_fvf_arr = np.array([row["bo"] for row in reference_rows], dtype=dtype)
-    reference_viscosity_arr = np.array(
-        [row["viscosity"] for row in reference_rows], dtype=dtype
-    )
+    reference_viscosity_arr = np.array([row["viscosity"] for row in reference_rows], dtype=dtype)
     reference_delta_pressure = reference_pressure_arr - reference_pressure_arr[0]
     reference_delta_oil_fvf = reference_oil_fvf_arr - reference_oil_fvf_arr[0]
     reference_viscosity_ratio = reference_viscosity_arr / reference_viscosity_arr[0]
@@ -550,13 +530,11 @@ def _build_oil_data_from_pvto(
     )
 
     # Per-Rs interpolators for the full (saturated + undersaturated) branch
-    oil_fvf_interps: typing.List[interp1d] = []
-    oil_viscosity_interps: typing.List[interp1d] = []
+    oil_fvf_interps: list[interp1d] = []
+    oil_viscosity_interps: list[interp1d] = []
 
     for solution_gor_key in solution_gor_keys:
-        rows = sorted(
-            solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"]
-        )
+        rows = sorted(solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"])
         pressure_arr = np.array([row["pressure"] for row in rows], dtype=dtype)
         oil_fvf_arr = np.array([row["bo"] for row in rows], dtype=dtype)
         oil_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
@@ -627,10 +605,7 @@ def _build_oil_data_from_pvto(
     for i, pressure in enumerate(pressures):
         # Determine which Rs group governs at this pressure:
         # find the Rs group whose Pb is closest to (and ≤) this pressure.
-        rs_idx = (
-            int(np.searchsorted(bubble_point_pressure_values, pressure, side="right"))
-            - 1
-        )
+        rs_idx = int(np.searchsorted(bubble_point_pressure_values, pressure, side="right")) - 1
         rs_idx = int(np.clip(rs_idx, 0, n_rs - 1))
 
         # Rs at this pressure on the saturated envelope
@@ -649,18 +624,17 @@ def _build_oil_data_from_pvto(
     ).astype(dtype, copy=False)
 
     # Resolve reference densities: pvt takes precedence over DENSITY record
-    stock_tank_oil_density: typing.Optional[Number] = None
-    stock_tank_gas_density: typing.Optional[Number] = None
+    stock_tank_oil_density: Number | None = None
+    stock_tank_gas_density: Number | None = None
     if density_record is not None:
         stock_tank_oil_density = density_record.get("oil")
         stock_tank_gas_density = density_record.get("gas")
 
     # Density: ρo = (ρo,SC + Rs·ρg,SC) / Bo
-    oil_density_2d: typing.Optional[npt.NDArray] = None
+    oil_density_2d: npt.NDArray | None = None
     if stock_tank_oil_density is not None and stock_tank_gas_density is not None:
         oil_density_2d = (
-            (stock_tank_oil_density + solution_gor_2d * stock_tank_gas_density)
-            / oil_fvf_2d
+            (stock_tank_oil_density + solution_gor_2d * stock_tank_gas_density) / oil_fvf_2d
         ).astype(dtype, copy=False)
 
     # Compressibility: co = -(1/Bo)·(∂Bo/∂P) via PCHIP derivative
@@ -676,35 +650,27 @@ def _build_oil_data_from_pvto(
         phase=FluidPhase.OIL,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
         temperatures=typing.cast(FloatArray[OneDimension], temperatures),
-        bubble_point_pressures=typing.cast(
-            FloatArray[TwoDimensions], bubble_point_pressure_2d
-        ),
-        solution_gas_to_oil_ratios=typing.cast(
-            FloatArray[OneDimension], solution_gor_values
-        ),
-        formation_volume_factor_table=typing.cast(
-            FloatArray[TwoDimensions], oil_fvf_2d
-        ),
+        bubble_point_pressures=typing.cast(FloatArray[TwoDimensions], bubble_point_pressure_2d),
+        solution_gas_to_oil_ratios=typing.cast(FloatArray[OneDimension], solution_gor_values),
+        formation_volume_factor_table=typing.cast(FloatArray[TwoDimensions], oil_fvf_2d),
         viscosity_table=typing.cast(FloatArray[TwoDimensions], oil_viscosity_2d),
         solution_gor_table=typing.cast(FloatArray[TwoDimensions], solution_gor_2d),
         density_table=typing.cast(FloatArray[TwoDimensions], oil_density_2d)
         if oil_density_2d is not None
         else None,
-        compressibility_table=typing.cast(
-            FloatArray[TwoDimensions], oil_compressibility_2d
-        ),
+        compressibility_table=typing.cast(FloatArray[TwoDimensions], oil_compressibility_2d),
         dtype=dtype,
         unit_system=unit_system,
     )
 
 
 def _build_oil_data_from_pvdo(
-    pvdo_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, Number]],
+    pvdo_records: list[dict[str, typing.Any]],
+    density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
     interpolation_method: InterpolationMethod = "linear",
-    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
+    depth_range: tuple[Number, Number] | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -732,9 +698,7 @@ def _build_oil_data_from_pvdo(
 
     rows = sorted(pvdo_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
-        raise ValidationError(
-            f"`PVDO` table requires at least 2 rows; got {len(rows)}."
-        )
+        raise ValidationError(f"`PVDO` table requires at least 2 rows; got {len(rows)}.")
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
     oil_fvf_1d = np.array([row["bo"] for row in rows], dtype=dtype)
@@ -753,12 +717,12 @@ def _build_oil_data_from_pvdo(
     # Dead oil: Rs = 0 everywhere
     solution_gor_2d = np.zeros((n_p, n_t), dtype=dtype)
 
-    stock_tank_oil_density: typing.Optional[Number] = None
+    stock_tank_oil_density: Number | None = None
     if density_record is not None:
         stock_tank_oil_density = density_record.get("oil")
 
     # Density: ρo = ρo,SC / Bo (dead oil - Rs = 0)
-    oil_density_2d: typing.Optional[npt.NDArray] = None
+    oil_density_2d: npt.NDArray | None = None
     if stock_tank_oil_density is not None:
         oil_density_2d = (stock_tank_oil_density / oil_fvf_2d).astype(dtype, copy=False)
 
@@ -775,29 +739,25 @@ def _build_oil_data_from_pvdo(
         phase=FluidPhase.OIL,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
         temperatures=typing.cast(FloatArray[OneDimension], temperatures),
-        formation_volume_factor_table=typing.cast(
-            FloatArray[TwoDimensions], oil_fvf_2d
-        ),
+        formation_volume_factor_table=typing.cast(FloatArray[TwoDimensions], oil_fvf_2d),
         viscosity_table=typing.cast(FloatArray[TwoDimensions], oil_viscosity_2d),
         solution_gor_table=typing.cast(FloatArray[TwoDimensions], solution_gor_2d),
         density_table=typing.cast(FloatArray[TwoDimensions], oil_density_2d)
         if oil_density_2d is not None
         else None,
-        compressibility_table=typing.cast(
-            FloatArray[TwoDimensions], oil_compressibility_2d
-        ),
+        compressibility_table=typing.cast(FloatArray[TwoDimensions], oil_compressibility_2d),
         dtype=dtype,
         unit_system=unit_system,
     )
 
 
 def _build_gas_data_from_pvdg(
-    pvdg_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, Number]],
+    pvdg_records: list[dict[str, typing.Any]],
+    density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
     interpolation_method: InterpolationMethod = "linear",
-    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
+    depth_range: tuple[Number, Number] | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -825,9 +785,7 @@ def _build_gas_data_from_pvdg(
 
     rows = sorted(pvdg_records, key=lambda row: row["pressure"])
     if len(rows) < 2:
-        raise ValidationError(
-            f"`PVDG` table requires at least 2 rows; got {len(rows)}."
-        )
+        raise ValidationError(f"`PVDG` table requires at least 2 rows; got {len(rows)}.")
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
     # Eclipse reports Bg in rb/Mscf under FIELD units only; METRIC/LAB decks
@@ -835,9 +793,7 @@ def _build_gas_data_from_pvdg(
     # convention, so the rescale only applies to FIELD.
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET if unit_system == UnitSystem.FIELD else 1.0
     mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
-    gas_fvf_1d = np.array(
-        [row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype
-    )
+    gas_fvf_1d = np.array([row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype)
     gas_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
     if not np.all(np.diff(pressures) > 0):
@@ -851,12 +807,12 @@ def _build_gas_data_from_pvdg(
     gas_fvf_2d = _broadcast_to_2d(gas_fvf_1d, n_t)
     gas_viscosity_2d = _broadcast_to_2d(gas_viscosity_1d, n_t)
 
-    stock_tank_gas_density: typing.Optional[Number] = None
+    stock_tank_gas_density: Number | None = None
     if density_record is not None:
         stock_tank_gas_density = density_record.get("gas")
 
     # Density: ρg = ρg,SC / Bg
-    gas_density_2d: typing.Optional[npt.NDArray] = None
+    gas_density_2d: npt.NDArray | None = None
     if stock_tank_gas_density is not None:
         gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(dtype, copy=False)
 
@@ -873,24 +829,20 @@ def _build_gas_data_from_pvdg(
         phase=FluidPhase.GAS,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
         temperatures=typing.cast(FloatArray[OneDimension], temperatures),
-        formation_volume_factor_table=typing.cast(
-            FloatArray[TwoDimensions], gas_fvf_2d
-        ),
+        formation_volume_factor_table=typing.cast(FloatArray[TwoDimensions], gas_fvf_2d),
         viscosity_table=typing.cast(FloatArray[TwoDimensions], gas_viscosity_2d),
         density_table=typing.cast(FloatArray[TwoDimensions], gas_density_2d)
         if gas_density_2d is not None
         else None,
-        compressibility_table=typing.cast(
-            FloatArray[TwoDimensions], gas_compressibility_2d
-        ),
+        compressibility_table=typing.cast(FloatArray[TwoDimensions], gas_compressibility_2d),
         dtype=dtype,
         unit_system=unit_system,
     )
 
 
 def _build_gas_data_from_pvtg(
-    pvtg_records: typing.List[typing.Dict[str, typing.Any]],
-    density_record: typing.Optional[typing.Dict[str, Number]],
+    pvtg_records: list[dict[str, typing.Any]],
+    density_record: dict[str, Number] | None,
     unit_system: UnitSystem,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
@@ -921,7 +873,7 @@ def _build_gas_data_from_pvtg(
     # rescale is needed there.
     scf_to_mscf = c.SCF_TO_MSCF if unit_system == UnitSystem.FIELD else 1.0
 
-    pressure_to_rows: typing.Dict[float, typing.List[typing.Dict]] = {}
+    pressure_to_rows: dict[float, list[dict]] = {}
     for row in pvtg_records:
         # Apply the factor once here
         row["rv"] *= scf_to_mscf
@@ -958,9 +910,7 @@ def _build_gas_data_from_pvtg(
     for i, pressure_key in enumerate(pressure_keys):
         rows = sorted(pressure_to_rows[pressure_key], key=lambda row: row["rv"])
         rv_arr = np.array([row["rv"] for row in rows], dtype=dtype)
-        gas_fvf_arr = np.array(
-            [row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype
-        )
+        gas_fvf_arr = np.array([row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype)
         gas_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
         if np.any(gas_fvf_arr <= 0):
@@ -1026,13 +976,11 @@ def _build_gas_data_from_pvtg(
         bounds_error=False,
         fill_value=(dew_pressure_sorted[0], dew_pressure_sorted[-1]),
     )
-    dew_point_pressure_table = dew_point_pressure_of_rv(rv_values).astype(
-        dtype, copy=False
-    )
+    dew_point_pressure_table = dew_point_pressure_of_rv(rv_values).astype(dtype, copy=False)
 
     # Resolve reference densities
-    stock_tank_gas_density: typing.Optional[Number] = None
-    stock_tank_oil_density: typing.Optional[Number] = None
+    stock_tank_gas_density: Number | None = None
+    stock_tank_oil_density: Number | None = None
 
     if density_record is not None:
         stock_tank_gas_density = density_record.get("gas")
@@ -1040,7 +988,7 @@ def _build_gas_data_from_pvtg(
 
     # Density: ρg = (ρg,SC + Rv·ρo,SC) / Bg  [wet gas]
     #          ρg = ρg,SC / Bg                  [dry gas, Rv = 0 column]
-    gas_density_2d: typing.Optional[npt.NDArray] = None
+    gas_density_2d: npt.NDArray | None = None
     if stock_tank_gas_density is not None:
         rv_grid = np.tile(rv_values[np.newaxis, :], (n_p, 1))
         if stock_tank_oil_density is not None:
@@ -1048,9 +996,7 @@ def _build_gas_data_from_pvtg(
                 (stock_tank_gas_density + rv_grid * stock_tank_oil_density) / gas_fvf_2d
             ).astype(dtype, copy=False)
         else:
-            gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(
-                dtype, copy=False
-            )
+            gas_density_2d = (stock_tank_gas_density / gas_fvf_2d).astype(dtype, copy=False)
 
     # Compressibility: cg ≈ -(1/Bg)·(∂Bg/∂P) along each Rv column
     gas_compressibility_2d = np.empty((n_p, n_rv), dtype=dtype)
@@ -1072,9 +1018,7 @@ def _build_gas_data_from_pvtg(
         pressures=typing.cast(FloatArray[OneDimension], pressure_values),
         # Rv axis stored here for wet-gas table - PVTTable is aware of this convention
         temperatures=typing.cast(FloatArray[OneDimension], rv_values),
-        formation_volume_factor_table=typing.cast(
-            FloatArray[TwoDimensions], gas_fvf_2d
-        ),
+        formation_volume_factor_table=typing.cast(FloatArray[TwoDimensions], gas_fvf_2d),
         viscosity_table=typing.cast(FloatArray[TwoDimensions], gas_viscosity_2d),
         vaporized_oil_ratio_table=typing.cast(
             FloatArray[TwoDimensions], vaporized_oil_ratio_table
@@ -1082,26 +1026,22 @@ def _build_gas_data_from_pvtg(
         density_table=typing.cast(FloatArray[TwoDimensions], gas_density_2d)
         if gas_density_2d is not None
         else None,
-        compressibility_table=typing.cast(
-            FloatArray[TwoDimensions], gas_compressibility_2d
-        ),
-        dew_point_pressures=typing.cast(
-            FloatArray[OneDimension], dew_point_pressure_table
-        ),
+        compressibility_table=typing.cast(FloatArray[TwoDimensions], gas_compressibility_2d),
+        dew_point_pressures=typing.cast(FloatArray[OneDimension], dew_point_pressure_table),
         dtype=dtype,
         unit_system=unit_system,
     )
 
 
 def _build_water_data_from_pvtw(
-    pvtw_record: typing.Dict[str, Number],
-    density_record: typing.Optional[typing.Dict[str, Number]],
+    pvtw_record: dict[str, Number],
+    density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
     unit_system: UnitSystem,
     salinity: Number = 0.0,
     n_pressure_points: int = 50,
     interpolation_method: InterpolationMethod = "linear",
-    depth_range: typing.Optional[typing.Tuple[Number, Number]] = None,
+    depth_range: tuple[Number, Number] | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PVTData:
     """
@@ -1165,9 +1105,7 @@ def _build_water_data_from_pvtw(
 
     # Taylor's exponential approximation (more stable). Used by Eclipse.
     x = water_compressibility * delta_p
-    water_fvf_1d = (reference_water_fvf / (1.0 + x + 0.5 * x * x)).astype(
-        dtype, copy=False
-    )
+    water_fvf_1d = (reference_water_fvf / (1.0 + x + 0.5 * x * x)).astype(dtype, copy=False)
 
     # True Exponential approach (May give negatives by more accurate)
     # water_viscosity_1d = (
@@ -1186,38 +1124,30 @@ def _build_water_data_from_pvtw(
     water_fvf_3d = water_fvf_2d[:, :, np.newaxis].astype(dtype, copy=False)
     water_viscosity_3d = water_viscosity_2d[:, :, np.newaxis].astype(dtype, copy=False)
 
-    stock_tank_water_density: typing.Optional[Number] = None
+    stock_tank_water_density: Number | None = None
     if density_record is not None:
         stock_tank_water_density = density_record.get("water")
 
     # Density: ρw = ρw,SC / Bw
-    water_density_3d: typing.Optional[npt.NDArray] = None
+    water_density_3d: npt.NDArray | None = None
     if stock_tank_water_density is not None:
-        water_density_3d = (stock_tank_water_density / water_fvf_3d).astype(
-            dtype, copy=False
-        )
+        water_density_3d = (stock_tank_water_density / water_fvf_3d).astype(dtype, copy=False)
 
     # Compressibility: cw is constant for this model - store as a uniform table
     # so the lookup API is consistent with oil and gas phases
-    water_compressibility_3d = np.full(
-        (n_p, n_t, 1), water_compressibility, dtype=dtype
-    )
+    water_compressibility_3d = np.full((n_p, n_t, 1), water_compressibility, dtype=dtype)
 
     return PVTData(
         phase=FluidPhase.WATER,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
         temperatures=typing.cast(FloatArray[OneDimension], temperatures),
         salinities=typing.cast(FloatArray[OneDimension], salinities),
-        formation_volume_factor_table=typing.cast(
-            FloatArray[ThreeDimensions], water_fvf_3d
-        ),
+        formation_volume_factor_table=typing.cast(FloatArray[ThreeDimensions], water_fvf_3d),
         viscosity_table=typing.cast(FloatArray[ThreeDimensions], water_viscosity_3d),
         density_table=typing.cast(FloatArray[ThreeDimensions], water_density_3d)
         if water_density_3d is not None
         else None,
-        compressibility_table=typing.cast(
-            FloatArray[ThreeDimensions], water_compressibility_3d
-        ),
+        compressibility_table=typing.cast(FloatArray[ThreeDimensions], water_compressibility_3d),
         gas_free_water_fvf_table=typing.cast(FloatArray[TwoDimensions], water_fvf_2d),
         dtype=dtype,
         unit_system=unit_system,
@@ -1232,7 +1162,7 @@ def load_pvt_regions(
     validate: bool = True,
     warn_on_extrapolation: bool = False,
     dtype: npt.DTypeLike = None,
-) -> typing.Dict[int, PVTRegion]:
+) -> dict[int, PVTRegion]:
     """
     Build a `PVT` object from a parsed `DeckFile`.
 
@@ -1259,13 +1189,13 @@ def load_pvt_regions(
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
     # Retrieve deck records (each is a list-of-lists: outer = regions)
-    pvto_all: typing.Optional[typing.List] = deck_file.get("PVTO")
-    pvdo_all: typing.Optional[typing.List] = deck_file.get("PVDO")
-    pvco_all: typing.Optional[typing.List] = deck_file.get("PVCO")
-    pvtg_all: typing.Optional[typing.List] = deck_file.get("PVTG")
-    pvdg_all: typing.Optional[typing.List] = deck_file.get("PVDG")
-    pvtw_all: typing.Optional[typing.List] = deck_file.get("PVTW")
-    density_all: typing.Optional[typing.List] = deck_file.get("DENSITY")
+    pvto_all: list | None = deck_file.get("PVTO")
+    pvdo_all: list | None = deck_file.get("PVDO")
+    pvco_all: list | None = deck_file.get("PVCO")
+    pvtg_all: list | None = deck_file.get("PVTG")
+    pvdg_all: list | None = deck_file.get("PVDG")
+    pvtw_all: list | None = deck_file.get("PVTW")
+    density_all: list | None = deck_file.get("DENSITY")
 
     if pvto_all is None and pvdo_all is None and pvco_all is None:
         raise ValidationError(
@@ -1279,13 +1209,13 @@ def load_pvt_regions(
         if x is not None
     )
     unit_system = deck_file.unit_system
-    table_kwargs: typing.Dict[str, typing.Any] = dict(
+    table_kwargs: dict[str, typing.Any] = dict(
         interpolation_method=interpolation_method,
         validate=validate,
         warn_on_extrapolation=warn_on_extrapolation,
         dtype=dtype,
     )
-    regions: typing.Dict[int, PVTRegion] = {}
+    regions: dict[int, PVTRegion] = {}
     if unit_system != temperature.unit_system:
         temperature = temperature.convert(unit_system)
 
@@ -1293,7 +1223,7 @@ def load_pvt_regions(
         pvtnum = region_idx + 1  # 1-based
 
         # Density record for this region
-        density_record: typing.Optional[typing.Dict[str, Number]] = None
+        density_record: dict[str, Number] | None = None
         if density_all is not None and region_idx < len(density_all):
             # Each DENSITY region entry is a list containing one row dict
             region_rows = density_all[region_idx]
@@ -1301,7 +1231,7 @@ def load_pvt_regions(
                 density_record = region_rows[0]
 
         # Oil Phase
-        oil_data: typing.Optional[PVTData] = None
+        oil_data: PVTData | None = None
         if pvto_all is not None and region_idx < len(pvto_all):
             oil_data = _build_oil_data_from_pvto(
                 pvto_records=pvto_all[region_idx],
@@ -1338,9 +1268,7 @@ def load_pvt_regions(
                 oil_viscosity = np.full_like(pvco_pressures, reference_viscosity)
                 synthetic_rows = [
                     {"pressure": pressure, "bo": fvf, "viscosity": viscosity}
-                    for pressure, fvf, viscosity in zip(
-                        pvco_pressures, oil_fvf, oil_viscosity
-                    )
+                    for pressure, fvf, viscosity in zip(pvco_pressures, oil_fvf, oil_viscosity, strict=False)
                 ]
                 oil_data = _build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,
@@ -1352,7 +1280,7 @@ def load_pvt_regions(
                 )
 
         # Gas Phase
-        gas_data: typing.Optional[PVTData] = None
+        gas_data: PVTData | None = None
         if pvtg_all is not None and region_idx < len(pvtg_all):
             gas_data = _build_gas_data_from_pvtg(
                 pvtg_records=pvtg_all[region_idx],
@@ -1371,7 +1299,7 @@ def load_pvt_regions(
             )
 
         # Water
-        water_data: typing.Optional[PVTData] = None
+        water_data: PVTData | None = None
         salinity = 0.0  # Salinity is not stored in the PVTW record; default to 0 ppm
         if pvtw_all is not None and region_idx < len(pvtw_all):
             pvtw_rows = pvtw_all[region_idx]
@@ -1388,22 +1316,16 @@ def load_pvt_regions(
 
         # `StaticPVT` for this region
         # Resolve stock-tank densities from DENSITY record
-        stock_tank_oil_density = (
-            density_record["oil"] if density_record is not None else None
-        )
-        stock_tank_water_density = (
-            density_record["water"] if density_record is not None else None
-        )
-        stock_tank_gas_density = (
-            density_record["gas"] if density_record is not None else None
-        )
+        stock_tank_oil_density = density_record["oil"] if density_record is not None else None
+        stock_tank_water_density = density_record["water"] if density_record is not None else None
+        stock_tank_gas_density = density_record["gas"] if density_record is not None else None
 
         # PVTW scalars for this region
-        water_reference_pressure: typing.Optional[Number] = None
-        water_reference_fvf: typing.Optional[Number] = None
-        water_reference_viscosity: typing.Optional[Number] = None
-        water_reference_compressibility: typing.Optional[Number] = None
-        water_viscosibility: typing.Optional[Number] = None
+        water_reference_pressure: Number | None = None
+        water_reference_fvf: Number | None = None
+        water_reference_viscosity: Number | None = None
+        water_reference_compressibility: Number | None = None
+        water_viscosibility: Number | None = None
         if pvtw_all is not None and region_idx < len(pvtw_all):
             pvtw_rows = pvtw_all[region_idx]
             if pvtw_rows:
@@ -1430,9 +1352,7 @@ def load_pvt_regions(
         # Assemble `PVTRegion`
         dataset = PVTDataSet(oil=oil_data, gas=gas_data, water=water_data)
         tables = PVTTables.from_dataset(dataset, **table_kwargs)
-        regions[pvtnum] = PVTRegion(
-            static=static, tables=tables, unit_system=unit_system
-        )
+        regions[pvtnum] = PVTRegion(static=static, tables=tables, unit_system=unit_system)
 
         logger.debug(
             "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s, salinity=%.0f ppm",

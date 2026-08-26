@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 class CFLMeta:
     cfl_threshold: float
     maximum_cfl_encountered: float
-    cell: typing.Tuple[int, int, int]
+    cell: tuple[int, int, int]
     time_step: int
     violated: bool
 
@@ -68,8 +68,8 @@ class VolumesMeta:
 @attrs.frozen
 class SaturationEvolutionMeta:
     cfl_info: CFLMeta
-    fluxes: typing.Optional[FluxesMeta] = None
-    volumes: typing.Optional[VolumesMeta] = None
+    fluxes: FluxesMeta | None = None
+    volumes: VolumesMeta | None = None
 
 
 @attrs.frozen
@@ -82,11 +82,11 @@ class ExplicitSaturationSolution:
     maximum_oil_saturation_change: float
     maximum_water_saturation_change: float
     maximum_gas_saturation_change: float
-    solvent_concentration_grid: typing.Optional[ThreeDimensionalGrid] = None
+    solvent_concentration_grid: ThreeDimensionalGrid | None = None
 
 
 def solve_transport(
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     thickness_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
     time_step: int,
@@ -101,7 +101,7 @@ def solve_transport(
     wells_indices: WellsIndices,
     injection_rates: PhaseTensorsProxy[float, ThreeDimensions],
     production_rates: PhaseTensorsProxy[float, ThreeDimensions],
-    pressure_change_grid: typing.Optional[ThreeDimensionalGrid] = None,
+    pressure_change_grid: ThreeDimensionalGrid | None = None,
     pad_width: int = 1,
 ) -> Solution[ExplicitSaturationSolution, SaturationEvolutionMeta]:
     """
@@ -154,9 +154,7 @@ def solve_transport(
         oil_relative_mobility_grid,
         gas_relative_mobility_grid,
     ) = relative_mobility_grids
-    oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid = (
-        capillary_pressure_grids
-    )
+    oil_water_capillary_pressure_grid, gas_oil_capillary_pressure_grid = capillary_pressure_grids
 
     dtype = get_dtype()
 
@@ -414,24 +412,14 @@ def solve_transport(
         total_inflow = total_water_inflow + total_oil_inflow + total_gas_inflow
         total_outflow = total_water_outflow + total_oil_outflow + total_gas_outflow
 
-        cell_oil_saturation_change = (
-            oil_saturation - updated_oil_saturation_grid[i, j, k]
-        )
-        cell_water_saturation_change = (
-            water_saturation - updated_water_saturation_grid[i, j, k]
-        )
-        cell_gas_saturation_change = (
-            gas_saturation - updated_gas_saturation_grid[i, j, k]
-        )
+        cell_oil_saturation_change = oil_saturation - updated_oil_saturation_grid[i, j, k]
+        cell_water_saturation_change = water_saturation - updated_water_saturation_grid[i, j, k]
+        cell_gas_saturation_change = gas_saturation - updated_gas_saturation_grid[i, j, k]
 
         # Pressure diagnostics at the CFL-violating cell
         cell_pressure = float(oil_pressure_grid[i, j, k])
-        cell_bubble_point = float(
-            fluid_properties.oil_bubble_point_pressure_grid[i, j, k]
-        )
-        pressure_state = (
-            "undersaturated" if cell_pressure > cell_bubble_point else "saturated"
-        )
+        cell_bubble_point = float(fluid_properties.oil_bubble_point_pressure_grid[i, j, k])
+        pressure_state = "undersaturated" if cell_pressure > cell_bubble_point else "saturated"
         interior_pressure_grid = unpad_grid(oil_pressure_grid, pad_width=pad_width)
         avg_reservoir_pressure = float(np.mean(interior_pressure_grid))
 
@@ -457,15 +445,9 @@ def solve_transport(
         return Solution(
             success=False,
             value=ExplicitSaturationSolution(
-                water_saturation_grid=updated_water_saturation_grid.astype(
-                    dtype, copy=False
-                ),
-                oil_saturation_grid=updated_oil_saturation_grid.astype(
-                    dtype, copy=False
-                ),
-                gas_saturation_grid=updated_gas_saturation_grid.astype(
-                    dtype, copy=False
-                ),
+                water_saturation_grid=updated_water_saturation_grid.astype(dtype, copy=False),
+                oil_saturation_grid=updated_oil_saturation_grid.astype(dtype, copy=False),
+                gas_saturation_grid=updated_gas_saturation_grid.astype(dtype, copy=False),
                 solvent_concentration_grid=updatedsolvent_concentration_grid.astype(
                     dtype, copy=False
                 ),
@@ -514,14 +496,10 @@ def solve_transport(
     maximum_cfl_encountered = cfl_violation_info[4]
     return Solution(
         value=ExplicitSaturationSolution(
-            water_saturation_grid=updated_water_saturation_grid.astype(
-                dtype, copy=False
-            ),
+            water_saturation_grid=updated_water_saturation_grid.astype(dtype, copy=False),
             oil_saturation_grid=updated_oil_saturation_grid.astype(dtype, copy=False),
             gas_saturation_grid=updated_gas_saturation_grid.astype(dtype, copy=False),
-            solvent_concentration_grid=updatedsolvent_concentration_grid.astype(
-                dtype, copy=False
-            ),
+            solvent_concentration_grid=updatedsolvent_concentration_grid.astype(dtype, copy=False),
             maximum_cfl_encountered=maximum_cfl_encountered,
             cfl_threshold=cfl_threshold,
             maximum_oil_saturation_change=maximum_oil_saturation_change,
@@ -561,7 +539,7 @@ def compute_fluxes_from_neighbour(
     gas_density_grid: ThreeDimensionalGrid,
     elevation_grid: ThreeDimensionalGrid,
     gravitational_constant: float,
-) -> typing.Tuple[float, float, float, float]:  # water, oil, gas, solvent_in_oil
+) -> tuple[float, float, float, float]:  # water, oil, gas, solvent_in_oil
     """
     Compute phase volumetric fluxes including solvent concentration transport.
 
@@ -599,22 +577,16 @@ def compute_fluxes_from_neighbour(
         oil_water_capillary_pressure_grid[neighbour_indices]
         - oil_water_capillary_pressure_grid[cell_indices]
     )
-    water_pressure_difference = (
-        oil_pressure_difference - oil_water_capillary_pressure_difference
-    )
+    water_pressure_difference = oil_pressure_difference - oil_water_capillary_pressure_difference
     gas_oil_capillary_pressure_difference = (
         gas_oil_capillary_pressure_grid[neighbour_indices]
         - gas_oil_capillary_pressure_grid[cell_indices]
     )
-    gas_pressure_difference = (
-        oil_pressure_difference + gas_oil_capillary_pressure_difference
-    )
+    gas_pressure_difference = oil_pressure_difference + gas_oil_capillary_pressure_difference
     cell_solvent_concentration = solvent_concentration_grid[cell_indices]
     neighbour_solvent_concentration = solvent_concentration_grid[neighbour_indices]
 
-    elevation_difference = (
-        elevation_grid[neighbour_indices] - elevation_grid[cell_indices]
-    )
+    elevation_difference = elevation_grid[neighbour_indices] - elevation_grid[cell_indices]
 
     # Upwind densities
     upwind_water_density = (
@@ -671,9 +643,7 @@ def compute_fluxes_from_neighbour(
 
     # Upwind solvent concentration (moves with oil)
     upwindedsolvent_concentration = (
-        neighbour_solvent_concentration
-        if oil_velocity > 0
-        else cell_solvent_concentration
+        neighbour_solvent_concentration if oil_velocity > 0 else cell_solvent_concentration
     )
 
     # Volumetric fluxes (ft³/day) = velocity * area
@@ -714,7 +684,7 @@ def compute_net_flux_contributions(
     elevation_grid: ThreeDimensionalGrid,
     gravitational_constant: float,
     dtype: npt.DTypeLike,
-) -> typing.Tuple[
+) -> tuple[
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
@@ -755,18 +725,10 @@ def compute_net_flux_contributions(
         4. `net_solvent_flux_grid`: 3D grid of net solvent fluxes (ft³/day).
     """
     # Initialize flux grids
-    net_water_flux_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_oil_flux_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_gas_flux_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_solvent_flux_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
+    net_water_flux_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_oil_flux_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_gas_flux_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_solvent_flux_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
 
     # Parallel loop over interior cells
     for i in numba.prange(1, cell_count_x - 1):  # type: ignore
@@ -789,25 +751,23 @@ def compute_net_flux_contributions(
                     cell_thickness, east_neighbour_thickness
                 )
                 east_flow_area = cell_size_y * harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i + 1, j, k),
-                        flow_area=east_flow_area,
-                        flow_length=flow_length_x,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_x,
-                        oil_mobility_grid=oil_mobility_grid_x,
-                        gas_mobility_grid=gas_mobility_grid_x,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i + 1, j, k),
+                    flow_area=east_flow_area,
+                    flow_length=flow_length_x,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_x,
+                    oil_mobility_grid=oil_mobility_grid_x,
+                    gas_mobility_grid=gas_mobility_grid_x,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -820,25 +780,23 @@ def compute_net_flux_contributions(
                     cell_thickness, west_neighbour_thickness
                 )
                 west_flow_area = cell_size_y * harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i - 1, j, k),
-                        flow_area=west_flow_area,
-                        flow_length=flow_length_x,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_x,
-                        oil_mobility_grid=oil_mobility_grid_x,
-                        gas_mobility_grid=gas_mobility_grid_x,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i - 1, j, k),
+                    flow_area=west_flow_area,
+                    flow_length=flow_length_x,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_x,
+                    oil_mobility_grid=oil_mobility_grid_x,
+                    gas_mobility_grid=gas_mobility_grid_x,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -854,25 +812,23 @@ def compute_net_flux_contributions(
                     cell_thickness, north_neighbour_thickness
                 )
                 north_flow_area = cell_size_x * harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i, j - 1, k),
-                        flow_area=north_flow_area,
-                        flow_length=flow_length_y,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_y,
-                        oil_mobility_grid=oil_mobility_grid_y,
-                        gas_mobility_grid=gas_mobility_grid_y,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i, j - 1, k),
+                    flow_area=north_flow_area,
+                    flow_length=flow_length_y,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_y,
+                    oil_mobility_grid=oil_mobility_grid_y,
+                    gas_mobility_grid=gas_mobility_grid_y,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -885,25 +841,23 @@ def compute_net_flux_contributions(
                     cell_thickness, south_neighbour_thickness
                 )
                 south_flow_area = cell_size_x * harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i, j + 1, k),
-                        flow_area=south_flow_area,
-                        flow_length=flow_length_y,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_y,
-                        oil_mobility_grid=oil_mobility_grid_y,
-                        gas_mobility_grid=gas_mobility_grid_y,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i, j + 1, k),
+                    flow_area=south_flow_area,
+                    flow_length=flow_length_y,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_y,
+                    oil_mobility_grid=oil_mobility_grid_y,
+                    gas_mobility_grid=gas_mobility_grid_y,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -918,29 +872,25 @@ def compute_net_flux_contributions(
 
                 # Top neighbor (i, j, k-1)
                 top_neighbour_thickness = thickness_grid[i, j, k - 1]
-                harmonic_thickness = compute_harmonic_mean(
-                    cell_thickness, top_neighbour_thickness
-                )
+                harmonic_thickness = compute_harmonic_mean(cell_thickness, top_neighbour_thickness)
                 top_flow_length = harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i, j, k - 1),
-                        flow_area=flow_area_z,
-                        flow_length=top_flow_length,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_z,
-                        oil_mobility_grid=oil_mobility_grid_z,
-                        gas_mobility_grid=gas_mobility_grid_z,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i, j, k - 1),
+                    flow_area=flow_area_z,
+                    flow_length=top_flow_length,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_z,
+                    oil_mobility_grid=oil_mobility_grid_z,
+                    gas_mobility_grid=gas_mobility_grid_z,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -953,25 +903,23 @@ def compute_net_flux_contributions(
                     cell_thickness, bottom_neighbour_thickness
                 )
                 bottom_flow_length = harmonic_thickness
-                water_flux, oil_flux, gas_flux, solvent_flux = (
-                    compute_fluxes_from_neighbour(
-                        cell_indices=(i, j, k),
-                        neighbour_indices=(i, j, k + 1),
-                        flow_area=flow_area_z,
-                        flow_length=bottom_flow_length,
-                        oil_pressure_grid=oil_pressure_grid,
-                        water_mobility_grid=water_mobility_grid_z,
-                        oil_mobility_grid=oil_mobility_grid_z,
-                        gas_mobility_grid=gas_mobility_grid_z,
-                        solvent_concentration_grid=solvent_concentration_grid,
-                        oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
-                        gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
-                        oil_density_grid=oil_density_grid,
-                        water_density_grid=water_density_grid,
-                        gas_density_grid=gas_density_grid,
-                        elevation_grid=elevation_grid,
-                        gravitational_constant=gravitational_constant,
-                    )
+                water_flux, oil_flux, gas_flux, solvent_flux = compute_fluxes_from_neighbour(
+                    cell_indices=(i, j, k),
+                    neighbour_indices=(i, j, k + 1),
+                    flow_area=flow_area_z,
+                    flow_length=bottom_flow_length,
+                    oil_pressure_grid=oil_pressure_grid,
+                    water_mobility_grid=water_mobility_grid_z,
+                    oil_mobility_grid=oil_mobility_grid_z,
+                    gas_mobility_grid=gas_mobility_grid_z,
+                    solvent_concentration_grid=solvent_concentration_grid,
+                    oil_water_capillary_pressure_grid=oil_water_capillary_pressure_grid,
+                    gas_oil_capillary_pressure_grid=gas_oil_capillary_pressure_grid,
+                    oil_density_grid=oil_density_grid,
+                    water_density_grid=water_density_grid,
+                    gas_density_grid=gas_density_grid,
+                    elevation_grid=elevation_grid,
+                    gravitational_constant=gravitational_constant,
                 )
                 net_water_flux += water_flux
                 net_oil_flux += oil_flux
@@ -1013,7 +961,7 @@ def compute_well_rate_grids(
     injection_rates: PhaseTensorsProxy[float, ThreeDimensions],
     production_rates: PhaseTensorsProxy[float, ThreeDimensions],
     pad_width: int = 1,
-) -> typing.Tuple[
+) -> tuple[
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
@@ -1055,21 +1003,13 @@ def compute_well_rate_grids(
         where rates are in ft³/day (volumetric rates) and concentration is dimensionless.
     """
     # Initialize well rate grids
-    net_water_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_oil_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_gas_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
+    net_water_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_oil_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_gas_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
     solvent_injection_concentration_grid = np.zeros(
         (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
     )
-    gas_injection_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
+    gas_injection_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET
 
     # Process all injection wells (compute total WI + rates in single pass)
@@ -1079,16 +1019,10 @@ def compute_well_rate_grids(
 
         injected_fluid = well.injected_fluid
         injected_phase = injected_fluid.phase
-        use_pseudo_pressure = (
-            config.use_pseudo_pressure and injected_phase == FluidPhase.GAS
-        )
+        use_pseudo_pressure = config.use_pseudo_pressure and injected_phase == FluidPhase.GAS
 
-        water_bubble_point_pressure_grid = (
-            fluid_properties.water_bubble_point_pressure_grid
-        )
-        gas_formation_volume_factor_grid = (
-            fluid_properties.gas_formation_volume_factor_grid
-        )
+        water_bubble_point_pressure_grid = fluid_properties.water_bubble_point_pressure_grid
+        gas_formation_volume_factor_grid = fluid_properties.gas_formation_volume_factor_grid
         gas_solubility_in_water_grid = fluid_properties.gas_solubility_in_water_grid
 
         wells_indices = wells_indices.injection[well.name]
@@ -1096,9 +1030,7 @@ def compute_well_rate_grids(
         for perforation_index in wells_indices:
             i, j, k = perforation_index.cell
             well_index = perforation_index.well_index
-            allocation_fraction = wells_indices.get_allocation_fraction(
-                perforation_index
-            )
+            allocation_fraction = wells_indices.get_allocation_fraction(perforation_index)
             cell_temperature = typing.cast(float, temperature_grid[i, j, k])
             cell_oil_pressure = typing.cast(float, oil_pressure_grid[i, j, k])
 
@@ -1112,14 +1044,10 @@ def compute_well_rate_grids(
                 phase_mobility = typing.cast(float, gas_relative_mobility_grid[i, j, k])
                 compressibility_kwargs = {}
             else:
-                phase_mobility = typing.cast(
-                    float, water_relative_mobility_grid[i, j, k]
-                )
+                phase_mobility = typing.cast(float, water_relative_mobility_grid[i, j, k])
                 compressibility_kwargs = {
                     "bubble_point_pressure": water_bubble_point_pressure_grid[i, j, k],
-                    "gas_formation_volume_factor": gas_formation_volume_factor_grid[
-                        i, j, k
-                    ],
+                    "gas_formation_volume_factor": gas_formation_volume_factor_grid[i, j, k],
                     "gas_solubility_in_water": gas_solubility_in_water_grid[i, j, k],
                 }
 
@@ -1158,15 +1086,12 @@ def compute_well_rate_grids(
                     well_name=well.name,
                     cell=(i - pad_width, j - pad_width, k - pad_width),
                     time=time,
-                    rate_unit="ft³/day"
-                    if injected_phase == FluidPhase.GAS
-                    else "bbls/day",
+                    rate_unit="ft³/day" if injected_phase == FluidPhase.GAS else "bbls/day",
                 )
 
             # Handle miscible solvent injection
             cell_gas_injection_rate = 0.0
             cell_water_injection_rate = 0.0
-            cell_oil_injection_rate = 0.0
             cell_solvent_injection_concentration = 0.0
 
             if injected_phase == FluidPhase.GAS and injected_fluid.is_miscible:
@@ -1185,9 +1110,7 @@ def compute_well_rate_grids(
             # Update net grids
             net_water_well_rate_grid[i, j, k] += cell_water_injection_rate
             net_gas_well_rate_grid[i, j, k] += cell_gas_injection_rate
-            solvent_injection_concentration_grid[i, j, k] = (
-                cell_solvent_injection_concentration
-            )
+            solvent_injection_concentration_grid[i, j, k] = cell_solvent_injection_concentration
             gas_injection_rate_grid[i, j, k] = cell_gas_injection_rate
 
     # Process all production wells (compute total WI + rates in single pass)
@@ -1201,21 +1124,15 @@ def compute_well_rate_grids(
         for perforation_index in wells_indices:
             i, j, k = perforation_index.cell
             well_index = perforation_index.well_index
-            allocation_fraction = wells_indices.get_allocation_fraction(
-                perforation_index
-            )
+            allocation_fraction = wells_indices.get_allocation_fraction(perforation_index)
             cell_temperature = typing.cast(float, temperature_grid[i, j, k])
             cell_oil_pressure = typing.cast(float, oil_pressure_grid[i, j, k])
 
             water_formation_volume_factor_grid = (
                 fluid_properties.water_formation_volume_factor_grid
             )
-            oil_formation_volume_factor_grid = (
-                fluid_properties.oil_formation_volume_factor_grid
-            )
-            gas_formation_volume_factor_grid = (
-                fluid_properties.gas_formation_volume_factor_grid
-            )
+            oil_formation_volume_factor_grid = fluid_properties.oil_formation_volume_factor_grid
+            gas_formation_volume_factor_grid = fluid_properties.gas_formation_volume_factor_grid
 
             cell_water_production_rate = 0.0
             cell_oil_production_rate = 0.0
@@ -1226,64 +1143,34 @@ def compute_well_rate_grids(
             if is_couple_controlled:
                 primary_phase_context = well.control.build_context(  # type: ignore
                     produced_fluids=well.produced_fluids,
-                    oil_mobility=typing.cast(
-                        float, oil_relative_mobility_grid[i, j, k]
-                    ),
-                    water_mobility=typing.cast(
-                        float, water_relative_mobility_grid[i, j, k]
-                    ),
-                    gas_mobility=typing.cast(
-                        float, gas_relative_mobility_grid[i, j, k]
-                    ),
-                    oil_fvf=typing.cast(
-                        float, oil_formation_volume_factor_grid[i, j, k]
-                    ),
-                    water_fvf=typing.cast(
-                        float, water_formation_volume_factor_grid[i, j, k]
-                    ),
-                    gas_fvf=typing.cast(
-                        float, gas_formation_volume_factor_grid[i, j, k]
-                    ),
-                    oil_compressibility=typing.cast(
-                        float, oil_compressibility_grid[i, j, k]
-                    ),
-                    water_compressibility=typing.cast(
-                        float, water_compressibility_grid[i, j, k]
-                    ),
-                    gas_compressibility=typing.cast(
-                        float, gas_compressibility_grid[i, j, k]
-                    ),
+                    oil_mobility=typing.cast(float, oil_relative_mobility_grid[i, j, k]),
+                    water_mobility=typing.cast(float, water_relative_mobility_grid[i, j, k]),
+                    gas_mobility=typing.cast(float, gas_relative_mobility_grid[i, j, k]),
+                    oil_fvf=typing.cast(float, oil_formation_volume_factor_grid[i, j, k]),
+                    water_fvf=typing.cast(float, water_formation_volume_factor_grid[i, j, k]),
+                    gas_fvf=typing.cast(float, gas_formation_volume_factor_grid[i, j, k]),
+                    oil_compressibility=typing.cast(float, oil_compressibility_grid[i, j, k]),
+                    water_compressibility=typing.cast(float, water_compressibility_grid[i, j, k]),
+                    gas_compressibility=typing.cast(float, gas_compressibility_grid[i, j, k]),
                 )
 
             for produced_fluid in well.produced_fluids:
                 produced_phase = produced_fluid.phase
                 if produced_phase == FluidPhase.GAS:
-                    phase_mobility = typing.cast(
-                        float, gas_relative_mobility_grid[i, j, k]
-                    )
-                    fluid_compressibility = typing.cast(
-                        float, gas_compressibility_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, gas_relative_mobility_grid[i, j, k])
+                    fluid_compressibility = typing.cast(float, gas_compressibility_grid[i, j, k])
                     fluid_formation_volume_factor = typing.cast(
                         float, gas_formation_volume_factor_grid[i, j, k]
                     )
                 elif produced_phase == FluidPhase.WATER:
-                    phase_mobility = typing.cast(
-                        float, water_relative_mobility_grid[i, j, k]
-                    )
-                    fluid_compressibility = typing.cast(
-                        float, water_compressibility_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, water_relative_mobility_grid[i, j, k])
+                    fluid_compressibility = typing.cast(float, water_compressibility_grid[i, j, k])
                     fluid_formation_volume_factor = typing.cast(
                         float, water_formation_volume_factor_grid[i, j, k]
                     )
                 else:  # OIL
-                    phase_mobility = typing.cast(
-                        float, oil_relative_mobility_grid[i, j, k]
-                    )
-                    fluid_compressibility = typing.cast(
-                        float, oil_compressibility_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, oil_relative_mobility_grid[i, j, k])
+                    fluid_compressibility = typing.cast(float, oil_compressibility_grid[i, j, k])
                     fluid_formation_volume_factor = typing.cast(
                         float, oil_formation_volume_factor_grid[i, j, k]
                     )
@@ -1309,9 +1196,7 @@ def compute_well_rate_grids(
                         well_name=well.name,
                         cell=(i - pad_width, j - pad_width, k - pad_width),
                         time=time,
-                        rate_unit="ft³/day"
-                        if produced_phase == FluidPhase.GAS
-                        else "bbls/day",
+                        rate_unit="ft³/day" if produced_phase == FluidPhase.GAS else "bbls/day",
                     )
 
                 # Accumulate production rates by phase
@@ -1364,12 +1249,12 @@ def apply_updates(
     cell_size_y: float,
     time_step_in_days: float,
     cfl_threshold: float,
-    pressure_change_grid: typing.Optional[ThreeDimensionalGrid] = None,
-    oil_compressibility_grid: typing.Optional[ThreeDimensionalGrid] = None,
-    water_compressibility_grid: typing.Optional[ThreeDimensionalGrid] = None,
-    gas_compressibility_grid: typing.Optional[ThreeDimensionalGrid] = None,
+    pressure_change_grid: ThreeDimensionalGrid | None = None,
+    oil_compressibility_grid: ThreeDimensionalGrid | None = None,
+    water_compressibility_grid: ThreeDimensionalGrid | None = None,
+    gas_compressibility_grid: ThreeDimensionalGrid | None = None,
     rock_compressibility: float = 0.0,
-) -> typing.Tuple[
+) -> tuple[
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
     ThreeDimensionalGrid,
@@ -1443,9 +1328,9 @@ def apply_updates(
                 net_water_well_rate = net_water_well_rate_grid[i, j, k]
                 net_oil_well_rate = net_oil_well_rate_grid[i, j, k]
                 net_gas_well_rate = net_gas_well_rate_grid[i, j, k]
-                cell_solvent_injection_concentration = (
-                    solvent_injection_concentration_grid[i, j, k]
-                )
+                cell_solvent_injection_concentration = solvent_injection_concentration_grid[
+                    i, j, k
+                ]
                 cell_gas_injection_rate = gas_injection_rate_grid[i, j, k]
 
                 # Calculate total outflows for CFL check
@@ -1461,9 +1346,7 @@ def apply_updates(
                 total_oil_outflow = oil_outflow_advection + oil_outflow_well
                 total_gas_outflow = gas_outflow_advection + gas_outflow_well
 
-                total_outflow = (
-                    total_water_outflow + total_oil_outflow + total_gas_outflow
-                )
+                total_outflow = total_water_outflow + total_oil_outflow + total_gas_outflow
 
                 # CFL check
                 cfl_number = (total_outflow * time_step_in_days) / cell_pore_volume
@@ -1486,12 +1369,8 @@ def apply_updates(
                 water_saturation_change = (total_water_flow * time_step_in_days) / (
                     cell_pore_volume
                 )
-                oil_saturation_change = (total_oil_flow * time_step_in_days) / (
-                    cell_pore_volume
-                )
-                gas_saturation_change = (total_gas_flow * time_step_in_days) / (
-                    cell_pore_volume
-                )
+                oil_saturation_change = (total_oil_flow * time_step_in_days) / (cell_pore_volume)
+                gas_saturation_change = (total_gas_flow * time_step_in_days) / (cell_pore_volume)
 
                 # Transport-based saturation update
                 old_water_saturation = water_saturation_grid[i, j, k]
@@ -1538,9 +1417,7 @@ def apply_updates(
                     new_gas_saturation = 0.0
 
                 # Residual volume balance correction
-                total_saturation = (
-                    new_water_saturation + new_oil_saturation + new_gas_saturation
-                )
+                total_saturation = new_water_saturation + new_oil_saturation + new_gas_saturation
                 if abs(total_saturation - 1.0) > 1e-12:
                     new_oil_saturation += 1.0 - total_saturation
                     if new_oil_saturation < 0.0:
@@ -1586,16 +1463,12 @@ def apply_updates(
 
                     # Total solvent volume in oil
                     new_solvent_volume = (
-                        oldsolvent_volume
-                        + advectedsolvent_volume
-                        + injectedsolvent_volume
+                        oldsolvent_volume + advectedsolvent_volume + injectedsolvent_volume
                     )
                     # New concentration
                     new_concentration = new_solvent_volume / new_oil_volume
                     # Clamp to [0, 1] (should already be satisfied, but ensure numerical stability)
-                    updatedsolvent_concentration_grid[i, j, k] = clip(
-                        new_concentration, 0.0, 1.0
-                    )
+                    updatedsolvent_concentration_grid[i, j, k] = clip(new_concentration, 0.0, 1.0)
                 else:
                     # No oil in cell, concentration is undefined (set to 0)
                     updatedsolvent_concentration_grid[i, j, k] = 0.0

@@ -52,9 +52,7 @@ class TemperatureGradient(StoreSerializable):
     unit_system: UnitSystem = UnitSystem.FIELD
     """Unit system for all dimensional parameters."""
 
-    def at_depth(
-        self, depth: NumberOrArray[OneDimension]
-    ) -> NumberOrArray[OneDimension]:
+    def at_depth(self, depth: NumberOrArray[OneDimension]) -> NumberOrArray[OneDimension]:
         """
         Return temperature at the given depth or array of depths.
 
@@ -71,7 +69,7 @@ class TemperatureGradient(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `TemperatureGradient` with all dimensional parameters
@@ -143,9 +141,7 @@ class TemperatureTable(StoreSerializable):
         if not np.all(np.diff(self.depths) > 0):
             raise ValidationError("`depths` must be strictly increasing.")
 
-    def at_depth(
-        self, depth: NumberOrArray[OneDimension]
-    ) -> NumberOrArray[OneDimension]:
+    def at_depth(self, depth: NumberOrArray[OneDimension]) -> NumberOrArray[OneDimension]:
         """
         Return temperature at the given depth or array of depths.
 
@@ -170,7 +166,7 @@ class TemperatureTable(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> "TemperatureTable":
         """
         Return a new `TemperatureTable` with depths and temperatures
@@ -249,14 +245,14 @@ class Temperature(StoreSerializable):
     ```
     """
 
-    default: typing.Optional[TemperatureSpec] = None
+    default: TemperatureSpec | None = None
     """
     Fallback temperature specification applied to cells whose region index
     is absent from `regions`, or when `regions` is `None`. Must be
     supplied when `regions` is `None` or empty.
     """
 
-    regions: typing.Optional[typing.Dict[int, TemperatureSpec]] = None
+    regions: dict[int, TemperatureSpec] | None = None
     """
     Mapping from 1-based PVT/EQL region index to a temperature specification.
     Key `-1` is reserved as the internal fallback; it is set automatically
@@ -271,7 +267,7 @@ class Temperature(StoreSerializable):
         if self.default is None and not self.regions:
             raise ValidationError("Either `default` or `regions` must be provided.")
 
-        regions: typing.Dict[int, TemperatureSpec] = dict(self.regions or {})
+        regions: dict[int, TemperatureSpec] = dict(self.regions or {})
 
         # Resolve the fallback (-1 key)
         if -1 not in regions:
@@ -361,7 +357,7 @@ class Temperature(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a copy with all temperature specifications converted to *target*.
@@ -387,13 +383,11 @@ class Temperature(StoreSerializable):
             return scale_and_offset(spec, factor=factor, offset=offset)
 
         new_default = _convert_spec(self.default) if self.default is not None else None
-        new_regions: typing.Optional[typing.Dict[int, TemperatureSpec]] = None
+        new_regions: dict[int, TemperatureSpec] | None = None
         if self.regions is not None:
             new_regions = {k: _convert_spec(v) for k, v in self.regions.items()}
 
-        return self.__class__(
-            default=new_default, regions=new_regions, unit_system=target
-        )
+        return self.__class__(default=new_default, regions=new_regions, unit_system=target)
 
     @classmethod
     def from_deck(cls, deck_file: DeckFile, *, dtype: npt.DTypeLike = None) -> Self:
@@ -422,28 +416,25 @@ class Temperature(StoreSerializable):
         unit_system = deck_file.unit_system
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-        tempvd_all: typing.Optional[typing.List] = deck_file.get(
-            "TEMPVD"
-        ) or deck_file.get("RTEMPVD")
-        rtemp_all: typing.Optional[typing.List] = deck_file.get("RTEMP")
+        tempvd_all: list | None = deck_file.get("TEMPVD") or deck_file.get(
+            "RTEMPVD"
+        )
+        rtemp_all: list | None = deck_file.get("RTEMP")
 
         # TEMPVD: one `TemperatureTable` per equilibration or PVT region,
         # depending on whether it is regioned by PVTNUM or EQLNUM
         if tempvd_all:
-            regions: typing.Dict[int, TemperatureSpec] = {}
+            regions: dict[int, TemperatureSpec] = {}
             for region_idx, rows in enumerate(tempvd_all):
                 if not rows:
                     continue
 
                 region_num = region_idx + 1  # 1-based
                 depths = np.array([row["depth"] for row in rows], dtype=dtype)
-                temperatures = np.array(
-                    [row["temperature"] for row in rows], dtype=dtype
-                )
+                temperatures = np.array([row["temperature"] for row in rows], dtype=dtype)
                 if not np.all(np.diff(depths) > 0):
                     raise ValidationError(
-                        f"TEMPVD region {region_num}: `depth` values must be "
-                        "strictly increasing."
+                        f"TEMPVD region {region_num}: `depth` values must be strictly increasing."
                     )
                 regions[region_num] = TemperatureTable(
                     depths=typing.cast(NumberArray[OneDimension], depths),
@@ -452,9 +443,7 @@ class Temperature(StoreSerializable):
                 )
 
             if not regions:
-                raise ValidationError(
-                    "TEMPVD keyword is present but contains no valid rows."
-                )
+                raise ValidationError("TEMPVD keyword is present but contains no valid rows.")
             return cls(regions=regions, unit_system=unit_system)
 
         # RTEMP: single scalar default

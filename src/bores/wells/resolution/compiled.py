@@ -66,8 +66,8 @@ def compile_control_resolver_spec(
 
 class PerforationWorkspace(typing.NamedTuple):
     """
-    One well's active-connection data for the resolution hot path. 
-    
+    One well's active-connection data for the resolution hot path.
+
     Built once per well per `resolve_control` call and reused across every
     fixed-point and bisection iteration within that call. The per-connection
     values never change mid-resolution, and `connection_pressures` is a
@@ -247,7 +247,7 @@ def accumulate_phase_rates(
     relevant_water: Boolean,
     relevant_gas: Boolean,
     is_injector: Boolean,
-) -> typing.Tuple[Number, Number, Number, Number, Number, Number]:
+) -> tuple[Number, Number, Number, Number, Number, Number]:
     """
     Sums each relevant phase's reservoir-condition and surface-condition
     rate across every connection in a `PerforationWorkspace`, at a given

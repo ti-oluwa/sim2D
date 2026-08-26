@@ -1,12 +1,12 @@
 """Voronoi (PEBI) grid factory for both 2-D extruded and 3-D native tessellations."""
 
 import typing
+from typing import TypeAlias
 
 import numba
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial import Voronoi
-from typing_extensions import TypeAlias
 
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
@@ -28,16 +28,16 @@ SeedCoordinates2D: TypeAlias = NumberArray[TwoDimensions]
 SeedCoordinates3D: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_seeds, 3)` - (x, y, z) Voronoi generator / seed coordinates."""
 
-BoundingBox2D: TypeAlias = typing.Tuple[Number, Number, Number, Number]
+BoundingBox2D: TypeAlias = tuple[Number, Number, Number, Number]
 """`(x_min, x_max, y_min, y_max)` axis-aligned bounding rectangle."""
 
-BoundingBox3D: TypeAlias = typing.Tuple[Number, Number, Number, Number, Number, Number]
+BoundingBox3D: TypeAlias = tuple[Number, Number, Number, Number, Number, Number]
 """`(x_min, x_max, y_min, y_max, z_min, z_max)` axis-aligned bounding box."""
 
 LayerThicknessArray: TypeAlias = NumberArray[OneDimension]
 """Shape `(n_layers,)` - positive thickness of each vertical layer."""
 
-PerCellFaceLists: TypeAlias = typing.List[typing.List[FaceVertexIndices]]
+PerCellFaceLists: TypeAlias = list[list[FaceVertexIndices]]
 """Outer list indexed by cell; inner list contains that cell's face vertex lists."""
 
 # Index sentinel for boundary (exterior) pseudo-cell.
@@ -47,32 +47,20 @@ _BOUNDARY_CELL: int = -1
 def make_voronoi_grid(
     seed_coordinates: npt.ArrayLike,
     *,
-    bounding_box: typing.Optional[typing.Union[BoundingBox2D, BoundingBox3D]] = None,
+    bounding_box: BoundingBox2D | BoundingBox3D | None = None,
     # 2-D extruded parameters (ignored for 3-D seeds)
     z_top: Number = 0.0,
-    layer_thicknesses: typing.Union[Number, npt.ArrayLike] = 1.0,
+    layer_thicknesses: Number | npt.ArrayLike = 1.0,
     unit_system: UnitSystem = UnitSystem.FIELD,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-    nnc_cell_indices: typing.Optional[IntArray[TwoDimensions]] = None,
-    nnc_transmissibilities: typing.Optional[NumberArray[OneDimension]] = None,
-    positive_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_x_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_y_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    positive_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
-    negative_z_transmissibility_multipliers: typing.Optional[
-        NumberArray[OneDimension]
-    ] = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
+    nnc_cell_indices: IntArray[TwoDimensions] | None = None,
+    nnc_transmissibilities: NumberArray[OneDimension] | None = None,
+    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
+    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = None,
 ) -> Grid:
     """
     Build a Voronoi (PEBI) grid from seed points.
@@ -148,9 +136,7 @@ def make_voronoi_grid(
             f"seed_coordinates must be shape (N, 2) or (N, 3); got {seeds.shape!r}."
         )
     if seeds.shape[0] < 4:
-        raise ValidationError(
-            f"At least 4 seed points are required; got {seeds.shape[0]}."
-        )
+        raise ValidationError(f"At least 4 seed points are required; got {seeds.shape[0]}.")
 
     n_dims = seeds.shape[1]
     if n_dims == 2:
@@ -201,7 +187,7 @@ def _make_2d_voronoi_grid(
     bounding_box: BoundingBox2D,
     z_top: Number,
     layer_thicknesses: LayerThicknessArray,
-) -> typing.Tuple[
+) -> tuple[
     NumberArray[TwoDimensions],
     IntArray[OneDimension],
     IntArray[OneDimension],
@@ -234,7 +220,7 @@ def _make_2d_voronoi_grid(
 
     # Extract per-column 2-D polygons from Voronoi regions.
     # With the mirror trick, regions for original seeds are guaranteed finite.
-    column_polygons: typing.List[typing.Optional[npt.NDArray[np.float64]]] = []
+    column_polygons: list[npt.NDArray[np.float64] | None] = []
     for seed_idx in range(n_seeds):
         region_idx = voronoi.point_region[seed_idx]
         vert_indices = voronoi.regions[region_idx]
@@ -255,8 +241,8 @@ def _make_2d_voronoi_grid(
 
     # Collect all valid 2-D ridges (line segments).
     # Each ridge -> one vertical face per layer.
-    valid_ridges: typing.List[
-        typing.Tuple[
+    valid_ridges: list[
+        tuple[
             int,  # a_vert_idx  (index into voronoi.vertices)
             int,  # b_vert_idx
             npt.NDArray[np.float64],  # a_xy  (for signed-area winding test only)
@@ -266,9 +252,7 @@ def _make_2d_voronoi_grid(
         ]
     ] = []
 
-    for ridge_vert_indices, seed_pair in zip(
-        voronoi.ridge_vertices, voronoi.ridge_points
-    ):
+    for ridge_vert_indices, seed_pair in zip(voronoi.ridge_vertices, voronoi.ridge_points, strict=False):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
         sa_original = sa < n_seeds
         sb_original = sb < n_seeds
@@ -304,9 +288,7 @@ def _make_2d_voronoi_grid(
 
     # All 3-D vertex coordinates: (n_voronoi_verts * n_z_levels, 3)
     n_voronoi_verts = len(voronoi.vertices)
-    vertex_coordinates_3d = np.empty(
-        (n_voronoi_verts * n_z_levels, 3), dtype=np.float64
-    )
+    vertex_coordinates_3d = np.empty((n_voronoi_verts * n_z_levels, 3), dtype=np.float64)
     for vert_idx in range(n_voronoi_verts):
         for level in range(n_z_levels):
             row = vert_idx * n_z_levels + level
@@ -326,7 +308,7 @@ def _make_2d_voronoi_grid(
 
     # Cell index: cell_index(col_idx, layer) = col_idx * n_layers + layer
     # where col_idx is the index into valid_column_indices
-    column_to_cell_column: typing.Dict[int, int] = {
+    column_to_cell_column: dict[int, int] = {
         original_column: cell_column
         for cell_column, original_column in enumerate(valid_column_indices)
     }
@@ -402,12 +384,10 @@ def _make_2d_voronoi_grid(
             cell_idx = _cell_index(cell_col_idx, layer)
 
             top_polygon_3d_indices = [
-                _global_vert(region_vert_indices[k], top_level)
-                for k in range(n_polygon_verts)
+                _global_vert(region_vert_indices[k], top_level) for k in range(n_polygon_verts)
             ]
             bottom_polygon_3d_indices = [
-                _global_vert(region_vert_indices[k], bottom_level)
-                for k in range(n_polygon_verts)
+                _global_vert(region_vert_indices[k], bottom_level) for k in range(n_polygon_verts)
             ]
 
             # Top face: outward normal = −z -> CCW from above = reversed xy order
@@ -423,7 +403,7 @@ def _make_2d_voronoi_grid(
 
 def _make_3d_voronoi_grid(
     seeds: SeedCoordinates3D, bounding_box: BoundingBox3D
-) -> typing.Tuple[
+) -> tuple[
     NumberArray[TwoDimensions],
     IntArray[OneDimension],
     IntArray[OneDimension],
@@ -455,9 +435,7 @@ def _make_3d_voronoi_grid(
     # In 3-D, each "ridge" is a polygonal face between two seed regions.
     per_cell_face_vertex_lists: PerCellFaceLists = [[] for _ in range(n_seeds)]
 
-    for ridge_vert_indices, seed_pair in zip(
-        voronoi.ridge_vertices, voronoi.ridge_points
-    ):
+    for ridge_vert_indices, seed_pair in zip(voronoi.ridge_vertices, voronoi.ridge_points, strict=False):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
         sa_original = sa < n_seeds
         sb_original = sb < n_seeds
@@ -496,14 +474,10 @@ def _make_3d_voronoi_grid(
 
         if neighbour_idx != _BOUNDARY_CELL:
             # Neighbour also needs the face with reversed winding
-            per_cell_face_vertex_lists[neighbour_idx].append(
-                list(reversed(oriented_vert_indices))
-            )
+            per_cell_face_vertex_lists[neighbour_idx].append(list(reversed(oriented_vert_indices)))
 
     # Validate: every cell must have at least 4 faces (minimum for a 3-D cell)
-    empty_cells = [
-        i for i, faces in enumerate(per_cell_face_vertex_lists) if len(faces) < 4
-    ]
+    empty_cells = [i for i, faces in enumerate(per_cell_face_vertex_lists) if len(faces) < 4]
     if empty_cells:
         raise InvalidGridError(
             f"Cells {empty_cells[:5]} have fewer than 4 faces after Voronoi construction. "
@@ -648,7 +622,7 @@ def _compute_depth_nodes(
 
 def _resolve_2d_bounding_box(
     seeds: NumberArray[TwoDimensions],
-    bounding_box: typing.Optional[BoundingBox2D],
+    bounding_box: BoundingBox2D | None,
 ) -> BoundingBox2D:
     """
     Resolve or infer a 2-D bounding box from seed extents.
@@ -682,7 +656,7 @@ def _resolve_2d_bounding_box(
 
 
 def _resolve_3d_bounding_box(
-    seeds: NumberArray[TwoDimensions], bounding_box: typing.Optional[BoundingBox3D]
+    seeds: NumberArray[TwoDimensions], bounding_box: BoundingBox3D | None
 ) -> BoundingBox3D:
     """
     Resolve or infer a 3-D bounding box from seed extents.
@@ -700,10 +674,7 @@ def _resolve_3d_bounding_box(
             )
         x_min, x_max, y_min, y_max, z_min, z_max = bounding_box
     else:
-        pads = [
-            max((seeds[:, dim].max() - seeds[:, dim].min()) * 0.05, 1.0)
-            for dim in range(3)
-        ]
+        pads = [max((seeds[:, dim].max() - seeds[:, dim].min()) * 0.05, 1.0) for dim in range(3)]
         x_min = seeds[:, 0].min() - pads[0]
         x_max = seeds[:, 0].max() + pads[0]
         y_min = seeds[:, 1].min() - pads[1]
@@ -720,7 +691,7 @@ def _resolve_3d_bounding_box(
 
 
 def _resolve_layer_thicknesses(
-    layer_thicknesses: typing.Union[Number, npt.ArrayLike],
+    layer_thicknesses: Number | npt.ArrayLike,
 ) -> LayerThicknessArray:
     """
     Convert a scalar or array layer thickness specification to a 1-D array.

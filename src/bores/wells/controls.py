@@ -12,12 +12,8 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.base import (
     Serializable,
-    register_type_deserializer,
-    register_type_serializer,
 )
 from bores.serde.registry import (
-    make_registry_deserializer,
-    make_registry_serializer,
     make_serializable_type_registrar,
 )
 from bores.serde.stores.base import StoreSerializable
@@ -127,12 +123,12 @@ class Limit(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         raise NotImplementedError
 
 
-_LIMIT_TYPES: typing.Dict[str, typing.Type[Limit]] = {}
+_LIMIT_TYPES: dict[str, type[Limit]] = {}
 _limit_type = make_serializable_type_registrar(
     base_cls=Limit,
     registry=_LIMIT_TYPES,
@@ -161,16 +157,14 @@ class RateLimit(Limit):
 
     def __attrs_post_init__(self) -> None:
         if self.max_value <= 0:
-            raise ValidationError(
-                f"`max_value` must be positive; got {self.max_value}."
-            )
+            raise ValidationError(f"`max_value` must be positive; got {self.max_value}.")
 
     def convert(
         self,
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the limit to the *target* unit system.
@@ -207,8 +201,8 @@ class BHPLimit(Limit):
 
     __type__ = "bhp"
 
-    min_value: typing.Optional[Number] = None
-    max_value: typing.Optional[Number] = None
+    min_value: Number | None = None
+    max_value: Number | None = None
     unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
@@ -222,8 +216,7 @@ class BHPLimit(Limit):
             and self.min_value > self.max_value
         ):
             raise ValidationError(
-                f"`min_value` ({self.min_value}) must be <= `max_value` "
-                f"({self.max_value})."
+                f"`min_value` ({self.min_value}) must be <= `max_value` ({self.max_value})."
             )
 
     def convert(
@@ -231,7 +224,7 @@ class BHPLimit(Limit):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the limit to the *target* unit system.
@@ -242,9 +235,7 @@ class BHPLimit(Limit):
         """
         if target == self.unit_system:
             return self
-        factor = get_conversion_factors(self.unit_system, target, table=table)[
-            "pressure"
-        ]
+        factor = get_conversion_factors(self.unit_system, target, table=table)["pressure"]
         return attrs.evolve(
             self,
             min_value=self.min_value * factor if self.min_value is not None else None,
@@ -272,23 +263,20 @@ class THPLimit(Limit):
 
     __type__ = "thp"
 
-    min_value: typing.Optional[Number] = None
-    max_value: typing.Optional[Number] = None
+    min_value: Number | None = None
+    max_value: Number | None = None
     unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
         if self.min_value is None and self.max_value is None:
-            raise ValidationError(
-                "THPLimit must set at least one of `min_value`/`max_value`."
-            )
+            raise ValidationError("THPLimit must set at least one of `min_value`/`max_value`.")
         if (
             self.min_value is not None
             and self.max_value is not None
             and self.min_value > self.max_value
         ):
             raise ValidationError(
-                f"`min_value` ({self.min_value}) must be <= `max_value` "
-                f"({self.max_value})."
+                f"`min_value` ({self.min_value}) must be <= `max_value` ({self.max_value})."
             )
 
     def convert(
@@ -296,7 +284,7 @@ class THPLimit(Limit):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the limit to the *target* unit system.
@@ -307,9 +295,7 @@ class THPLimit(Limit):
         """
         if target == self.unit_system:
             return self
-        factor = get_conversion_factors(self.unit_system, target, table=table)[
-            "pressure"
-        ]
+        factor = get_conversion_factors(self.unit_system, target, table=table)["pressure"]
         return attrs.evolve(
             self,
             min_value=self.min_value * factor if self.min_value is not None else None,
@@ -335,16 +321,14 @@ class EconomicLimit(Limit):
 
     def __attrs_post_init__(self) -> None:
         if self.max_value <= 0:
-            raise ValidationError(
-                f"`max_value` must be positive; got {self.max_value}."
-            )
+            raise ValidationError(f"`max_value` must be positive; got {self.max_value}.")
 
     def convert(
         self,
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the limit to the *target* unit system.
@@ -371,9 +355,9 @@ class WellControl(Serializable):
 
     __abstract_serializable__ = True
 
-    limits: typing.Tuple[Limit, ...]
+    limits: tuple[Limit, ...]
     efficiency_factor: Number = 1.0
-    guide_rate: typing.Optional[Number]
+    guide_rate: Number | None
     """
     Weight used by group-target allocation (deck WGRUPCON item 3).
     `None` falls back to equal-weight allocation among eligible wells.
@@ -387,12 +371,12 @@ class WellControl(Serializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         raise NotImplementedError
 
 
-_CONTROL_TYPES: typing.Dict[str, typing.Type[WellControl]] = {}
+_CONTROL_TYPES: dict[str, type[WellControl]] = {}
 control_type = make_serializable_type_registrar(
     base_cls=WellControl,
     registry=_CONTROL_TYPES,
@@ -431,12 +415,12 @@ class ProducerControl(WellControl):
     __type__ = "producer"
 
     mode: ProducerControlMode
-    target_rate: typing.Optional[Number] = None
-    target_bhp: typing.Optional[Number] = None
-    target_thp: typing.Optional[Number] = None
-    limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
+    target_rate: Number | None = None
+    target_bhp: Number | None = None
+    target_thp: Number | None = None
+    limits: tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
     efficiency_factor: Number = 1.0
-    guide_rate: typing.Optional[Number] = None
+    guide_rate: Number | None = None
     """
     Weight used by group-target allocation (deck `WGRUPCON` item 3).
     `None` falls back to equal-weight allocation among eligible wells.
@@ -445,9 +429,7 @@ class ProducerControl(WellControl):
 
     def __attrs_post_init__(self) -> None:
         if self.mode in PRODUCER_RATE_MODES and self.target_rate is None:
-            raise ValidationError(
-                f"`target_rate` is required when `mode` is {self.mode}."
-            )
+            raise ValidationError(f"`target_rate` is required when `mode` is {self.mode}.")
         if self.mode is ProducerControlMode.BHP and self.target_bhp is None:
             raise ValidationError(
                 "`target_bhp` is required when `mode` is `ProducerControlMode.BHP`."
@@ -461,9 +443,7 @@ class ProducerControl(WellControl):
                 f"`efficiency_factor` must be in (0, 1]; got {self.efficiency_factor}."
             )
 
-        mismatched = [
-            limit for limit in self.limits if limit.unit_system != self.unit_system
-        ]
+        mismatched = [limit for limit in self.limits if limit.unit_system != self.unit_system]
         if mismatched:
             raise ValidationError(
                 f"All `limits` must share this control's `unit_system` "
@@ -475,7 +455,7 @@ class ProducerControl(WellControl):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the control to the *target* unit system.
@@ -495,9 +475,7 @@ class ProducerControl(WellControl):
             ProducerControlMode.LRAT: "liquid_surface_rate",
             ProducerControlMode.RESV: "reservoir_rate",
         }
-        rate_factor = (
-            factors[rate_modes[self.mode]] if self.mode in rate_modes else None
-        )
+        rate_factor = factors[rate_modes[self.mode]] if self.mode in rate_modes else None
         return attrs.evolve(
             self,
             target_rate=self.target_rate * rate_factor
@@ -530,12 +508,12 @@ class InjectorControl(WellControl):
 
     injected_phase: FluidPhase
     mode: InjectorControlMode
-    target_rate: typing.Optional[Number] = None
-    target_bhp: typing.Optional[Number] = None
-    target_thp: typing.Optional[Number] = None
-    limits: typing.Tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
+    target_rate: Number | None = None
+    target_bhp: Number | None = None
+    target_thp: Number | None = None
+    limits: tuple[Limit, ...] = attrs.field(factory=tuple, converter=tuple)
     efficiency_factor: Number = 1.0
-    guide_rate: typing.Optional[Number] = None
+    guide_rate: Number | None = None
     """
     Weight used by group-target allocation (deck WGRUPCON item 3).
     `None` falls back to equal-weight allocation among eligible wells.
@@ -546,9 +524,7 @@ class InjectorControl(WellControl):
 
     def __attrs_post_init__(self) -> None:
         if self.mode in INJECTOR_RATE_MODES and self.target_rate is None:
-            raise ValidationError(
-                f"`target_rate` is required when `mode` is {self.mode}."
-            )
+            raise ValidationError(f"`target_rate` is required when `mode` is {self.mode}.")
         if self.mode is InjectorControlMode.BHP and self.target_bhp is None:
             raise ValidationError(
                 "`target_bhp` is required when `mode` is InjectorControlMode.BHP."
@@ -567,7 +543,7 @@ class InjectorControl(WellControl):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the control to the *target* unit system.
@@ -593,9 +569,7 @@ class InjectorControl(WellControl):
 
         return attrs.evolve(
             self,
-            target_rate=self.target_rate * rate_factor
-            if self.target_rate is not None
-            else None,
+            target_rate=self.target_rate * rate_factor if self.target_rate is not None else None,
             target_bhp=self.target_bhp * factors["pressure"]
             if self.target_bhp is not None
             else None,
@@ -621,7 +595,7 @@ class WellControls(
     def __init__(
         self,
         controls: typing.Mapping[str, WellControl],
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         :param controls: Mapping from well name to WellControl.
@@ -650,7 +624,7 @@ class WellControls(
         self.controls = dict(controls)
         self.unit_system = unit_system
 
-    def get(self, name: str) -> typing.Optional[WellControl]:
+    def get(self, name: str) -> WellControl | None:
         """Current control for `name`, or `None` if unset."""
         return self.controls.get(name)
 
@@ -718,7 +692,7 @@ class WellControls(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert every control in this `WellControls` to the *target* unit system.

@@ -132,24 +132,14 @@ def compute_well_rates(
     oil_relative_mobility_grid = relative_mobility_grids.oil_relative_mobility
     gas_relative_mobility_grid = relative_mobility_grids.gas_relative_mobility
 
-    net_water_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_oil_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_gas_well_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
+    net_water_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_oil_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_gas_well_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
     net_water_well_mass_rate_grid = np.zeros(
         (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
     )
-    net_oil_well_mass_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
-    net_gas_well_mass_rate_grid = np.zeros(
-        (cell_count_x, cell_count_y, cell_count_z), dtype=dtype
-    )
+    net_oil_well_mass_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
+    net_gas_well_mass_rate_grid = np.zeros((cell_count_x, cell_count_y, cell_count_z), dtype=dtype)
     rhs_contributions = np.zeros(cell_count, dtype=dtype)
     diagonal_contributions = np.zeros(cell_count, dtype=dtype)
 
@@ -206,9 +196,7 @@ def compute_well_rates(
     gas_viscosity_grid = fluid_properties.gas_viscosity_grid
     gas_formation_volume_factor_grid = fluid_properties.gas_formation_volume_factor_grid
     oil_formation_volume_factor_grid = fluid_properties.oil_formation_volume_factor_grid
-    water_formation_volume_factor_grid = (
-        fluid_properties.water_formation_volume_factor_grid
-    )
+    water_formation_volume_factor_grid = fluid_properties.water_formation_volume_factor_grid
     water_bubble_point_pressure_grid = fluid_properties.water_bubble_point_pressure_grid
     gas_solubility_in_water_grid = fluid_properties.gas_solubility_in_water_grid
     solution_gas_to_oil_ratio_grid = fluid_properties.solution_gas_to_oil_ratio_grid
@@ -239,9 +227,7 @@ def compute_well_rates(
             )
             phase_viscosity = typing.cast(
                 float,
-                injected_fluid.get_viscosity(
-                    pressure=cell_pressure, temperature=cell_temperature
-                ),
+                injected_fluid.get_viscosity(pressure=cell_pressure, temperature=cell_temperature),
             )
 
             if is_gas:
@@ -265,9 +251,7 @@ def compute_well_rates(
                         pressure=cell_pressure,
                         temperature=cell_temperature,
                         bubble_point_pressure=water_bubble_point_pressure_grid[i, j, k],
-                        gas_formation_volume_factor=gas_formation_volume_factor_grid[
-                            i, j, k
-                        ],
+                        gas_formation_volume_factor=gas_formation_volume_factor_grid[i, j, k],
                         gas_solubility_in_water=gas_solubility_in_water_grid[i, j, k],
                     ),
                 )
@@ -324,9 +308,7 @@ def compute_well_rates(
 
             phase_density = typing.cast(
                 float,
-                injected_fluid.get_density(
-                    pressure=cell_pressure, temperature=cell_temperature
-                ),
+                injected_fluid.get_density(pressure=cell_pressure, temperature=cell_temperature),
             )
             if can_flow:
                 # Compute mass-based mobility for injected phase
@@ -354,9 +336,7 @@ def compute_well_rates(
                     assert pseudo_pressure_table is not None
                     dm_dp = pseudo_pressure_table.gradient(cell_pressure)
                     diagonal_contributions[cell_idx] += mass_transmissibility * dm_dp
-                    rhs_contributions[cell_idx] += (
-                        mass_transmissibility * dm_dp * effective_bhp
-                    )
+                    rhs_contributions[cell_idx] += mass_transmissibility * dm_dp * effective_bhp
 
             if is_gas:
                 net_gas_well_rate_grid[i, j, k] += flow_rate
@@ -390,7 +370,7 @@ def compute_well_rates(
             cell_pressure = typing.cast(float, pressure_grid[i, j, k])
             cell_temperature = typing.cast(float, temperature_grid[i, j, k])
 
-            shared_bhp: typing.Optional[float] = None
+            shared_bhp: float | None = None
             if is_producer_control:
                 # Compute shared BHP once, before the phase loop
                 context = well.control.build_context(  # type: ignore
@@ -421,18 +401,12 @@ def compute_well_rates(
             alpha_solution_gor = (
                 typing.cast(float, solution_gas_to_oil_ratio_grid[i, j, k])
                 * typing.cast(float, gas_formation_volume_factor_grid[i, j, k])
-                / (
-                    bbl_to_ft3
-                    * typing.cast(float, oil_formation_volume_factor_grid[i, j, k])
-                )
+                / (bbl_to_ft3 * typing.cast(float, oil_formation_volume_factor_grid[i, j, k]))
             )
             alpha_gas_solubility_in_water = (
                 typing.cast(float, gas_solubility_in_water_grid[i, j, k])
                 * typing.cast(float, gas_formation_volume_factor_grid[i, j, k])
-                / (
-                    bbl_to_ft3
-                    * typing.cast(float, water_formation_volume_factor_grid[i, j, k])
-                )
+                / (bbl_to_ft3 * typing.cast(float, water_formation_volume_factor_grid[i, j, k]))
             )
             water_flow_rate = 0.0
             oil_flow_rate = 0.0
@@ -454,37 +428,19 @@ def compute_well_rates(
                 use_pseudo_pressure = is_gas and config.use_pseudo_pressure
 
                 if is_gas:
-                    phase_mobility = typing.cast(
-                        float, gas_relative_mobility_grid[i, j, k]
-                    )
-                    phase_compressibility = typing.cast(
-                        float, gas_compressibility_grid[i, j, k]
-                    )
-                    phase_fvf = typing.cast(
-                        float, gas_formation_volume_factor_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, gas_relative_mobility_grid[i, j, k])
+                    phase_compressibility = typing.cast(float, gas_compressibility_grid[i, j, k])
+                    phase_fvf = typing.cast(float, gas_formation_volume_factor_grid[i, j, k])
                     phase_viscosity = typing.cast(float, gas_viscosity_grid[i, j, k])
                 elif is_water:
-                    phase_mobility = typing.cast(
-                        float, water_relative_mobility_grid[i, j, k]
-                    )
-                    phase_compressibility = typing.cast(
-                        float, water_compressibility_grid[i, j, k]
-                    )
-                    phase_fvf = typing.cast(
-                        float, water_formation_volume_factor_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, water_relative_mobility_grid[i, j, k])
+                    phase_compressibility = typing.cast(float, water_compressibility_grid[i, j, k])
+                    phase_fvf = typing.cast(float, water_formation_volume_factor_grid[i, j, k])
                     phase_viscosity = typing.cast(float, water_viscosity_grid[i, j, k])
                 else:
-                    phase_mobility = typing.cast(
-                        float, oil_relative_mobility_grid[i, j, k]
-                    )
-                    phase_compressibility = typing.cast(
-                        float, oil_compressibility_grid[i, j, k]
-                    )
-                    phase_fvf = typing.cast(
-                        float, oil_formation_volume_factor_grid[i, j, k]
-                    )
+                    phase_mobility = typing.cast(float, oil_relative_mobility_grid[i, j, k])
+                    phase_compressibility = typing.cast(float, oil_compressibility_grid[i, j, k])
+                    phase_fvf = typing.cast(float, oil_formation_volume_factor_grid[i, j, k])
                     phase_viscosity = typing.cast(float, oil_viscosity_grid[i, j, k])
 
                 if is_producer_control and shared_bhp is not None:
@@ -558,20 +514,15 @@ def compute_well_rates(
                     else:  # oil
                         phase_density = typing.cast(float, oil_density_grid[i, j, k])
                         phase_mass_mobility = (
-                            phase_density
-                            + gas_density_grid[i, j, k] * alpha_solution_gor
+                            phase_density + gas_density_grid[i, j, k] * alpha_solution_gor
                         ) * phase_mobility
 
                     phase_mass_transmissibility = (
-                        well_index
-                        * phase_mass_mobility
-                        * md_per_cp_to_ft2_per_psi_per_day
+                        well_index * phase_mass_mobility * md_per_cp_to_ft2_per_psi_per_day
                     )
                     if not use_pseudo_pressure:
                         diagonal_contributions[cell_idx] += phase_mass_transmissibility
-                        rhs_contributions[cell_idx] += (
-                            phase_mass_transmissibility * effective_bhp
-                        )
+                        rhs_contributions[cell_idx] += phase_mass_transmissibility * effective_bhp
                     else:
                         mass_pseudo_transmissibility = (
                             phase_mass_transmissibility * phase_viscosity
@@ -584,9 +535,7 @@ def compute_well_rates(
                         )
                         assert pseudo_pressure_table is not None
                         dm_dp = pseudo_pressure_table.gradient(cell_pressure)
-                        diagonal_contributions[cell_idx] += (
-                            mass_pseudo_transmissibility * dm_dp
-                        )
+                        diagonal_contributions[cell_idx] += mass_pseudo_transmissibility * dm_dp
                         rhs_contributions[cell_idx] += (
                             mass_pseudo_transmissibility * dm_dp * effective_bhp
                         )

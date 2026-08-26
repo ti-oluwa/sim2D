@@ -35,7 +35,7 @@ def _load_cell_array(
     keyword: str,
     n_cells: int,
     dtype: npt.DTypeLike = None,
-) -> typing.Optional[CellArray]:
+) -> CellArray | None:
     arr = deck_file.get(keyword)
     if arr is None:
         return None
@@ -104,9 +104,7 @@ class Permeability(StoreSerializable):
             if np.array_equal(self.x, self.y) and np.array_equal(self.x, self.z):
                 object.__setattr__(self, "mean", self.x)
             else:
-                object.__setattr__(
-                    self, "mean", (self.x * self.y * self.z) ** (1.0 / 3.0)
-                )
+                object.__setattr__(self, "mean", (self.x * self.y * self.z) ** (1.0 / 3.0))
 
     def scale(self, factor: Number) -> Self:
         """Return a new instance with all components multiplied by *factor*."""
@@ -125,8 +123,8 @@ class Permeability(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
-        factor: typing.Optional[Number] = None,
+        table: UnitConversionTable | None = None,
+        factor: Number | None = None,
     ) -> Self:
         """
         Return a new `Permeability` with all quantities rescaled
@@ -257,7 +255,7 @@ class Rock(StoreSerializable):
     Gas is immobile below this saturation when water or liquid displaces gas.
     """
 
-    compressibility: typing.Optional[RockCompressibilityTables] = None
+    compressibility: RockCompressibilityTables | None = None
     """
     Formation compressibility tables - one per `ROCKNUM` region in `unit_system`.
 
@@ -286,8 +284,8 @@ class Rock(StoreSerializable):
         self,
         *,
         pressure: CellArray,
-        rock_region: typing.Optional[IntCellArray] = None,
-        unit_system: typing.Optional[UnitSystem] = None,
+        rock_region: IntCellArray | None = None,
+        unit_system: UnitSystem | None = None,
         dtype: npt.DTypeLike = None,
     ) -> RockCompressibility:
         """
@@ -295,16 +293,12 @@ class Rock(StoreSerializable):
 
         Units: 1/psi (FIELD), 1/bar (METRIC), 1/atm (LAB), 1/Pa (SI).
         """
-        target_unit_system = (
-            unit_system if unit_system is not None else self.unit_system
-        )
+        target_unit_system = unit_system if unit_system is not None else self.unit_system
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         if self.compressibility is None:
             return RockCompressibility(
                 reference_pressure=pressure,
-                compressibility=typing.cast(
-                    CellArray, np.zeros_like(pressure, dtype=dtype)
-                ),
+                compressibility=typing.cast(CellArray, np.zeros_like(pressure, dtype=dtype)),
                 unit_system=target_unit_system,
             )
 
@@ -321,7 +315,7 @@ class Rock(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `Rock` with all dimensional quantities rescaled
@@ -341,9 +335,7 @@ class Rock(StoreSerializable):
         return attrs.evolve(
             self,
             porosity=self.porosity,
-            absolute_permeability=self.absolute_permeability.scale(
-                factors["permeability"]
-            ),
+            absolute_permeability=self.absolute_permeability.scale(factors["permeability"]),
             net_to_gross=self.net_to_gross,
             compressibility=self.compressibility.convert(target, table=table)
             if self.compressibility is not None
@@ -362,7 +354,7 @@ class Rock(StoreSerializable):
         saturation_region: IntCellArray,
         n_cells: int,
         dtype: npt.DTypeLike,
-    ) -> typing.Dict[str, CellArray]:
+    ) -> dict[str, CellArray]:
         """
         Derive per-cell saturation-endpoint fallbacks from each cell's
         SATNUM relative-permeability model, for whichever of the five
@@ -413,9 +405,9 @@ class Rock(StoreSerializable):
         deck_file: DeckFile,
         *,
         grid: Grid,
-        rock_region: typing.Optional[IntCellArray] = None,
-        satfunc: typing.Optional[SatFunc] = None,
-        saturation_region: typing.Optional[IntCellArray] = None,
+        rock_region: IntCellArray | None = None,
+        satfunc: SatFunc | None = None,
+        saturation_region: IntCellArray | None = None,
         interpolation_method: InterpolationMethod = "linear",
         dtype: npt.DTypeLike = None,
     ) -> Self:
@@ -460,9 +452,7 @@ class Rock(StoreSerializable):
         def _required(keyword: str) -> CellArray:
             data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is None:
-                raise ValidationError(
-                    f"`{keyword}` is required but not found in the DeckFile."
-                )
+                raise ValidationError(f"`{keyword}` is required but not found in the DeckFile.")
             return data
 
         def _optional(keyword: str, default: float) -> CellArray:
@@ -474,7 +464,7 @@ class Rock(StoreSerializable):
         def _saturation_endpoint(
             keyword: str,
             field: str,
-            table_derived: typing.Optional[typing.Mapping[str, CellArray]],
+            table_derived: typing.Mapping[str, CellArray] | None,
         ) -> CellArray:
             data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is not None:
@@ -484,7 +474,7 @@ class Rock(StoreSerializable):
             return np.zeros(n_cells, dtype=dtype)
 
         permeability = Permeability.from_deck(deck_file, n_cells=n_cells, dtype=dtype)
-        compressibility: typing.Optional[RockCompressibilityTables] = None
+        compressibility: RockCompressibilityTables | None = None
         if deck_file.has("ROCK") or deck_file.has("ROCKTAB"):
             compressibility = RockCompressibilityTables.from_deck(
                 deck_file, interpolation_method=interpolation_method, dtype=dtype
@@ -493,7 +483,7 @@ class Rock(StoreSerializable):
         if rock_region is None:
             rock_region = _load_region_array(deck_file, "ROCKNUM", n_cells)
 
-        table_derived_endpoints: typing.Optional[typing.Dict[str, CellArray]] = None
+        table_derived_endpoints: dict[str, CellArray] | None = None
         if satfunc is not None:
             if saturation_region is None:
                 saturation_region = _load_region_array(deck_file, "SATNUM", n_cells)

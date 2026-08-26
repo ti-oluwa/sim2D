@@ -1,11 +1,12 @@
 import enum
 import typing
+from typing import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 from scipy.sparse import csr_array, csr_matrix  # type: ignore[import-untyped]
 from scipy.sparse.linalg import LinearOperator  # type: ignore[import-untyped]
-from typing_extensions import Self, TypeAlias, TypedDict
+from typing_extensions import Self, TypedDict
 
 __all__ = [
     "ArrayLike",
@@ -67,29 +68,27 @@ class UnitSystem(enum.Enum):
         return cls(str(value).lower())
 
 
-NDimension = typing.TypeVar("NDimension", bound=typing.Tuple[int, ...])
-Coordinates = typing.TypeVar("Coordinates", bound=typing.Tuple[int, ...])
+NDimension = typing.TypeVar("NDimension", bound=tuple[int, ...])
+Coordinates = typing.TypeVar("Coordinates", bound=tuple[int, ...])
 
-ThreeDimensions: TypeAlias = typing.Tuple[int, int, int]
+ThreeDimensions: TypeAlias = tuple[int, int, int]
 """3D indices"""
-TwoDimensions: TypeAlias = typing.Tuple[int, int]
+TwoDimensions: TypeAlias = tuple[int, int]
 """2D indices"""
-OneDimension: TypeAlias = typing.Tuple[int]
+OneDimension: TypeAlias = tuple[int]
 """1D index"""
 
-Integer: TypeAlias = typing.Union[int, np.integer]
-Float: TypeAlias = typing.Union[float, np.floating]
-Number: TypeAlias = typing.Union[int, float, np.floating, np.integer]
-Boolean: TypeAlias = typing.Union[bool, np.bool_]
+Integer: TypeAlias = int | np.integer
+Float: TypeAlias = float | np.floating
+Number: TypeAlias = int | float | np.floating | np.integer
+Boolean: TypeAlias = bool | np.bool_
 FloatArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.floating]]
 IntArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.integer]]
-NumberArray: TypeAlias = typing.Union[FloatArray[NDimension], IntArray[NDimension]]
+NumberArray: TypeAlias = FloatArray[NDimension] | IntArray[NDimension]
 BooleanArray: TypeAlias = np.ndarray[NDimension, np.dtype[np.bool_]]
-IntOrArray: TypeAlias = typing.Union[Integer, IntArray[NDimension]]
-FloatOrArray: TypeAlias = typing.Union[Float, FloatArray[NDimension]]
-NumberOrArray: TypeAlias = typing.Union[
-    Number, FloatArray[NDimension], IntArray[NDimension]
-]
+IntOrArray: TypeAlias = Integer | IntArray[NDimension]
+FloatOrArray: TypeAlias = Float | FloatArray[NDimension]
+NumberOrArray: TypeAlias = Number | FloatArray[NDimension] | IntArray[NDimension]
 
 
 CellArray: typing.TypeAlias = NumberArray[OneDimension]
@@ -230,9 +229,7 @@ Interpolator = typing.Callable[[float], float]
 PreconditionerStr = typing.Union[
     typing.Literal["cpr", "ilu", "amg", "block_jacobi", "polynomial", "diagonal"], str
 ]
-PreconditionerFactory = typing.Callable[
-    [typing.Union[csr_array, csr_matrix]], LinearOperator
-]
+PreconditionerFactory = typing.Callable[[csr_array | csr_matrix], LinearOperator]
 Preconditioner = typing.Union[LinearOperator, PreconditionerStr, PreconditionerFactory]
 
 SolverStr = typing.Union[
@@ -262,13 +259,13 @@ class SolverFunc(typing.Protocol):
         self,
         A: typing.Any,
         b: typing.Any,
-        x0: typing.Optional[typing.Any],
+        x0: typing.Any | None,
         *,
         rtol: float,
         atol: float,
-        maxiter: typing.Optional[int],
-        M: typing.Optional[typing.Any],
-        callback: typing.Optional[typing.Callable[[npt.NDArray], None]],
+        maxiter: int | None,
+        M: typing.Any | None,
+        callback: typing.Callable[[npt.NDArray], None] | None,
     ) -> npt.NDArray: ...
 
 
@@ -380,18 +377,7 @@ class MixingRuleDFunc(typing.Protocol):
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-    ) -> typing.Union[
-        MixingRulePartialDerivatives,
-        typing.Tuple[
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-            NumberOrArray[NDimension],
-        ],
-    ]:
+    ) -> MixingRulePartialDerivatives | tuple[NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension]]:
         """
         Return the seven partial derivatives of the mixing rule.
 
@@ -708,9 +694,7 @@ class UnitConversionFactors(TypedDict):
     """
 
 
-UnitConversionTable = typing.Dict[
-    typing.Tuple[UnitSystem, UnitSystem], UnitConversionFactors
-]
+UnitConversionTable = dict[tuple[UnitSystem, UnitSystem], UnitConversionFactors]
 """Mapping of unit system pairs `(from, target)` to unit conversion factors"""
 
 
@@ -724,5 +708,5 @@ class SupportsUnitSystem(typing.Protocol):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self: ...

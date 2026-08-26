@@ -1,7 +1,7 @@
 import typing
+from typing import TypeAlias
 
 import numpy as np
-from typing_extensions import TypeAlias
 
 from bores.errors import InvalidFaceConnectivityError
 from bores.typing import IntArray, Integer, NumberArray, OneDimension, TwoDimensions
@@ -9,13 +9,13 @@ from bores.typing import IntArray, Integer, NumberArray, OneDimension, TwoDimens
 VertexCoordinates: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""
 
-FaceVertexIndices: TypeAlias = typing.List[Integer]
+FaceVertexIndices: TypeAlias = list[Integer]
 """Ordered list of vertex indices for a single face (CCW from owner)."""
 
-FaceKey: TypeAlias = typing.Tuple[Integer, ...]
+FaceKey: TypeAlias = tuple[Integer, ...]
 """Sorted tuple of vertex indices used as a face deduplication key."""
 
-ElementFaces: TypeAlias = typing.List[FaceVertexIndices]
+ElementFaces: TypeAlias = list[FaceVertexIndices]
 """
 Per-element-type local face definitions; each entry is a list of local
 vertex indices wound CCW from outside (outward normal).
@@ -27,7 +27,7 @@ vertex indices wound CCW from outside (outward normal).
 #: Outward-pointing face definitions for standard element types.
 #: Each value is a list of faces; each face is a list of *local* vertex
 #: indices wound counter-clockwise when viewed from outside the cell.
-ELEMENT_FACES: typing.Dict[str, ElementFaces] = {
+ELEMENT_FACES: dict[str, ElementFaces] = {
     # #####################################################################
     # Tetrahedron (4 vertices: v0 v1 v2 = base CCW from below, v3 = apex)
     # #####################################################################
@@ -75,7 +75,7 @@ ELEMENT_FACES: typing.Dict[str, ElementFaces] = {
 }
 
 #: Mapping from VTK integer cell-type codes to element type names.
-VTK_CELL_TYPE_NAMES: typing.Dict[int, str] = {
+VTK_CELL_TYPE_NAMES: dict[int, str] = {
     10: "tetra",
     12: "hexahedron",
     13: "wedge",
@@ -88,9 +88,7 @@ class _FaceRecord:
 
     __slots__ = ("owner_cell_index", "neighbour_cell_index", "face_vertex_indices")
 
-    def __init__(
-        self, owner_cell_index: Integer, face_vertex_indices: FaceVertexIndices
-    ) -> None:
+    def __init__(self, owner_cell_index: Integer, face_vertex_indices: FaceVertexIndices) -> None:
         """
         Initialise with only an owner; neighbour is set later if face is interior.
 
@@ -104,8 +102,8 @@ class _FaceRecord:
 
 def build_csr_face_arrays(
     vertex_coordinates: VertexCoordinates,
-    per_cell_face_vertex_lists: typing.List[typing.List[FaceVertexIndices]],
-) -> typing.Tuple[
+    per_cell_face_vertex_lists: list[list[FaceVertexIndices]],
+) -> tuple[
     VertexCoordinates,
     IntArray[OneDimension],
     IntArray[OneDimension],
@@ -128,7 +126,7 @@ def build_csr_face_arrays(
     :raises InvalidFaceConnectivityError: If any face is shared by more
         than two cells.
     """
-    face_registry: typing.Dict[FaceKey, _FaceRecord] = {}
+    face_registry: dict[FaceKey, _FaceRecord] = {}
     for cell_index, cell_faces in enumerate(per_cell_face_vertex_lists):
         for face_vertex_indices in cell_faces:
             key: FaceKey = tuple(sorted(face_vertex_indices))
@@ -152,9 +150,9 @@ def build_csr_face_arrays(
                 record.neighbour_cell_index = cell_index
 
     # Flatten registry to CSR arrays
-    flat_face_vertex_indices: typing.List[Integer] = []
-    face_vertex_offsets: typing.List[int] = [0]
-    face_cell_pairs: typing.List[typing.Tuple[Integer, Integer]] = []
+    flat_face_vertex_indices: list[Integer] = []
+    face_vertex_offsets: list[int] = [0]
+    face_cell_pairs: list[tuple[Integer, Integer]] = []
 
     for record in face_registry.values():
         flat_face_vertex_indices.extend(record.face_vertex_indices)
@@ -163,15 +161,9 @@ def build_csr_face_arrays(
 
     return (
         vertex_coordinates,
-        typing.cast(
-            IntArray[OneDimension], np.asarray(flat_face_vertex_indices, dtype=np.int32)
-        ),
-        typing.cast(
-            IntArray[OneDimension], np.asarray(face_vertex_offsets, dtype=np.int32)
-        ),
-        typing.cast(
-            IntArray[TwoDimensions], np.asarray(face_cell_pairs, dtype=np.int32)
-        ),
+        typing.cast(IntArray[OneDimension], np.asarray(flat_face_vertex_indices, dtype=np.int32)),
+        typing.cast(IntArray[OneDimension], np.asarray(face_vertex_offsets, dtype=np.int32)),
+        typing.cast(IntArray[TwoDimensions], np.asarray(face_cell_pairs, dtype=np.int32)),
     )
 
 
@@ -203,7 +195,7 @@ class FaultRecord(typing.NamedTuple):
     face_direction: str
 
 
-VALID_FAULT_FACE_DIRECTIONS: typing.FrozenSet[str] = frozenset(
+VALID_FAULT_FACE_DIRECTIONS: frozenset[str] = frozenset(
     {
         "X",
         "X-",

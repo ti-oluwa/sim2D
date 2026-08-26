@@ -1,5 +1,4 @@
 import logging
-import typing
 import warnings
 
 import numpy as np
@@ -33,9 +32,7 @@ __all__ = [
 ]
 
 
-def compute_water_formation_volume_factor(
-    water_density: Number, salinity: Number
-) -> Number:
+def compute_water_formation_volume_factor(water_density: Number, salinity: Number) -> Number:
     """
     Computes the water formation volume factor (B_w) in bbl/STB of water
     based on pressure and temperature deviations from reference conditions.
@@ -86,9 +83,7 @@ def compute_water_formation_volume_factor_mccain(
 
     # Volume correction for temperature (ΔV_wT)
     delta_V_wT = (
-        -1.0001e-2
-        + 1.33391e-4 * temperature_in_celsius
-        + 5.50654e-7 * temperature_in_celsius**2
+        -1.0001e-2 + 1.33391e-4 * temperature_in_celsius + 5.50654e-7 * temperature_in_celsius**2
     )
 
     # Volume correction for pressure (ΔV_wp)
@@ -101,9 +96,7 @@ def compute_water_formation_volume_factor_mccain(
 
     # Volume correction for salinity and pressure (ΔV_wsp)
     salinity_wt_percent = salinity * 1e-4  # ppm to weight percent
-    delta_V_wsp = salinity_wt_percent * (
-        0.1249 + 1.1638e-4 * pressure - 1.1689e-6 * pressure**2
-    )
+    delta_V_wsp = salinity_wt_percent * (0.1249 + 1.1638e-4 * pressure - 1.1689e-6 * pressure**2)
 
     # Base FVF (gas-free)
     B_w = (1 + delta_V_wT) * (1 + delta_V_wp) * (1 + delta_V_wsp)
@@ -230,9 +223,7 @@ def _compute_water_viscosity(
     C = 2.94e-6
 
     viscosity_at_standard_pressure = A - (B * temperature) + (C * temperature**2)
-    pressure_correction_factor = (
-        0.9994 + (4.0295e-5 * pressure) + (3.1062e-9 * pressure**2)
-    )
+    pressure_correction_factor = 0.9994 + (4.0295e-5 * pressure) + (3.1062e-9 * pressure**2)
     viscosity_at_pressure = viscosity_at_standard_pressure * pressure_correction_factor
     return max(viscosity_at_pressure, 1e-6)
 
@@ -281,17 +272,17 @@ def compute_water_viscosity(
 
     if temperature < 60 or temperature > 400:
         warnings.warn(
-            f"Temperature {temperature:.6f}°F is outside the valid range for McCain's water viscosity correlation (60°F to 400°F)."
+            f"Temperature {temperature:.6f}°F is outside the valid range for McCain's water viscosity correlation (60°F to 400°F).", stacklevel=2
         )
 
     if salinity > 300_000:
         warnings.warn(
-            f"Salinity {salinity:.6f}ppm is unusually high for McCain's water viscosity correlation."
+            f"Salinity {salinity:.6f}ppm is unusually high for McCain's water viscosity correlation.", stacklevel=2
         )
 
     if pressure is not None and pressure > 10_000:
         warnings.warn(
-            f"Pressure {pressure:.6f}psi is unusually high for McCain's water viscosity correlation."
+            f"Pressure {pressure:.6f}psi is unusually high for McCain's water viscosity correlation.", stacklevel=2
         )
     return _compute_water_viscosity(
         temperature=temperature,
@@ -329,9 +320,7 @@ def _gas_solubility_in_water_mccain_methane(
     :return: Gas solubility in water in SCF/STB.
     """
     if pressure < 0 or temperature < 0 or salinity < 0:
-        raise ValidationError(
-            "Pressure, temperature, and salinity must be non-negative."
-        )
+        raise ValidationError("Pressure, temperature, and salinity must be non-negative.")
 
     if not (100 <= temperature <= 400):
         raise ValidationError(
@@ -395,13 +384,9 @@ def _gas_solubility_in_water_duan_sun_co2(
     T = fahrenheit_to_kelvin(temperature)
 
     if not (273.15 <= T <= 533.15):
-        raise ValidationError(
-            "Temperature is out of the valid range for this model (0-260°C)."
-        )
+        raise ValidationError("Temperature is out of the valid range for this model (0-260°C).")
     if not (0 < P <= 2000):
-        raise ValidationError(
-            "Pressure is out of the valid range for this model (0-2000 bar)."
-        )
+        raise ValidationError("Pressure is out of the valid range for this model (0-2000 bar).")
 
     # Calculate CO₂ molality in PURE WATER
     # Using the equation from Duan & Sun (2003) for the fugacity of CO2
@@ -444,8 +429,8 @@ def _gas_solubility_in_water_henry_law(
     pressure: Number,
     temperature: Number,
     gas: str,
-    molar_masses: typing.Dict[str, Number],
-    henry_coefficients: typing.Dict[str, typing.Tuple[Number, Number, Number]],
+    molar_masses: dict[str, Number],
+    henry_coefficients: dict[str, tuple[Number, Number, Number]],
     salinity: Number = 0.0,
 ) -> Number:
     """
@@ -505,9 +490,7 @@ def _gas_solubility_in_water_henry_law(
     k_s = SETSCHENOW_CONSTANTS[gas]
     salinity_factor = np.exp(-k_s * molarity)
 
-    gas_solubility = (
-        (pressure / H) * (M / water_density) * salinity_factor
-    )  # m³ gas / m³ water
+    gas_solubility = (pressure / H) * (M / water_density) * salinity_factor  # m³ gas / m³ water
     return gas_solubility * c.CUBIC_METER_PER_CUBIC_METER_TO_SCF_PER_STB
 
 
@@ -588,9 +571,7 @@ def compute_gas_free_water_formation_volume_factor(
             "Pressure and temperature cannot be negative for gas-free water FVF."
         )
 
-    thermal_expansion = (
-        -0.010001 + (1.33391e-4 * temperature) + (5.50654e-7 * temperature**2)
-    )
+    thermal_expansion = -0.010001 + (1.33391e-4 * temperature) + (5.50654e-7 * temperature**2)
     isothermal_compressibility = -(1.95301e-9 * pressure) + (1.72492e-13 * pressure**2)
     gas_free_water_fvf = (1.0 + thermal_expansion) * (1.0 + isothermal_compressibility)
     return max(0.9, gas_free_water_fvf)  # Bw_gas_free is typically close to 1.0
@@ -603,9 +584,7 @@ def _compute_dRsw_dP_mccain(temperature: Number, salinity: Number) -> Number:
     Returns dRsw/dP in scf/(STB*psi).
     """
     if temperature < 0 or salinity < 0:
-        raise ValidationError(
-            "Temperature and salinity cannot be negative for dRsw/dP."
-        )
+        raise ValidationError("Temperature and salinity cannot be negative for dRsw/dP.")
 
     derivative_pure_water = (
         0.0000164 + (0.000000134 * temperature) - (0.00000000185 * temperature**2)
@@ -688,9 +667,7 @@ def compute_water_compressibility(
     if pressure >= bubble_point_pressure:
         # Undersaturated Water (P >= Pwb)
         if np.any(gas_free_water_formation_volume_factor <= 0):
-            raise ValidationError(
-                "Calculated Bw for undersaturated water is non-positive."
-            )
+            raise ValidationError("Calculated Bw for undersaturated water is non-positive.")
         c_w = -(1.0 / gas_free_water_formation_volume_factor) * dBw_gas_free_dP
     else:
         # Saturated Water (P < Pwb)
@@ -701,9 +678,7 @@ def compute_water_compressibility(
             raise ValidationError("Calculated Bw for saturated water is non-positive.")
 
         c_w_gas_free_component = -(1.0 / water_fvf_in_bbl_per_stb) * dBw_gas_free_dP
-        gas_liberation_component = (
-            gas_fvf_in_bbl_per_scf / water_fvf_in_bbl_per_stb
-        ) * dRsw_dP
+        gas_liberation_component = (gas_fvf_in_bbl_per_scf / water_fvf_in_bbl_per_stb) * dRsw_dP
         c_w = c_w_gas_free_component + gas_liberation_component
 
     return max(0.0, c_w)
@@ -743,10 +718,7 @@ def compute_water_density_mccain(
     delta_pressure = 0.00001427 * (pressure - 14.7)
     delta_temperature = -0.00048314 * (temperature - 60.0)
     water_density = (
-        c.STANDARD_WATER_DENSITY_IMPERIAL
-        + delta_salinity
-        + delta_pressure
-        + delta_temperature
+        c.STANDARD_WATER_DENSITY_IMPERIAL + delta_salinity + delta_pressure + delta_temperature
     )
     return water_density
 
@@ -796,12 +768,7 @@ def compute_water_density_batzle(
 
     # Batzle & Wang correlation in g/cm³
     brine_density_g_per_cm3 = 1.0 + 1e-3 * (
-        S
-        * (
-            0.668
-            + 0.44 * S
-            + 1e-6 * (300 * T - 2400 * T * S + P * (80 + 3 * T - 3300 * S))
-        )
+        S * (0.668 + 0.44 * S + 1e-6 * (300 * T - 2400 * T * S + P * (80 + 3 * T - 3300 * S)))
     )
     # Convert to lb/ft³ (1 g/cm³ = 62.42796 lb/ft³)
     water_density = brine_density_g_per_cm3 * 62.42796

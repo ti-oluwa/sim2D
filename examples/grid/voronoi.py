@@ -148,6 +148,4 @@ print(
 )
 print(f"  Water sat  : {sw.mean():.3f}  ±  {sw.std():.3f}")
 print(f"  Pressure   : {pressure.mean():.1f}  ±  {pressure.std():.1f} bar")
-print(
-    f"\nPore volume (m³): {grid.compute_pore_volume(poro, np.ones(grid.n_cells)).sum():.3e}"
-)
+print(f"\nPore volume (m³): {grid.compute_pore_volume(poro, np.ones(grid.n_cells)).sum():.3e}")

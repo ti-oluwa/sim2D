@@ -65,15 +65,11 @@ class DepthTable(StoreSerializable):
                 f"`values` length {len(self.values)}."
             )
         if len(self.depths) < 2:
-            raise ValidationError(
-                "`DepthTable` requires at least 2 (depth, value) pairs."
-            )
+            raise ValidationError("`DepthTable` requires at least 2 (depth, value) pairs.")
         if not np.all(np.diff(self.depths) > 0):
             raise ValidationError("`depths` must be strictly increasing.")
 
-    def at_depth(
-        self, depth: NumberOrArray[OneDimension]
-    ) -> NumberOrArray[OneDimension]:
+    def at_depth(self, depth: NumberOrArray[OneDimension]) -> NumberOrArray[OneDimension]:
         """
         Return the interpolated value at the given depth or array of depths.
 
@@ -96,7 +92,7 @@ class DepthTable(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `DepthTable` with `depths` rescaled to *target*.
@@ -110,9 +106,7 @@ class DepthTable(StoreSerializable):
             return self
         factors = get_conversion_factors(self.unit_system, target, table=table)
         return self.__class__(
-            depths=typing.cast(
-                NumberArray[OneDimension], self.depths * factors["length"]
-            ),
+            depths=typing.cast(NumberArray[OneDimension], self.depths * factors["length"]),
             values=self.values,
             unit_system=target,
         )
@@ -124,7 +118,7 @@ def _load_depth_tables(
     value_column: str,
     value_multiplier: Number = 1.0,
     dtype: typing.Any = None,
-) -> typing.Optional[typing.Dict[int, DepthTable]]:
+) -> dict[int, DepthTable] | None:
     """
     Parse an `RSVD`/`RVVD`-shaped keyword into `{table_number: DepthTable}`.
 
@@ -139,13 +133,13 @@ def _load_depth_tables(
     :raises ValidationError: If the keyword is present but a table has
         non-increasing depths.
     """
-    all_tables: typing.Optional[typing.List] = deck_file.get(keyword)
+    all_tables: list | None = deck_file.get(keyword)
     if not all_tables:
         return None
 
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     unit_system = deck_file.unit_system
-    tables: typing.Dict[int, DepthTable] = {}
+    tables: dict[int, DepthTable] = {}
     for table_idx, rows in enumerate(all_tables):
         if not rows:
             continue
@@ -237,9 +231,7 @@ class EquilibriumRegion(StoreSerializable):
 
     def __attrs_post_init__(self) -> None:
         if self.datum_depth < 0:
-            raise ValidationError(
-                f"`datum_depth` must be non-negative; got {self.datum_depth}."
-            )
+            raise ValidationError(f"`datum_depth` must be non-negative; got {self.datum_depth}.")
         if self.woc_depth < 0 or self.goc_depth < 0:
             raise ValidationError(
                 "`woc_depth` / `goc_depth` must be non-negative; got "
@@ -283,7 +275,7 @@ class EquilibriumRegion(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `EquilibriumRegion` with all dimensional fields rescaled
@@ -340,8 +332,7 @@ class EquilibriumRegion(StoreSerializable):
             )
         if not (1 <= eqlnum <= len(records)):
             raise ValidationError(
-                f"EQLNUM {eqlnum} not found in EQUIL. "
-                f"Available regions: 1..{len(records)}."
+                f"EQLNUM {eqlnum} not found in EQUIL. Available regions: 1..{len(records)}."
             )
         return typing.cast(
             Self,
@@ -374,11 +365,11 @@ class Equilibrium(StoreSerializable):
 
     def __init__(
         self,
-        regions: typing.Dict[int, EquilibriumRegion],
+        regions: dict[int, EquilibriumRegion],
         *,
-        rsvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
-        rvvd_tables: typing.Optional[typing.Dict[int, DepthTable]] = None,
-        unit_system: typing.Optional[UnitSystem] = None,
+        rsvd_tables: dict[int, DepthTable] | None = None,
+        rvvd_tables: dict[int, DepthTable] | None = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Create a new `Equilibrium` container.
@@ -399,16 +390,12 @@ class Equilibrium(StoreSerializable):
             raise ValidationError("`regions` must contain at least one entry.")
 
         for region in regions.values():
-            if region.uses_rsvd and (
-                rsvd_tables is None or region.rsvd_table not in rsvd_tables
-            ):
+            if region.uses_rsvd and (rsvd_tables is None or region.rsvd_table not in rsvd_tables):
                 raise ValidationError(
                     f"EquilibriumRegion references rsvd_table={region.rsvd_table} "
                     "but no matching table was supplied in `rsvd_tables`."
                 )
-            if region.uses_rvvd and (
-                rvvd_tables is None or region.rvvd_table not in rvvd_tables
-            ):
+            if region.uses_rvvd and (rvvd_tables is None or region.rvvd_table not in rvvd_tables):
                 raise ValidationError(
                     f"EquilibriumRegion references rvvd_table={region.rvvd_table} "
                     "but no matching table was supplied in `rvvd_tables`."
@@ -453,21 +440,17 @@ class Equilibrium(StoreSerializable):
         self.rvvd_tables = rvvd_tables
         self.unit_system = expected_unit_system
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         """Serialize `Equilibrium` to a dictionary."""
         return {
-            "regions": {
-                str(num): region.dump() for num, region in self.regions.items()
-            },
+            "regions": {str(num): region.dump() for num, region in self.regions.items()},
             "rsvd_tables": {
-                str(num): table.dump()
-                for num, table in (self.rsvd_tables or {}).items()
+                str(num): table.dump() for num, table in (self.rsvd_tables or {}).items()
             }
             if self.rsvd_tables
             else None,
             "rvvd_tables": {
-                str(num): table.dump()
-                for num, table in (self.rvvd_tables or {}).items()
+                str(num): table.dump() for num, table in (self.rvvd_tables or {}).items()
             }
             if self.rvvd_tables
             else None,
@@ -537,7 +520,7 @@ class Equilibrium(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Return a new `Equilibrium` with every region converted to
@@ -551,8 +534,7 @@ class Equilibrium(StoreSerializable):
             return self
         return self.__class__(
             regions={
-                num: region.convert(target, table=table)
-                for num, region in self.regions.items()
+                num: region.convert(target, table=table) for num, region in self.regions.items()
             },
             rsvd_tables={
                 num: depth_table.convert(target, table=table)
@@ -593,12 +575,8 @@ class Equilibrium(StoreSerializable):
         uses_field_units = unit_system == UnitSystem.FIELD
         scf_to_mscf = c.SCF_TO_MSCF if uses_field_units else 1.0
         mscf_to_scf = c.MSCF_TO_SCF if uses_field_units else 1.0
-        rsvd_tables = _load_depth_tables(
-            deck_file, "RSVD", "rs", value_multiplier=mscf_to_scf
-        )
-        rvvd_tables = _load_depth_tables(
-            deck_file, "RVVD", "rv", value_multiplier=scf_to_mscf
-        )
+        rsvd_tables = _load_depth_tables(deck_file, "RSVD", "rs", value_multiplier=mscf_to_scf)
+        rvvd_tables = _load_depth_tables(deck_file, "RVVD", "rv", value_multiplier=scf_to_mscf)
         return cls(
             regions=regions,
             rsvd_tables=rsvd_tables,
@@ -646,7 +624,7 @@ def _load_equilibrium_region_from_record(
 
 def load_equilibrium_regions(
     deck_file: DeckFile,
-) -> typing.Dict[int, EquilibriumRegion]:
+) -> dict[int, EquilibriumRegion]:
     """
     Parse every `EQUIL` record in *deck_file* into `EquilibriumRegion`
     objects, keyed by 1-based EQLNUM index.

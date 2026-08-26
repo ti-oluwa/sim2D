@@ -7,9 +7,8 @@ from typing_extensions import Self
 
 from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
-from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
+from bores.typing import Number, UnitConversionTable, UnitSystem
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
@@ -95,7 +94,7 @@ class PerforationState(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Converts this snapshot to a different unit system.
@@ -138,16 +137,16 @@ class WellState(StoreSerializable):
     bhp: Number
     """Current bottomhole pressure."""
 
-    perforation_states: typing.Tuple[PerforationState, ...]
+    perforation_states: tuple[PerforationState, ...]
     """Snapshot for each of this well's open perforations. Empty if `is_open` is `False`."""
 
     phase_rates: PhaseValues
     """Rate of each phase for the whole well."""
 
-    active_limit: typing.Optional[Limit] = None
+    active_limit: Limit | None = None
     """The limit currently constraining the well, if any."""
 
-    thp: typing.Optional[Number] = None
+    thp: Number | None = None
     """Current tubing head pressure, if computed."""
 
     unit_system: UnitSystem = UnitSystem.FIELD
@@ -169,10 +168,7 @@ class WellState(StoreSerializable):
                 f"`active_control.unit_system` ({self.active_control.unit_system.value}) "
                 f"!= this {self.__class__.__name__}'s unit_system ({self.unit_system.value})."
             )
-        if (
-            self.active_limit is not None
-            and self.active_limit.unit_system != self.unit_system
-        ):
+        if self.active_limit is not None and self.active_limit.unit_system != self.unit_system:
             raise ValidationError(
                 f"`active_limit.unit_system` ({self.active_limit.unit_system.value}) "
                 f"!= this {self.__class__.__name__}'s unit_system ({self.unit_system.value})."
@@ -204,7 +200,7 @@ class WellState(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Converts this snapshot to a different unit system.
@@ -255,7 +251,7 @@ class WellsStates(
     def __init__(
         self,
         states: typing.Mapping[str, WellState],
-        unit_system: typing.Optional[UnitSystem] = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Initialize a `WellsStates` instance.
@@ -268,9 +264,7 @@ class WellsStates(
             don't all share one unit system.
         """
         mismatched = {
-            key: state.well_name
-            for key, state in states.items()
-            if key != state.well_name
+            key: state.well_name for key, state in states.items() if key != state.well_name
         }
         if mismatched:
             raise ValidationError(
@@ -289,16 +283,14 @@ class WellsStates(
             unit_system = systems.pop() if systems else UnitSystem.FIELD
         else:
             states = {
-                name: state
-                if state.unit_system == unit_system
-                else state.convert(unit_system)
+                name: state if state.unit_system == unit_system else state.convert(unit_system)
                 for name, state in states.items()
             }
 
         self.states = dict(states)
         self.unit_system = unit_system
 
-    def get(self, well_name: str) -> typing.Optional[WellState]:
+    def get(self, well_name: str) -> WellState | None:
         """
         Get the `WellState` for a given well.
 
@@ -350,7 +342,7 @@ class WellsStates(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Returns a  new `WellsStates` in the *target* unit system.
@@ -363,8 +355,7 @@ class WellsStates(
             return self
         return self.__class__(
             states={
-                name: state.convert(target, table=table)
-                for name, state in self.states.items()
+                name: state.convert(target, table=table) for name, state in self.states.items()
             },
             unit_system=target,
         )

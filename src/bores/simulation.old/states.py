@@ -86,10 +86,10 @@ class ModelState(
     """Capillary pressures at this state"""
     material_balance_errors: MaterialBalanceErrors
     """Material balance error for the model simulation at this time step"""
-    timer_state: typing.Optional[TimerState] = None
+    timer_state: TimerState | None = None
     """Optional timer configuration state at this model state"""
 
-    _well_exists: typing.Optional[bool] = attrs.field(default=None, init=False)
+    _well_exists: bool | None = attrs.field(default=None, init=False)
 
     def wells_exists(self) -> bool:
         """Check if there are any wells in this state."""
@@ -148,12 +148,10 @@ def _validate_array(
     model_shape: tuple[int, ...],
     grid: np.ndarray,
     field_name: str,
-    dtype: typing.Optional[npt.DTypeLike],
+    dtype: npt.DTypeLike | None,
 ) -> np.ndarray:
     if grid.shape != model_shape:
-        raise ValidationError(
-            f"{field_name} has shape {grid.shape}, expected {model_shape}."
-        )
+        raise ValidationError(f"{field_name} has shape {grid.shape}, expected {model_shape}.")
     if dtype is not None and np.issubdtype(grid.dtype, np.floating):
         grid = grid.astype(dtype, copy=False, order="C")
     return np.ascontiguousarray(grid)
@@ -161,9 +159,7 @@ def _validate_array(
 
 def validate_state(
     state: ModelState[NDimension],
-    dtype: typing.Optional[
-        typing.Union[npt.DTypeLike, typing.Literal["global"]]
-    ] = None,
+    dtype: npt.DTypeLike | typing.Literal["global"] | None = None,
 ) -> ModelState[NDimension]:
     """
     Validate state grids have matching shapes and optionally coerce to specified dtype.

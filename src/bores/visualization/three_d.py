@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 pv.global_theme.allow_empty_mesh = True
 
-_COLORSCHEME_TO_CMAP: typing.Dict[str, str] = {
+_COLORSCHEME_TO_CMAP: dict[str, str] = {
     "viridis": "viridis",
     "plasma": "plasma",
     "inferno": "inferno",
@@ -81,7 +81,7 @@ _COLORSCHEME_TO_CMAP: typing.Dict[str, str] = {
 }
 
 
-def _cmap(scheme: typing.Union[ColorScheme, str]) -> str:
+def _cmap(scheme: ColorScheme | str) -> str:
     """
     Convert `ColorScheme` to PyVista colormap name.
 
@@ -94,7 +94,7 @@ def _cmap(scheme: typing.Union[ColorScheme, str]) -> str:
 def _normalize_data(
     data: ThreeDimensionalGrid,
     metadata: PropertyMeta,
-) -> typing.Tuple[ThreeDimensionalGrid, ThreeDimensionalGrid]:
+) -> tuple[ThreeDimensionalGrid, ThreeDimensionalGrid]:
     """
     Prepare data for visualization by clipping and handling zeros for log-scale.
 
@@ -136,8 +136,8 @@ def _normalize_data(
 def _scalar_bar_args(
     metadata: PropertyMeta,
     text_color: str = "#121212",
-    extra: typing.Dict[str, typing.Any] | None = None,
-) -> typing.Dict[str, typing.Any]:
+    extra: dict[str, typing.Any] | None = None,
+) -> dict[str, typing.Any]:
     """
     Build PyVista scalar bar configuration dictionary.
 
@@ -150,7 +150,7 @@ def _scalar_bar_args(
     if metadata.log_scale:
         label += " (log scale)"
 
-    base: typing.Dict[str, typing.Any] = {
+    base: dict[str, typing.Any] = {
         "title": label,
         "n_labels": 6,
         "fmt": "%.3g",
@@ -221,7 +221,7 @@ class PlotConfig:
     use_opacity_scaling: bool = False
     """Whether to apply opacity scaling based on scalar values (advanced)."""
 
-    aspect_mode: typing.Optional[typing.Literal["cube", "data", "auto"]] = None
+    aspect_mode: typing.Literal["cube", "data", "auto"] | None = None
     """Aspect ratio mode: 'cube' (equal axes), 'data' (match data scales),
     'auto' (VTK default), None (no aspect constraints)."""
 
@@ -253,7 +253,7 @@ class PlotConfig:
     """Enable cell/point picking to show information when clicking on mesh.
     Click on cells to see index, coordinates, and scalar values."""
 
-    scalar_bar_args: typing.Optional[typing.Dict[str, typing.Any]] = None
+    scalar_bar_args: dict[str, typing.Any] | None = None
     """
     Custom arguments passed to PyVista's scalar bar configuration.
     Overrides default title, position, formatting, etc.
@@ -268,7 +268,7 @@ class PlotConfig:
 
 def _make_image_data(
     data: ThreeDimensionalGrid,
-    cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
+    cell_dimension: tuple[float, float] | None = None,
     z_scale: float = 1.0,
 ) -> pv.ImageData:  # type: ignore
     """
@@ -296,10 +296,10 @@ def _make_image_data(
 
 def _make_explicit_grid(
     data: ThreeDimensionalGrid,
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     depth_grid: ThreeDimensionalGrid,
     z_scale: float = 1.0,
-    coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+    coordinate_offsets: tuple[int, int, int] | None = None,
 ) -> pv.StructuredGrid:  # type: ignore
     """
     Build PyVista `StructuredGrid` for reservoirs with structural dip.
@@ -316,9 +316,7 @@ def _make_explicit_grid(
     :raises ValidationError: If depth_grid.shape != data.shape
     """
     if depth_grid.shape != data.shape:
-        raise ValidationError(
-            f"depth_grid shape {depth_grid.shape} != data shape {data.shape}"
-        )
+        raise ValidationError(f"depth_grid shape {depth_grid.shape} != data shape {data.shape}")
 
     nx, ny, nz = data.shape
     dx, dy = cell_dimension
@@ -332,9 +330,7 @@ def _make_explicit_grid(
 
     if nz > 1:
         z_bounds[:, :, 1:-1] = 0.5 * (z_centers[:, :, :-1] + z_centers[:, :, 1:])
-        z_bounds[:, :, 0] = z_centers[:, :, 0] - 0.5 * (
-            z_centers[:, :, 1] - z_centers[:, :, 0]
-        )
+        z_bounds[:, :, 0] = z_centers[:, :, 0] - 0.5 * (z_centers[:, :, 1] - z_centers[:, :, 0])
         z_bounds[:, :, -1] = z_centers[:, :, -1] + 0.5 * (
             z_centers[:, :, -1] - z_centers[:, :, -2]
         )
@@ -367,9 +363,9 @@ def _make_explicit_grid(
 def _render_wells(
     plotter: pv.Plotter,
     wells: Wells[ThreeDimensions],
-    cell_dimension: typing.Optional[typing.Tuple[float, float]],
-    depth_grid: typing.Optional[ThreeDimensionalGrid],
-    coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]],
+    cell_dimension: tuple[float, float] | None,
+    depth_grid: ThreeDimensionalGrid | None,
+    coordinate_offsets: tuple[int, int, int] | None,
     z_scale: float = 1.0,
     **kwargs: typing.Any,
 ) -> None:
@@ -412,9 +408,7 @@ def _render_wells(
 
     x_off, y_off, z_off = coordinate_offsets or (0, 0, 0)
 
-    def _to_physical(
-        i: int, j: int, k: int
-    ) -> typing.Optional[typing.Tuple[float, float, float]]:
+    def _to_physical(i: int, j: int, k: int) -> tuple[float, float, float] | None:
         """Convert grid indices to physical coordinates (centered in cells)."""
         if cell_dimension is None or depth_grid is None:
             return float(i) + 0.5, float(j) + 0.5, float(k) + 0.5
@@ -502,9 +496,7 @@ def _render_wells(
                 perforation_cells.extend([2, base, base + 1])
 
             if perforation_points:
-                perforation_mesh = pv.PolyData(
-                    np.array(perforation_points, dtype=float)
-                )
+                perforation_mesh = pv.PolyData(np.array(perforation_points, dtype=float))
                 perforation_mesh.lines = np.array(perforation_cells, dtype=int)
                 plotter.add_mesh(
                     perforation_mesh,
@@ -586,8 +578,8 @@ def _render_wells(
 
         # Render perforating intervals
         if show_wellbore:
-            perforation_points: typing.List = []
-            perforation_cells: typing.List[int] = []
+            perforation_points: list = []
+            perforation_cells: list[int] = []
 
             for (si, sj, sk), (ei, ej, ek) in well.perforating_intervals:
                 sc = _to_physical(si, sj, sk)
@@ -606,9 +598,7 @@ def _render_wells(
                 perforation_cells.extend([2, base, base + 1])
 
             if perforation_points:
-                perforation_mesh = pv.PolyData(
-                    np.array(perforation_points, dtype=float)
-                )
+                perforation_mesh = pv.PolyData(np.array(perforation_points, dtype=float))
                 perforation_mesh.lines = np.array(perforation_cells, dtype=int)
                 plotter.add_mesh(
                     perforation_mesh,
@@ -666,10 +656,10 @@ def _normalize_hex_color(color: str) -> str:
 
     Examples:
     ```python
-    _normalize_hex_color("#333")      # Returns "#333333"
-    _normalize_hex_color("#abc")      # Returns "#aabbcc"
-    _normalize_hex_color("#FF5500")   # Returns "#FF5500" (unchanged)
-    _normalize_hex_color("white")     # Returns "white" (unchanged)
+    _normalize_hex_color("#333")  # Returns "#333333"
+    _normalize_hex_color("#abc")  # Returns "#aabbcc"
+    _normalize_hex_color("#FF5500")  # Returns "#FF5500" (unchanged)
+    _normalize_hex_color("white")  # Returns "white" (unchanged)
     ```
     """
     if isinstance(color, str) and color.startswith("#"):
@@ -678,13 +668,15 @@ def _normalize_hex_color(color: str) -> str:
 
         # If it's a 3-digit hex code, expand to 6 digits
         if len(hex_code) == 3:
-            return f"#{hex_code[0]}{hex_code[0]}{hex_code[1]}{hex_code[1]}{hex_code[2]}{hex_code[2]}"
+            return (
+                f"#{hex_code[0]}{hex_code[0]}{hex_code[1]}{hex_code[1]}{hex_code[2]}{hex_code[2]}"
+            )
 
     # Return as-is for 6-digit hex or named colors
     return color
 
 
-_active_plotters: typing.List[weakref.ref] = []
+_active_plotters: list[weakref.ref] = []
 
 
 def _register_plotter(plotter: pv.Plotter) -> None:
@@ -782,11 +774,11 @@ class BaseRenderer(ABC):
     def _build_grid(
         self,
         plot_data: ThreeDimensionalGrid,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]],
-        depth_grid: typing.Optional[ThreeDimensionalGrid],
+        cell_dimension: tuple[float, float] | None,
+        depth_grid: ThreeDimensionalGrid | None,
         z_scale: float,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]],
-    ) -> typing.Union[pv.ImageData, pv.StructuredGrid]:
+        coordinate_offsets: tuple[int, int, int] | None,
+    ) -> pv.ImageData | pv.StructuredGrid:
         """
         Build appropriate PyVista grid type based on geometry.
 
@@ -846,17 +838,17 @@ class VolumeRenderer(BaseRenderer):
         self,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        opacity: typing.Optional[float] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        opacity: float | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         z_scale: float = 1.0,
         auto_coarsen: bool = True,
         volume_mapper: str = "smart",
         shade: bool = False,
         title: str = "",
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
         **kwargs: typing.Any,
     ) -> pv.Plotter:
         """
@@ -924,9 +916,7 @@ class VolumeRenderer(BaseRenderer):
                 )
 
         plot_data, _ = _normalize_data(data, metadata)
-        grid = self._build_grid(
-            plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets
-        )
+        grid = self._build_grid(plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets)
 
         plotter = self._plotter(title)
         clim = (cmin, cmax) if cmin is not None and cmax is not None else None
@@ -934,7 +924,7 @@ class VolumeRenderer(BaseRenderer):
         # Use fewer colors for volume rendering by default (faster)
         n_colors = kwargs.get("n_colors", min(self.config.n_colors, 128))
 
-        add_kwargs: typing.Dict[str, typing.Any] = {
+        add_kwargs: dict[str, typing.Any] = {
             "scalars": "values",
             "opacity": opacity if opacity is not None else self.config.opacity,
             "cmap": _cmap(kwargs.get("color_scheme", metadata.color_scheme)),
@@ -970,9 +960,7 @@ class VolumeRenderer(BaseRenderer):
         else:  # fixed_point
             add_kwargs["mapper"] = "fixed_point"
             plotter.add_volume(grid, **add_kwargs)
-            logger.info(
-                "Volume rendering using CPU (fixed_point) - may be slow without GPU"
-            )
+            logger.info("Volume rendering using CPU (fixed_point) - may be slow without GPU")
 
         return plotter
 
@@ -990,17 +978,17 @@ class IsosurfaceRenderer(BaseRenderer):
         self,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        isomin: typing.Optional[float] = None,
-        isomax: typing.Optional[float] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
+        isomin: float | None = None,
+        isomax: float | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         surface_count: int = 20,
-        opacity: typing.Optional[float] = None,
+        opacity: float | None = None,
         z_scale: float = 1.0,
         title: str = "",
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
         **kwargs: typing.Any,
     ) -> pv.Plotter:
         """
@@ -1030,9 +1018,7 @@ class IsosurfaceRenderer(BaseRenderer):
             raise ValidationError("Isosurface renderer requires 3-D data")
 
         plot_data, _ = _normalize_data(data, metadata)
-        grid = self._build_grid(
-            plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets
-        )
+        grid = self._build_grid(plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets)
         grid_points = grid.cell_data_to_point_data()
 
         low = isomin if isomin is not None else float(np.nanmin(plot_data))
@@ -1046,7 +1032,7 @@ class IsosurfaceRenderer(BaseRenderer):
         plotter = self._plotter(title)
         clim = (cmin, cmax) if cmin is not None and cmax is not None else None
 
-        add_kwargs: typing.Dict[str, typing.Any] = {
+        add_kwargs: dict[str, typing.Any] = {
             "scalars": "values",
             "opacity": opacity if opacity is not None else self.config.opacity,
             "cmap": _cmap(kwargs.get("color_scheme", metadata.color_scheme)),
@@ -1076,17 +1062,17 @@ class CellBlockRenderer(BaseRenderer):
         self,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Tuple[float, float] = (1.0, 1.0),
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
+        cell_dimension: tuple[float, float] = (1.0, 1.0),
+        depth_grid: ThreeDimensionalGrid | None = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
         subsampling_factor: int = 1,
-        opacity: typing.Optional[float] = None,
-        show_edges: typing.Optional[bool] = None,
+        opacity: float | None = None,
+        show_edges: bool | None = None,
         z_scale: float = 1.0,
         title: str = "",
-        threshold_percentile: typing.Optional[float] = None,
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+        threshold_percentile: float | None = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
         **kwargs: typing.Any,
     ) -> pv.Plotter:
         """
@@ -1130,9 +1116,7 @@ class CellBlockRenderer(BaseRenderer):
                 )
 
         plot_data, _ = _normalize_data(data, metadata)
-        grid = self._build_grid(
-            plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets
-        )
+        grid = self._build_grid(plot_data, cell_dimension, depth_grid, z_scale, coordinate_offsets)
 
         if threshold_percentile is not None:
             lo = float(np.nanpercentile(plot_data, threshold_percentile))
@@ -1147,7 +1131,7 @@ class CellBlockRenderer(BaseRenderer):
         )
         clim = (cmin, cmax) if cmin is not None and cmax is not None else None
 
-        add_kwargs: typing.Dict[str, typing.Any] = {
+        add_kwargs: dict[str, typing.Any] = {
             "scalars": "values",
             "opacity": opacity if opacity is not None else self.config.opacity,
             "cmap": _cmap(kwargs.get("color_scheme", metadata.color_scheme)),
@@ -1179,17 +1163,17 @@ class Scatter3DRenderer(BaseRenderer):
         self,
         data: ThreeDimensionalGrid,
         metadata: PropertyMeta,
-        cell_dimension: typing.Optional[typing.Tuple[float, float]] = None,
-        depth_grid: typing.Optional[ThreeDimensionalGrid] = None,
+        cell_dimension: tuple[float, float] | None = None,
+        depth_grid: ThreeDimensionalGrid | None = None,
         threshold: float = 0.0,
         sample_rate: float = 1.0,
         point_size: int = 5,
-        cmin: typing.Optional[float] = None,
-        cmax: typing.Optional[float] = None,
-        opacity: typing.Optional[float] = None,
+        cmin: float | None = None,
+        cmax: float | None = None,
+        opacity: float | None = None,
         z_scale: float = 1.0,
         title: str = "",
-        coordinate_offsets: typing.Optional[typing.Tuple[int, int, int]] = None,
+        coordinate_offsets: tuple[int, int, int] | None = None,
         **kwargs: typing.Any,
     ) -> pv.Plotter:
         """
@@ -1224,9 +1208,7 @@ class Scatter3DRenderer(BaseRenderer):
         vals = plot_data[xi, yi, zi]
 
         if vals.size == 0:
-            raise ValidationError(
-                "No data points above threshold for Scatter3D renderer"
-            )
+            raise ValidationError("No data points above threshold for Scatter3D renderer")
 
         if sample_rate < 1.0:
             n = max(1, int(vals.size * sample_rate))
@@ -1255,7 +1237,7 @@ class Scatter3DRenderer(BaseRenderer):
         plotter = self._plotter(title)
         clim = (cmin, cmax) if cmin is not None and cmax is not None else None
 
-        add_kwargs: typing.Dict[str, typing.Any] = {
+        add_kwargs: dict[str, typing.Any] = {
             "scalars": "values",
             "point_size": point_size,
             "opacity": opacity if opacity is not None else self.config.opacity,
@@ -1275,7 +1257,7 @@ class Scatter3DRenderer(BaseRenderer):
         return plotter
 
 
-_PLOT_TYPE_NAMES: typing.Dict[PlotType, str] = {
+_PLOT_TYPE_NAMES: dict[PlotType, str] = {
     PlotType.VOLUME: "3D Volume",
     PlotType.ISOSURFACE: "3D Isosurface",
     PlotType.SCATTER_3D: "3D Scatter",
@@ -1304,11 +1286,11 @@ def _apply_slider_theme() -> None:
 def _add_styled_slider(
     plotter: pv.Plotter,
     callback: typing.Callable,
-    rng: typing.Tuple[float, float],
+    rng: tuple[float, float],
     value: float,
     title: str,
-    pointa: typing.Tuple[float, float],
-    pointb: typing.Tuple[float, float],
+    pointa: tuple[float, float],
+    pointb: tuple[float, float],
     fmt: str = "%.3g",
 ) -> None:
     """
@@ -1339,7 +1321,7 @@ def _add_styled_slider(
     :param fmt: printf-style format string for the live value readout
     """
     lo, hi = rng
-    _state: typing.Dict[str, typing.Any] = {
+    _state: dict[str, typing.Any] = {
         "label": None,
         "label_mode": None,  # "actor" | "property" | "overlay"
     }
@@ -1356,9 +1338,7 @@ def _add_styled_slider(
                 label.SetInput(text)
             elif mode == "overlay":
                 t = (corrected - lo) / (hi - lo) if (hi - lo) != 0 else 0.0
-                track_y = pointb[1] + t * (
-                    pointa[1] - pointb[1]
-                )  # pointb=bottom, pointa=top
+                track_y = pointb[1] + t * (pointa[1] - pointb[1])  # pointb=bottom, pointa=top
                 mid_x = pointb[0] + 0.01
                 plotter.add_text(
                     text,
@@ -1510,7 +1490,7 @@ def _setup_interactive_widgets(
     has_grid = mesh is not None and hasattr(mesh, "threshold")
 
     cmap = _cmap(metadata.color_scheme)
-    mesh_kwargs: typing.Dict[str, typing.Any] = {
+    mesh_kwargs: dict[str, typing.Any] = {
         "scalars": "values",
         "cmap": cmap,
         "show_scalar_bar": False,
@@ -1543,7 +1523,7 @@ def _setup_interactive_widgets(
         data_min = float(scalars.min()) if scalars is not None else 0.0
         data_max = float(scalars.max()) if scalars is not None else 1.0
 
-        _thresh: typing.Dict[str, typing.Any] = {"actor": None}
+        _thresh: dict[str, typing.Any] = {"actor": None}
 
         def _apply_threshold(value: float) -> None:
             if _thresh["actor"] is not None:
@@ -1605,7 +1585,7 @@ def _setup_interactive_widgets(
         scalars = mesh.active_scalars  # type: ignore
         _cdata_min = float(scalars.min()) if scalars is not None else 0.0
         _cdata_max = float(scalars.max()) if scalars is not None else 1.0
-        _clim: typing.Dict[str, float] = {"lo": _cdata_min, "hi": _cdata_max}
+        _clim: dict[str, float] = {"lo": _cdata_min, "hi": _cdata_max}
 
         def _apply_clim() -> None:
             """Push current lo/hi to every scalar-bar-linked actor."""
@@ -1648,8 +1628,8 @@ def _setup_interactive_widgets(
     # Slice planes  (1/2/3 keys)
     # Inserts a draggable orange cutting plane.  User clicks the handle
     # and drags it through the volume.  Same key removes it.
-    _slice_actors: typing.Dict[str, bool] = {}
-    _slice_status: typing.Dict[str, typing.Any] = {"actor": None}
+    _slice_actors: dict[str, bool] = {}
+    _slice_status: dict[str, typing.Any] = {"actor": None}
 
     def _update_slice_status() -> None:
         """Show/hide a small HUD line telling the user what to do."""
@@ -1765,7 +1745,7 @@ def _setup_interactive_widgets(
     # Captured after all meshes have been added so arrows / tubes / wells
     # are already present. Toggle-off restores this instead of forcing True
     # on every actor (which would add outlines to surface markers etc.).
-    _original_edge_vis: typing.Dict[int, bool] = {}
+    _original_edge_vis: dict[int, bool] = {}
     for actor in plotter.renderer.actors.values():
         prop = getattr(actor, "GetProperty", None)
         if prop is not None:
@@ -1828,7 +1808,7 @@ def _setup_interactive_widgets(
         "  Z-scale     - Vertical exaggeration\n"
         "  C-min/C-max - Narrow colormap range"
     )
-    _help_state: typing.Dict[str, typing.Any] = {"actor": None, "visible": False}
+    _help_state: dict[str, typing.Any] = {"actor": None, "visible": False}
 
     def _toggle_help() -> None:
         if _help_state["visible"] and _help_state["actor"] is not None:
@@ -1871,8 +1851,8 @@ class DataVisualizer:
 
     def __init__(
         self,
-        config: typing.Optional[PlotConfig] = None,
-        registry: typing.Optional[PropertyRegistry] = None,
+        config: PlotConfig | None = None,
+        registry: PropertyRegistry | None = None,
     ) -> None:
         """
         Initialize PyVista 3D visualizer.
@@ -1881,7 +1861,7 @@ class DataVisualizer:
         :param registry: Optional property metadata registry (uses global if None)
         """
         self._config = config or PlotConfig()
-        self._renderers: typing.Dict[PlotType, BaseRenderer] = {
+        self._renderers: dict[PlotType, BaseRenderer] = {
             PlotType.VOLUME: VolumeRenderer(self._config),
             PlotType.ISOSURFACE: IsosurfaceRenderer(self._config),
             PlotType.SCATTER_3D: Scatter3DRenderer(self._config),
@@ -1914,7 +1894,7 @@ class DataVisualizer:
     def add_renderer(
         self,
         plot_type: PlotType,
-        renderer_type: typing.Type[BaseRenderer],
+        renderer_type: type[BaseRenderer],
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> None:
@@ -1932,7 +1912,7 @@ class DataVisualizer:
 
     def _get_data(
         self,
-        source: typing.Union[ModelState[ThreeDimensions], BlackOil],
+        source: ModelState[ThreeDimensions] | BlackOil,
         name: str,
     ) -> ThreeDimensionalGrid:
         """
@@ -1953,16 +1933,10 @@ class DataVisualizer:
     def apply_slice(
         self,
         data: ThreeDimensionalGrid,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-    ) -> typing.Tuple[ThreeDimensionalGrid, typing.Tuple[slice, slice, slice]]:
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
+    ) -> tuple[ThreeDimensionalGrid, tuple[slice, slice, slice]]:
         """
         Apply slicing operations to 3D grid data.
 
@@ -1977,26 +1951,16 @@ class DataVisualizer:
 
     def make_plot(
         self,
-        source: typing.Union[
-            BlackOil[ThreeDimensions],
-            ModelState[ThreeDimensions],
-            ThreeDimensionalGrid,
-        ],
-        property: typing.Optional[str] = None,
-        plot_type: typing.Optional[typing.Union[PlotType, str]] = None,
-        title: typing.Optional[str] = None,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        labels: typing.Optional[Labels] = None,
+        source: BlackOil[ThreeDimensions] | ModelState[ThreeDimensions] | ThreeDimensionalGrid,
+        property: str | None = None,
+        plot_type: PlotType | str | None = None,
+        title: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
+        labels: Labels | None = None,
         show_wells: bool = False,
         **kwargs: typing.Any,
     ) -> pv.Plotter:
@@ -2044,20 +2008,23 @@ class DataVisualizer:
 
         # Isosurface with custom colors and slicing
         plotter = viz.make_plot(
-            state, "oil-saturation",
+            state,
+            "oil-saturation",
             plot_type="isosurface",
             z_slice=(0, 10),
-            isomin=0.3, isomax=0.9,
-            surface_count=5
+            isomin=0.3,
+            isomax=0.9,
+            surface_count=5,
         )
 
         # Cell blocks with wells
         plotter = viz.make_plot(
-            state, "permeability.x",
+            state,
+            "permeability.x",
             plot_type="cell_blocks",
             show_wells=True,
             show_edges=True,
-            threshold_percentile=10
+            threshold_percentile=10,
         )
         ```
         """
@@ -2074,9 +2041,7 @@ class DataVisualizer:
 
         if is_model_state or is_model:
             if property is None:
-                raise ValidationError(
-                    "property is required for model / model state sources"
-                )
+                raise ValidationError("property is required for model / model state sources")
             metadata = self.registry[property]
             data = self._get_data(source, metadata.name)  # type: ignore
             cell_dimension = (
@@ -2119,9 +2084,7 @@ class DataVisualizer:
 
         renderer = type(self.get_renderer(plot_type))(config)
 
-        plot_title = title or (
-            f"{_PLOT_TYPE_NAMES.get(plot_type, '3D')}: {metadata.display_name}"
-        )
+        plot_title = title or (f"{_PLOT_TYPE_NAMES.get(plot_type, '3D')}: {metadata.display_name}")
         kwargs["title"] = plot_title
         if coordinate_offsets is not None:
             kwargs["coordinate_offsets"] = coordinate_offsets
@@ -2138,9 +2101,7 @@ class DataVisualizer:
             plotter = renderer.render(data, metadata, **kwargs)  # type: ignore[arg-type]
 
         if show_wells and is_model_state and source.wells_exists():  # type: ignore
-            well_kwargs = {
-                k: kwargs[k] for k in WellKwargs.__annotations__ if k in kwargs
-            }
+            well_kwargs = {k: kwargs[k] for k in WellKwargs.__annotations__ if k in kwargs}
             _render_wells(
                 plotter,
                 source.wells,  # type: ignore
@@ -2174,8 +2135,7 @@ class DataVisualizer:
                 else:
                     position = [[label.position.x, label.position.y, label.position.z]]
                     text = [
-                        label.name
-                        or str((label.position.x, label.position.y, label.position.z))
+                        label.name or str((label.position.x, label.position.y, label.position.z))
                     ]
 
                 plotter.add_point_labels(
@@ -2199,9 +2159,7 @@ class DataVisualizer:
                 center = picked.center
                 vals = picked.active_scalars
                 val = float(vals[0]) if vals is not None and len(vals) > 0 else None
-                parts = [
-                    f"Cell center: ({center[0]:.2f}, {center[1]:.2f}, {center[2]:.2f})"
-                ]
+                parts = [f"Cell center: ({center[0]:.2f}, {center[1]:.2f}, {center[2]:.2f})"]
                 if val is not None:
                     parts.append(f"Value: {val:.4g}")
                 logger.info(" | ".join(parts))
@@ -2227,32 +2185,22 @@ class DataVisualizer:
 
     def animate(
         self,
-        sequence: typing.Union[
-            typing.List[BlackOil[ThreeDimensions]],
-            typing.Sequence[ModelState[ThreeDimensions]],
-            typing.Sequence[ThreeDimensionalGrid],
-        ],
-        property: typing.Optional[str] = None,
-        plot_type: typing.Optional[typing.Union[PlotType, str]] = None,
+        sequence: list[BlackOil[ThreeDimensions]] | typing.Sequence[ModelState[ThreeDimensions]] | typing.Sequence[ThreeDimensionalGrid],
+        property: str | None = None,
+        plot_type: PlotType | str | None = None,
         frame_duration: int = 200,
         step_size: int = 1,
-        width: typing.Optional[int] = None,
-        height: typing.Optional[int] = None,
-        title: typing.Optional[str] = None,
-        x_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        y_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        z_slice: typing.Optional[
-            typing.Union[int, slice, typing.Tuple[int, int]]
-        ] = None,
-        save: typing.Union[FrameExporter, str, None] = None,
-        output_gif: typing.Optional[str] = None,
-        labels: typing.Optional[Labels] = None,
+        width: int | None = None,
+        height: int | None = None,
+        title: str | None = None,
+        x_slice: int | slice | tuple[int, int] | None = None,
+        y_slice: int | slice | tuple[int, int] | None = None,
+        z_slice: int | slice | tuple[int, int] | None = None,
+        save: FrameExporter | str | None = None,
+        output_gif: str | None = None,
+        labels: Labels | None = None,
         **kwargs: typing.Any,
-    ) -> typing.List[pv.Plotter]:
+    ) -> list[pv.Plotter]:
         """
         Create animation from time-series data with optional export.
 
@@ -2314,9 +2262,7 @@ class DataVisualizer:
 
         is_model_sequence = isinstance(sequence[0], (ModelState, BlackOil))
         if is_model_sequence and property is None:
-            raise ValidationError(
-                "`property` required for model / model state sequences"
-            )
+            raise ValidationError("`property` required for model / model state sequences")
 
         if isinstance(plot_type, str):
             plot_type = PlotType(plot_type)
@@ -2331,13 +2277,13 @@ class DataVisualizer:
             kwargs["cmin"] = float(np.nanmin([np.nanmin(a) for a in arrays]))  # type: ignore
             kwargs["cmax"] = float(np.nanmax([np.nanmax(a) for a in arrays]))  # type: ignore
 
-        plotters: typing.List[pv.Plotter] = []
+        plotters: list[pv.Plotter] = []
         exporter = resolve_exporter(save, output_gif)
 
         if exporter is not None:
 
             def _frames(
-                plotters: typing.List[pv.Plotter],
+                plotters: list[pv.Plotter],
             ) -> typing.Generator[npt.NDArray, None, None]:
                 for i, item in enumerate(sequence[::step_size]):
                     frame_title = title or (
@@ -2387,7 +2333,7 @@ class DataVisualizer:
                 plotters.append(plotter)
         return plotters
 
-    def help(self, plot_type: typing.Optional[PlotType] = None) -> str:
+    def help(self, plot_type: PlotType | None = None) -> str:
         """
         Get help text for renderers.
 
@@ -2396,9 +2342,7 @@ class DataVisualizer:
         """
         if plot_type is not None:
             return self.get_renderer(plot_type).help()
-        return "\n".join(
-            f"=== {pt.value} ===\n{r.help()}" for pt, r in self._renderers.items()
-        )
+        return "\n".join(f"=== {pt.value} ===\n{r.help()}" for pt, r in self._renderers.items())
 
 
 viz = DataVisualizer()

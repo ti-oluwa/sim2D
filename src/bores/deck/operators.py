@@ -29,7 +29,7 @@ __all__ = [
 
 _BOX_KEYWORD = "BOX"
 _ENDBOX_KEYWORD = "ENDBOX"
-_OPERATOR_KEYWORDS: typing.FrozenSet[str] = frozenset(
+_OPERATOR_KEYWORDS: frozenset[str] = frozenset(
     {
         "EQUALS",
         "ADD",
@@ -40,7 +40,7 @@ _OPERATOR_KEYWORDS: typing.FrozenSet[str] = frozenset(
     }
 )
 
-OPERATOR_CONTROL_KEYWORDS: typing.FrozenSet[str] = (
+OPERATOR_CONTROL_KEYWORDS: frozenset[str] = (
     frozenset({_BOX_KEYWORD, _ENDBOX_KEYWORD}) | _OPERATOR_KEYWORDS
 )
 """
@@ -62,19 +62,19 @@ class Operation(typing.NamedTuple):
     target: str
     """Upper-cased name of the keyword array being modified."""
 
-    value: typing.Optional[float]
+    value: float | None
     """
     Scalar operand for `EQUALS` / `ADD` / `MULTIPLY` / `MAXVALUE` /
     `MINVALUE`; `None` for `COPY`.
     """
 
-    source: typing.Optional[str]
+    source: str | None
     """Upper-cased source keyword name for `COPY`; `None` otherwise."""
 
-    box: typing.Tuple[int, int, int, int, int, int]
+    box: tuple[int, int, int, int, int, int]
     """**0-based** inclusive `(i1, i2, j1, j2, k1, k2)` sub-grid box."""
 
-    order: typing.Tuple[int, int]
+    order: tuple[int, int]
     """
     `(record_start, line_index)` sort key.
 
@@ -85,7 +85,7 @@ class Operation(typing.NamedTuple):
     """
 
 
-def _default_box(dims: GridDimensions) -> typing.Tuple[int, int, int, int, int, int]:
+def _default_box(dims: GridDimensions) -> tuple[int, int, int, int, int, int]:
     return (0, dims.nx - 1, 0, dims.ny - 1, 0, dims.nz - 1)
 
 
@@ -97,7 +97,7 @@ def _clamp_box(
     k1: int,
     k2: int,
     dims: GridDimensions,
-) -> typing.Tuple[int, int, int, int, int, int]:
+) -> tuple[int, int, int, int, int, int]:
     """Clamp a raw (possibly out-of-bounds) box to grid extents and sort each pair."""
     i1, i2 = sorted((max(0, min(i1, dims.nx - 1)), max(0, min(i2, dims.nx - 1))))
     j1, j2 = sorted((max(0, min(j1, dims.ny - 1)), max(0, min(j2, dims.ny - 1))))
@@ -105,7 +105,7 @@ def _clamp_box(
     return i1, i2, j1, j2, k1, k2
 
 
-def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operation]:
+def resolve_operations(deck: Deck, dims: GridDimensions) -> list[Operation]:
     """
     Walk every `BOX` / `ENDBOX` / operator record in deck order and
     resolve each operator record to a concrete `Operation`.
@@ -122,7 +122,7 @@ def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operatio
     """
     default_box = _default_box(dims)
     current_box = default_box
-    operations: typing.List[Operation] = []
+    operations: list[Operation] = []
 
     for record in deck.records:
         if record.keyword == _BOX_KEYWORD:
@@ -161,7 +161,7 @@ def resolve_operations(deck: Deck, dims: GridDimensions) -> typing.List[Operatio
 def _parse_operator_records(
     body: str,
     op: str,
-    box: typing.Tuple[int, int, int, int, int, int],
+    box: tuple[int, int, int, int, int, int],
     dims: GridDimensions,
 ) -> typing.Iterator[Operation]:
     """
@@ -191,8 +191,7 @@ def _parse_operator_records(
         if op == "COPY":
             if len(tokens) < 2:
                 warnings.warn(
-                    f"`COPY` record {tokens!r} needs a source and target "
-                    "keyword; skipping.",
+                    f"`COPY` record {tokens!r} needs a source and target keyword; skipping.",
                     stacklevel=6,
                 )
                 continue
@@ -202,8 +201,7 @@ def _parse_operator_records(
         else:
             if len(tokens) < 2:
                 warnings.warn(
-                    f"{op} record {tokens!r} needs a target keyword and "
-                    "value; skipping.",
+                    f"{op} record {tokens!r} needs a target keyword and value; skipping.",
                     stacklevel=6,
                 )
                 continue
@@ -213,8 +211,7 @@ def _parse_operator_records(
                 value = float(tokens[1])
             except ValueError:
                 warnings.warn(
-                    f"{op} record for {target!r} has non-numeric value "
-                    f"{tokens[1]!r}; skipping.",
+                    f"{op} record for {target!r} has non-numeric value {tokens[1]!r}; skipping.",
                     stacklevel=6,
                 )
                 continue
@@ -239,7 +236,7 @@ def _parse_operator_records(
 
 
 def _box_indices(
-    box: typing.Tuple[int, int, int, int, int, int], dims: GridDimensions
+    box: tuple[int, int, int, int, int, int], dims: GridDimensions
 ) -> IntArray[OneDimension]:
     """
     Return the flat cell indices covered by *box*, vectorized.
@@ -260,11 +257,7 @@ def _box_indices(
     i = np.arange(i1, i2 + 1, dtype=np.intp)
     j = np.arange(j1, j2 + 1, dtype=np.intp)
     k = np.arange(k1, k2 + 1, dtype=np.intp)
-    flat = (
-        i[:, None, None]
-        + j[None, :, None] * dims.nx
-        + k[None, None, :] * dims.nx * dims.ny
-    )
+    flat = i[:, None, None] + j[None, :, None] * dims.nx + k[None, None, :] * dims.nx * dims.ny
     return flat.ravel()
 
 
@@ -272,7 +265,7 @@ def apply_operation(
     array: FloatArray[OneDimension],
     operation: Operation,
     dims: GridDimensions,
-    resolve_source: typing.Callable[[str], typing.Optional[FloatArray[OneDimension]]],
+    resolve_source: typing.Callable[[str], FloatArray[OneDimension] | None],
 ) -> None:
     """
     Apply one resolved `Operation` to `array` in place, over its box.

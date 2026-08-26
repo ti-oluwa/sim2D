@@ -247,7 +247,7 @@ Columns:
 """
 
 
-class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
+class RestartKeyword(Keyword[dict[str, typing.Any]]):
     """
     The `RESTART` keyword: resume a run from a previously written
     restart file instead of the explicit `PRESSURE` / `SWAT` / `SGAS` /
@@ -268,11 +268,11 @@ class RestartKeyword(Keyword[typing.Dict[str, typing.Any]]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> dict[str, typing.Any] | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None

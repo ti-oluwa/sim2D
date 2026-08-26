@@ -1,7 +1,6 @@
 """Model validation and pre-simulation checks for reservoir simulation."""
 
 import logging
-import typing
 from enum import Enum
 
 import attrs
@@ -24,9 +23,7 @@ class ModelValidationError(BORESError):
     def __init__(self, report: "ValidationReport") -> None:
         self.report = report
         msgs = "\n".join(str(error) for error in report.errors)
-        super().__init__(
-            f"Model validation failed with {len(report.errors)} error(s):\n{msgs}"
-        )
+        super().__init__(f"Model validation failed with {len(report.errors)} error(s):\n{msgs}")
 
 
 class Severity(Enum):
@@ -50,7 +47,7 @@ class ValidationIssue:
     check: str
     severity: Severity
     message: str
-    detail: typing.Optional[str] = None
+    detail: str | None = None
     corrected: bool = False
 
     def __str__(self) -> str:
@@ -69,21 +66,21 @@ class ValidationReport:
     :param issues: All issues collected across every check, in emission order.
     """
 
-    issues: typing.List[ValidationIssue] = attrs.field(factory=list)
+    issues: list[ValidationIssue] = attrs.field(factory=list)
     """All issues collected across every check, in emission order."""
 
     @property
-    def errors(self) -> typing.List[ValidationIssue]:
+    def errors(self) -> list[ValidationIssue]:
         """All issues with ERROR severity."""
         return [issue for issue in self.issues if issue.severity == Severity.ERROR]
 
     @property
-    def warnings(self) -> typing.List[ValidationIssue]:
+    def warnings(self) -> list[ValidationIssue]:
         """All issues with WARNING severity."""
         return [issue for issue in self.issues if issue.severity == Severity.WARNING]
 
     @property
-    def infos(self) -> typing.List[ValidationIssue]:
+    def infos(self) -> list[ValidationIssue]:
         """All issues with INFO severity (includes corrections)."""
         return [issue for issue in self.issues if issue.severity == Severity.INFO]
 
@@ -97,7 +94,7 @@ class ValidationReport:
         check: str,
         severity: Severity,
         message: str,
-        detail: typing.Optional[str] = None,
+        detail: str | None = None,
         corrected: bool = False,
     ) -> None:
         self.issues.append(
@@ -110,27 +107,19 @@ class ValidationReport:
             )
         )
 
-    def info(
-        self, check: str, message: str, detail: typing.Optional[str] = None
-    ) -> None:
+    def info(self, check: str, message: str, detail: str | None = None) -> None:
         """Record an informational issue."""
         self._add(check, Severity.INFO, message, detail)
 
-    def warn(
-        self, check: str, message: str, detail: typing.Optional[str] = None
-    ) -> None:
+    def warn(self, check: str, message: str, detail: str | None = None) -> None:
         """Record a warning-level issue."""
         self._add(check, Severity.WARNING, message, detail)
 
-    def error(
-        self, check: str, message: str, detail: typing.Optional[str] = None
-    ) -> None:
+    def error(self, check: str, message: str, detail: str | None = None) -> None:
         """Record a fatal error-level issue."""
         self._add(check, Severity.ERROR, message, detail)
 
-    def corrected(
-        self, check: str, message: str, detail: typing.Optional[str] = None
-    ) -> None:
+    def corrected(self, check: str, message: str, detail: str | None = None) -> None:
         """Record a corrected issue (INFO severity with corrected=True)."""
         self._add(check, Severity.INFO, message, detail, corrected=True)
 
@@ -150,7 +139,7 @@ class ValidationReport:
         ]
         return "\n".join(lines)
 
-    def log(self, _logger: typing.Optional[logging.Logger] = None, /) -> None:
+    def log(self, _logger: logging.Logger | None = None, /) -> None:
         """
         Emit every issue through *_logger*.
 
@@ -172,7 +161,7 @@ def validate(
     *,
     correct_inplace: bool = True,
     raise_on_error: bool = True,
-    zero_flow_tolerance: typing.Optional[float] = None,
+    zero_flow_tolerance: float | None = None,
     emit_log: bool = True,
 ) -> ValidationReport:
     """
@@ -373,9 +362,7 @@ def _validate_saturations(
         report.info(check_connate, "Initial Sw >= swc everywhere.")
 
 
-def _validate_porosity(
-    rock_properties: RockProperties, report: ValidationReport
-) -> None:
+def _validate_porosity(rock_properties: RockProperties, report: ValidationReport) -> None:
     """Validate porosity values against physical bounds and typical reservoir ranges.
 
     Negative values and values > 1 are fatal. Values above 0.5 are suspicious for
@@ -396,9 +383,7 @@ def _validate_porosity(
     if n_negative > 0:
         report.error(check, f"{n_negative} cell(s) have negative porosity.")
     if n_above_one > 0:
-        report.error(
-            check, f"{n_above_one} cell(s) have porosity > 1.0 (non-physical)."
-        )
+        report.error(check, f"{n_above_one} cell(s) have porosity > 1.0 (non-physical).")
 
     if n_negative == 0 and n_above_one == 0:
         active_porosity = porosity_grid[porosity_grid > 0.0]
@@ -429,9 +414,7 @@ def _validate_porosity(
             )
 
 
-def _validate_net_to_gross(
-    rock_properties: RockProperties, report: ValidationReport
-) -> None:
+def _validate_net_to_gross(rock_properties: RockProperties, report: ValidationReport) -> None:
     """Check that net-to-gross values lie within [0, 1].
 
     Also warns when more than half the grid has NTG = 0, which is likely a
@@ -447,18 +430,14 @@ def _validate_net_to_gross(
     n_above_one = int(np.sum(net_to_gross_grid > 1.0))
 
     if n_below_zero + n_above_one > 0:
-        report.error(
-            check, f"NTG out of [0, 1]: {n_below_zero} below 0, {n_above_one} above 1."
-        )
+        report.error(check, f"NTG out of [0, 1]: {n_below_zero} below 0, {n_above_one} above 1.")
         return
 
     ntg_mean = float(np.mean(net_to_gross_grid))
     n_zero_ntg = int(np.sum(net_to_gross_grid == 0.0))
     fraction_zero = n_zero_ntg / net_to_gross_grid.size
 
-    report.info(
-        check, f"NTG valid. Mean = {ntg_mean:.4f}  Zero-NTG cells: {n_zero_ntg}."
-    )
+    report.info(check, f"NTG valid. Mean = {ntg_mean:.4f}  Zero-NTG cells: {n_zero_ntg}.")
 
     if fraction_zero > 0.5:
         report.warn(
@@ -468,9 +447,7 @@ def _validate_net_to_gross(
         )
 
 
-def _validate_permeability(
-    rock_properties: RockProperties, report: ValidationReport
-) -> None:
+def _validate_permeability(rock_properties: RockProperties, report: ValidationReport) -> None:
     """
     Validate absolute permeability across all three directions.
 
@@ -513,9 +490,7 @@ def _validate_permeability(
         report.warn(check, "All cells have zero horizontal permeability.")
         return
 
-    anisotropy_ratio = (
-        permeability_z[active_mask] / horizontal_permeability[active_mask]
-    )
+    anisotropy_ratio = permeability_z[active_mask] / horizontal_permeability[active_mask]
     anisotropy_max = float(np.max(anisotropy_ratio))
     anisotropy_min = float(np.min(anisotropy_ratio))
     anisotropy_median = float(np.median(anisotropy_ratio))
@@ -541,9 +516,7 @@ def _validate_permeability(
 
     active_horizontal_permeability = horizontal_permeability[active_mask]
     horizontal_permeability_max = float(np.max(active_horizontal_permeability))
-    positive_values = active_horizontal_permeability[
-        active_horizontal_permeability > 0.0
-    ]
+    positive_values = active_horizontal_permeability[active_horizontal_permeability > 0.0]
     horizontal_permeability_min = (
         float(np.min(positive_values)) if positive_values.size > 0 else 0.0
     )
@@ -586,8 +559,8 @@ def _validate_pressure_pvt_coverage(
     min_pressure = float(np.min(pressure_grid))
     max_pressure = float(np.max(pressure_grid))
 
-    table_min_pressure: typing.Optional[float] = None
-    table_max_pressure: typing.Optional[float] = None
+    table_min_pressure: float | None = None
+    table_max_pressure: float | None = None
 
     for phase_table in (
         config.pvt_tables.oil,
@@ -718,7 +691,7 @@ def _validate_pvt_monotonicity(config: Config, report: ValidationReport) -> None
         return
 
     issues_found = False
-    property_checks: typing.List[typing.Tuple[str, str, str, str]] = [
+    property_checks: list[tuple[str, str, str, str]] = [
         ("oil", "formation_volume_factor_table", "Bo", "increasing"),
         ("oil", "solution_gor_table", "Rs", "increasing"),
         ("gas", "formation_volume_factor_table", "Bg", "decreasing"),
@@ -728,7 +701,7 @@ def _validate_pvt_monotonicity(config: Config, report: ValidationReport) -> None
         phase_table = getattr(config.pvt_tables, phase_name)
         if phase_table is None:
             continue
-        table_array: typing.Optional[np.ndarray] = getattr(
+        table_array: np.ndarray | None = getattr(
             phase_table._data, table_attribute, None
         )
         if table_array is None:
@@ -761,7 +734,7 @@ def _validate_pvt_monotonicity(config: Config, report: ValidationReport) -> None
         report.info(check, "PVT Bo, Rs, Bg monotonicity checks passed.")
 
 
-def _recommend_zero_flow_tolerance(cell_dimension: typing.Tuple[float, float]) -> float:
+def _recommend_zero_flow_tolerance(cell_dimension: tuple[float, float]) -> float:
     """
     Return a grid-scale-aware zero-flow tolerance in day⁻¹.
 
@@ -784,8 +757,8 @@ def _validate_zero_flow(
     config: Config,
     report: ValidationReport,
     *,
-    cell_dimension: typing.Tuple[float, float],
-    tolerance: typing.Optional[float],
+    cell_dimension: tuple[float, float],
+    tolerance: float | None,
 ) -> None:
     """
     Check that the initial state satisfies gravitational and capillary equilibrium.
@@ -810,15 +783,11 @@ def _validate_zero_flow(
         tolerance = _recommend_zero_flow_tolerance(cell_dimension)
         tolerance_source = "auto [grid-scale adaptive]"
 
-    report.info(
-        check, f"Zero-flow tolerance: {tolerance:.2e} day⁻¹ ({tolerance_source})."
-    )
+    report.info(check, f"Zero-flow tolerance: {tolerance:.2e} day⁻¹ ({tolerance_source}).")
 
     try:
         face_transmissibilities = model.build_face_transmissibilities()
-        elevation_grid = model.build_elevation_grid(
-            apply_dip=not config.disable_structural_dip
-        )
+        elevation_grid = model.build_elevation_grid(apply_dip=not config.disable_structural_dip)
         zero_flow_result = check_zero_flow_initialization(
             fluid_properties=model.fluid_properties,
             rock_properties=model.rock_properties,
@@ -917,8 +886,8 @@ def _validate_wells(
     porosity_grid = model.rock_properties.porosity_grid
     all_wells = list(config.wells.injection_wells) + list(config.wells.production_wells)
 
-    placement_errors: typing.List[str] = []
-    dead_well_names: typing.List[str] = []
+    placement_errors: list[str] = []
+    dead_well_names: list[str] = []
 
     for well in all_wells:
         well_active_pore_volume = 0.0
@@ -957,9 +926,7 @@ def _validate_wells(
         )
 
     if not placement_errors and not dead_well_names:
-        report.info(
-            check, f"All {len(all_wells)} well(s) have valid perforation locations."
-        )
+        report.info(check, f"All {len(all_wells)} well(s) have valid perforation locations.")
 
 
 def _validate_fluid_contacts(model: BlackOil, report: ValidationReport) -> None:
@@ -998,12 +965,8 @@ def _validate_fluid_contacts(model: BlackOil, report: ValidationReport) -> None:
     if total_gas_saturation < 1e-9 or total_oil_saturation < 1e-9:
         return
 
-    gas_depth_centroid = (
-        float(np.sum(gas_saturation * depth_grid)) / total_gas_saturation
-    )
-    oil_depth_centroid = (
-        float(np.sum(oil_saturation * depth_grid)) / total_oil_saturation
-    )
+    gas_depth_centroid = float(np.sum(gas_saturation * depth_grid)) / total_gas_saturation
+    oil_depth_centroid = float(np.sum(oil_saturation * depth_grid)) / total_oil_saturation
     water_depth_centroid = (
         float(np.sum(water_saturation * depth_grid)) / total_water_saturation
         if total_water_saturation > 1e-9
@@ -1011,16 +974,14 @@ def _validate_fluid_contacts(model: BlackOil, report: ValidationReport) -> None:
     )
 
     detail = (
-        f"Gas centroid: {gas_depth_centroid:.1f} ft  "
-        f"Oil centroid: {oil_depth_centroid:.1f} ft"
+        f"Gas centroid: {gas_depth_centroid:.1f} ft  Oil centroid: {oil_depth_centroid:.1f} ft"
     )
     if water_depth_centroid is not None:
         detail += f"  Water centroid: {water_depth_centroid:.1f} ft"
 
     goc_inverted = gas_depth_centroid > oil_depth_centroid + 5.0
     owc_inverted = (
-        water_depth_centroid is not None
-        and oil_depth_centroid > water_depth_centroid + 5.0
+        water_depth_centroid is not None and oil_depth_centroid > water_depth_centroid + 5.0
     )
 
     if goc_inverted:
@@ -1062,9 +1023,7 @@ def _validate_rock_compressibility(
             f"Rock compressibility is negative: {rock_compressibility:.3e} psi⁻¹.",
         )
     elif rock_compressibility == 0.0:
-        report.warn(
-            check, "Rock compressibility is zero. Reservoir is perfectly rigid."
-        )
+        report.warn(check, "Rock compressibility is zero. Reservoir is perfectly rigid.")
     elif rock_compressibility > 1e-3:
         report.warn(
             check,
@@ -1209,9 +1168,7 @@ def _validate_transmissibility(model: BlackOil, report: ValidationReport) -> Non
     n_near_zero = int(np.sum(all_transmissibilities < 1e-15))
 
     condition_proxy = (
-        transmissibility_max / transmissibility_min
-        if transmissibility_min > 0.0
-        else float("inf")
+        transmissibility_max / transmissibility_min if transmissibility_min > 0.0 else float("inf")
     )
 
     if condition_proxy > 1e12:
@@ -1237,9 +1194,7 @@ def _validate_transmissibility(model: BlackOil, report: ValidationReport) -> Non
         )
 
 
-def _validate_pore_volume_distribution(
-    model: BlackOil, report: ValidationReport
-) -> None:
+def _validate_pore_volume_distribution(model: BlackOil, report: ValidationReport) -> None:
     """
     Examine the pore-volume distribution across the active grid cells.
 

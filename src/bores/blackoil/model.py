@@ -38,9 +38,9 @@ class BlackOilModel(
         self,
         reservoir: Reservoir,
         fluid: BlackOil,
-        wells: typing.Optional[WellSystem] = None,
-        boundary_conditions: typing.Optional[BoundaryConditions] = None,
-        unit_system: typing.Optional[UnitSystem] = None,
+        wells: WellSystem | None = None,
+        boundary_conditions: BoundaryConditions | None = None,
+        unit_system: UnitSystem | None = None,
     ) -> None:
         """
         Initialize the black-oil model.
@@ -92,10 +92,7 @@ class BlackOilModel(
         if wells is not None and wells_unit_system != unit_system:
             wells = wells.convert(unit_system, table=unit_conversion_table)
 
-        if (
-            boundary_conditions is not None
-            and boundary_conditions_unit_system != unit_system
-        ):
+        if boundary_conditions is not None and boundary_conditions_unit_system != unit_system:
             boundary_conditions = boundary_conditions.convert(
                 unit_system, table=unit_conversion_table
             )
@@ -120,7 +117,7 @@ class BlackOilModel(
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         """
         Convert the model to the *target* unit system.
@@ -134,11 +131,7 @@ class BlackOilModel(
         return self.__class__(
             reservoir=self.reservoir.convert(target, table=table),
             fluid=self.fluid.convert(target, table=table),
-            wells=(
-                self.wells.convert(target, table=table)
-                if self.wells is not None
-                else None
-            ),
+            wells=(self.wells.convert(target, table=table) if self.wells is not None else None),
             boundary_conditions=(
                 self.boundary_conditions.convert(target, table=table)
                 if self.boundary_conditions is not None

@@ -59,7 +59,7 @@ __all__ = ["load_grdecl", "dump_grdecl"]
 _PathOrStr = typing.Union[str, Path]
 _TextOrPath = typing.Union[str, bytes, Path]
 
-UNITS_MAP: typing.Dict[str, UnitSystem] = {
+UNITS_MAP: dict[str, UnitSystem] = {
     "METRES": UnitSystem.METRIC,
     "METER": UnitSystem.METRIC,
     "M": UnitSystem.METRIC,
@@ -71,14 +71,14 @@ UNITS_MAP: typing.Dict[str, UnitSystem] = {
 }
 
 
-US_TO_GRIDUNIT: typing.Dict[UnitSystem, str] = {
+US_TO_GRIDUNIT: dict[UnitSystem, str] = {
     UnitSystem.FIELD: "FEET",
     UnitSystem.METRIC: "METRES",
     UnitSystem.LAB: "CM",
     UnitSystem.SI: "METRES",
 }
 
-US_TO_MAPUNITS: typing.Dict[UnitSystem, str] = {
+US_TO_MAPUNITS: dict[UnitSystem, str] = {
     UnitSystem.FIELD: "FEET",
     UnitSystem.METRIC: "METRES",
     UnitSystem.LAB: "CM",
@@ -103,7 +103,7 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     return deck_file.unit_system
 
 
-def _build_map_axes(deck_file: DeckFile) -> typing.Optional[MapAxes]:
+def _build_map_axes(deck_file: DeckFile) -> MapAxes | None:
     """
     Construct a `MapAxes` from parsed `MAPAXES` / `MAPUNITS` keyword dicts.
 
@@ -137,9 +137,9 @@ def _build_nnc_arrays(
     nx: Integer,
     ny: Integer,
     nz: Integer,
-) -> typing.Tuple[
-    typing.Optional[IntArray[TwoDimensions]],
-    typing.Optional[NumberArray[OneDimension]],
+) -> tuple[
+    IntArray[TwoDimensions] | None,
+    NumberArray[OneDimension] | None,
 ]:
     """
     Convert parsed `NNC` keyword records to flat cell-index arrays.
@@ -157,8 +157,8 @@ def _build_nnc_arrays(
     if not nnc_records:
         return None, None
 
-    pairs: typing.List[typing.Tuple[int, int]] = []
-    transmissibilities: typing.List[float] = []
+    pairs: list[tuple[int, int]] = []
+    transmissibilities: list[float] = []
 
     for idx, record in enumerate(nnc_records):
         i1, j1, k1 = record["i1"], record["j1"], record["k1"]
@@ -187,7 +187,7 @@ def _build_nnc_arrays(
     )
 
 
-def _build_fault_records(deck_file: DeckFile) -> typing.List[FaultRecord]:
+def _build_fault_records(deck_file: DeckFile) -> list[FaultRecord]:
     """
     Convert parsed `FAULTS` keyword records to `FaultRecord` objects.
 
@@ -213,7 +213,7 @@ def _build_fault_records(deck_file: DeckFile) -> typing.List[FaultRecord]:
     ]
 
 
-def _build_multflt(deck_file: DeckFile) -> typing.Optional[typing.Dict[str, Number]]:
+def _build_multflt(deck_file: DeckFile) -> dict[str, Number] | None:
     """
     Convert parsed `MULTFLT` records to a `{name: multiplier}` dict.
 
@@ -235,7 +235,7 @@ def _resolve_vector_spacing(
     nz: Integer,
     ny: Integer,
     nx: Integer,
-) -> typing.Optional[npt.NDArray[np.float64]]:
+) -> npt.NDArray[np.float64] | None:
     """
     Try to obtain a 1-D spacing vector for one axis.
 
@@ -285,11 +285,11 @@ def _resolve_vector_spacing(
 
 
 def load_grdecl(
-    source: typing.Union[_TextOrPath, DeckFile],
+    source: _TextOrPath | DeckFile,
     *,
     encoding: str = "ascii",
-    unit_system: typing.Optional[UnitSystem] = None,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    unit_system: UnitSystem | None = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
 ) -> Grid:
     """
     Load a GRDECL corner-point (or Cartesian) grid from a `DeckFile`, file path, raw
@@ -342,11 +342,11 @@ def load_grdecl(
 
 def dump_grdecl(
     grid: Grid,
-    destination: typing.Union[_PathOrStr, None] = None,
+    destination: _PathOrStr | None = None,
     *,
-    actnum: typing.Optional[ActNumArray] = None,
+    actnum: ActNumArray | None = None,
     encoding: str = "ascii",
-) -> typing.Optional[str]:
+) -> str | None:
     """
     Serialise a `Grid` to GRDECL text format.
 
@@ -390,7 +390,7 @@ def dump_grdecl(
 
 def assemble_grid(
     deck_file: DeckFile,
-    metadata: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+    metadata: typing.Mapping[str, typing.Any] | None = None,
 ) -> Grid:
     """
     Assemble a `bores.grids.base.Grid` from a parsed `bores.deck.file`.
@@ -415,7 +415,7 @@ def assemble_grid(
     if pinch is None and deck_file.has("PINCHOUT"):
         pinch = 1e-6
 
-    meta: typing.Dict[str, typing.Any] = dict(metadata or {})
+    meta: dict[str, typing.Any] = dict(metadata or {})
     meta.update(
         map_axes=map_axes,
         pinch=pinch,
@@ -452,7 +452,7 @@ def assemble_corner_point(
     ny: Integer,
     nz: Integer,
     unit_system: UnitSystem,
-    meta: typing.Dict[str, typing.Any],
+    meta: dict[str, typing.Any],
 ) -> Grid:
     """
     Build a corner-point `bores.grids.base.Grid` from a parsed deck.
@@ -513,7 +513,7 @@ def assemble_cartesian(
     ny: Integer,
     nz: Integer,
     unit_system: UnitSystem,
-    meta: typing.Dict[str, typing.Any],
+    meta: dict[str, typing.Any],
 ) -> Grid:
     """
     Build a Cartesian `bores.grids.base.Grid` from `TOPS` /
@@ -610,9 +610,7 @@ def assemble_cartesian(
 GRDECL_SOURCES = frozenset({"grdecl_corner_point", "grdecl_cartesian"})
 
 
-def build_grdecl_text(
-    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
-) -> str:
+def build_grdecl_text(grid: Grid, *, actnum: ActNumArray | None = None) -> str:
     meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
     source_format: str = meta.get("source_format", "")
     if source_format not in GRDECL_SOURCES:
@@ -626,16 +624,14 @@ def build_grdecl_text(
     return build_grdecl_corner_point_text(grid, actnum=actnum)
 
 
-def _emit_specgrid(
-    lines: typing.List[str], nx: Integer, ny: Integer, nz: Integer
-) -> None:
+def _emit_specgrid(lines: list[str], nx: Integer, ny: Integer, nz: Integer) -> None:
     """Append a `SPECGRID` block."""
     lines.append("SPECGRID")
     lines.append(f"  {nx}  {ny}  {nz}  1  F /")
     lines.append("")
 
 
-def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
+def _emit_gridunit(lines: list[str], unit_system: UnitSystem) -> None:
     """Append a `GRIDUNIT` block."""
     unit_str = US_TO_GRIDUNIT.get(unit_system, "FEET")
     lines.append("GRIDUNIT")
@@ -643,7 +639,7 @@ def _emit_gridunit(lines: typing.List[str], unit_system: UnitSystem) -> None:
     lines.append("")
 
 
-def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
+def _emit_mapaxes(lines: list[str], map_axes: MapAxes) -> None:
     """Append `MAPUNITS` and `MAPAXES` blocks."""
     # Eclipse order for MAPAXES: Y-axis point, origin, X-axis point
     my = map_axes.map_y_axis_point
@@ -657,15 +653,13 @@ def _emit_mapaxes(lines: typing.List[str], map_axes: MapAxes) -> None:
 
     lines.append("MAPAXES")
     lines.append(
-        f"  {my[0]:.6f}  {my[1]:.6f}"
-        f"  {o[0]:.6f}  {o[1]:.6f}"
-        f"  {mx[0]:.6f}  {mx[1]:.6f}  /"
+        f"  {my[0]:.6f}  {my[1]:.6f}  {o[0]:.6f}  {o[1]:.6f}  {mx[0]:.6f}  {mx[1]:.6f}  /"
     )
     lines.append("")
 
 
 def _emit_actnum(
-    lines: typing.List[str],
+    lines: list[str],
     actnum: ActNumArray,
     n_cells: int,
     nx: Integer,
@@ -688,7 +682,7 @@ def _emit_actnum(
 
 
 def _emit_mult_array(
-    lines: typing.List[str],
+    lines: list[str],
     keyword: str,
     arr: NumberArray[OneDimension],
     nx: Integer,
@@ -699,8 +693,7 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np
-        .asarray(arr, dtype=np.float64, copy=False)
+        np.asarray(arr, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -712,7 +705,7 @@ def _emit_mult_array(
 
 
 def _emit_mult_arrays(
-    lines: typing.List[str],
+    lines: list[str],
     grid: Grid,
     nx: Integer,
     ny: Integer,
@@ -732,7 +725,7 @@ def _emit_mult_arrays(
             _emit_mult_array(lines, kw, arr, nx, ny, nz)
 
 
-def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> None:
+def _emit_faults(lines: list[str], grid: Grid, nx: Integer, ny: Integer) -> None:
     """
     Append a `FAULTS` block to `lines` covering all named faults on the grid.
 
@@ -770,7 +763,7 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     if not has_face_faults and not has_nnc_faults:
         return
 
-    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+    def _flat_to_ijk(flat: int) -> tuple[int, int, int]:
         i = flat % nx
         j = (flat // nx) % ny
         k = flat // (nx * ny)
@@ -856,7 +849,7 @@ def _emit_faults(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) 
     lines.append("")
 
 
-def _emit_multflt(lines: typing.List[str], grid: Grid) -> None:
+def _emit_multflt(lines: list[str], grid: Grid) -> None:
     """Append a `MULTFLT` block from `grid.fault_transmissibility_multipliers`."""
     if not grid.fault_transmissibility_multipliers:
         return
@@ -868,7 +861,7 @@ def _emit_multflt(lines: typing.List[str], grid: Grid) -> None:
     lines.append("")
 
 
-def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> None:
+def _emit_nnc(lines: list[str], grid: Grid, nx: Integer, ny: Integer) -> None:
     """
     Emit a `NNC` block containing only explicitly user-defined NNCs
     (`ConnectionType.USER_NNC`).
@@ -886,13 +879,13 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> 
         grid.nnc_transmissibilities
     ) == len(grid.nnc_cell_indices)
 
-    def _flat_to_ijk(flat: int) -> typing.Tuple[int, int, int]:
+    def _flat_to_ijk(flat: int) -> tuple[int, int, int]:
         i = flat % nx
         j = (flat // nx) % ny
         k = flat // (nx * ny)
         return i + 1, j + 1, k + 1
 
-    user_nnc_lines: typing.List[str] = []
+    user_nnc_lines: list[str] = []
     for idx, (c1, c2) in enumerate(grid.nnc_cell_indices):
         if int(grid.nnc_connection_types[idx]) != user_type:
             continue
@@ -902,15 +895,11 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> 
         if has_transmissibility:
             transmissibility = grid.nnc_transmissibilities[idx]  # type: ignore
             transmissibility_str = (
-                f"{transmissibility:.6e}"
-                if not np.isnan(transmissibility)
-                else "0.0 -- T unknown"
+                f"{transmissibility:.6e}" if not np.isnan(transmissibility) else "0.0 -- T unknown"
             )
         else:
             transmissibility_str = "0.0 -- T unknown"
-        user_nnc_lines.append(
-            f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {transmissibility_str}  /"
-        )
+        user_nnc_lines.append(f"  {i1}  {j1}  {k1}  {i2}  {j2}  {k2}  {transmissibility_str}  /")
 
     if not user_nnc_lines:
         return
@@ -923,7 +912,7 @@ def _emit_nnc(lines: typing.List[str], grid: Grid, nx: Integer, ny: Integer) -> 
 
 
 def _emit_pinch(
-    lines: typing.List[str],
+    lines: list[str],
     meta: typing.Mapping[str, typing.Any],
 ) -> None:
     """
@@ -949,7 +938,7 @@ def _compute_cell_bounds_from_vertices(
     face_vertex_offsets: IntArray[OneDimension],
     face_vertex_indices: IntArray[OneDimension],
     n_cells: int,
-) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
+) -> tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
     """
     Per-cell (min, max) over each cell's own vertices, walked via
     cell -> face -> vertex CSR connectivity.
@@ -1011,7 +1000,7 @@ def _compute_cell_bounds_from_vertices(
 
 def _compute_local_cartesian_cell_bounds(
     grid: Grid, map_axes: MapAxes
-) -> typing.Tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
+) -> tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
     """
     Recompute each cell's axis-aligned bounding box in local (pre-`MAPAXES`)
     space, from the grid's (map-space) vertex positions.
@@ -1049,9 +1038,7 @@ def _compute_local_cartesian_cell_bounds(
     )
 
 
-def build_grdecl_cartesian_text(
-    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
-) -> str:
+def build_grdecl_cartesian_text(grid: Grid, *, actnum: ActNumArray | None = None) -> str:
     """
     Build a GRDECL text representation for a Cartesian grid.
 
@@ -1085,20 +1072,18 @@ def build_grdecl_cartesian_text(
             f"`grid.n_cells={grid.n_cells}`."
         )
 
-    lines: typing.List[str] = []
+    lines: list[str] = []
 
     _emit_specgrid(lines, nx, ny, nz)
     _emit_gridunit(lines, grid.unit_system)
 
-    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    map_axes: MapAxes | None = meta.get("map_axes")
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
         # grid.cell_min_xyz/cell_max_xyz are in map space; TOPS/DXV/DYV/DZV
         # need local-space bounds so they stay consistent with the `MAPAXES`
         # card just emitted above (see `_compute_local_cartesian_cell_bounds`).
-        cell_min_xyz, cell_max_xyz = _compute_local_cartesian_cell_bounds(
-            grid, map_axes
-        )
+        cell_min_xyz, cell_max_xyz = _compute_local_cartesian_cell_bounds(grid, map_axes)
     else:
         cell_min_xyz, cell_max_xyz = grid.cell_min_xyz, grid.cell_max_xyz
 
@@ -1150,7 +1135,7 @@ def build_grdecl_cartesian_text(
 
 
 def build_grdecl_corner_point_text(
-    grid: Grid, *, actnum: typing.Optional[ActNumArray] = None
+    grid: Grid, *, actnum: ActNumArray | None = None
 ) -> str:
     """
     Build a GRDECL text representation for a corner-point grid.
@@ -1169,12 +1154,12 @@ def build_grdecl_corner_point_text(
     coord, zcorn, nx, ny, nz = rederive_corner_point_arrays(grid)
     meta: typing.Mapping[str, typing.Any] = getattr(grid, "metadata", {}) or {}
 
-    lines: typing.List[str] = []
+    lines: list[str] = []
 
     _emit_specgrid(lines, nx, ny, nz)
     _emit_gridunit(lines, grid.unit_system)
 
-    map_axes: typing.Optional[MapAxes] = meta.get("map_axes")
+    map_axes: MapAxes | None = meta.get("map_axes")
     if map_axes is not None:
         _emit_mapaxes(lines, map_axes)
 

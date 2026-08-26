@@ -44,9 +44,7 @@ def compute_fluid_density(
     temperature_array = fahrenheit_to_kelvin(temperature)  # type: ignore[arg-type]
     pressure_array = np.multiply(pressure, c.PSI_TO_PASCAL, dtype=dtype)
 
-    def _compute_density(
-        pressure_in_pascals: Number, temperature_in_kelvin: Number, fluid: str
-    ):
+    def _compute_density(pressure_in_pascals: Number, temperature_in_kelvin: Number, fluid: str):
         density: Number = PropsSI(
             "D",
             "P",
@@ -163,9 +161,7 @@ def compute_fluid_compressibility(
     temperature_array = fahrenheit_to_kelvin(temperature)  # type: ignore[arg-type]
     pressure_array = np.multiply(pressure, c.PSI_TO_PASCAL, dtype=dtype)
 
-    def _compute_compressibility(
-        pressure_in_pascals, temperature_in_kelvin, fluid: str
-    ):
+    def _compute_compressibility(pressure_in_pascals, temperature_in_kelvin, fluid: str):
         return (
             PropsSI(
                 "ISOTHERMAL_COMPRESSIBILITY",
@@ -194,8 +190,8 @@ def compute_total_fluid_compressibility(
     oil_saturation: NumberArray[NDimension],
     water_compressibility: NumberArray[NDimension],
     oil_compressibility: NumberArray[NDimension],
-    gas_saturation: typing.Optional[NumberArray[NDimension]] = None,
-    gas_compressibility: typing.Optional[NumberArray[NDimension]] = None,
+    gas_saturation: NumberArray[NDimension] | None = None,
+    gas_compressibility: NumberArray[NDimension] | None = None,
 ) -> NumberArray[NDimension]:
     """
     Calculates the total fluid compressibility as a saturation-weighted average of
@@ -273,9 +269,7 @@ def compute_hydrocarbon_in_place(
     :return: Free hydrocarbon/water in place (OIP/WIP in STB, and GIP in SCF).
     """
     if hydrocarbon_type not in {"oil", "gas", "water"}:
-        raise ValidationError(
-            "Hydrocarbon type must be either 'oil', 'gas', or 'water'."
-        )
+        raise ValidationError("Hydrocarbon type must be either 'oil', 'gas', or 'water'.")
     if min_(area) <= 0 or min_(thickness) <= 0:
         raise ValidationError("Area and thickness must be positive values.")
     if min_(porosity) < 0 or max_(porosity) > 1:

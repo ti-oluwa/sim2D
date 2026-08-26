@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-_BOUNDARY_FUNCTIONS: typing.Dict[str, typing.Callable] = {}
+_BOUNDARY_FUNCTIONS: dict[str, typing.Callable] = {}
 _boundary_function_lock = threading.Lock()
 
 P = typing.ParamSpec("P")
@@ -49,20 +49,17 @@ def boundary_function(func: typing.Callable[P, R]) -> typing.Callable[P, R]: ...
 def boundary_function(
     func: None = None,
     *,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
 ) -> typing.Callable[[typing.Callable[P, R]], typing.Callable[P, R]]: ...
 
 
 def boundary_function(
-    func: typing.Optional[typing.Callable[P, R]] = None,
+    func: typing.Callable[P, R] | None = None,
     *,
-    name: typing.Optional[str] = None,
+    name: str | None = None,
     override: bool = False,
-) -> typing.Union[
-    typing.Callable[P, R],
-    typing.Callable[[typing.Callable[P, R]], typing.Callable[P, R]],
-]:
+) -> typing.Callable[P, R] | typing.Callable[[typing.Callable[P, R]], typing.Callable[P, R]]:
     """
     Register a callable as a named boundary function for serialisation.
 
@@ -77,6 +74,7 @@ def boundary_function(
     @boundary_function
     def constant_flux(face_positions, state, reservoir, time, *, value):
         return np.full(len(face_positions), value)
+
 
     @boundary_function(name="my_flux", override=True)
     def my_flux(face_positions, state, reservoir, time, *, rate):
@@ -138,13 +136,13 @@ def get_boundary_function(name: str) -> typing.Callable:
     return fn
 
 
-def list_boundary_functions() -> typing.List[str]:
+def list_boundary_functions() -> list[str]:
     """Return the names of all currently registered boundary functions."""
     with _boundary_function_lock:
         return sorted(_BOUNDARY_FUNCTIONS.keys())
 
 
-def _serialise_boundary_func(func: typing.Callable) -> typing.Dict[str, typing.Any]:
+def _serialise_boundary_func(func: typing.Callable) -> dict[str, typing.Any]:
     """
     Serialise a boundary function to a JSON-compatible dict.
 
@@ -194,16 +192,12 @@ def _deserialise_boundary_func(
     func_type = data.get("type")
     if func_type == "registered":
         if "name" not in data:
-            raise DeserializationError(
-                "Missing 'name' key in registered boundary function data."
-            )
+            raise DeserializationError("Missing 'name' key in registered boundary function data.")
         return get_boundary_function(data["name"])
 
     if func_type == "partial":
         if "func" not in data:
-            raise DeserializationError(
-                "Missing 'func' key in partial boundary function data."
-            )
+            raise DeserializationError("Missing 'func' key in partial boundary function data.")
         base = _deserialise_boundary_func(data["func"])
         return functools.partial(
             base,
@@ -226,7 +220,7 @@ def _deserialise_boundary_func(
 
 class ParameterizedBoundaryFunction(
     Serializable,
-    fields={"function_name": str, "parameters": typing.Dict[str, typing.Any]},
+    fields={"function_name": str, "parameters": dict[str, typing.Any]},
 ):
     """
     A fully serialisable alternative to `functools.partial` for boundary functions.
@@ -242,17 +236,15 @@ class ParameterizedBoundaryFunction(
     ```python
     @boundary_function
     def depth_weighted_flux(
-        face_positions, state, reservoir, time,
-        *, rate_per_unit_depth, datum_depth
+        face_positions, state, reservoir, time, *, rate_per_unit_depth, datum_depth
     ):
         grid = reservoir.grid
-        owner_cells = grid.face_cell_indices[
-            grid.boundary_face_indices[face_positions], 0
-        ]
+        owner_cells = grid.face_cell_indices[grid.boundary_face_indices[face_positions], 0]
         depths = grid.cell_center_depths[owner_cells]
         weights = np.abs(depths - datum_depth)
         weights /= weights.sum() or 1.0
         return weights * rate_per_unit_depth
+
 
     influx = ParameterizedBoundaryFunction(
         function_name="depth_weighted_flux",
@@ -268,15 +260,13 @@ class ParameterizedBoundaryFunction(
     def __init__(
         self,
         function_name: str,
-        parameters: typing.Dict[str, typing.Any],
+        parameters: dict[str, typing.Any],
     ) -> None:
         self.function_name = function_name
         self.parameters = parameters
         self._func = get_boundary_function(function_name)
 
-    def __call__(
-        self, *args: typing.Any, **kwargs: typing.Any
-    ) -> NumberArray[OneDimension]:
+    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> NumberArray[OneDimension]:
         """
         Invoke the underlying function with the stored parameters.
 
@@ -290,7 +280,7 @@ class ParameterizedBoundaryFunction(
         """
         return self._func(*args, **{**self.parameters, **kwargs})
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
+    def __dump__(self) -> dict[str, typing.Any]:
         return {"function_name": self.function_name, "parameters": self.parameters}
 
     @classmethod
@@ -475,13 +465,13 @@ class BoundaryCondition(StoreSerializable):
         target: UnitSystem,
         /,
         *,
-        table: typing.Optional[UnitConversionTable] = None,
+        table: UnitConversionTable | None = None,
     ) -> Self:
         raise NotImplementedError
 
 
 # Registry of concrete boundary condition classes
-_BOUNDARY_CONDITIONS: typing.Dict[str, typing.Type[BoundaryCondition]] = {}
+_BOUNDARY_CONDITIONS: dict[str, type[BoundaryCondition]] = {}
 boundary_condition = make_serializable_type_registrar(
     base_cls=BoundaryCondition,
     registry=_BOUNDARY_CONDITIONS,

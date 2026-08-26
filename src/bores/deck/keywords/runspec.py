@@ -6,7 +6,6 @@ It declares the run's meta-data: grid dimensions, active phases, unit system,
 table-sizing hints, well/group dimensioning, and the simulation start date.
 """
 
-import typing
 
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck
@@ -145,11 +144,11 @@ class TitleKeyword(Keyword[str]):
     def parse(
         self,
         deck: Deck,
-        dims: typing.Optional[GridDimensions],
+        dims: GridDimensions | None,
         *,
-        operations: typing.Optional[typing.List[Operation]] = None,
-        schedule_times: typing.Optional[typing.Dict[int, float]] = None,
-    ) -> typing.Optional[str]:
+        operations: list[Operation] | None = None,
+        schedule_times: dict[int, float] | None = None,
+    ) -> str | None:
         record = deck.first_record_for(self.name)
         if record is None:
             return None

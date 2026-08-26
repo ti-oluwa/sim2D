@@ -4,7 +4,6 @@ import attrs
 import numba  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import Self
 
 from bores.errors import ValidationError
 from bores.precision import get_dtype
@@ -64,7 +63,7 @@ uniform_grid = build_uniform_grid  # Alias for convenience
 def build_layered_grid(
     grid_shape: NDimension,
     layer_values: ArrayLike[float],
-    orientation: typing.Union[Orientation, typing.Literal["x", "y", "z"]],
+    orientation: Orientation | typing.Literal["x", "y", "z"],
 ) -> NDimensionalGrid[NDimension]:
     """
     Constructs a N-Dimensional layered grid with specified layer values.
@@ -82,9 +81,7 @@ def build_layered_grid(
     if len(layer_values) < 1:
         raise ValidationError("At least one layer value must be provided.")
 
-    orientation = (
-        Orientation(orientation) if isinstance(orientation, str) else orientation
-    )
+    orientation = Orientation(orientation) if isinstance(orientation, str) else orientation
     dtype = get_dtype()
     layered_grid = build_uniform_grid(grid_shape=grid_shape, value=0.0)
     if orientation == Orientation.X:  # Layering along x-axis
@@ -109,9 +106,7 @@ def build_layered_grid(
 
     elif orientation == Orientation.Z:  # Layering along z-axis
         if len(grid_shape) != 3:
-            raise ValidationError(
-                "Grid dimension must be N-Dimensional for z-direction layering."
-            )
+            raise ValidationError("Grid dimension must be N-Dimensional for z-direction layering.")
 
         if len(layer_values) != grid_shape[2]:
             raise ValidationError(
@@ -122,9 +117,7 @@ def build_layered_grid(
             layered_grid[:, :, k] = layer_value
         return layered_grid.astype(dtype, copy=False)
 
-    raise ValidationError(
-        "Invalid layering direction. Must be one of 'x', 'y', or 'z'."
-    )
+    raise ValidationError("Invalid layering direction. Must be one of 'x', 'y', or 'z'.")
 
 
 layered_grid = build_layered_grid  # Alias for convenience
@@ -322,9 +315,9 @@ depth_grid = build_depth_grid  # Alias for convenience
 @numba.njit(parallel=True, cache=True)
 def _apply_dip_upward(
     dipped_elevation_grid: NDimensionalGrid[NDimension],
-    grid_dimensions: typing.Tuple[int, int],
-    cell_dimensions: typing.Tuple[float, float],
-    dip_components: typing.Tuple[float, float, float],
+    grid_dimensions: tuple[int, int],
+    cell_dimensions: tuple[float, float],
+    dip_components: tuple[float, float, float],
 ) -> NDimensionalGrid[NDimension]:
     """
     Apply structural dip for upward elevation convention (parallel).
@@ -345,9 +338,7 @@ def _apply_dip_upward(
         for j in range(ny):
             x_distance = i * cell_size_x
             y_distance = j * cell_size_y
-            distance_along_dip = (x_distance * dx_component) + (
-                y_distance * dy_component
-            )
+            distance_along_dip = (x_distance * dx_component) + (y_distance * dy_component)
             dip_offset = distance_along_dip * tan_dip_angle
             # Upward: moving in dip direction decreases elevation
             dipped_elevation_grid[i, j, :] -= dip_offset
@@ -358,9 +349,9 @@ def _apply_dip_upward(
 @numba.njit(parallel=True, cache=True)
 def _apply_dip_downward(
     dipped_elevation_grid: NDimensionalGrid[NDimension],
-    grid_dimensions: typing.Tuple[int, int],
-    cell_dimensions: typing.Tuple[float, float],
-    dip_components: typing.Tuple[float, float, float],
+    grid_dimensions: tuple[int, int],
+    cell_dimensions: tuple[float, float],
+    dip_components: tuple[float, float, float],
 ) -> NDimensionalGrid[NDimension]:
     """
     Apply structural dip for downward depth convention (parallel).
@@ -381,9 +372,7 @@ def _apply_dip_downward(
         for j in range(ny):
             x_distance = i * cell_size_x
             y_distance = j * cell_size_y
-            distance_along_dip = (x_distance * dx_component) + (
-                y_distance * dy_component
-            )
+            distance_along_dip = (x_distance * dx_component) + (y_distance * dy_component)
             dip_offset = distance_along_dip * tan_dip_angle
             # Downward: moving in dip direction increases depth
             dipped_elevation_grid[i, j, :] += dip_offset
@@ -393,7 +382,7 @@ def _apply_dip_downward(
 
 def apply_structural_dip(
     elevation_grid: NDimensionalGrid[NDimension],
-    cell_dimension: typing.Tuple[float, float],
+    cell_dimension: tuple[float, float],
     elevation_direction: typing.Literal["downward", "upward"],
     dip_angle: float,
     dip_azimuth: float,

@@ -42,9 +42,7 @@ def make_saturation_field(
     else:
         raise ValueError(f"`spacing` must be 'cosine' or 'linspace', got '{spacing}'")
 
-    return (min_saturation + unit * (max_saturation - min_saturation)).astype(
-        dtype, copy=False
-    )
+    return (min_saturation + unit * (max_saturation - min_saturation)).astype(dtype, copy=False)
 
 
 def make_min_span_saturation_field(
@@ -94,7 +92,7 @@ def pchip_resample(
     number_of_output_points: int,
     spacing: Spacing,
     dtype: npt.DTypeLike = np.float64,
-) -> typing.Tuple[npt.NDArray, npt.NDArray]:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Fit a PCHIP interpolant through (`source_saturations`, `source_values`),
     resample at `number_of_output_points` and return the resampled values.
@@ -187,7 +185,7 @@ def build_pchip_interpolant(
     spacing: Spacing,
     minimum_scale_span: Number = 1e-6,
     dtype: npt.DTypeLike = np.float64,
-) -> typing.Tuple[PchipInterpolator, PchipInterpolator]:
+) -> tuple[PchipInterpolator, PchipInterpolator]:
     """
     Build a PCHIP interpolant (and its derivative) for a two-phase kr or Pc
     curve, optionally after expanding the knot field.
@@ -283,9 +281,7 @@ def _compute_killough_scanning_curve_scalar(
     else:
         raw_interpolation_factor = 0.0
 
-    interpolation_factor = min(
-        max(raw_interpolation_factor**scanning_exponent, 0.0), 1.0
-    )
+    interpolation_factor = min(max(raw_interpolation_factor**scanning_exponent, 0.0), 1.0)
     scanning_curve_value = (
         drainage_curve_value
         + (imbibition_curve_value - drainage_curve_value) * interpolation_factor
@@ -357,40 +353,27 @@ def _compute_killough_scanning_curve_array(
     result = np.empty_like(saturation_array)
     for flat_idx in numba.prange(saturation_array.size):  # type: ignore
         saturation_span = (
-            maximum_saturation_array.flat[flat_idx]
-            - reversal_saturation_array.flat[flat_idx]
+            maximum_saturation_array.flat[flat_idx] - reversal_saturation_array.flat[flat_idx]
         )
         if abs(saturation_span) > numerical_epsilon:
             raw_interpolation_factor = (
-                saturation_array.flat[flat_idx]
-                - reversal_saturation_array.flat[flat_idx]
+                saturation_array.flat[flat_idx] - reversal_saturation_array.flat[flat_idx]
             ) / saturation_span
         else:
             raw_interpolation_factor = 0.0
-        interpolation_factor = min(
-            max(raw_interpolation_factor**scanning_exponent, 0.0), 1.0
-        )
+        interpolation_factor = min(max(raw_interpolation_factor**scanning_exponent, 0.0), 1.0)
         scanning_curve_value = (
             drainage_value_array.flat[flat_idx]
-            + (
-                imbibition_value_array.flat[flat_idx]
-                - drainage_value_array.flat[flat_idx]
-            )
+            + (imbibition_value_array.flat[flat_idx] - drainage_value_array.flat[flat_idx])
             * interpolation_factor
         )
 
         on_primary_drainage = (imbibition_flag_array.flat[flat_idx] < 0.5) and (
-            abs(
-                saturation_array.flat[flat_idx]
-                - maximum_saturation_array.flat[flat_idx]
-            )
+            abs(saturation_array.flat[flat_idx] - maximum_saturation_array.flat[flat_idx])
             < numerical_epsilon
         )
         on_primary_imbibition = (imbibition_flag_array.flat[flat_idx] >= 0.5) and (
-            abs(
-                saturation_array.flat[flat_idx]
-                - reversal_saturation_array.flat[flat_idx]
-            )
+            abs(saturation_array.flat[flat_idx] - reversal_saturation_array.flat[flat_idx])
             < numerical_epsilon
         )
 
@@ -518,9 +501,7 @@ def _compute_killough_scanning_curve_derivative_scalar(
     interpolation_factor = clamped_ratio**scanning_exponent
 
     in_active_range = (
-        (raw_ratio > 0.0)
-        and (raw_ratio < 1.0)
-        and (abs(saturation_span) > numerical_epsilon)
+        (raw_ratio > 0.0) and (raw_ratio < 1.0) and (abs(saturation_span) > numerical_epsilon)
     )
     if in_active_range:
         if abs(scanning_exponent - 1.0) < 1e-10:
@@ -528,19 +509,15 @@ def _compute_killough_scanning_curve_derivative_scalar(
         else:
             safe_ratio = clamped_ratio if clamped_ratio > 0.0 else 1e-30
             interpolation_factor_derivative = (
-                scanning_exponent
-                * (safe_ratio ** (scanning_exponent - 1.0))
-                / saturation_span
+                scanning_exponent * (safe_ratio ** (scanning_exponent - 1.0)) / saturation_span
             )
     else:
         interpolation_factor_derivative = 0.0
 
     return (
         drainage_curve_derivative
-        + (imbibition_curve_derivative - drainage_curve_derivative)
-        * interpolation_factor
-        + (imbibition_curve_value - drainage_curve_value)
-        * interpolation_factor_derivative
+        + (imbibition_curve_derivative - drainage_curve_derivative) * interpolation_factor
+        + (imbibition_curve_value - drainage_curve_value) * interpolation_factor_derivative
     )
 
 

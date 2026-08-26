@@ -62,8 +62,8 @@ class StepMetricsDict(TypedDict):
 
     step_number: int
     step_size: float
-    cfl: typing.Optional[float]
-    newton_iterations: typing.Optional[int]
+    cfl: float | None
+    newton_iterations: int | None
     success: bool
 
 
@@ -76,18 +76,18 @@ class TimerState(TypedDict):
     simulation_time: float
     maximum_cfl: float
     cfl_safety_margin: float
-    ramp_up_factor: typing.Optional[float]
+    ramp_up_factor: float | None
     backoff_factor: float
     aggressive_backoff_factor: float
-    maximum_steps: typing.Optional[int]
-    maximum_absolute_oil_mbe: typing.Optional[float]
-    maximum_absolute_water_mbe: typing.Optional[float]
-    maximum_absolute_gas_mbe: typing.Optional[float]
-    maximum_total_absolute_mbe: typing.Optional[float]
-    maximum_relative_oil_mbe: typing.Optional[float]
-    maximum_relative_water_mbe: typing.Optional[float]
-    maximum_relative_gas_mbe: typing.Optional[float]
-    maximum_total_relative_mbe: typing.Optional[float]
+    maximum_steps: int | None
+    maximum_absolute_oil_mbe: float | None
+    maximum_absolute_water_mbe: float | None
+    maximum_absolute_gas_mbe: float | None
+    maximum_total_absolute_mbe: float | None
+    maximum_relative_oil_mbe: float | None
+    maximum_relative_water_mbe: float | None
+    maximum_relative_gas_mbe: float | None
+    maximum_total_relative_mbe: float | None
     use_mbe_for_step_size: bool
     maximum_rejections: int
     maximum_growth_per_step: float
@@ -104,8 +104,8 @@ class TimerState(TypedDict):
     last_step_failed: bool
     rejection_count: int
     steps_since_last_failure: int
-    recent_metrics: typing.List[StepMetricsDict]
-    failed_step_sizes: typing.List[float]
+    recent_metrics: list[StepMetricsDict]
+    failed_step_sizes: list[float]
     last_successful_step_size: float
 
 
@@ -115,14 +115,14 @@ class StepMetrics:
 
     step_number: int
     step_size: float
-    cfl: typing.Optional[float] = None
-    newton_iterations: typing.Optional[int] = None
+    cfl: float | None = None
+    newton_iterations: int | None = None
     success: bool = True
 
 
 def _utilization(
-    actual: typing.Optional[float], limit: typing.Optional[float]
-) -> typing.Optional[float]:
+    actual: float | None, limit: float | None
+) -> float | None:
     """Return actual/limit, or None if either is None/zero."""
     if actual is None or limit is None or limit <= 0.0:
         return None
@@ -145,7 +145,7 @@ class Timer(StoreSerializable):
     """Total simulation time in seconds."""
     maximum_cfl: float = 0.9
     """Default CFL limit (max CFL number) for time step adjustments."""
-    ramp_up_factor: typing.Optional[float] = None
+    ramp_up_factor: float | None = None
     """Factor by which to ramp up time step size on successful steps."""
     backoff_factor: float = 0.5
     """
@@ -156,7 +156,7 @@ class Timer(StoreSerializable):
     """
     aggressive_backoff_factor: float = 0.25
     """Factor by which to aggressively reduce time step size on failed steps."""
-    maximum_steps: typing.Optional[int] = None
+    maximum_steps: int | None = None
     """Maximum number of time steps to run for."""
 
     # Adaptive parameters
@@ -182,21 +182,21 @@ class Timer(StoreSerializable):
     """Number of recent failures to remember for adaptive behavior."""
 
     # MBE-based step control
-    maximum_absolute_oil_mbe: typing.Optional[float] = None
+    maximum_absolute_oil_mbe: float | None = None
     """Absolute oil MBE threshold (res ft³). Reject step if exceeded."""
-    maximum_absolute_water_mbe: typing.Optional[float] = None
+    maximum_absolute_water_mbe: float | None = None
     """Absolute water MBE threshold (res ft³). Reject step if exceeded."""
-    maximum_absolute_gas_mbe: typing.Optional[float] = None
+    maximum_absolute_gas_mbe: float | None = None
     """Absolute gas MBE threshold (res ft³). Reject step if exceeded."""
-    maximum_total_absolute_mbe: typing.Optional[float] = None
+    maximum_total_absolute_mbe: float | None = None
     """Total absolute MBE threshold (res ft³). Reject step if exceeded."""
-    maximum_relative_oil_mbe: typing.Optional[float] = None
+    maximum_relative_oil_mbe: float | None = None
     """Relative oil MBE threshold (fraction, e.g. 0.01 = 1%). Reject step if exceeded."""
-    maximum_relative_water_mbe: typing.Optional[float] = None
+    maximum_relative_water_mbe: float | None = None
     """Relative water MBE threshold (fraction). Reject step if exceeded."""
-    maximum_relative_gas_mbe: typing.Optional[float] = None
+    maximum_relative_gas_mbe: float | None = None
     """Relative gas MBE threshold (fraction). Reject step if exceeded."""
-    maximum_total_relative_mbe: typing.Optional[float] = None
+    maximum_total_relative_mbe: float | None = None
     """Total relative MBE threshold (fraction). Reject step if exceeded."""
     use_mbe_for_step_size: bool = False
     """
@@ -230,16 +230,16 @@ class Timer(StoreSerializable):
     """The step size used in the most recently *accepted* step."""
 
     # Performance tracking
-    recent_metrics: typing.Deque[StepMetrics] = attrs.field(init=False)
+    recent_metrics: deque[StepMetrics] = attrs.field(init=False)
     """Recent step performance metrics (bounded deque, newest at right)."""
-    failed_step_sizes: typing.Deque[float] = attrs.field(init=False)
+    failed_step_sizes: deque[float] = attrs.field(init=False)
     """Recent failed step sizes for failure-zone memory."""
 
     # Rolling window statistics stored as a fixed-size deque so the sliding
     # window is exact and never corrupted by approximation.
-    _cfl_window: typing.Deque[float] = attrs.field(init=False)
+    _cfl_window: deque[float] = attrs.field(init=False)
     """Sliding window of the last N successful CFL values (N = metrics_history_size)."""
-    _newton_window: typing.Deque[int] = attrs.field(init=False)
+    _newton_window: deque[int] = attrs.field(init=False)
     """Sliding window of the last N successful Newton iteration counts."""
 
     def __attrs_post_init__(self) -> None:
@@ -281,14 +281,14 @@ class Timer(StoreSerializable):
         return self.maximum_steps is not None and self.step >= self.maximum_steps
 
     @property
-    def _avg_cfl(self) -> typing.Optional[float]:
+    def _avg_cfl(self) -> float | None:
         """Average CFL over the recent window, or None if no data."""
         if not self._cfl_window:
             return None
         return sum(self._cfl_window) / len(self._cfl_window)
 
     @property
-    def _avg_newton(self) -> typing.Optional[float]:
+    def _avg_newton(self) -> float | None:
         """Average Newton iterations over the recent window, or None if no data."""
         if not self._newton_window:
             return None
@@ -341,15 +341,15 @@ class Timer(StoreSerializable):
 
     def _check_mbe_violations(
         self,
-        absolute_oil_mbe: typing.Optional[float] = None,
-        absolute_water_mbe: typing.Optional[float] = None,
-        absolute_gas_mbe: typing.Optional[float] = None,
-        total_absolute_mbe: typing.Optional[float] = None,
-        relative_oil_mbe: typing.Optional[float] = None,
-        relative_water_mbe: typing.Optional[float] = None,
-        relative_gas_mbe: typing.Optional[float] = None,
-        total_relative_mbe: typing.Optional[float] = None,
-    ) -> typing.Tuple[bool, typing.List[str]]:
+        absolute_oil_mbe: float | None = None,
+        absolute_water_mbe: float | None = None,
+        absolute_gas_mbe: float | None = None,
+        total_absolute_mbe: float | None = None,
+        relative_oil_mbe: float | None = None,
+        relative_water_mbe: float | None = None,
+        relative_gas_mbe: float | None = None,
+        total_relative_mbe: float | None = None,
+    ) -> tuple[bool, list[str]]:
         """
         Check if any MBE limits are violated.
 
@@ -410,21 +410,21 @@ class Timer(StoreSerializable):
         step_size: float,
         *,
         aggressive: bool = False,
-        maximum_cfl_encountered: typing.Optional[float] = None,
-        cfl_threshold: typing.Optional[float] = None,
-        newton_iterations: typing.Optional[int] = None,
-        maximum_saturation_change: typing.Optional[float] = None,
-        maximum_allowed_saturation_change: typing.Optional[float] = None,
-        maximum_pressure_change: typing.Optional[float] = None,
-        maximum_allowed_pressure_change: typing.Optional[float] = None,
-        absolute_oil_mbe: typing.Optional[float] = None,
-        absolute_water_mbe: typing.Optional[float] = None,
-        absolute_gas_mbe: typing.Optional[float] = None,
-        total_absolute_mbe: typing.Optional[float] = None,
-        relative_oil_mbe: typing.Optional[float] = None,
-        relative_water_mbe: typing.Optional[float] = None,
-        relative_gas_mbe: typing.Optional[float] = None,
-        total_relative_mbe: typing.Optional[float] = None,
+        maximum_cfl_encountered: float | None = None,
+        cfl_threshold: float | None = None,
+        newton_iterations: int | None = None,
+        maximum_saturation_change: float | None = None,
+        maximum_allowed_saturation_change: float | None = None,
+        maximum_pressure_change: float | None = None,
+        maximum_allowed_pressure_change: float | None = None,
+        absolute_oil_mbe: float | None = None,
+        absolute_water_mbe: float | None = None,
+        absolute_gas_mbe: float | None = None,
+        total_absolute_mbe: float | None = None,
+        relative_oil_mbe: float | None = None,
+        relative_water_mbe: float | None = None,
+        relative_gas_mbe: float | None = None,
+        total_relative_mbe: float | None = None,
     ) -> float:
         """
         Register a rejected time step and compute an intelligently adjusted step
@@ -473,9 +473,7 @@ class Timer(StoreSerializable):
             `maximum_rejections`.
         """
         if self.rejection_count >= self.maximum_rejections:
-            raise TimingError(
-                "Maximum number of consecutive time step rejections exceeded"
-            )
+            raise TimingError("Maximum number of consecutive time step rejections exceeded")
 
         rejection_threshold = int(0.7 * self.maximum_rejections)
         if rejection_threshold <= self.rejection_count < self.maximum_rejections:
@@ -584,28 +582,28 @@ class Timer(StoreSerializable):
     def _compute_backoff_factor(
         self,
         *,
-        maximum_cfl_encountered: typing.Optional[float] = None,
-        cfl_threshold: typing.Optional[float] = None,
-        newton_iterations: typing.Optional[int] = None,
-        maximum_saturation_change: typing.Optional[float] = None,
-        maximum_allowed_saturation_change: typing.Optional[float] = None,
-        maximum_pressure_change: typing.Optional[float] = None,
-        maximum_allowed_pressure_change: typing.Optional[float] = None,
-        absolute_oil_mbe: typing.Optional[float] = None,
-        absolute_water_mbe: typing.Optional[float] = None,
-        absolute_gas_mbe: typing.Optional[float] = None,
-        total_absolute_mbe: typing.Optional[float] = None,
-        relative_oil_mbe: typing.Optional[float] = None,
-        relative_water_mbe: typing.Optional[float] = None,
-        relative_gas_mbe: typing.Optional[float] = None,
-        total_relative_mbe: typing.Optional[float] = None,
+        maximum_cfl_encountered: float | None = None,
+        cfl_threshold: float | None = None,
+        newton_iterations: int | None = None,
+        maximum_saturation_change: float | None = None,
+        maximum_allowed_saturation_change: float | None = None,
+        maximum_pressure_change: float | None = None,
+        maximum_allowed_pressure_change: float | None = None,
+        absolute_oil_mbe: float | None = None,
+        absolute_water_mbe: float | None = None,
+        absolute_gas_mbe: float | None = None,
+        total_absolute_mbe: float | None = None,
+        relative_oil_mbe: float | None = None,
+        relative_water_mbe: float | None = None,
+        relative_gas_mbe: float | None = None,
+        total_relative_mbe: float | None = None,
         aggressive: bool = False,
     ) -> float:
         """
         Compute the most conservative (smallest) backoff factor from all
         failure signals.  Returns a value in (0, 1].
         """
-        factors: typing.List[float] = []
+        factors: list[float] = []
 
         # CFL
         cfl_limit = (
@@ -681,9 +679,7 @@ class Timer(StoreSerializable):
             if aggressive:
                 final = min(final, self.aggressive_backoff_factor)
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "Backoff factor: %.3f (from %d criteria)", final, len(factors)
-                )
+                logger.debug("Backoff factor: %.3f (from %d criteria)", final, len(factors))
             return final
 
         # Fallback when no diagnostic information is available
@@ -692,22 +688,22 @@ class Timer(StoreSerializable):
     def is_acceptable(
         self,
         *,
-        maximum_cfl_encountered: typing.Optional[float] = None,
-        cfl_threshold: typing.Optional[float] = None,
-        maximum_saturation_change: typing.Optional[float] = None,
-        maximum_allowed_saturation_change: typing.Optional[float] = None,
-        maximum_pressure_change: typing.Optional[float] = None,
-        maximum_allowed_pressure_change: typing.Optional[float] = None,
-        absolute_oil_mbe: typing.Optional[float] = None,
-        absolute_water_mbe: typing.Optional[float] = None,
-        absolute_gas_mbe: typing.Optional[float] = None,
-        total_absolute_mbe: typing.Optional[float] = None,
-        relative_oil_mbe: typing.Optional[float] = None,
-        relative_water_mbe: typing.Optional[float] = None,
-        relative_gas_mbe: typing.Optional[float] = None,
-        total_relative_mbe: typing.Optional[float] = None,
+        maximum_cfl_encountered: float | None = None,
+        cfl_threshold: float | None = None,
+        maximum_saturation_change: float | None = None,
+        maximum_allowed_saturation_change: float | None = None,
+        maximum_pressure_change: float | None = None,
+        maximum_allowed_pressure_change: float | None = None,
+        absolute_oil_mbe: float | None = None,
+        absolute_water_mbe: float | None = None,
+        absolute_gas_mbe: float | None = None,
+        total_absolute_mbe: float | None = None,
+        relative_oil_mbe: float | None = None,
+        relative_water_mbe: float | None = None,
+        relative_gas_mbe: float | None = None,
+        total_relative_mbe: float | None = None,
         **kwargs: typing.Any,
-    ) -> typing.Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Determine whether a completed time step meets all acceptance criteria.
 
@@ -798,21 +794,21 @@ class Timer(StoreSerializable):
         self,
         step_size: float,
         *,
-        maximum_cfl_encountered: typing.Optional[float] = None,
-        cfl_threshold: typing.Optional[float] = None,
-        newton_iterations: typing.Optional[int] = None,
-        maximum_saturation_change: typing.Optional[float] = None,
-        maximum_allowed_saturation_change: typing.Optional[float] = None,
-        maximum_pressure_change: typing.Optional[float] = None,
-        maximum_allowed_pressure_change: typing.Optional[float] = None,
-        absolute_oil_mbe: typing.Optional[float] = None,
-        absolute_water_mbe: typing.Optional[float] = None,
-        absolute_gas_mbe: typing.Optional[float] = None,
-        total_absolute_mbe: typing.Optional[float] = None,
-        relative_oil_mbe: typing.Optional[float] = None,
-        relative_water_mbe: typing.Optional[float] = None,
-        relative_gas_mbe: typing.Optional[float] = None,
-        total_relative_mbe: typing.Optional[float] = None,
+        maximum_cfl_encountered: float | None = None,
+        cfl_threshold: float | None = None,
+        newton_iterations: int | None = None,
+        maximum_saturation_change: float | None = None,
+        maximum_allowed_saturation_change: float | None = None,
+        maximum_pressure_change: float | None = None,
+        maximum_allowed_pressure_change: float | None = None,
+        absolute_oil_mbe: float | None = None,
+        absolute_water_mbe: float | None = None,
+        absolute_gas_mbe: float | None = None,
+        total_absolute_mbe: float | None = None,
+        relative_oil_mbe: float | None = None,
+        relative_water_mbe: float | None = None,
+        relative_gas_mbe: float | None = None,
+        total_relative_mbe: float | None = None,
     ) -> float:
         """
         Register an accepted time step and compute the next proposed step size.
@@ -901,8 +897,8 @@ class Timer(StoreSerializable):
         # *minimum* of the limiting signals and the *maximum* of the growth
         # signals separately, then combine. This is more physically
         # meaningful than chaining multiplications, which compounds noise.
-        limiting_factors: typing.List[float] = []  # ≤ 1.0 must honour all
-        growth_factors: typing.List[float] = []  # > 1.0 honour the most conservative
+        limiting_factors: list[float] = []  # ≤ 1.0 must honour all
+        growth_factors: list[float] = []  # > 1.0 honour the most conservative
 
         maximum_cfl = cfl_threshold if cfl_threshold is not None else self.maximum_cfl
 
@@ -916,9 +912,7 @@ class Timer(StoreSerializable):
                 cfl_factor = min(cfl_factor, 1.00)
             elif proximity > 0.80:
                 cfl_factor = min(cfl_factor, 1.10)
-            (limiting_factors if cfl_factor < 1.0 else growth_factors).append(
-                cfl_factor
-            )
+            (limiting_factors if cfl_factor < 1.0 else growth_factors).append(cfl_factor)
 
         # Saturation signal
         saturation_utilization = _utilization(
@@ -1040,9 +1034,7 @@ class Timer(StoreSerializable):
             gap = self.maximum_step_size - dt
             if gap > 0.0:
                 dt += gap * 0.50  # close half the gap each step
-                logger.debug(
-                    "Easy regime: geometric growth toward max step size -> %.6e", dt
-                )
+                logger.debug("Easy regime: geometric growth toward max step size -> %.6e", dt)
 
         # Hard caps
         dt = min(dt, self.maximum_step_size)
@@ -1122,8 +1114,7 @@ class Timer(StoreSerializable):
             "steps_since_last_failure": self.steps_since_last_failure,
             "last_successful_step_size": self.last_successful_step_size,
             "recent_metrics": [
-                typing.cast(StepMetricsDict, attrs.asdict(m))
-                for m in self.recent_metrics
+                typing.cast(StepMetricsDict, attrs.asdict(m)) for m in self.recent_metrics
             ],
             "failed_step_sizes": list(self.failed_step_sizes),
         }
@@ -1222,8 +1213,8 @@ class Timer(StoreSerializable):
         )
         return timer
 
-    def __dump__(self) -> typing.Dict[str, typing.Any]:
-        return typing.cast(typing.Dict[str, typing.Any], self.dump_state())
+    def __dump__(self) -> dict[str, typing.Any]:
+        return typing.cast(dict[str, typing.Any], self.dump_state())
 
     @classmethod
     def __load__(cls, data: typing.Mapping[str, typing.Any]) -> Self:

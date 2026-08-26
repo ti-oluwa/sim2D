@@ -207,7 +207,7 @@ class StepDiagnostics:
     gas_production_rate: float
     """Total gas production rate in SCF/day."""
 
-    well_diagnostics: typing.List[WellRateDiagnostics] = field(default_factory=list)
+    well_diagnostics: list[WellRateDiagnostics] = field(default_factory=list)
     """Per-well rate diagnostics."""
 
     absolute_oil_mbe: float = 0.0
@@ -252,7 +252,7 @@ class RunStats:
     `average_newton_iterations`) compute in O(1) without iterating `steps`.
     """
 
-    steps: typing.List[StepDiagnostics] = field(default_factory=list)
+    steps: list[StepDiagnostics] = field(default_factory=list)
     """All per-step diagnostic snapshots in chronological order."""
 
     total_wall_time: float = 0.0
@@ -295,11 +295,7 @@ class RunStats:
     @property
     def average_step_wall_ms(self) -> float:
         """Mean per-step wall time across all accepted steps (ms)."""
-        return (
-            self._total_wall_time_ms / self.accepted_steps
-            if self.accepted_steps
-            else 0.0
-        )
+        return self._total_wall_time_ms / self.accepted_steps if self.accepted_steps else 0.0
 
     @property
     def average_newton_iterations(self) -> float:
@@ -308,14 +304,10 @@ class RunStats:
 
         Returns `0.0` if the scheme never uses Newton iteration.
         """
-        return (
-            self._total_newton_iterations / self._newton_count
-            if self._newton_count
-            else 0.0
-        )
+        return self._total_newton_iterations / self._newton_count if self._newton_count else 0.0
 
     @property
-    def step_wall_times_ms(self) -> typing.List[float]:
+    def step_wall_times_ms(self) -> list[float]:
         """Per-step wall times in chronological order (ms)."""
         return [d.wall_time_ms for d in self.steps]
 
@@ -389,9 +381,7 @@ class RunStats:
         # Newton iterations (if applicable)
         if self._newton_count:
             table.add_section()
-            table.add_row(
-                "Avg Newton iterations", f"{self.average_newton_iterations:.2f}"
-            )
+            table.add_row("Avg Newton iterations", f"{self.average_newton_iterations:.2f}")
 
         # Material balance errors
         table.add_section()
@@ -449,29 +439,19 @@ class RunStats:
             f"  Final Sw/So/Sg    : {last.average_water_saturation:.4f} / {last.average_oil_saturation:.4f} / {last.average_gas_saturation:.4f}",
         ]
         if self._newton_count:
-            lines.append(
-                f"  Average Newton iterations  : {self.average_newton_iterations:.2f}"
-            )
+            lines.append(f"  Average Newton iterations  : {self.average_newton_iterations:.2f}")
         lines.append("")
         lines.append(f"  Total absolute MBE        : {last.total_absolute_mbe:.3e} lbm")
-        lines.append(
-            f"  Total relative MBE        : {last.total_relative_mbe * 100:.2e}%"
-        )
-        lines.append(
-            f"  Oil MBE (relative)        : {last.relative_oil_mbe * 100:.2e}%"
-        )
-        lines.append(
-            f"  Water MBE (relative)      : {last.relative_water_mbe * 100:.2e}%"
-        )
-        lines.append(
-            f"  Gas MBE (relative)        : {last.relative_gas_mbe * 100:.2e}%"
-        )
+        lines.append(f"  Total relative MBE        : {last.total_relative_mbe * 100:.2e}%")
+        lines.append(f"  Oil MBE (relative)        : {last.relative_oil_mbe * 100:.2e}%")
+        lines.append(f"  Water MBE (relative)      : {last.relative_water_mbe * 100:.2e}%")
+        lines.append(f"  Gas MBE (relative)        : {last.relative_gas_mbe * 100:.2e}%")
         lines.append("═" * 62)
         return "\n".join(lines)
 
 
 def _surface_rate_for_well_cells(
-    cell_keys: typing.List[typing.Tuple[int, ...]],
+    cell_keys: list[tuple[int, ...]],
     rate_tensor: SparseTensor,
     fvf_tensor: SparseTensor,
     phase: str,
@@ -502,19 +482,19 @@ def _surface_rate_for_well_cells(
 
 
 def _expand_well_cells(
-    well: typing.Union[InjectionWell, ProductionWell],
-) -> typing.List[typing.Tuple[int, ...]]:
+    well: InjectionWell | ProductionWell,
+) -> list[tuple[int, ...]]:
     """
     Return all perforation cell indices for a well as a flat list of tuples.
 
     Handles wells of any dimensionality by expanding all perforating intervals.
     """
-    cells: typing.List[typing.Tuple[int, ...]] = []
+    cells: list[tuple[int, ...]] = []
     for start, end in well.perforating_intervals:
         # Normalise and produce all integer steps along the dominant axis
-        lo = tuple(min(s, e) for s, e in zip(start, end))
-        hi = tuple(max(s, e) for s, e in zip(start, end))
-        ranges = [range(l, h + 1) for l, h in zip(lo, hi)]
+        lo = tuple(min(s, e) for s, e in zip(start, end, strict=False))
+        hi = tuple(max(s, e) for s, e in zip(start, end, strict=False))
+        ranges = [range(l, h + 1) for l, h in zip(lo, hi, strict=False)]
         cells.extend(tuple(int(i) for i in idx) for idx in itertools.product(*ranges))
     return cells
 
@@ -532,8 +512,8 @@ def _convert_to_total_surface_rate(
     :param phase: Phase name ('oil', 'water', or 'gas').
     :return: Surface-condition rate in STB/day (oil, water) or SCF/day (gas).
     """
-    rate_tensor: typing.Optional[SparseTensor] = getattr(rates, phase, None)
-    fvf_tensor: typing.Optional[SparseTensor] = getattr(fvfs, phase, None)
+    rate_tensor: SparseTensor | None = getattr(rates, phase, None)
+    fvf_tensor: SparseTensor | None = getattr(fvfs, phase, None)
     if rate_tensor is None or fvf_tensor is None:
         return 0.0
 
@@ -553,7 +533,7 @@ def _convert_to_total_surface_rate(
 
 
 def _compute_average_bhp_for_cells(
-    cell_keys: typing.List[typing.Tuple[int, ...]],
+    cell_keys: list[tuple[int, ...]],
     bhp_tensor: SparseTensor,
 ) -> float:
     """
@@ -572,7 +552,7 @@ def _compute_average_bhp_for_cells(
 
 def build_well_diagnostics(
     state: ModelState[ThreeDimensions],
-) -> typing.List[WellRateDiagnostics]:
+) -> list[WellRateDiagnostics]:
     """
     Build per-well rate diagnostics from a model state snapshot.
 
@@ -583,7 +563,7 @@ def build_well_diagnostics(
     :param state: Model state snapshot.
     :return: List of per-well diagnostics.
     """
-    results: typing.List[WellRateDiagnostics] = []
+    results: list[WellRateDiagnostics] = []
     wells = state.wells
 
     for well in wells.injection_wells:
@@ -606,15 +586,9 @@ def build_well_diagnostics(
             state.rates.injection_fvfs.gas,
             "gas",
         )
-        average_oil_bhp = _compute_average_bhp_for_cells(
-            cells, state.rates.injection_bhps.oil
-        )
-        average_water_bhp = _compute_average_bhp_for_cells(
-            cells, state.rates.injection_bhps.water
-        )
-        average_gas_bhp = _compute_average_bhp_for_cells(
-            cells, state.rates.injection_bhps.gas
-        )
+        average_oil_bhp = _compute_average_bhp_for_cells(cells, state.rates.injection_bhps.oil)
+        average_water_bhp = _compute_average_bhp_for_cells(cells, state.rates.injection_bhps.water)
+        average_gas_bhp = _compute_average_bhp_for_cells(cells, state.rates.injection_bhps.gas)
         results.append(
             WellRateDiagnostics(
                 name=well.name,
@@ -648,15 +622,11 @@ def build_well_diagnostics(
             state.rates.production_fvfs.gas,
             "gas",
         )
-        average_oil_bhp = _compute_average_bhp_for_cells(
-            cells, state.rates.production_bhps.oil
-        )
+        average_oil_bhp = _compute_average_bhp_for_cells(cells, state.rates.production_bhps.oil)
         average_water_bhp = _compute_average_bhp_for_cells(
             cells, state.rates.production_bhps.water
         )
-        average_gas_bhp = _compute_average_bhp_for_cells(
-            cells, state.rates.production_bhps.gas
-        )
+        average_gas_bhp = _compute_average_bhp_for_cells(cells, state.rates.production_bhps.gas)
         results.append(
             WellRateDiagnostics(
                 name=well.name,
@@ -676,7 +646,7 @@ def build_well_diagnostics(
 def build_step_diagnostics(
     state: ModelState[ThreeDimensions],
     wall_time_ms: float,
-    step_result: typing.Optional[StepResult[ThreeDimensions]],
+    step_result: StepResult[ThreeDimensions] | None,
 ) -> StepDiagnostics:
     """
     Build a `StepDiagnostics` instance from a `ModelState`.
@@ -767,8 +737,7 @@ def build_step_diagnostics(
         minimum_gas_saturation=float(np.min(gas_saturation)),
         maximum_gas_saturation=float(np.max(gas_saturation)),
         maximum_water_saturation_change=float(
-            (step_result.maximum_water_saturation_change if step_result else None)
-            or 0.0
+            (step_result.maximum_water_saturation_change if step_result else None) or 0.0
         ),
         maximum_oil_saturation_change=float(
             (step_result.maximum_oil_saturation_change if step_result else None) or 0.0
@@ -816,7 +785,7 @@ def build_rich_panel(
     show_wells: bool,
     show_mbe: bool,
     theme: str,
-    description: typing.Optional[str] = None,
+    description: str | None = None,
 ) -> Panel:
     """
     Build the Rich renderable for the live monitor panel.
@@ -948,9 +917,7 @@ def build_rich_panel(
 
     # Performance extras
     if stats.accepted_steps >= 2:
-        solver_table.add_row(
-            "p95 wall", f"{stats.get_percentile_wall_time_ms(95):.2f} ms"
-        )
+        solver_table.add_row("p95 wall", f"{stats.get_percentile_wall_time_ms(95):.2f} ms")
         if stats._newton_count:
             solver_table.add_row("Avg Newton", f"{stats.average_newton_iterations:.2f}")
 
@@ -975,13 +942,9 @@ def build_rich_panel(
         else:
             mbe_style = warn
 
-        solver_table.add_row(
-            "MBE (total)", f"[{mbe_style}]{total_mbe * 100:.2e}%[/{mbe_style}]"
-        )
+        solver_table.add_row("MBE (total)", f"[{mbe_style}]{total_mbe * 100:.2e}%[/{mbe_style}]")
         solver_table.add_row("MBE (oil)", f"{diagnostics.relative_oil_mbe * 100:.2e}%")
-        solver_table.add_row(
-            "MBE (water)", f"{diagnostics.relative_water_mbe * 100:.2e}%"
-        )
+        solver_table.add_row("MBE (water)", f"{diagnostics.relative_water_mbe * 100:.2e}%")
         solver_table.add_row("MBE (gas)", f"{diagnostics.relative_gas_mbe * 100:.2e}%")
 
     # Two-column grid: physics left, solver right
@@ -993,7 +956,7 @@ def build_rich_panel(
         Group(Text("  Step / Solver", style=hdr), solver_table),
     )
 
-    renderables: typing.List[typing.Any] = [progress_line, Text(""), cols_table]
+    renderables: list[typing.Any] = [progress_line, Text(""), cols_table]
 
     if show_wells and diagnostics.well_diagnostics:
         well_table = Table(
@@ -1083,16 +1046,12 @@ def build_rich_panel(
 
 @typing.overload
 def monitor(
-    input: typing.Union[
-        BlackOil[ThreeDimensions],
-        Run,
-        typing.Iterable[ModelState[ThreeDimensions]],
-    ],
-    config: typing.Optional[Config] = ...,
+    input: BlackOil[ThreeDimensions] | Run | typing.Iterable[ModelState[ThreeDimensions]],
+    config: Config | None = ...,
     *,
-    monitor: typing.Optional[Monitor] = ...,
-    on_step_rejected: typing.Optional[StepCallback] = ...,
-    on_step_accepted: typing.Optional[StepCallback] = ...,
+    monitor: Monitor | None = ...,
+    on_step_rejected: StepCallback | None = ...,
+    on_step_accepted: StepCallback | None = ...,
     return_stats: typing.Literal[False] = ...,
 ) -> typing.Generator[
     ModelState[ThreeDimensions],
@@ -1103,40 +1062,30 @@ def monitor(
 
 @typing.overload
 def monitor(
-    input: typing.Union[
-        BlackOil[ThreeDimensions],
-        Run,
-        typing.Iterable[ModelState[ThreeDimensions]],
-    ],
-    config: typing.Optional[Config] = ...,
+    input: BlackOil[ThreeDimensions] | Run | typing.Iterable[ModelState[ThreeDimensions]],
+    config: Config | None = ...,
     *,
-    monitor: typing.Optional[Monitor] = ...,
-    on_step_rejected: typing.Optional[StepCallback] = ...,
-    on_step_accepted: typing.Optional[StepCallback] = ...,
+    monitor: Monitor | None = ...,
+    on_step_rejected: StepCallback | None = ...,
+    on_step_accepted: StepCallback | None = ...,
     return_stats: typing.Literal[True],
 ) -> typing.Generator[
-    typing.Tuple[ModelState[ThreeDimensions], RunStats],
+    tuple[ModelState[ThreeDimensions], RunStats],
     None,
     None,
 ]: ...
 
 
 def monitor(
-    input: typing.Union[
-        BlackOil[ThreeDimensions],
-        Run,
-        typing.Iterable[ModelState[ThreeDimensions]],
-    ],
-    config: typing.Optional[Config] = None,
+    input: BlackOil[ThreeDimensions] | Run | typing.Iterable[ModelState[ThreeDimensions]],
+    config: Config | None = None,
     *,
-    monitor: typing.Optional[Monitor] = None,
-    on_step_rejected: typing.Optional[StepCallback] = None,
-    on_step_accepted: typing.Optional[StepCallback] = None,
+    monitor: Monitor | None = None,
+    on_step_rejected: StepCallback | None = None,
+    on_step_accepted: StepCallback | None = None,
     return_stats: bool = False,
 ) -> typing.Generator[
-    typing.Union[
-        ModelState[ThreeDimensions], typing.Tuple[ModelState[ThreeDimensions], RunStats]
-    ],
+    ModelState[ThreeDimensions] | tuple[ModelState[ThreeDimensions], RunStats],
     None,
     None,
 ]:
@@ -1191,7 +1140,7 @@ def monitor(
     config = config.new(log_interval=0)
     total_simulation_time = config.timer.simulation_time
     stats = RunStats()
-    _step_result: typing.Optional[StepResult] = None
+    _step_result: StepResult | None = None
 
     def _on_step_rejected(step_result: StepResult) -> None:
         nonlocal _step_result, on_step_rejected
@@ -1206,7 +1155,7 @@ def monitor(
         if on_step_accepted is not None:
             on_step_accepted(step_result)
 
-    tqdm_bar: typing.Optional[tqdm] = None  # type: ignore[type-arg]
+    tqdm_bar: tqdm | None = None  # type: ignore[type-arg]
     if not monitor.use_rich:
         tqdm_bar = tqdm(
             total=100,
@@ -1227,11 +1176,11 @@ def monitor(
     # owns the `Live` panel. This prevents the default stderr handler from
     # writing lines that force Rich to re-render and print a new panel frame
     # on every log record emitted inside simulation.
-    live: typing.Optional[Live] = None
-    rich_console: typing.Optional[Console] = None
+    live: Live | None = None
+    rich_console: Console | None = None
     bores_logger = logging.getLogger("bores")
     original_propagate = bores_logger.propagate  # Save original propagate setting
-    original_handlers: typing.List[logging.Handler] = []
+    original_handlers: list[logging.Handler] = []
 
     if monitor.use_rich:
         rich_console = Console()
@@ -1258,7 +1207,7 @@ def monitor(
 
     step_start = time.perf_counter()
     last_percentage = 0.0
-    last_diagnostics: typing.Optional[StepDiagnostics] = None
+    last_diagnostics: StepDiagnostics | None = None
 
     simulation = None
     error = None
@@ -1291,10 +1240,7 @@ def monitor(
             stats.record(diagnostics)
             last_diagnostics = diagnostics
 
-            if (
-                live is not None
-                and stats.accepted_steps % monitor.refresh_interval == 0
-            ):
+            if live is not None and stats.accepted_steps % monitor.refresh_interval == 0:
                 live.update(
                     build_rich_panel(
                         diagnostics=diagnostics,
@@ -1308,9 +1254,7 @@ def monitor(
                 )
 
             if tqdm_bar is not None:
-                new_percentage = min(
-                    diagnostics.elapsed_time / total_simulation_time * 100, 100.0
-                )
+                new_percentage = min(diagnostics.elapsed_time / total_simulation_time * 100, 100.0)
                 change = float(new_percentage - last_percentage)
                 if change > 0:
                     tqdm_bar.update(change)
