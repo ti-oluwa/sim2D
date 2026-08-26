@@ -415,7 +415,8 @@ def _validate_inputs(
         warnings.warn(
             "Sor_gas > Sor_water in some cells. Typically, water displacement leaves "
             "more residual oil than gas displacement due to wettability effects.",
-            UserWarning, stacklevel=2,
+            UserWarning,
+            stacklevel=2,
         )
 
     oil_column_thickness = oil_water_contact - gas_oil_contact
@@ -423,7 +424,8 @@ def _validate_inputs(
         warnings.warn(
             f"Oil column is very thin ({oil_column_thickness:.2f} ft). "
             "Verify contact depths are correct.",
-            UserWarning, stacklevel=2,
+            UserWarning,
+            stacklevel=2,
         )
 
     # Check transition zone parameters
@@ -451,7 +453,8 @@ def _validate_inputs(
             warnings.warn(
                 f"Oil column between transitions is very thin ({oil_column_thickness:.2f} units(ft)). "
                 "Consider reducing transition thicknesses.",
-                UserWarning, stacklevel=2,
+                UserWarning,
+                stacklevel=2,
             )
 
 

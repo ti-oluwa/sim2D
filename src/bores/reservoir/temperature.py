@@ -416,9 +416,7 @@ class Temperature(StoreSerializable):
         unit_system = deck_file.unit_system
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-        tempvd_all: list | None = deck_file.get("TEMPVD") or deck_file.get(
-            "RTEMPVD"
-        )
+        tempvd_all: list | None = deck_file.get("TEMPVD") or deck_file.get("RTEMPVD")
         rtemp_all: list | None = deck_file.get("RTEMP")
 
         # TEMPVD: one `TemperatureTable` per equilibration or PVT region,

@@ -248,9 +248,7 @@ def remove_faults(grid: Grid, *names: str) -> Grid:
     if grid.nnc_fault_indices:
         existing_names.update(grid.nnc_fault_indices.keys())
 
-    names_to_remove: frozenset[str] = (
-        frozenset(names) if names else frozenset(existing_names)
-    )
+    names_to_remove: frozenset[str] = frozenset(names) if names else frozenset(existing_names)
 
     unknown = names_to_remove - existing_names
     if unknown:
@@ -434,7 +432,12 @@ def _apply_faults_to_grid(
         new_nnc_types: list[int] = []
         new_nnc_transmissibilities: list[Number] = []
         for old_idx, (cell_pair, nnc_type, transmissibility) in enumerate(
-            zip(existing_nnc_pairs, existing_nnc_types, existing_nnc_transmissibilities, strict=False)
+            zip(
+                existing_nnc_pairs,
+                existing_nnc_types,
+                existing_nnc_transmissibilities,
+                strict=False,
+            )
         ):
             if old_idx in indices_to_drop:
                 continue
@@ -490,9 +493,7 @@ def _apply_faults_to_grid(
             nnc_fault_indices_lists[fault.name] = nnc_list
 
     # Build updated fault_transmissibility_multipliers
-    updated_multipliers: dict[str, Number] = dict(
-        grid.fault_transmissibility_multipliers or {}
-    )
+    updated_multipliers: dict[str, Number] = dict(grid.fault_transmissibility_multipliers or {})
     for fault in faults:
         if fault.transmissibility_multiplier is not None:
             updated_multipliers[fault.name] = fault.transmissibility_multiplier

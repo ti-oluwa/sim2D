@@ -816,7 +816,8 @@ def initialize_equilibrium_arrays(
             "Set `reservoir.regions.saturation_region` explicitly (e.g. "
             "`np.ones(reservoir.n_cells, dtype=np.int32)` for a single-region "
             "reservoir) to make this assignment explicit and silence this warning.",
-            UserWarning, stacklevel=2,
+            UserWarning,
+            stacklevel=2,
         )
         saturation_region = typing.cast(IntCellArray, np.ones(n_cells, dtype=np.int32))
 
@@ -1189,7 +1190,8 @@ def initialize_reservoir_state(
                     "`pressure` array. Supply both explicitly, or neither, "
                     "to guarantee a state consistent with the oil "
                     "bubble-point / gas dew-point curve.",
-                    UserWarning, stacklevel=2,
+                    UserWarning,
+                    stacklevel=2,
                 )
 
     def _resolve(field: str, equilibrium_value: CellArray | None) -> CellArray:

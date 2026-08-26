@@ -449,7 +449,8 @@ def compute_dead_oil_viscosity_modified_beggs(
     if not (5 <= oil_api_gravity <= 75):
         warnings.warn(
             f"API gravity {oil_api_gravity:.6f} is outside typical range [5, 75]. "
-            f"Dead oil viscosity may be inaccurate.", stacklevel=2
+            f"Dead oil viscosity may be inaccurate.",
+            stacklevel=2,
         )
     return _compute_dead_oil_viscosity_modified_beggs(temperature, oil_api_gravity)
 

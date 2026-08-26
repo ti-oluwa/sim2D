@@ -90,9 +90,7 @@ class WellTrajectory(Serializable):
                 return previous, current
         return self.stations[-2], self.stations[-1]
 
-    def stations_between(
-        self, start_md: Number, end_md: Number
-    ) -> tuple[TrajectoryStation, ...]:
+    def stations_between(self, start_md: Number, end_md: Number) -> tuple[TrajectoryStation, ...]:
         """
         Returns every vertex on the polyline between `start_md` and `end_md`,
         inclusive - the interpolated position at `start_md`, every real

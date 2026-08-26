@@ -1134,9 +1134,7 @@ def build_grdecl_cartesian_text(grid: Grid, *, actnum: ActNumArray | None = None
     return "\n".join(lines)
 
 
-def build_grdecl_corner_point_text(
-    grid: Grid, *, actnum: ActNumArray | None = None
-) -> str:
+def build_grdecl_corner_point_text(grid: Grid, *, actnum: ActNumArray | None = None) -> str:
     """
     Build a GRDECL text representation for a corner-point grid.
 

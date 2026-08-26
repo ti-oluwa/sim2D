@@ -30,7 +30,6 @@ in this module because they only ever appear in the SUMMARY (and
 SCHEDULE) sections and share no shape with the vector selectors above.
 """
 
-
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck, DeckParseError, tokenize
 from bores.deck.keywords.base import Keyword

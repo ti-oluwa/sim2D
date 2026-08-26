@@ -128,7 +128,9 @@ class PVTData(StoreSerializable):
     viscosity_table: NumberArray[TwoDimensions] | NumberArray[ThreeDimensions] | None = None
     """Viscosity μ(P, T). Units depend on `unit_system` (cP in FIELD/METRIC/LAB, Pa·s in SI). 2-D for oil/gas, 3-D for water."""
 
-    formation_volume_factor_table: NumberArray[TwoDimensions] | NumberArray[ThreeDimensions] | None = None
+    formation_volume_factor_table: (
+        NumberArray[TwoDimensions] | NumberArray[ThreeDimensions] | None
+    ) = None
     """
     Formation volume factor B(P, T). 2-D for oil/gas, 3-D for water.
 

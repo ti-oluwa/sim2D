@@ -233,9 +233,7 @@ class BaseRenderer(ABC):
         """
         pass
 
-    def normalize_data(
-        self, data: SeriesData
-    ) -> tuple[list[TwoDimensionalGrid], list[str]]:
+    def normalize_data(self, data: SeriesData) -> tuple[list[TwoDimensionalGrid], list[str]]:
         """
         Normalize input data into a standard format.
 

@@ -512,33 +512,33 @@ class Grid(
     `None` when absent.
     """
 
-    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    positive_x_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTX multipliers. `None` when not supplied."""
 
-    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    negative_x_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTX- multipliers. `None` when not supplied."""
 
-    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    positive_y_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTY multipliers. `None` when not supplied."""
 
-    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    negative_y_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTY- multipliers. `None` when not supplied."""
 
-    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    positive_z_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTZ multipliers. `None` when not supplied."""
 
-    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = (
-        attrs.field(default=None)
+    negative_z_transmissibility_multipliers: NumberArray[OneDimension] | None = attrs.field(
+        default=None
     )
     """Shape `(n_cells,)` MULTZ- multipliers. `None` when not supplied."""
 

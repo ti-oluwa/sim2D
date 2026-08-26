@@ -252,7 +252,9 @@ def _make_2d_voronoi_grid(
         ]
     ] = []
 
-    for ridge_vert_indices, seed_pair in zip(voronoi.ridge_vertices, voronoi.ridge_points, strict=False):
+    for ridge_vert_indices, seed_pair in zip(
+        voronoi.ridge_vertices, voronoi.ridge_points, strict=False
+    ):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
         sa_original = sa < n_seeds
         sb_original = sb < n_seeds
@@ -435,7 +437,9 @@ def _make_3d_voronoi_grid(
     # In 3-D, each "ridge" is a polygonal face between two seed regions.
     per_cell_face_vertex_lists: PerCellFaceLists = [[] for _ in range(n_seeds)]
 
-    for ridge_vert_indices, seed_pair in zip(voronoi.ridge_vertices, voronoi.ridge_points, strict=False):
+    for ridge_vert_indices, seed_pair in zip(
+        voronoi.ridge_vertices, voronoi.ridge_points, strict=False
+    ):
         sa, sb = int(seed_pair[0]), int(seed_pair[1])
         sa_original = sa < n_seeds
         sb_original = sb < n_seeds

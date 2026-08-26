@@ -977,9 +977,7 @@ class Constants(
             self._store[name] = wrapped
             self._register_aliases(name, wrapped)
 
-    def _register_aliases(
-        self, canonical: str, constant: Constant | ConstantFactory
-    ) -> None:
+    def _register_aliases(self, canonical: str, constant: Constant | ConstantFactory) -> None:
         """
         Index *constant*'s declared aliases against *canonical* in `_aliases`.
 
@@ -1092,9 +1090,7 @@ class Constants(
             return default
         return constant.value if isinstance(constant, Constant) else constant
 
-    def get_constant(
-        self, name: str, default: Constant | None = None
-    ) -> Constant | None:
+    def get_constant(self, name: str, default: Constant | None = None) -> Constant | None:
         return self._store.get(self._resolve(name), default)
 
     def __dir__(self):

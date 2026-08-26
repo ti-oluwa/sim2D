@@ -592,9 +592,7 @@ class KilloughLandRelPermTable(
         gas_imbibition_flag: bool | BooleanArray[NDimension] | None,
         water_reversal_saturation: NumberOrArray[NDimension] | None,
         gas_reversal_saturation: NumberOrArray[NDimension] | None,
-    ) -> tuple[
-        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
-    ]:
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Parse and broadcast saturation-history arrays.
 

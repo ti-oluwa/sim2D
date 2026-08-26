@@ -201,9 +201,7 @@ class HDF5Store(DataStore[SerializableT, h5py.File]):
             finally:
                 f.close()
 
-    def _get_chunks(
-        self, shape: tuple[int, ...]
-    ) -> tuple[int, ...] | None:
+    def _get_chunks(self, shape: tuple[int, ...]) -> tuple[int, ...] | None:
         if self.chunks:
             return self.chunks
         if len(shape) == 3:

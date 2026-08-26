@@ -272,17 +272,20 @@ def compute_water_viscosity(
 
     if temperature < 60 or temperature > 400:
         warnings.warn(
-            f"Temperature {temperature:.6f}°F is outside the valid range for McCain's water viscosity correlation (60°F to 400°F).", stacklevel=2
+            f"Temperature {temperature:.6f}°F is outside the valid range for McCain's water viscosity correlation (60°F to 400°F).",
+            stacklevel=2,
         )
 
     if salinity > 300_000:
         warnings.warn(
-            f"Salinity {salinity:.6f}ppm is unusually high for McCain's water viscosity correlation.", stacklevel=2
+            f"Salinity {salinity:.6f}ppm is unusually high for McCain's water viscosity correlation.",
+            stacklevel=2,
         )
 
     if pressure is not None and pressure > 10_000:
         warnings.warn(
-            f"Pressure {pressure:.6f}psi is unusually high for McCain's water viscosity correlation.", stacklevel=2
+            f"Pressure {pressure:.6f}psi is unusually high for McCain's water viscosity correlation.",
+            stacklevel=2,
         )
     return _compute_water_viscosity(
         temperature=temperature,

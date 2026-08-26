@@ -262,9 +262,7 @@ class BoundaryConditions(StoreSerializable):
         reservoir: Reservoir,
         time: Number,
         dtype: npt.DTypeLike = None,
-    ) -> tuple[
-        NumberArray[OneDimension], NumberArray[OneDimension], BooleanArray[OneDimension]
-    ]:
+    ) -> tuple[NumberArray[OneDimension], NumberArray[OneDimension], BooleanArray[OneDimension]]:
         """
         Evaluate all boundary regions and assemble per-face result arrays.
 
@@ -395,9 +393,7 @@ class BoundaryConditions(StoreSerializable):
             regions=[region.convert(target, table=table) for region in self.regions],
         )
 
-    def add_region(
-        self, region: BoundaryRegion, unit_system: UnitSystem | None = None
-    ) -> Self:
+    def add_region(self, region: BoundaryRegion, unit_system: UnitSystem | None = None) -> Self:
         """
         Return a new `BoundaryConditions` with *region* appended.
 

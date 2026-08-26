@@ -408,9 +408,7 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
             self._handle = None
             self._pending_count = 0
 
-    def _get_chunks(
-        self, shape: tuple[int, ...]
-    ) -> tuple[int, ...] | None:
+    def _get_chunks(self, shape: tuple[int, ...]) -> tuple[int, ...] | None:
         if self.chunks:
             return self.chunks
         if len(shape) == 3:

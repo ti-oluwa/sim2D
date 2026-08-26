@@ -518,7 +518,8 @@ def _find_optional_element_handler(
 def _build_serializer(
     fields: typing.Mapping[str, typing.Any],
     exclude: typing.Iterable[str] | None = None,
-    serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
+    serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]]
+    | None = None,
 ) -> typing.Callable[["Serializable"], dict[str, typing.Any]]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(serializers or {})
@@ -579,7 +580,8 @@ def _build_serializer(
 def _build_deserializer(
     fields: typing.Mapping[str, typing.Any],
     exclude: typing.Iterable[str] | None = None,
-    deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
+    deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]]
+    | None = None,
 ) -> typing.Callable[..., "Serializable"]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(deserializers or {})
@@ -659,8 +661,10 @@ class SerializableMeta(type):
         fields: typing.Mapping[str, typing.Any] | None = None,
         dump_exclude: typing.Iterable[str] | None = None,
         load_exclude: typing.Iterable[str] | None = None,
-        serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
-        deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]] | None = None,
+        serializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]]
+        | None = None,
+        deserializers: typing.Mapping[str | type, typing.Callable[[typing.Any], typing.Any]]
+        | None = None,
     ):
         super().__init__(name, bases, namespace)
         parent_serializers: dict[typing.Any, typing.Any] = {}

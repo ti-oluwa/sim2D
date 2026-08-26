@@ -1268,7 +1268,9 @@ def load_pvt_regions(
                 oil_viscosity = np.full_like(pvco_pressures, reference_viscosity)
                 synthetic_rows = [
                     {"pressure": pressure, "bo": fvf, "viscosity": viscosity}
-                    for pressure, fvf, viscosity in zip(pvco_pressures, oil_fvf, oil_viscosity, strict=False)
+                    for pressure, fvf, viscosity in zip(
+                        pvco_pressures, oil_fvf, oil_viscosity, strict=False
+                    )
                 ]
                 oil_data = _build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,

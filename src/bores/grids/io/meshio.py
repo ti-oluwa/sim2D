@@ -276,9 +276,7 @@ def _mesh_to_grid(
         raise GridImportError(f"Failed to build Grid from meshio cell blocks: {exc}") from exc
 
 
-def _grid_to_mesh(
-    grid: Grid, *, cell_data: dict[str, npt.NDArray] | None
-) -> typing.Any:
+def _grid_to_mesh(grid: Grid, *, cell_data: dict[str, npt.NDArray] | None) -> typing.Any:
     """
     Convert a `bores.grids.base.Grid` to a `meshio.Mesh`.
 

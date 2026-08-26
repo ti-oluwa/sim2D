@@ -701,9 +701,7 @@ def _validate_pvt_monotonicity(config: Config, report: ValidationReport) -> None
         phase_table = getattr(config.pvt_tables, phase_name)
         if phase_table is None:
             continue
-        table_array: np.ndarray | None = getattr(
-            phase_table._data, table_attribute, None
-        )
+        table_array: np.ndarray | None = getattr(phase_table._data, table_attribute, None)
         if table_array is None:
             continue
 

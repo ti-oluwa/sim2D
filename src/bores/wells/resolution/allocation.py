@@ -8,7 +8,6 @@ a shortfall when an allocated well can't actually reach its share (e.g.
 hits its own BHP limit). That redistribution loop is not implemented.
 """
 
-
 import attrs
 
 from bores.errors import ValidationError
@@ -38,9 +37,7 @@ INJECTOR_MODE_MAP: dict[GroupInjectorControlMode, InjectorControlMode] = {
 }
 
 
-def allocate_group_targets(
-    group_name: str, well_model: WellSystem
-) -> dict[str, WellControl]:
+def allocate_group_targets(group_name: str, well_model: WellSystem) -> dict[str, WellControl]:
     """
     Allocate `group_name`'s current `GroupControl` target across its
     member wells whose control mode is `GRUP`, by guide rate.

@@ -377,7 +377,18 @@ class MixingRuleDFunc(typing.Protocol):
         water_saturation: NumberOrArray[NDimension],
         oil_saturation: NumberOrArray[NDimension],
         gas_saturation: NumberOrArray[NDimension],
-    ) -> MixingRulePartialDerivatives | tuple[NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension], NumberOrArray[NDimension]]:
+    ) -> (
+        MixingRulePartialDerivatives
+        | tuple[
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+            NumberOrArray[NDimension],
+        ]
+    ):
         """
         Return the seven partial derivatives of the mixing rule.
 

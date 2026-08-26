@@ -2185,7 +2185,9 @@ class DataVisualizer:
 
     def animate(
         self,
-        sequence: list[BlackOil[ThreeDimensions]] | typing.Sequence[ModelState[ThreeDimensions]] | typing.Sequence[ThreeDimensionalGrid],
+        sequence: list[BlackOil[ThreeDimensions]]
+        | typing.Sequence[ModelState[ThreeDimensions]]
+        | typing.Sequence[ThreeDimensionalGrid],
         property: str | None = None,
         plot_type: PlotType | str | None = None,
         frame_duration: int = 200,

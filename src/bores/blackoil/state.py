@@ -1,6 +1,5 @@
 """Dynamic simulation state for one point in time: reservoir state plus optional well states."""
 
-
 import attrs
 from typing_extensions import Self
 

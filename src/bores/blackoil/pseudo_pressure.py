@@ -485,7 +485,6 @@ class PseudoPressureTable(
         dtype: npt.DTypeLike | None = ...,
         unit_system: UnitSystem = ...,
     ) -> None: ...
-
     @typing.overload
     def __init__(
         self,
@@ -501,8 +500,10 @@ class PseudoPressureTable(
 
     def __init__(
         self,
-        z_factor_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]] | None = None,
-        viscosity_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]] | None = None,
+        z_factor_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]]
+        | None = None,
+        viscosity_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]]
+        | None = None,
         pressure_range: tuple[Number, Number] | None = None,
         points: int | None = None,
         pressures: NumberArray[NDimension] | None = None,

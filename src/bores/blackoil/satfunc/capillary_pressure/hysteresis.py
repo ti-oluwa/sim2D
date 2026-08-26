@@ -251,7 +251,9 @@ class KilloughCapillaryPressureTable(
     gas_oil_drainage_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable
     """Primary drainage capillary pressure table for the gas-oil system."""
 
-    oil_water_imbibition_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable | None = None
+    oil_water_imbibition_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable | None = (
+        None
+    )
     """Primary imbibition Pc table for the oil-water system. Defaults to the drainage table."""
 
     gas_oil_imbibition_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable | None = None
@@ -327,9 +329,7 @@ class KilloughCapillaryPressureTable(
         gas_imbibition_flag: bool | BooleanArray[NDimension] | None,
         water_reversal_saturation: NumberOrArray[NDimension] | None,
         gas_reversal_saturation: NumberOrArray[NDimension] | None,
-    ) -> tuple[
-        npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray
-    ]:
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Parse and broadcast saturation-history arrays.
 

@@ -303,7 +303,10 @@ class ProductivityIndexBoundary(BoundaryCondition):
     Ignored when `alpha_function` is not `None`.
     """
 
-    alpha_function: typing.Callable[[IntArray[OneDimension], ReservoirState, Reservoir, Number], npt.NDArray] | None = attrs.field(default=None)
+    alpha_function: (
+        typing.Callable[[IntArray[OneDimension], ReservoirState, Reservoir, Number], npt.NDArray]
+        | None
+    ) = attrs.field(default=None)
     """
     Optional per-face PI callable.
 

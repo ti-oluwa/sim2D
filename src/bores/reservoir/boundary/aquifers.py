@@ -368,9 +368,7 @@ class CarterTracyAquifer(BoundaryCondition):
     Set on initialization.
     """
 
-    _hydraulic_diffusivity: Number | None = attrs.field(
-        default=None, init=False, repr=False
-    )
+    _hydraulic_diffusivity: Number | None = attrs.field(default=None, init=False, repr=False)
     """
     Hydraulic diffusivity η in [length² / time] in `unit_system` units.
     Used to compute dimensionless time: `tD = η * t / r_w²`.
@@ -713,9 +711,7 @@ class CarterTracyAquifer(BoundaryCondition):
         numerator_bracket = aquifer_constant * current_delta_p - previous_we * current_p_d_prime
         return previous_we + delta_t_d * (numerator_bracket / denominator)
 
-    def _advance(
-        self, time: Number, average_pressure: Number
-    ) -> tuple[Number, Number, Number]:
+    def _advance(self, time: Number, average_pressure: Number) -> tuple[Number, Number, Number]:
         """
         Compute `(current_t_d, we_n, rate)` from `time` and `average_pressure`,
         using `self`'s currently *committed* recursive state as the base.

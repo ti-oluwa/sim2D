@@ -425,12 +425,8 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self._oil_injected_cache: dict[tuple, float] = {}
         self._gas_injected_cache: dict[tuple, float] = {}
         self._water_injected_cache: dict[tuple, float] = {}
-        self._instantaneous_production_rates_cache: dict[
-            tuple, InstantaneousRates
-        ] = {}
-        self._instantaneous_injection_rates_cache: dict[
-            tuple, InstantaneousRates
-        ] = {}
+        self._instantaneous_production_rates_cache: dict[tuple, InstantaneousRates] = {}
+        self._instantaneous_injection_rates_cache: dict[tuple, InstantaneousRates] = {}
         self._productivity_analysis_cache: dict[tuple, ProductivityAnalysis] = {}
 
     @property
@@ -3273,9 +3269,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         self._productivity_analysis_cache[cache_key] = result
         return result
 
-    def voidage_replacement_ratio(
-        self, step: int = -1, cells: Cells | CellFilter = None
-    ) -> float:
+    def voidage_replacement_ratio(self, step: int = -1, cells: Cells | CellFilter = None) -> float:
         """
         Calculates the voidage replacement ratio (VRR) at a specific time step.
 

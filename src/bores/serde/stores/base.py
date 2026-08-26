@@ -401,9 +401,7 @@ class StoreSerializable(Serializable):
     __abstract_serializable__ = True
 
     @classmethod
-    def read(
-        cls, store: DataStore[Self, typing.Any], **load_kwargs: typing.Any
-    ) -> Self | None:
+    def read(cls, store: DataStore[Self, typing.Any], **load_kwargs: typing.Any) -> Self | None:
         """
         Read and load a `Serializable` instance from a `DataStore`.
 

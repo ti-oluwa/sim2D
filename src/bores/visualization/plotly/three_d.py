@@ -721,9 +721,7 @@ class BaseRenderer(ABC):
         wellbore_width = kwargs.get("wellbore_width", 15.0)
         surface_marker_size = kwargs.get("surface_marker_size", 5.0)
 
-        def grid_to_physical(
-            i: int, j: int, k: int
-        ) -> tuple[float, float, float] | None:
+        def grid_to_physical(i: int, j: int, k: int) -> tuple[float, float, float] | None:
             """
             Convert grid indices to physical coordinates.
             Returns None if coordinates contain NaN or are out of bounds.
@@ -2692,7 +2690,9 @@ class DataVisualizer:
 
     def animate(
         self,
-        sequence: list[BlackOil[ThreeDimensions]] | typing.Sequence[ModelState[ThreeDimensions]] | typing.Sequence[ThreeDimensionalGrid],
+        sequence: list[BlackOil[ThreeDimensions]]
+        | typing.Sequence[ModelState[ThreeDimensions]]
+        | typing.Sequence[ThreeDimensionalGrid],
         property: str | None = None,
         plot_type: PlotType | str | None = None,
         frame_duration: int = 200,

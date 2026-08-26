@@ -434,7 +434,8 @@ def _resolve_perforations_geometry(
         for perforation in well.perforations
     )
     original_by_id: dict[Integer, AnyPerforation] = {
-        id(shadow): original for shadow, original in zip(shadow_perforations, well.perforations, strict=False)
+        id(shadow): original
+        for shadow, original in zip(shadow_perforations, well.perforations, strict=False)
     }
     shadow_well = attrs.evolve(well, perforations=shadow_perforations)
     shadow_wells = Wells(wells={well.name: shadow_well})
@@ -540,9 +541,7 @@ def compile_perforations(
 
 def _compile_limits(
     limits: typing.Sequence[Limit],
-) -> tuple[
-    list[Integer], list[Integer], list[Number], list[Number]
-]:
+) -> tuple[list[Integer], list[Integer], list[Number], list[Number]]:
     """
     Flattens one well's or group's limits into parallel arrays.
 

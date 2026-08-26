@@ -151,9 +151,7 @@ def _extract_section(text: str, section_name: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-def _parse_msh(
-    text: str, metadata: typing.Mapping[str, typing.Any] | None = None
-) -> Grid:
+def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = None) -> Grid:
     """
     Parse a Gmsh MSH v2.2 ASCII text blob into a `bores.grids.base.Grid`.
 

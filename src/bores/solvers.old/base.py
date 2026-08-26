@@ -80,7 +80,8 @@ def _warn_production_rate(
     warnings.warn(
         f"Warning: Production well '{well_name}' at cell {cell} has a positive rate of {production_rate:.4f} {rate_unit}, "
         f"indicating it is no longer producing fluid at {time:.3f} seconds. Production rates should be negative. Please check well configuration.",
-        UserWarning, stacklevel=2,
+        UserWarning,
+        stacklevel=2,
     )
 
 
@@ -98,7 +99,8 @@ def _warn_injection_rate(
     warnings.warn(
         f"Warning: Injection well '{well_name}' at cell {cell} has a negative rate of {injection_rate:.4f} {rate_unit}, "
         f"indicating it is no longer injecting fluid at {time:.3f} seconds. Injection rates should be postive. Please check well configuration.",
-        UserWarning, stacklevel=2,
+        UserWarning,
+        stacklevel=2,
     )
 
 
@@ -112,7 +114,8 @@ def _warn_production_pressure(
     warnings.warn(
         f"Warning: Production well '{well_name}' at cell {cell} has a high BHP of {bhp:.4f}psi, cell pressure is {cell_pressure:.4f}psi, "
         f"indicating it is no longer producing fluid at {time:.3f} seconds. Production pressure should be lower than reservoir pressure. Please check well configuration.",
-        UserWarning, stacklevel=2,
+        UserWarning,
+        stacklevel=2,
     )
 
 
@@ -126,7 +129,8 @@ def _warn_injection_pressure(
     warnings.warn(
         f"Warning: Injection well '{well_name}' at cell {cell} has a low BHP of {bhp:.4f}psi, cell pressure is {cell_pressure:.4f}psi, "
         f"indicating it is no longer injecting fluid at {time:.3f} seconds. Injection pressure should be higher than reservoir pressure. Please check well configuration.",
-        UserWarning, stacklevel=2,
+        UserWarning,
+        stacklevel=2,
     )
 
 
@@ -846,9 +850,7 @@ class CachedPreconditionerFactory:
     def name(self) -> str:
         return self._name
 
-    def __call__(
-        self, A_csr: csr_array | csr_matrix
-    ) -> LinearOperator | None:
+    def __call__(self, A_csr: csr_array | csr_matrix) -> LinearOperator | None:
         """
         Get preconditioner, reusing cache if possible.
 

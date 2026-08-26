@@ -502,7 +502,10 @@ def coarsen_permeability_grids(
     kz: ThreeDimensionalGrid | None = None,
     batch_size: TwoDimensions | ThreeDimensions | None = None,
     epsilon: float = 1e-10,
-) -> tuple[TwoDimensionalGrid, TwoDimensionalGrid] | tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]:
+) -> (
+    tuple[TwoDimensionalGrid, TwoDimensionalGrid]
+    | tuple[ThreeDimensionalGrid, ThreeDimensionalGrid, ThreeDimensionalGrid]
+):
     """
     Coarsen permeability grids using direction-appropriate averaging.
 

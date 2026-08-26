@@ -187,17 +187,13 @@ class EventPredicate(Serializable, typing.Generic[WellT, Coordinates]):
             return not self._operands[0](well, state)  # type: ignore
         raise ValueError("Invalid EventPredicate state: no func or op defined")
 
-    def __and__(
-        self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]
-    ) -> Self:
+    def __and__(self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]) -> Self:
         """Combine with AND logic: self & other"""
         if not isinstance(other, EventPredicate):
             other = EventPredicate.from_func(other)
         return self.__class__(_op="and", _operands=(self, other))  # type: ignore
 
-    def __or__(
-        self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]
-    ) -> Self:
+    def __or__(self, other: Self | PredicateFunc[WellT, ModelState[Coordinates]]) -> Self:
         """Combine with OR logic: self | other"""
         if not isinstance(other, EventPredicate):
             other = EventPredicate.from_func(other)
@@ -279,9 +275,7 @@ class EventAction(Serializable, typing.Generic[WellT, Coordinates]):
             for action in self._actions:
                 action(well, state)  # type: ignore
 
-    def __and__(
-        self, other: Self | ActionFunc[WellT, ModelState[Coordinates]]
-    ) -> Self:
+    def __and__(self, other: Self | ActionFunc[WellT, ModelState[Coordinates]]) -> Self:
         """Chain actions: self & other (execute both in sequence)"""
         if not isinstance(other, EventAction):
             other = EventAction.from_func(other)
@@ -356,7 +350,13 @@ def event_predicate(
     func: PredicateFunc | None = None,
     name: str | None = None,
     override: bool = False,
-) -> PredicateFunc[WellT, ModelState[Coordinates]] | typing.Callable[[PredicateFunc[WellT, ModelState[Coordinates]]], PredicateFunc[WellT, ModelState[Coordinates]]]:
+) -> (
+    PredicateFunc[WellT, ModelState[Coordinates]]
+    | typing.Callable[
+        [PredicateFunc[WellT, ModelState[Coordinates]]],
+        PredicateFunc[WellT, ModelState[Coordinates]],
+    ]
+):
     """
     Register a well predicate function for serialization.
 
@@ -420,7 +420,12 @@ def event_action(
     func: ActionFunc[WellT, ModelState[Coordinates]] | None = None,
     name: str | None = None,
     override: bool = False,
-) -> ActionFunc[WellT, ModelState[Coordinates]] | typing.Callable[[ActionFunc[WellT, ModelState[Coordinates]]], ActionFunc[WellT, ModelState[Coordinates]]]:
+) -> (
+    ActionFunc[WellT, ModelState[Coordinates]]
+    | typing.Callable[
+        [ActionFunc[WellT, ModelState[Coordinates]]], ActionFunc[WellT, ModelState[Coordinates]]
+    ]
+):
     """
     Register a well action function for serialization.
 

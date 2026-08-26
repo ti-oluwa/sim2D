@@ -163,9 +163,7 @@ def make_block_jacobi_preconditioner(
     return LinearOperator(shape=A_csr.shape, matvec=matvec)  # type: ignore[arg-type]
 
 
-def make_ilu_preconditioner(
-    A_csr: csr_array | csr_matrix, **kwargs: typing.Any
-) -> LinearOperator:
+def make_ilu_preconditioner(A_csr: csr_array | csr_matrix, **kwargs: typing.Any) -> LinearOperator:
     """
     Creates an Incomplete LU (ILU) preconditioner using `spilu`.
 
@@ -585,9 +583,7 @@ class CachedPreconditionerFactory:
     def name(self) -> str:
         return self._name
 
-    def __call__(
-        self, A_csr: csr_array | csr_matrix
-    ) -> LinearOperator | None:
+    def __call__(self, A_csr: csr_array | csr_matrix) -> LinearOperator | None:
         """
         Get preconditioner, reusing cache if possible.
 

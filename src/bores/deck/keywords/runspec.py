@@ -6,7 +6,6 @@ It declares the run's meta-data: grid dimensions, active phases, unit system,
 table-sizing hints, well/group dimensioning, and the simulation start date.
 """
 
-
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck
 from bores.deck.keywords.base import (

@@ -1,4 +1,3 @@
-
 import attrs
 from typing_extensions import Self
 

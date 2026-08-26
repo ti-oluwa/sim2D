@@ -201,9 +201,7 @@ def load_wells_from_records(
     return Wells(wells=wells)
 
 
-def from_deck_gas_rate(
-    value: float | None, unit_system: UnitSystem
-) -> float | None:
+def from_deck_gas_rate(value: float | None, unit_system: UnitSystem) -> float | None:
     """
     :param value: Raw gas rate value as written in the deck, or None.
     :param unit_system: The deck's unit system.

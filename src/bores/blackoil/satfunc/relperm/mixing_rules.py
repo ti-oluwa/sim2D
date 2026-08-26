@@ -499,9 +499,7 @@ def _central_difference_partial_derivatives(
 
 _MIXING_RULES: dict[str, MixingRule] = {}
 """Registry of mixing rule functions."""
-_MIXING_RULE_SERIALIZERS: dict[
-    MixingRule, typing.Callable[[MixingRule, bool], typing.Any]
-] = {}
+_MIXING_RULE_SERIALIZERS: dict[MixingRule, typing.Callable[[MixingRule, bool], typing.Any]] = {}
 """Registry of mixing rule serializers."""
 _MIXING_RULE_DESERIALIZERS: dict[str, typing.Callable[[typing.Any], MixingRule]] = {}
 """Registry of mixing rule deserializers."""
@@ -1357,9 +1355,7 @@ def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
     :return: A mixing rule function implementing the Aziz-Settari correlation.
     """
 
-    def _aziz_settari_serializer(
-        rule: MixingRule, recurse: bool = True
-    ) -> dict[str, Number]:
+    def _aziz_settari_serializer(rule: MixingRule, recurse: bool = True) -> dict[str, Number]:
         return {"a": a, "b": b}
 
     def _aziz_settari_deserializer(data: typing.Any) -> MixingRule:

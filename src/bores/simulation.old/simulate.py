@@ -1788,9 +1788,7 @@ class Run(StoreSerializable):
     tags: list[str] = attrs.field(factory=list)
     """Tags for organizing runs."""
 
-    created_at: str | None = attrs.field(
-        factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str | None = attrs.field(factory=lambda: datetime.now(timezone.utc).isoformat())
     """ISO timestamp of when this run was created."""
 
     def __call__(

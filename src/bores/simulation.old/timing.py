@@ -120,9 +120,7 @@ class StepMetrics:
     success: bool = True
 
 
-def _utilization(
-    actual: float | None, limit: float | None
-) -> float | None:
+def _utilization(actual: float | None, limit: float | None) -> float | None:
     """Return actual/limit, or None if either is None/zero."""
     if actual is None or limit is None or limit <= 0.0:
         return None

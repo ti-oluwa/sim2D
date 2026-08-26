@@ -1,6 +1,5 @@
 """Black-oil fluid physics model."""
 
-
 from typing_extensions import Self
 
 from bores.blackoil.pvt.regions import PVT
