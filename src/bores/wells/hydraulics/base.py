@@ -14,6 +14,7 @@ __all__ = [
     "PressureDrop",
     "SurfaceFluidProperties",
     "WellBoreModel",
+    "WellBoreModelOptions",
     "compute_friction_factor",
     "compute_hydrostatic_pressure",
     "compute_mixture_density",
@@ -26,6 +27,12 @@ __all__ = [
     "compute_surface_mixture_viscosity",
     "get_unit_system_constant",
 ]
+
+WellBoreModelOptions = typing.TypeVar("WellBoreModelOptions")
+"""
+A correlation's own config type. `MechanisticModel`, `BeggsAndBrillModel`,
+or any other correlation's own `NamedTuple`.
+"""
 
 
 class PressureDrop(typing.NamedTuple):
@@ -72,15 +79,24 @@ class SurfaceFluidProperties(typing.NamedTuple):
     """
 
 
-class WellBoreModel(typing.NamedTuple):
-    """A wellbore hydraulics model: which correlation to use, and its configuration."""
+class WellBoreModel(typing.NamedTuple, typing.Generic[WellBoreModelOptions]):
+    """
+    A wellbore hydraulics model: which correlation to use, and its
+    configuration. Generic over `options`' own type, so
+    `WellBoreModel[MechanisticModel]`/`WellBoreModel[BeggsAndBrillModel]`
+    (or any future correlation's own config type) each type-check as a
+    distinct, concrete `WellBoreModel` - no `options: Any` to unify them
+    under, and no new correlation needs to register anywhere for this to
+    keep working; the type parameter falls out of whatever's constructed.
+    """
 
     name: str
     """Which correlation this is: `"mechanistic"` or `"beggs_brill"`."""
 
-    options: typing.Any
+    options: WellBoreModelOptions
     """
-    This correlation's configuration: a `MechanisticModel` or a `BeggsAndBrillModel`.
+    This correlation's own configuration. `MechanisticModel`,
+    `BeggsAndBrillModel`, or any other correlation's own `NamedTuple`.
     """
 
     def convert(
@@ -103,7 +119,7 @@ class WellBoreModel(typing.NamedTuple):
                 f"{self.__class__.__name__} {self.name!r}'s options ({type(self.options).__name__}) "
                 "has no convert method."
             )
-        return self._replace(options=self.options.convert(target, table=table))
+        return self._replace(options=self.options.convert(target, table=table))  # type: ignore[attr-defined]
 
 
 @numba.njit(cache=True)

@@ -4,7 +4,14 @@ import typing
 
 from bores.errors import ValidationError
 from bores.typing import FluidPhase, Number, Orientation, UnitSystem
-from bores.wells.base import Perforation, Well, Wells, WellStatus, WellType
+from bores.wells.base import (
+    AnyPerforation,
+    Perforation,
+    Well,
+    Wells,
+    WellStatus,
+    WellType,
+)
 from bores.wells.controls import (
     BHPLimit,
     InjectorControl,
@@ -22,6 +29,7 @@ from bores.wells.groups import (
     GroupInjectorControlMode,
     GroupProducerControlMode,
 )
+from bores.wells.trajectory import WellTrajectory
 
 __all__ = [
     "make_group_control",
@@ -47,11 +55,83 @@ PHASE_RATE_QUANTITY = {
 }
 
 
+def _resolve_perforations(
+    *,
+    perforation_depths: tuple[Number, Number] | None,
+    perforations: typing.Sequence[AnyPerforation] | None,
+    reference_depth: Number | None,
+    wellbore_radius: Number,
+    skin: Number,
+    saturation_region: int | None,
+    connection_factor_override: Number | None,
+    connection_factor_multiplier: Number | None,
+    direction: Orientation | None,
+    schedule_status: WellStatus,
+) -> tuple[tuple[AnyPerforation, ...], Number]:
+    """
+    Resolves `make_producer`/`make_injector`'s two perforation-building
+    paths into one `(perforations, reference_depth)` pair.
+
+    **Simple path** (`perforation_depths`): builds one vertical `Perforation`
+    from the flat per-perforation params (`wellbore_radius`, `skin`, etc.) -
+    today's only option, unchanged.
+
+    **Direct path** (`perforations`): passes a caller-built sequence of
+    `Perforation`/`MDPerforation` straight through. Multiple intervals, or
+    (paired with `trajectory=` on the well itself) `MDPerforation`s for a
+    deviated well. The flat per-perforation params don't apply here (each
+    interval already carries its own); `reference_depth` has no safe
+    default across multiple intervals or a deviated trajectory, so it's
+    required in this path.
+
+    `Well`'s post initialization logic is what actually enforces the
+    `MDPerforation` needs `trajectory` (and vice versa) rule, once the
+    resolved perforations reach `Well(...)`.
+
+    :returns: `(perforations, resolved_reference_depth)`.
+    :raises ValidationError: If both or neither of `perforation_depths`/
+        `perforations` is given, or `perforations` is given without `reference_depth`.
+    """
+    if (perforation_depths is None) == (perforations is None):
+        raise ValidationError(
+            "Supply exactly one of `perforation_depths` (single vertical "
+            "perforation) or `perforations` (full "
+            "control: multiple intervals, or `MDPerforation`s for a "
+            "deviated well via `trajectory=`)."
+        )
+
+    if perforations is not None:
+        if reference_depth is None:
+            raise ValidationError(
+                "`reference_depth` is required when `perforations` is given "
+                "directly. There's no single safe default across multiple "
+                "intervals or a deviated trajectory."
+            )
+        return tuple(perforations), reference_depth
+
+    top_depth, bottom_depth = typing.cast(tuple[Number, Number], perforation_depths)
+    resolved_reference_depth = reference_depth if reference_depth is not None else bottom_depth
+    perforation = Perforation(
+        top_depth=top_depth,
+        bottom_depth=bottom_depth,
+        wellbore_radius=wellbore_radius,
+        skin=skin,
+        saturation_region=saturation_region,
+        connection_factor_override=connection_factor_override,
+        connection_factor_multiplier=connection_factor_multiplier,
+        direction=direction,
+        schedule_status=schedule_status,
+    )
+    return (perforation,), resolved_reference_depth
+
+
 def make_producer(
     name: str,
     *,
     surface_location: tuple[Number, Number],
-    perforation_depths: tuple[Number, Number],
+    perforation_depths: tuple[Number, Number] | None = None,
+    perforations: typing.Sequence[AnyPerforation] | None = None,
+    trajectory: WellTrajectory | None = None,
     reference_depth: Number | None = None,
     target_rate: Number | None = None,
     rate_quantity: RateQuantity = RateQuantity.OIL,
@@ -85,16 +165,23 @@ def make_producer(
     :param name: Well name.
     :param surface_location: `(x, y)` wellhead location.
     :param perforation_depths: `(top_depth, bottom_depth)` for one single
-        perforation. Use `Well(...)` directly for a multi-perforation well.
-    :param reference_depth: BHP/THP reporting datum. `perforation_depths[1]` if not given.
+        vertical perforation. Mutually exclusive with `perforations`;
+        supply exactly one.
+    :param perforations: A caller-built sequence of `Perforation`/
+        `MDPerforation`, for multiple intervals or (with
+        `trajectory=`) a deviated well. `reference_depth` is required in
+        this path. Mutually exclusive with `perforation_depths`.
+    :param trajectory: Deviation survey. Only meaningful with `perforations`
+        made of `MDPerforation`. See `Well.trajectory`.
+    :param reference_depth: BHP/THP reporting datum. Defaults to
+        `perforation_depths[1]` in the simple path; required in the direct path.
     :param target_rate: Rate target.
     :param rate_quantity: Which rate `target_rate` is.
     :param target_bhp: BHP target.
     :param target_thp: THP target.
     :param min_bhp: If given, adds a `BHPLimit(min_value=min_bhp)`.
     :param max_rate: If given, adds a `RateLimit` on `rate_quantity` capped at `max_rate`.
-    :param limits: Additional limits, appended after any built from
-        `min_bhp`/`max_rate`.
+    :param limits: Additional limits, appended after any built from `min_bhp`/`max_rate`.
     :param efficiency_factor: `ProducerControl.efficiency_factor`.
     :param guide_rate: `ProducerControl.guide_rate`.
     :param wellbore_radius: `Perforation.wellbore_radius`.
@@ -106,34 +193,37 @@ def make_producer(
     :param preferred_phase: `Well.preferred_phase`.
     :param pvt_region: `Well.pvt_region`.
     :param group: `Well.group`.
-    :param schedule_status: `Well.schedule_status`.
+    :param schedule_status: `Well.schedule_status`, and the simple path's
+        single `Perforation.schedule_status`.
     :param unit_system: `Well.unit_system` and `ProducerControl.unit_system`.
     :param metadata: `Well.metadata`.
     :returns: `(Well, ProducerControl)`.
-    :raises ValidationError: If none of `target_rate`, `target_bhp`, or `target_thp` is given.
+    :raises ValidationError: If none of `target_rate`, `target_bhp`, or
+        `target_thp` is given; if both or neither of `perforation_depths`/
+        `perforations` is given; or if `perforations` is given without `reference_depth`.
     """
     if target_rate is None and target_bhp is None and target_thp is None:
         raise ValidationError("Supply one of `target_rate`, `target_bhp`, or `target_thp`.")
 
-    top_depth, bottom_depth = perforation_depths
+    resolved_perforations, resolved_reference_depth = _resolve_perforations(
+        perforation_depths=perforation_depths,
+        perforations=perforations,
+        reference_depth=reference_depth,
+        wellbore_radius=wellbore_radius,
+        skin=skin,
+        saturation_region=saturation_region,
+        connection_factor_override=connection_factor_override,
+        connection_factor_multiplier=connection_factor_multiplier,
+        direction=direction,
+        schedule_status=schedule_status,
+    )
     well = Well(
         name=name,
         well_type=WellType.PRODUCER,
         surface_location=surface_location,
-        reference_depth=reference_depth if reference_depth is not None else bottom_depth,
-        perforations=(
-            Perforation(
-                top_depth=top_depth,
-                bottom_depth=bottom_depth,
-                wellbore_radius=wellbore_radius,
-                skin=skin,
-                saturation_region=saturation_region,
-                connection_factor_override=connection_factor_override,
-                connection_factor_multiplier=connection_factor_multiplier,
-                direction=direction,
-                schedule_status=schedule_status,
-            ),
-        ),
+        reference_depth=resolved_reference_depth,
+        perforations=resolved_perforations,
+        trajectory=trajectory,
         preferred_phase=preferred_phase,
         pvt_region=pvt_region,
         group=group,
@@ -177,7 +267,6 @@ def make_producer(
             guide_rate=guide_rate,
             unit_system=unit_system,
         )
-
     return well, control
 
 
@@ -186,7 +275,9 @@ def make_injector(
     *,
     injected_phase: FluidPhase,
     surface_location: tuple[Number, Number],
-    perforation_depths: tuple[Number, Number],
+    perforation_depths: tuple[Number, Number] | None = None,
+    perforations: typing.Sequence[AnyPerforation] | None = None,
+    trajectory: WellTrajectory | None = None,
     reference_depth: Number | None = None,
     target_rate: Number | None = None,
     target_bhp: Number | None = None,
@@ -219,15 +310,22 @@ def make_injector(
     :param injected_phase: Phase being injected.
     :param surface_location: `(x, y)` wellhead location.
     :param perforation_depths: `(top_depth, bottom_depth)` for one single
-        perforation. Use `Well(...)` directly for a multi-perforation well.
-    :param reference_depth: BHP/THP reporting datum. `perforation_depths[1]` if not given.
+        vertical perforation. Mutually exclusive with `perforations`;
+        supply exactly one.
+    :param perforations: A caller-built sequence of `Perforation`/
+        `MDPerforation`, for multiple intervals or (with
+        `trajectory=`) a deviated well. `reference_depth` is required in
+        this path. Mutually exclusive with `perforation_depths`.
+    :param trajectory: Deviation survey. Only meaningful with `perforations`
+        made of `MDPerforation`. See `Well.trajectory`.
+    :param reference_depth: BHP/THP reporting datum. Defaults to
+        `perforation_depths[1]` in the simple path; required in the direct path.
     :param target_rate: Rate target.
     :param target_bhp: BHP target.
     :param target_thp: THP target.
     :param max_bhp: If given, adds a `BHPLimit(max_value=max_bhp)`.
     :param max_rate: If given, adds a `RateLimit` on `injected_phase` capped at `max_rate`.
-    :param limits: Additional limits, appended after any built from
-        `max_bhp`/`max_rate`.
+    :param limits: Additional limits, appended after any built from `max_bhp`/`max_rate`.
     :param efficiency_factor: `InjectorControl.efficiency_factor`.
     :param guide_rate: `InjectorControl.guide_rate`.
     :param wellbore_radius: `Perforation.wellbore_radius`.
@@ -238,34 +336,37 @@ def make_injector(
     :param direction: `Perforation.direction`.
     :param pvt_region: `Well.pvt_region`.
     :param group: `Well.group`.
-    :param schedule_status: `Well.schedule_status`.
+    :param schedule_status: `Well.schedule_status`, and the simple path's
+        single `Perforation.schedule_status`.
     :param unit_system: `Well.unit_system` and `InjectorControl.unit_system`.
     :param metadata: `Well.metadata`.
     :returns: `(Well, InjectorControl)`.
-    :raises ValidationError: If none of `target_rate`, `target_bhp`, or `target_thp` is given.
+    :raises ValidationError: If none of `target_rate`, `target_bhp`, or
+        `target_thp` is given; if both or neither of `perforation_depths`/
+        `perforations` is given; or if `perforations` is given without `reference_depth`.
     """
     if target_rate is None and target_bhp is None and target_thp is None:
         raise ValidationError("Supply one of `target_rate`, `target_bhp`, or `target_thp`.")
 
-    top_depth, bottom_depth = perforation_depths
+    resolved_perforations, resolved_reference_depth = _resolve_perforations(
+        perforation_depths=perforation_depths,
+        perforations=perforations,
+        reference_depth=reference_depth,
+        wellbore_radius=wellbore_radius,
+        skin=skin,
+        saturation_region=saturation_region,
+        connection_factor_override=connection_factor_override,
+        connection_factor_multiplier=connection_factor_multiplier,
+        direction=direction,
+        schedule_status=schedule_status,
+    )
     well = Well(
         name=name,
         well_type=WellType.INJECTOR,
         surface_location=surface_location,
-        reference_depth=reference_depth if reference_depth is not None else bottom_depth,
-        perforations=(
-            Perforation(
-                top_depth=top_depth,
-                bottom_depth=bottom_depth,
-                wellbore_radius=wellbore_radius,
-                skin=skin,
-                saturation_region=saturation_region,
-                connection_factor_override=connection_factor_override,
-                connection_factor_multiplier=connection_factor_multiplier,
-                direction=direction,
-                schedule_status=schedule_status,
-            ),
-        ),
+        reference_depth=resolved_reference_depth,
+        perforations=resolved_perforations,
+        trajectory=trajectory,
         preferred_phase=injected_phase,
         pvt_region=pvt_region,
         group=group,
@@ -314,7 +415,6 @@ def make_injector(
             guide_rate=guide_rate,
             unit_system=unit_system,
         )
-
     return well, control
 
 

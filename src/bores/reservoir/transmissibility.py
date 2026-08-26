@@ -615,7 +615,7 @@ def _apply_fault_face_multipliers(
 
     for fault_name, face_indices in fault_face_indices.items():
         multiplier = fault_transmissibility_multipliers.get(fault_name, 1.0)
-        if multiplier == 1.0:
+        if multiplier == 1:
             continue
         for global_idx in face_indices:
             interior_pos = global_to_interior.get(int(global_idx))
@@ -650,7 +650,7 @@ def _apply_nnc_fault_multipliers(
     """
     for fault_name, nnc_indices in nnc_fault_indices.items():
         multiplier = fault_transmissibility_multipliers.get(fault_name, 1.0)
-        if multiplier == 1.0:
+        if multiplier == 1:
             continue
         nnc_transmissibilities[nnc_indices] *= multiplier
     return nnc_transmissibilities

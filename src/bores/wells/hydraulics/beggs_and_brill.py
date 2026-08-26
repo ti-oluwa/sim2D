@@ -20,6 +20,7 @@ from bores.typing import (
 from bores.wells.hydraulics.base import (
     PressureDrop,
     SurfaceFluidProperties,
+    WellBoreModel,
     compute_static_hydrostatic_drop,
     compute_static_mixture_density,
     get_unit_system_constant,
@@ -117,9 +118,12 @@ def beggs_and_brill(
     turbulent_reynolds_limit: Number | None = None,
     friction_max_iterations: int | None = None,
     friction_tolerance: Number | None = None,
-) -> BeggsAndBrillModel:
+) -> WellBoreModel[BeggsAndBrillModel]:
     """
-    Builds a `BeggsAndBrillModel`.
+    Builds a `WellBoreModel` wrapping a fully configured `BeggsAndBrillModel`
+    - ready to use directly anywhere a `WellBoreModel` is expected
+    (`WellSystem.default_wellbore`, `.wellbore_overrides`, `resolve_control`'s
+    `wellbore=`), no separate wrapping step needed.
 
     :param tubing_inner_diameter: Tubing inner diameter.
     :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
@@ -137,7 +141,7 @@ def beggs_and_brill(
         `c.COLEBROOK_MAX_ITERATIONS` if not given.
     :param friction_tolerance: Colebrook convergence tolerance.
         `c.COLEBROOK_TOLERANCE` if not given.
-    :returns: A fully configured `BeggsAndBrillModel`.
+    :returns: `WellBoreModel(name="beggs_and_brill", options=<BeggsAndBrillModel>)`.
     """
     if gravitational_acceleration is None:
         gravitational_acceleration = typing.cast(
@@ -147,7 +151,7 @@ def beggs_and_brill(
             factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
             gravitational_acceleration = gravitational_acceleration * factors["length"]
 
-    return BeggsAndBrillModel(
+    options = BeggsAndBrillModel(
         tubing_inner_diameter=tubing_inner_diameter,
         tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
@@ -177,6 +181,7 @@ def beggs_and_brill(
         ),
         unit_system=unit_system,
     )
+    return WellBoreModel(name="beggs_and_brill", options=options)
 
 
 @numba.njit(cache=True)

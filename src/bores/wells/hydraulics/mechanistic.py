@@ -19,6 +19,7 @@ from bores.typing import (
 from bores.wells.hydraulics.base import (
     PressureDrop,
     SurfaceFluidProperties,
+    WellBoreModel,
     compute_mixture_density,
     compute_mixture_velocity,
     compute_mixture_viscosity,
@@ -117,9 +118,12 @@ def mechanistic_model(
     turbulent_reynolds_limit: Number | None = None,
     friction_max_iterations: int | None = None,
     friction_tolerance: Number | None = None,
-) -> MechanisticModel:
+) -> WellBoreModel[MechanisticModel]:
     """
-    Builds a `MechanisticModel`.
+    Builds a `WellBoreModel` wrapping a fully configured `MechanisticModel`
+    - ready to use directly anywhere a `WellBoreModel` is expected
+    (`WellSystem.default_wellbore`, `.wellbore_overrides`, `resolve_control`'s
+    `wellbore=`), no separate wrapping step needed.
 
     :param tubing_inner_diameter: Tubing inner diameter.
     :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
@@ -136,7 +140,7 @@ def mechanistic_model(
         `c.COLEBROOK_MAX_ITERATIONS` if not given.
     :param friction_tolerance: Colebrook convergence tolerance.
         `c.COLEBROOK_TOLERANCE` if not given.
-    :returns: A fully configured `MechanisticModel`.
+    :returns: `WellBoreModel(name="mechanistic", options=<MechanisticModel>)`.
     """
     if gravitational_acceleration is None:
         gravitational_acceleration = typing.cast(
@@ -146,7 +150,7 @@ def mechanistic_model(
             factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
             gravitational_acceleration = gravitational_acceleration * factors["length"]
 
-    return MechanisticModel(
+    options = MechanisticModel(
         tubing_inner_diameter=tubing_inner_diameter,
         tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
@@ -176,6 +180,7 @@ def mechanistic_model(
         ),
         unit_system=unit_system,
     )
+    return WellBoreModel(name="mechanistic", options=options)
 
 
 @numba.njit(cache=True)

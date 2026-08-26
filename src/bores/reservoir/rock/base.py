@@ -108,7 +108,7 @@ class Permeability(StoreSerializable):
 
     def scale(self, factor: Number) -> Self:
         """Return a new instance with all components multiplied by *factor*."""
-        if factor == 1.0:
+        if factor == 1:
             return self
         return attrs.evolve(
             self,
@@ -142,7 +142,7 @@ class Permeability(StoreSerializable):
         if factor is None:
             factors = get_conversion_factors(self.unit_system, target, table=table)
             factor = factors["permeability"]
-        if factor == 1.0:
+        if factor == 1:
             return self
 
         return attrs.evolve(
