@@ -2,7 +2,6 @@
 
 import typing
 
-import attrs
 import numba
 import numpy as np
 import numpy.typing as npt
@@ -27,10 +26,9 @@ from bores.utils import scale
 __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilities"]
 
 
-@attrs.frozen(slots=True)
-class ConnectionTransmissibilities:
+class ConnectionTransmissibilities(typing.NamedTuple):
     """
-    Precomputed transmissibilities for all connections in a `BlackOil`.
+    Precomputed transmissibilities for all connections in a `BlackOilModel`.
 
     **Attributes**:
 
@@ -71,7 +69,7 @@ class ConnectionTransmissibilities:
         factors = get_conversion_factors(self.unit_system, target, table=table)
         # Transmissibility is K * A/d
         transmissibility_factor = factors["permeability"] * factors["area"] / factors["length"]
-        return self.__class__(
+        return self._replace(
             interior=scale(self.interior, transmissibility_factor),
             boundary=scale(self.boundary, transmissibility_factor),
             nnc=(None if self.nnc is None else scale(self.nnc, transmissibility_factor)),

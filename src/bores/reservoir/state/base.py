@@ -449,7 +449,8 @@ class ReservoirState(StoreSerializable):
         mass_factor = factors["mass"]
         pressure_factor = factors["pressure"]
         gor_factor = factors["gas_oil_ratio"]
-        return self.__class__(
+        return attrs.evolve(
+            self,
             pressure=scale(self.pressure, pressure_factor),
             temperature=scale_and_offset(
                 self.temperature,

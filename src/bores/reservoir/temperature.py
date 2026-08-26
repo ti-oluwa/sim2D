@@ -88,7 +88,8 @@ class TemperatureGradient(StoreSerializable):
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        return self.__class__(
+        return attrs.evolve(
+            self,
             reference_temperature=scale_and_offset(
                 self.reference_temperature,
                 factor=factors["temperature"],
@@ -180,7 +181,8 @@ class TemperatureTable(StoreSerializable):
             return self
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        return self.__class__(
+        return attrs.evolve(
+            self,
             depths=scale(self.depths, factors["length"]),  # type: ignore[arg-type]
             temperatures=scale_and_offset(
                 self.temperatures,
@@ -191,7 +193,7 @@ class TemperatureTable(StoreSerializable):
         )
 
 
-TemperatureSpec = typing.Union[Number, TemperatureGradient, TemperatureTable]
+TemperatureSpec = Number | TemperatureGradient | TemperatureTable
 
 
 @attrs.frozen(slots=True)
@@ -387,7 +389,7 @@ class Temperature(StoreSerializable):
         if self.regions is not None:
             new_regions = {k: _convert_spec(v) for k, v in self.regions.items()}
 
-        return self.__class__(default=new_default, regions=new_regions, unit_system=target)
+        return attrs.evolve(self, default=new_default, regions=new_regions, unit_system=target)
 
     @classmethod
     def from_deck(cls, deck_file: DeckFile, *, dtype: npt.DTypeLike = None) -> Self:

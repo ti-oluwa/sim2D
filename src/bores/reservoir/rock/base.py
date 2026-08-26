@@ -349,7 +349,7 @@ class Rock(StoreSerializable):
         )
 
     @staticmethod
-    def _get_saturation_endpoints_from_tables(
+    def get_saturation_endpoints(
         satfunc: SatFunc,
         saturation_region: IntCellArray,
         n_cells: int,
@@ -374,7 +374,7 @@ class Rock(StoreSerializable):
         and defaults to `connate_water_saturation`, matching what the rest
         of this codebase already assumes when the two coincide.
 
-        :returns: Dict keyed by `Rock` field name, each shape `(n_cells,)`.
+        :returns: Dictionary keyed by `Rock` field name, each shape `(n_cells,)`.
         """
         connate_water_saturation = np.zeros(n_cells, dtype=dtype)
         residual_oil_saturation_water_flood = np.zeros(n_cells, dtype=dtype)
@@ -383,9 +383,7 @@ class Rock(StoreSerializable):
 
         for satnum in np.unique(saturation_region):
             mask = saturation_region == satnum
-            endpoints = satfunc.region(
-                int(satnum)
-            ).relative_permeability.get_saturation_endpoints()
+            endpoints = satfunc.region(satnum).relative_permeability.get_saturation_endpoints()
             connate_water_saturation[mask] = endpoints.connate_water
             residual_oil_saturation_water_flood[mask] = endpoints.residual_oil_water
             residual_oil_saturation_gas_flood[mask] = endpoints.residual_oil_gas
@@ -424,7 +422,7 @@ class Rock(StoreSerializable):
 
         Whichever of the five is absent from the deck is derived from
         `satfunc`'s per-SATNUM tables when `satfunc` is supplied (see
-        `_get_saturation_endpoints_from_tables`); only truly defaults to `0.0`
+        `get_saturation_endpoints`); only truly defaults to `0.0`
         if `satfunc` isn't given either. Explicit deck arrays always take
         precedence, per keyword independently.
 
@@ -488,7 +486,7 @@ class Rock(StoreSerializable):
             if saturation_region is None:
                 saturation_region = _load_region_array(deck_file, "SATNUM", n_cells)
             if saturation_region is not None:
-                table_derived_endpoints = cls._get_saturation_endpoints_from_tables(
+                table_derived_endpoints = cls.get_saturation_endpoints(
                     satfunc=satfunc,
                     saturation_region=saturation_region,
                     n_cells=n_cells,

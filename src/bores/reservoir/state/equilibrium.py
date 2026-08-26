@@ -50,9 +50,11 @@ class DepthTable(StoreSerializable):
     """
 
     unit_system: UnitSystem = UnitSystem.FIELD
-    """Unit system for `depths`. `values` unit conversion is not handled
+    """
+    Unit system for `depths`. `values` unit conversion is not handled
     here - GOR-type quantities are converted by the caller (same factor
-    used for `ReservoirState.solution_gor` / `vaporized_oil_ratio`)."""
+    used for `ReservoirState.solution_gor` / `vaporized_oil_ratio`).
+    """
 
     def __attrs_post_init__(self) -> None:
         if self.depths.ndim != 1:
@@ -96,7 +98,7 @@ class DepthTable(StoreSerializable):
     ) -> Self:
         """
         Return a new `DepthTable` with `depths` rescaled to *target*.
-        `values` are left unchanged - see the `unit_system` docstring.
+        `values` are left unchanged.
 
         :param target: Target `UnitSystem`.
         :param table: Optional custom conversion table.
@@ -296,7 +298,8 @@ class EquilibriumRegion(StoreSerializable):
         factors = get_conversion_factors(self.unit_system, target, table=table)
         length_factor = factors["length"]
         pressure_factor = factors["pressure"]
-        return self.__class__(
+        return attrs.evolve(
+            self,
             datum_depth=self.datum_depth * length_factor,
             datum_pressure=self.datum_pressure * pressure_factor,
             woc_depth=self.woc_depth * length_factor,
@@ -326,13 +329,13 @@ class EquilibriumRegion(StoreSerializable):
         records = deck_file.get("EQUIL")
         if not records:
             raise ValidationError(
-                "No EQUIL keyword found in the DeckFile. Supply equilibration "
+                "No `EQUIL` keyword found in the `DeckFile`. Supply equilibration "
                 "data explicitly via `EquilibriumRegion(...)`, or add an "
                 "`EQUIL` block to the deck."
             )
         if not (1 <= eqlnum <= len(records)):
             raise ValidationError(
-                f"EQLNUM {eqlnum} not found in EQUIL. Available regions: 1..{len(records)}."
+                f"`EQLNUM` {eqlnum} not found in `EQUIL`. Available regions: 1..{len(records)}."
             )
         return typing.cast(
             Self,
@@ -392,12 +395,12 @@ class Equilibrium(StoreSerializable):
         for region in regions.values():
             if region.uses_rsvd and (rsvd_tables is None or region.rsvd_table not in rsvd_tables):
                 raise ValidationError(
-                    f"EquilibriumRegion references rsvd_table={region.rsvd_table} "
+                    f"Equilibrium region references `rsvd_table={region.rsvd_table}` "
                     "but no matching table was supplied in `rsvd_tables`."
                 )
             if region.uses_rvvd and (rvvd_tables is None or region.rvvd_table not in rvvd_tables):
                 raise ValidationError(
-                    f"EquilibriumRegion references rvvd_table={region.rvvd_table} "
+                    f"Equilibrium region references `rvvd_table={region.rvvd_table}` "
                     "but no matching table was supplied in `rvvd_tables`."
                 )
 
@@ -409,7 +412,7 @@ class Equilibrium(StoreSerializable):
         }
         if mismatched:
             raise ValidationError(
-                f"All region entries must share `{self.__class__.__name__}`."
+                f"All region entries must share `{self.__class__.__name__}."
                 f"unit_system` ({expected_unit_system.value!r}); mismatches "
                 f"(eqlnum -> unit_system): "
                 f"{ {k: v.value for k, v in mismatched.items()} }."
@@ -493,7 +496,7 @@ class Equilibrium(StoreSerializable):
 
     def region(self, eqlnum: int) -> EquilibriumRegion:
         """
-        Return the `EquilibriumRegion` for a given 1-based EQLNUM index.
+        Return the `EquilibriumRegion` for a given 1-based `EQLNUM` index.
 
         :param eqlnum: 1-based equilibration region index.
         :returns: `EquilibriumRegion` for that region.
@@ -502,7 +505,7 @@ class Equilibrium(StoreSerializable):
         region = self.regions.get(eqlnum)
         if region is None:
             raise KeyError(
-                f"EQLNUM {eqlnum} not found. Available regions: {sorted(self.regions)}."
+                f"`EQLNUM` {eqlnum} not found. Available regions: {sorted(self.regions)}."
             )
         return region
 
@@ -563,7 +566,7 @@ class Equilibrium(StoreSerializable):
 
         :param deck_file: Parsed `DeckFile` containing a `SOLUTION`-section
             `EQUIL` keyword.
-        :returns: `Equilibrium` keyed by 1-based EQLNUM index.
+        :returns: `Equilibrium` keyed by 1-based `EQLNUM` index.
         :raises ValidationError: If `EQUIL` is absent from the deck, or an
             `EquilibriumRegion` references an `RSVD`/`RVVD` table number that
             isn't present in the deck.
@@ -599,7 +602,7 @@ def _load_equilibrium_region_from_record(
     map onto `EquilibriumRegion` fields.
 
     :param record: One row of `deck_file.get("EQUIL")`.
-    :param eqlnum: 1-based EQLNUM index this record belongs to (used only
+    :param eqlnum: 1-based `EQLNUM` index this record belongs to (used only
         for error messages).
     :param unit_system: Unit system of the source `DeckFile`.
     :returns: `EquilibriumRegion` for this record.
@@ -627,7 +630,7 @@ def load_equilibrium_regions(
 ) -> dict[int, EquilibriumRegion]:
     """
     Parse every `EQUIL` record in *deck_file* into `EquilibriumRegion`
-    objects, keyed by 1-based EQLNUM index.
+    objects, keyed by 1-based `EQLNUM` index.
 
     :param deck_file: Parsed `DeckFile`.
     :returns: `{eqlnum: EquilibriumRegion}` mapping, one entry per `EQUIL`
