@@ -107,6 +107,7 @@ select = [
     "I",   # isort
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
+    "RUF",
 ]
 ignore = ["E501", "F403"]
 

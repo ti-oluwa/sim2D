@@ -1,116 +1,100 @@
 """
-`WellGroup` target allocation. Logic for spliting a `GroupControl` target rate across
-member wells by guide rate, producing concrete per-well WellControl
-objects for wells whose mode is GRUP.
+`CompiledGroupControls` target allocation. Splits a group's target rate
+across its eligible member wells by guide rate, writing concrete per-well
+`target_rates`/`control_modes` directly into `CompiledWellControls` in
+place for wells whose mode is `GRUP`.
 
 First-pass proportional allocation only: does not iterate to redistribute
 a shortfall when an allocated well can't actually reach its share (e.g.
 hits its own BHP limit). That redistribution loop is not implemented.
 """
 
-import attrs
+import numpy as np
 
 from bores.errors import ValidationError
-from bores.typing import Number
-from bores.wells.controls import (
-    InjectorControl,
-    InjectorControlMode,
-    ProducerControl,
-    ProducerControlMode,
-    WellControl,
+from bores.wells.compile import (
+    GROUP_TO_INJECTOR_MODE_TAG,
+    GROUP_TO_PRODUCER_MODE_TAG,
+    CompiledWellSystem,
+    GroupKind,
+    InjectorControlModeTag,
+    ProducerControlModeTag,
+    WellKind,
 )
-from bores.wells.groups import GroupInjectorControlMode, GroupProducerControlMode
-from bores.wells.model import WellSystem
 
 __all__ = ["allocate_group_targets"]
 
-PRODUCER_MODE_MAP: dict[GroupProducerControlMode, ProducerControlMode] = {
-    GroupProducerControlMode.ORAT: ProducerControlMode.ORAT,
-    GroupProducerControlMode.WRAT: ProducerControlMode.WRAT,
-    GroupProducerControlMode.GRAT: ProducerControlMode.GRAT,
-    GroupProducerControlMode.LRAT: ProducerControlMode.LRAT,
-    GroupProducerControlMode.RESV: ProducerControlMode.RESV,
-}
-INJECTOR_MODE_MAP: dict[GroupInjectorControlMode, InjectorControlMode] = {
-    GroupInjectorControlMode.RATE: InjectorControlMode.RATE,
-    GroupInjectorControlMode.RESV: InjectorControlMode.RESV,
-}
 
-
-def allocate_group_targets(group_name: str, well_model: WellSystem) -> dict[str, WellControl]:
+def allocate_group_targets(group_name: str, well_system: CompiledWellSystem) -> tuple[str, ...]:
     """
-    Allocate `group_name`'s current `GroupControl` target across its
-    member wells whose control mode is `GRUP`, by guide rate.
+    Allocate `group_name`'s current target rate across its member wells
+    whose control mode is `GRUP`, by guide rate.
 
-    Writes the resulting per-well `WellControl` (mode switched to a
-    concrete rate mode, `target_rate` set to the well's share) into
-    `well_model.controls` via `WellControls.set`.
+    Writes the resulting per-well control (mode switched to a concrete
+    rate mode, `target_rates` set to the well's share) directly into
+    `well_system.controls.target_rates`/`.control_modes` in place - no new
+    arrays allocated, no rich objects touched. Member wells were resolved
+    once at compile time (`compile_group_controls`); this only re-evaluates
+    which of them currently sit in `GRUP` mode, since that's dynamic.
 
-    :param group_name: `WellGroup` to allocate.
-    :param well_model: Supplies `well_model.groups`, `well_model.group_controls`,
-        `well_model.controls`, and `well_model.get_wells_in_group`.
-    :returns: Mapping from well name to its updated `WellControl`, for the
-        wells actually allocated (empty if none are eligible).
-    :raises ValidationError: If `well_model.group_controls` is `None`, or
-        `group_name` has no `GroupControl` set, or its `mode` has no
+    :param group_name: Group to allocate - a row in
+        `well_system.group_controls.names`.
+    :param well_system: Supplies `.group_controls` (target and compiled
+        membership) and `.controls`/`.well_kinds` (written to in place).
+    :returns: Names of the wells actually allocated, for the eligible
+        member wells (empty if none are eligible).
+    :raises ValidationError: If `well_system.group_controls` is `None`, or
+        `group_name` isn't one of its rows, or its `mode` has no
         allocatable target (`FLD`/`NONE`/`VREP`/`REIN`).
     """
-    if well_model.group_controls is None:
-        raise ValidationError("`well_model.group_controls` is not set.")
+    group_controls = well_system.group_controls
+    if group_controls is None:
+        raise ValidationError("`well_system.group_controls` is not set.")
 
-    group_control = well_model.group_controls.get(group_name)
-    if group_control is None:
-        raise ValidationError(f"No `GroupControl` set for group {group_name!r}.")
+    try:
+        group_index = group_controls.names.index(group_name)
+    except ValueError:
+        raise ValidationError(f"No `GroupControl` set for group {group_name!r}.") from None
 
-    is_injection = isinstance(group_control.mode, GroupInjectorControlMode)
-    if is_injection:
-        target_mode = INJECTOR_MODE_MAP.get(group_control.mode)  # type: ignore[arg-type]
-    else:
-        target_mode = PRODUCER_MODE_MAP.get(group_control.mode)  # type: ignore[arg-type]
-
-    if target_mode is None:
+    group_kind = group_controls.group_kinds[group_index]
+    group_mode = group_controls.control_modes[group_index]
+    is_injection = group_kind == GroupKind.INJECTOR
+    target_mode_tag = (
+        GROUP_TO_INJECTOR_MODE_TAG.get(group_mode)
+        if is_injection
+        else GROUP_TO_PRODUCER_MODE_TAG.get(group_mode)
+    )
+    if target_mode_tag is None:
         raise ValidationError(
-            f"`WellGroup` {group_name!r}'s control mode {group_control.mode} has no "
-            "directly allocatable rate target."
+            f"Group {group_name!r}'s control mode has no directly allocatable rate target."
         )
-    if group_control.target_rate is None:
-        raise ValidationError(f"`WellGroup` {group_name!r}'s control has no target_rate.")
 
-    member_names = well_model.get_wells_in_group(group_name)
-    eligible: list[str] = []
-    for name in member_names:
-        control = well_model.controls.get(name)
-        if control is None:
-            continue
-        if is_injection:
-            if not isinstance(control, InjectorControl):
-                continue
-            if control.mode is not InjectorControlMode.GRUP:
-                continue
-        else:
-            if not isinstance(control, ProducerControl):
-                continue
-            if control.mode is not ProducerControlMode.GRUP:
-                continue
-        eligible.append(name)
+    target_rate = group_controls.target_rates[group_index]
+    if np.isnan(target_rate):
+        raise ValidationError(f"Group {group_name!r}'s control has no target_rate.")
 
+    member_start = group_controls.member_offsets[group_index]
+    member_end = group_controls.member_offsets[group_index + 1]
+    member_indices = group_controls.member_well_indices[member_start:member_end]
+
+    grup_mode_tag = InjectorControlModeTag.GRUP if is_injection else ProducerControlModeTag.GRUP
+    expected_well_kind = WellKind.INJECTOR if is_injection else WellKind.PRODUCER
+    controls = well_system.controls
+    eligible = [
+        i
+        for i in member_indices
+        if well_system.well_kinds[i] == expected_well_kind
+        and controls.control_modes[i] == grup_mode_tag
+    ]
     if not eligible:
-        return {}
+        return ()
 
-    weights: dict[str, Number] = {}
-    for name in eligible:
-        guide_rate = well_model.controls[name].guide_rate
-        if guide_rate is not None:
-            weights[name] = guide_rate
-        else:
-            weights[name] = 1.0
-    total_weight = sum(weights.values())
+    guide_rates = controls.guide_rates[eligible]
+    weights = np.where(np.isnan(guide_rates), 1.0, guide_rates)
+    total_weight = weights.sum()
 
-    updated: dict[str, WellControl] = {}
-    for name in eligible:
-        share = group_control.target_rate * (weights[name] / total_weight)
-        current = well_model.controls[name]
-        new_control = attrs.evolve(current, mode=target_mode, target_rate=share)
-        well_model.controls.set(name, new_control)
-        updated[name] = new_control
-    return updated
+    for i, weight in zip(eligible, weights, strict=False):
+        controls.target_rates[i] = target_rate * (weight / total_weight)
+        controls.control_modes[i] = target_mode_tag
+
+    return tuple(well_system.names[i] for i in eligible)

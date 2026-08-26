@@ -20,18 +20,18 @@ from bores.utils import clip, max_, min_
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "compute_gas_compressibility",
+    "compute_gas_compressibility_factor",
+    "compute_gas_compressibility_factor_dranchuk_abou_kassem",
+    "compute_gas_compressibility_factor_hall_yarborough",
+    "compute_gas_compressibility_factor_papay",
+    "compute_gas_density",
+    "compute_gas_formation_volume_factor",
     "compute_gas_gravity",
     "compute_gas_gravity_from_density",
-    "compute_gas_formation_volume_factor",
-    "compute_gas_compressibility_factor_papay",
-    "compute_gas_compressibility_factor_hall_yarborough",
-    "compute_gas_compressibility_factor_dranchuk_abou_kassem",
-    "compute_gas_compressibility_factor",
     "compute_gas_molecular_weight",
     "compute_gas_pseudocritical_properties",
-    "compute_gas_density",
     "compute_gas_viscosity",
-    "compute_gas_compressibility",
 ]
 
 

@@ -33,20 +33,20 @@ from bores.deck.keywords.base import Field, TableKeyword
 
 __all__ = [
     "DENSITY",
-    "PVTW",
-    "PVDO",
-    "PVTO",
     "PVCO",
     "PVDG",
+    "PVDO",
     "PVTG",
+    "PVTO",
+    "PVTW",
     "ROCK",
     "ROCKTAB",
-    "SWOF",
-    "SGOF",
-    "SWFN",
     "SGFN",
+    "SGOF",
     "SOF2",
     "SOF3",
+    "SWFN",
+    "SWOF",
 ]
 
 DENSITY = TableKeyword(

@@ -1,5 +1,6 @@
 """Resolve well perforations to grid cells."""
 
+import itertools
 import math
 import typing
 
@@ -27,9 +28,9 @@ from bores.wells.base import MDPerforation, Perforation, Well
 
 __all__ = [
     "PerforationIndex",
+    "resolve_md_perforations_indices",
     "resolve_perforation_orientation",
     "resolve_perforations_indices",
-    "resolve_md_perforations_indices",
 ]
 
 
@@ -714,7 +715,7 @@ def resolve_md_perforations_indices(
         stations = trajectory.stations_between(top_md, bottom_md)
         matches: list[PerforationIndex] = []
 
-        for previous, current in zip(stations, stations[1:], strict=False):
+        for previous, current in itertools.pairwise(stations):
             start = (previous.x, previous.y, previous.z)
             end = (current.x, current.y, current.z)
             leg_dx, leg_dy, leg_dz = (

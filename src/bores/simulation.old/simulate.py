@@ -58,7 +58,7 @@ from bores.validation import ValidationReport, validate
 from bores.wells.base import Wells
 from bores.wells.indices import WellsIndices, build_wells_indices, update_wells_indices
 
-__all__ = ["StepResult", "Run", "run", "running", "stop"]
+__all__ = ["Run", "StepResult", "run", "running", "stop"]
 
 logger = logging.getLogger(__name__)
 
@@ -2165,7 +2165,7 @@ def run(
                         )
                         update_wells_indices.reset()
 
-                kwds = dict(  # noqa
+                kwds = dict(
                     time_step=new_step,
                     grid_shape=grid_shape,
                     cell_dimension=cell_dimension,

@@ -18,23 +18,23 @@ from bores.deck.keywords.base import (
 from bores.deck.operators import Operation
 
 __all__ = [
-    "OIL",
-    "GAS",
-    "WATER",
     "DISGAS",
-    "VAPOIL",
+    "EQLDIMS",
     "FIELD",
-    "METRIC",
+    "GAS",
     "LAB",
+    "METRIC",
     "NOSIM",
-    "UNIFIN",
-    "UNIFOUT",
-    "TITLE",
+    "OIL",
+    "REGDIMS",
     "START",
     "TABDIMS",
+    "TITLE",
+    "UNIFIN",
+    "UNIFOUT",
+    "VAPOIL",
+    "WATER",
     "WELLDIMS",
-    "EQLDIMS",
-    "REGDIMS",
 ]
 
 

@@ -21,11 +21,11 @@ __all__ = [
     "converter",
     "dump",
     "load",
-    "register_type_serializer",
-    "register_type_deserializer",
-    "register_ndarray_serializers",
-    "ndarray_serializer",
     "ndarray_deserializer",
+    "ndarray_serializer",
+    "register_ndarray_serializers",
+    "register_type_deserializer",
+    "register_type_serializer",
 ]
 
 SerializableT = typing.TypeVar("SerializableT", bound="Serializable")

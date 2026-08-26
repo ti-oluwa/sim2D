@@ -25,5 +25,5 @@ PyVista conversion:
     from bores.grids.io.pyvista import to_pyvista
 """
 
-from .gmsh import *  # noqa
-from .grdecl import *  # noqa
+from .gmsh import *
+from .grdecl import *

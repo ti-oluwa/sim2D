@@ -22,15 +22,15 @@ from bores.wells.states import ConnectionSample, PhaseValues
 __all__ = [
     "PRODUCER_RATE_MODE_PHASES",
     "RATE_QUANTITY_PHASES",
-    "phase_mask",
-    "get_default_pressure_bracket",
-    "solve_connection_pressures_and_rates",
-    "compute_phase_rates",
     "bisect_bhp",
-    "solve_producer_rate_mode",
-    "solve_producer_bhp_mode",
-    "solve_injector_rate_mode",
+    "compute_phase_rates",
+    "get_default_pressure_bracket",
+    "phase_mask",
+    "solve_connection_pressures_and_rates",
     "solve_injector_bhp_mode",
+    "solve_injector_rate_mode",
+    "solve_producer_bhp_mode",
+    "solve_producer_rate_mode",
 ]
 
 

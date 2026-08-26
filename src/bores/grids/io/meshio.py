@@ -32,7 +32,7 @@ from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
 
-__all__ = ["load_mesh", "dump_mesh"]
+__all__ = ["dump_mesh", "load_mesh"]
 
 
 _PathOrStr = typing.Union[str, Path]

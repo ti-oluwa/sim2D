@@ -24,11 +24,11 @@ from bores.wells.groups import (
 )
 
 __all__ = [
-    "make_producer",
-    "make_injector",
     "make_group_control",
-    "make_wells",
+    "make_injector",
+    "make_producer",
     "make_well_controls",
+    "make_wells",
 ]
 
 

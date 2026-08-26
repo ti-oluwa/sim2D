@@ -42,15 +42,15 @@ from bores.wells.indices.perforations import (
 
 __all__ = [
     "WellIndex",
-    "resolve_well_index_direction",
-    "is_locally_cartesian",
-    "compute_peaceman_well_index",
-    "compute_3D_effective_drainage_radius",
+    "build_wells_indices",
     "compute_2D_effective_drainage_radius",
+    "compute_3D_effective_drainage_radius",
     "compute_effective_permeability_for_well",
     "compute_equivalent_radius_well_index",
+    "compute_peaceman_well_index",
+    "is_locally_cartesian",
     "resolve_connection_factor",
-    "build_wells_indices",
+    "resolve_well_index_direction",
 ]
 
 

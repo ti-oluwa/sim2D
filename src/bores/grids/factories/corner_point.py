@@ -395,7 +395,7 @@ def _apply_map_axes_to_coord(coord: CoordArray, map_axes: MapAxes) -> CoordArray
     :returns: New array of the same shape, with `x`/`y` columns mapped.
     """
     rotated = coord.copy()
-    shape_xy = coord.shape[:-1] + (2,)
+    shape_xy = (*coord.shape[:-1], 2)
     top_xy = coord[..., 0:2].reshape(-1, 2)
     bottom_xy = coord[..., 3:5].reshape(-1, 2)
     rotated[..., 0:2] = _map_axes_xy_forward(top_xy, map_axes).reshape(shape_xy)

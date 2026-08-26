@@ -8,11 +8,11 @@ import numpy.typing as npt
 
 __all__ = [
     "NONE_SENTINEL",
-    "is_none_sentinel",
-    "sequence_to_ndarray",
-    "normalize_for_storage",
     "denormalize_from_storage",
+    "is_none_sentinel",
+    "normalize_for_storage",
     "normalize_loaded_value",
+    "sequence_to_ndarray",
 ]
 
 # Sentinel for None values to avoid object dtype issues

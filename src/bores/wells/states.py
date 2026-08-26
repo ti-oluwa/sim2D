@@ -13,9 +13,9 @@ from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
 __all__ = [
-    "PhaseValues",
     "ConnectionSample",
     "PerforationState",
+    "PhaseValues",
     "WellState",
     "WellsStates",
 ]

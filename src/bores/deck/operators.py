@@ -21,10 +21,10 @@ from bores.deck.core import Deck, tokenize
 from bores.typing import FloatArray, IntArray, OneDimension
 
 __all__ = [
-    "Operation",
-    "resolve_operations",
-    "apply_operation",
     "OPERATOR_CONTROL_KEYWORDS",
+    "Operation",
+    "apply_operation",
+    "resolve_operations",
 ]
 
 _BOX_KEYWORD = "BOX"

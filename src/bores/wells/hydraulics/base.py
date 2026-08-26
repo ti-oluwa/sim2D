@@ -14,17 +14,17 @@ __all__ = [
     "PressureDrop",
     "SurfaceFluidProperties",
     "WellBoreModel",
-    "compute_mixture_density",
-    "compute_mixture_viscosity",
-    "compute_mixture_velocity",
-    "compute_surface_mixture_density",
-    "compute_surface_mixture_viscosity",
     "compute_friction_factor",
-    "get_unit_system_constant",
     "compute_hydrostatic_pressure",
+    "compute_mixture_density",
+    "compute_mixture_velocity",
+    "compute_mixture_viscosity",
     "compute_segment_pressure_drop",
     "compute_static_hydrostatic_drop",
     "compute_static_mixture_density",
+    "compute_surface_mixture_density",
+    "compute_surface_mixture_viscosity",
+    "get_unit_system_constant",
 ]
 
 

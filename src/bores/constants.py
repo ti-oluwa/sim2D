@@ -15,15 +15,15 @@ from bores.serde.stores import StoreSerializable
 from bores.typing import UnitConversionFactors, UnitConversionTable, UnitSystem
 
 __all__ = [
+    "UNIT_CONVERSION_TABLE",
     "Constant",
     "Constants",
     "ConstantsContext",
+    "build_unit_conversion_table",
     "c",
     "get_constant",
     "get_conversion_factors",
-    "build_unit_conversion_table",
     "set_default_constants",
-    "UNIT_CONVERSION_TABLE",
 ]
 
 logger = logging.getLogger(__name__)
@@ -954,7 +954,7 @@ class Constants(
     exactly one value in memory, not two copies to keep in sync.
     """
 
-    __slots__ = ("_store", "_aliases")
+    __slots__ = ("_aliases", "_store")
 
     def __new__(cls, *args, **kwargs) -> Self:
         instance = super().__new__(cls)

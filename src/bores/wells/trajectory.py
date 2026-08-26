@@ -115,9 +115,9 @@ class WellTrajectory(Serializable):
         start_x, start_y, start_z = self.position_at(start_md)
         end_x, end_y, end_z = self.position_at(end_md)
         return (
-            (TrajectoryStation(measured_depth=start_md, x=start_x, y=start_y, z=start_z),)
-            + interior
-            + (TrajectoryStation(measured_depth=end_md, x=end_x, y=end_y, z=end_z),)
+            TrajectoryStation(measured_depth=start_md, x=start_x, y=start_y, z=start_z),
+            *interior,
+            TrajectoryStation(measured_depth=end_md, x=end_x, y=end_y, z=end_z),
         )
 
     def position_at(self, measured_depth: Number) -> tuple[Number, Number, Number]:
@@ -150,7 +150,7 @@ class WellTrajectory(Serializable):
         dy = current.y - previous.y
         dz = current.z - previous.z
         length = math.sqrt(dx**2 + dy**2 + dz**2)
-        if length == 0.0:
+        if length == 0:
             raise ValidationError(
                 "Zero-length trajectory leg between measured_depth="
                 f"{previous.measured_depth} and {current.measured_depth}."

@@ -21,8 +21,8 @@ from bores.typing import (
 
 __all__ = [
     "DepthTable",
-    "EquilibriumRegion",
     "Equilibrium",
+    "EquilibriumRegion",
     "load_equilibrium_regions",
 ]
 

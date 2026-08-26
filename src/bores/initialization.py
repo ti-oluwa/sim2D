@@ -50,9 +50,9 @@ from bores.typing import (
 from bores.utils import get_hydrostatic_gradient_factor
 
 __all__ = [
-    "initialize_reservoir_state",
-    "initialize_equilibrium_arrays",
     "EquilibriumArrays",
+    "initialize_equilibrium_arrays",
+    "initialize_reservoir_state",
 ]
 
 N_SATURATION_SAMPLES = 100

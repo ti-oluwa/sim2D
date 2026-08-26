@@ -14,13 +14,13 @@ from bores.serde.stores import StoreSerializable
 from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
 
 __all__ = [
-    "WellGroup",
-    "WellGroups",
-    "GroupProducerControlMode",
-    "GroupInjectorControlMode",
+    "FIELD_GROUP",
     "GroupControl",
     "GroupControls",
-    "FIELD_GROUP",
+    "GroupInjectorControlMode",
+    "GroupProducerControlMode",
+    "WellGroup",
+    "WellGroups",
 ]
 
 FIELD_GROUP = "FIELD"

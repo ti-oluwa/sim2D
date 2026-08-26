@@ -69,12 +69,12 @@ class Reservoir(
     """
 
     __slots__ = (
-        "grid",
-        "rock",
-        "regions",
-        "unit_system",
-        "_transmissibilities",
         "_face_transmissibility_map",
+        "_transmissibilities",
+        "grid",
+        "regions",
+        "rock",
+        "unit_system",
     )
 
     def __init__(

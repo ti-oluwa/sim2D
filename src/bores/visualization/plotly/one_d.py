@@ -958,39 +958,39 @@ class TornadoRenderer(BaseRenderer):
         # Configure layout for tornado plot
         figure.update_layout(
             barmode="overlay",
-            title=dict(  # noqa
+            title=dict(
                 text=title or self.config.title or "Tornado Plot - Sensitivity Analysis",
                 x=0.5,
                 xanchor="center",
-                font=dict(size=self.config.title_font_size),  # noqa
+                font=dict(size=self.config.title_font_size),
             ),
-            xaxis_title=dict(  # noqa
+            xaxis_title=dict(
                 text=x_label,
-                font=dict(size=self.config.axis_title_font_size),  # noqa
+                font=dict(size=self.config.axis_title_font_size),
             ),
-            yaxis_title=dict(  # noqa
+            yaxis_title=dict(
                 text=y_label,
-                font=dict(size=self.config.axis_title_font_size),  # noqa
+                font=dict(size=self.config.axis_title_font_size),
             ),
             width=width if width is not None else self.config.width,
             height=height if height is not None else self.config.height,
             showlegend=self.config.show_legend,
             plot_bgcolor=self.config.plot_background_color,
             paper_bgcolor=self.config.background_color,
-            font=dict(family=self.config.font_family, size=self.config.font_size),  # noqa
-            xaxis=dict(  # noqa
+            font=dict(family=self.config.font_family, size=self.config.font_size),
+            xaxis=dict(
                 showgrid=self.config.show_grid,
                 gridcolor=self.config.xaxis_grid_color or self.config.grid_color,
                 zeroline=True,
                 zerolinewidth=2,
                 zerolinecolor="black",
             ),
-            yaxis=dict(  # noqa
+            yaxis=dict(
                 showgrid=False,
                 autorange="reversed",  # Top-to-bottom ordering
             ),
             hovermode="y" if self.config.show_hover else False,
-            margin=dict(  # noqa
+            margin=dict(
                 l=self.config.margin_left + 50,  # Extra space for variable names
                 r=self.config.margin_right,
                 t=self.config.margin_top,
@@ -1123,12 +1123,12 @@ class ScatterRenderer(BaseRenderer):
                 custom_hover = hover_template
 
             # Add scatter trace
-            trace_kwargs = dict(  # noqa
+            trace_kwargs = dict(
                 x=x_values,
                 y=y_values,
                 mode="markers",
                 name=name,
-                marker=dict(color=marker_color, size=sizes[i], symbol=symbols[i]),  # noqa
+                marker=dict(color=marker_color, size=sizes[i], symbol=symbols[i]),
                 hovertemplate=custom_hover if self.config.show_hover else None,
                 hoverinfo="skip" if not self.config.show_hover else None,
             )

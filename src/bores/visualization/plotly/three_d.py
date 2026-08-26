@@ -802,7 +802,7 @@ class BaseRenderer(ABC):
                             y=[y_surf, y_surf],
                             z=[z_surface, z_perf],
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color="#999999",  # Neutral gray
                                 width=wellbore_width * 0.7,  # Slightly thinner
                                 dash="solid",
@@ -857,7 +857,7 @@ class BaseRenderer(ABC):
                             y=y_points,
                             z=z_points,
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width,
                                 dash="solid" if well.is_open else "dash",
@@ -898,11 +898,11 @@ class BaseRenderer(ABC):
                             y=[y_start, y_end],
                             z=[z_start, z_end],
                             mode="lines+markers",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width * 1.5,  # 50% thicker
                             ),
-                            marker=dict(  # noqa
+                            marker=dict(
                                 size=4,
                                 color=color,
                                 symbol="diamond",
@@ -980,7 +980,7 @@ class BaseRenderer(ABC):
                             y=[y_surf, y_surf],
                             z=[arrow_top, arrow_stem_bottom],
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width * 0.8,  # Make stem more visible
                             ),
@@ -1068,7 +1068,7 @@ class BaseRenderer(ABC):
                             y=[y_surf, y_surf],
                             z=[z_surface, z_perf],
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color="#999999",  # Neutral gray
                                 width=wellbore_width * 0.7,  # Slightly thinner
                                 dash="solid",
@@ -1133,7 +1133,7 @@ class BaseRenderer(ABC):
                             y=y_points,
                             z=z_points,
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width,
                                 dash="solid" if well.is_open else "dash",
@@ -1178,11 +1178,11 @@ class BaseRenderer(ABC):
                             y=[y_start, y_end],
                             z=[z_start, z_end],
                             mode="lines+markers",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width * 1.5,  # 50% thicker
                             ),
-                            marker=dict(  # noqa
+                            marker=dict(
                                 size=4,
                                 color=color,
                                 symbol="diamond",
@@ -1212,7 +1212,7 @@ class BaseRenderer(ABC):
 
                     # Surface should be at z_offset (the top of the grid)
                     # `coordinate_offsets` contains the base Z coordinate
-                    x_offset, y_offset, z_offset = coordinate_offsets or (0, 0, 0)
+                    _x_offset, _y_offset, z_offset = coordinate_offsets or (0, 0, 0)
                     z_surf = float(z_offset)  # Top of volume
 
                     # Add cone/arrow pointing OUT OF reservoir at the SURFACE (production = outflow)
@@ -1260,7 +1260,7 @@ class BaseRenderer(ABC):
                             y=[y_surf, y_surf],
                             z=[z_surf, z_surf + stem_length],
                             mode="lines",
-                            line=dict(  # noqa
+                            line=dict(
                                 color=color,
                                 width=wellbore_width * 0.8,  # Make stem more visible
                             ),
@@ -1310,8 +1310,7 @@ class BaseRenderer(ABC):
         # Position legend to avoid overlap with colorbar
         # Check if there's a colorbar (most volume/isosurface plots have one on the right)
         has_colorbar = any(
-            hasattr(trace, "colorbar")
-            and trace.colorbar is not None  # type: ignore[attr-defined]
+            (hasattr(trace, "colorbar") and trace.colorbar is not None)  # type: ignore[attr-defined]
             or (hasattr(trace, "showscale") and trace.showscale)  # type: ignore[attr-defined]
             for trace in figure.data
         )
@@ -1319,7 +1318,7 @@ class BaseRenderer(ABC):
         if has_colorbar:
             # Colorbar is typically on the right, position legend on the left
             figure.update_layout(
-                legend=dict(  # noqa
+                legend=dict(
                     x=0.01,  # Left side
                     y=0.99,  # Top
                     xanchor="left",
@@ -1332,7 +1331,7 @@ class BaseRenderer(ABC):
         else:
             # No colorbar, use default right side position
             figure.update_layout(
-                legend=dict(  # noqa
+                legend=dict(
                     x=0.99,  # Right side
                     y=0.99,  # Top
                     xanchor="right",
@@ -1615,7 +1614,7 @@ class VolumeRenderer(BaseRenderer):
                 surface_count=surface_count,
                 colorscale=colorscale,
                 showscale=self.config.show_colorbar,
-                caps=dict(x_show=True, y_show=True, z_show=True),  # noqa  # Show all 6 faces
+                caps=dict(x_show=True, y_show=True, z_show=True),  # Show all 6 faces
                 opacityscale=opacity_scale,
                 cmin=cmin,  # Use converted values for internal plotting
                 cmax=cmax,  # Use converted values for internal plotting
@@ -1623,7 +1622,7 @@ class VolumeRenderer(BaseRenderer):
                 isomax=isomax,  # Use converted values for internal plotting
                 lighting=self.config.lighting,
                 lightposition=self.config.light_position,
-                colorbar=dict(  # noqa
+                colorbar=dict(
                     title=scale_title,
                     tickmode="array",
                     tickvals=scale_values,
@@ -1918,7 +1917,7 @@ class IsosurfaceRenderer(BaseRenderer):
                 lightposition=self.config.light_position,
                 text=hover_text,
                 hovertemplate="%{text}<extra></extra>",
-                colorbar=dict(  # noqa
+                colorbar=dict(
                     title=scale_title,
                     tickmode="array",
                     tickvals=scale_values,
@@ -2213,14 +2212,14 @@ class Scatter3DRenderer(BaseRenderer):
                 y=y_physical,
                 z=z_physical,
                 mode="markers",
-                marker=dict(  # noqa
+                marker=dict(
                     size=marker_size,
                     color=values,
                     colorscale=colorscale,
                     opacity=scatter_opacity,
                     cmin=cmin,
                     cmax=cmax,
-                    colorbar=dict(  # noqa
+                    colorbar=dict(
                         title=scale_title,
                         tickmode="array",
                         tickvals=scale_values,
@@ -2884,9 +2883,7 @@ class DataVisualizer:
                 if scene_layout := getattr(frames[0].layout, "scene", None) is not None:
                     initial_annotations = getattr(scene_layout, "annotations", [])
                     if initial_annotations:
-                        base_fig.update_layout(
-                            scene=dict(annotations=initial_annotations)  # noqa
-                        )
+                        base_fig.update_layout(scene=dict(annotations=initial_annotations))
                         logger.debug(
                             f"Set {len(initial_annotations)} initial annotations on base figure"
                         )

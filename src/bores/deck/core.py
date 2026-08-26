@@ -8,9 +8,9 @@ from pathlib import Path
 from bores.errors import ValidationError
 
 __all__ = [
-    "Record",
     "Deck",
     "DeckParseError",
+    "Record",
     "parse_repeat_token",
     "tokenize",
 ]
@@ -291,7 +291,7 @@ class Deck:
         this edge case only arises with truncated or hand-written files.
     """
 
-    __slots__ = ("text", "records", "_keyword_records", "_hash")
+    __slots__ = ("_hash", "_keyword_records", "records", "text")
 
     def __init__(self, text: str) -> None:
         """

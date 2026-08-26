@@ -477,7 +477,7 @@ class Labels:
         for label in self.visible():
             try:
                 # Check if label position is within the sliced data bounds
-                if coordinate_offsets is not None and data_grid is not None:  # noqa
+                if coordinate_offsets is not None and data_grid is not None:
                     # Check if label falls within the current slice bounds
                     # Label position should be relative to the sliced data (0-indexed)
                     if (

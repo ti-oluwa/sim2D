@@ -22,12 +22,12 @@ from bores.typing import (
 from bores.wells.trajectory import WellTrajectory
 
 __all__ = [
-    "WellType",
     "CompletionStatus",
-    "WellStatus",
-    "Perforation",
     "MDPerforation",
+    "Perforation",
     "Well",
+    "WellStatus",
+    "WellType",
     "Wells",
 ]
 
@@ -553,7 +553,7 @@ class Wells(
 ):
     """Name-keyed container of `Well` objects"""
 
-    __slots__ = ("wells", "unit_system")
+    __slots__ = ("unit_system", "wells")
 
     def __init__(
         self,

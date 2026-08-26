@@ -36,22 +36,22 @@ from bores.deck.keywords.base import Keyword
 from bores.deck.operators import Operation
 
 __all__ = [
-    "FOPR",
-    "FWPR",
     "FGPR",
-    "FOPT",
-    "FWPT",
     "FGPT",
-    "WOPR",
-    "WWPR",
-    "WGPR",
-    "WBHP",
-    "WTHP",
-    "ROIP",
+    "FOPR",
+    "FOPT",
+    "FWPR",
+    "FWPT",
     "RGIP",
-    "RWIP",
+    "ROIP",
     "RPTRST",
     "RPTSCHED",
+    "RWIP",
+    "WBHP",
+    "WGPR",
+    "WOPR",
+    "WTHP",
+    "WWPR",
 ]
 
 

@@ -319,11 +319,11 @@ class DeckFile:
     """
 
     __slots__ = (
-        "_deck",
-        "_registry",
         "_cache",
-        "_operations",
+        "_deck",
         "_operation_targets",
+        "_operations",
+        "_registry",
         "_schedule_times",
         "dimensions",
         "unit_system",

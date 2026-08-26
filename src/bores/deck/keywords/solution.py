@@ -44,22 +44,22 @@ from bores.deck.keywords.base import (
 from bores.deck.operators import Operation
 
 __all__ = [
-    "SWAT",
-    "SOIL",
-    "SGAS",
-    "SW",
-    "SO",
-    "SG",
-    "PRESSURE",
-    "RS",
-    "RV",
     "EQUIL",
+    "PRESSURE",
     "RESTART",
-    "RTEMP",
-    "TEMPVD",
-    "RTEMPVD",
+    "RS",
     "RSVD",
+    "RTEMP",
+    "RTEMPVD",
+    "RV",
     "RVVD",
+    "SG",
+    "SGAS",
+    "SO",
+    "SOIL",
+    "SW",
+    "SWAT",
+    "TEMPVD",
 ]
 
 

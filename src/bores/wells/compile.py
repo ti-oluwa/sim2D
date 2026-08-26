@@ -46,23 +46,24 @@ from bores.wells.groups import (
     GroupControls,
     GroupInjectorControlMode,
     GroupProducerControlMode,
+    WellGroups,
 )
 from bores.wells.indices.perforations import PerforationIndex
 from bores.wells.indices.wells import build_wells_indices
 
 __all__ = [
-    "WellKind",
-    "LimitKind",
-    "GroupKind",
-    "CompiledPerforations",
-    "CompiledLimits",
-    "CompiledWellControls",
     "CompiledGroupControls",
+    "CompiledLimits",
+    "CompiledPerforations",
+    "CompiledWellControls",
     "CompiledWellSystem",
-    "compile_perforations",
+    "GroupKind",
+    "LimitKind",
+    "WellKind",
     "_compile_limits",
-    "compile_well_controls",
     "compile_group_controls",
+    "compile_perforations",
+    "compile_well_controls",
     "compile_well_system",
 ]
 
@@ -207,6 +208,23 @@ GROUP_INJECTOR_MODE_TAG = {
     GroupInjectorControlMode.REIN: GroupInjectorControlModeTag.REIN,
     GroupInjectorControlMode.FLD: GroupInjectorControlModeTag.FLD,
 }
+GROUP_TO_PRODUCER_MODE_TAG: dict[int, int] = {
+    GroupProducerControlModeTag.ORAT: ProducerControlModeTag.ORAT,
+    GroupProducerControlModeTag.WRAT: ProducerControlModeTag.WRAT,
+    GroupProducerControlModeTag.GRAT: ProducerControlModeTag.GRAT,
+    GroupProducerControlModeTag.LRAT: ProducerControlModeTag.LRAT,
+    GroupProducerControlModeTag.RESV: ProducerControlModeTag.RESV,
+}
+"""Maps a `GroupProducerControlModeTag` to the concrete `ProducerControlModeTag`
+a `GRUP`-mode member well switches to once allocated a share of it.
+`FLD`/`NONE` are deliberately absent - neither has a directly allocatable
+per-well target."""
+GROUP_TO_INJECTOR_MODE_TAG: dict[int, int] = {
+    GroupInjectorControlModeTag.RATE: InjectorControlModeTag.RATE,
+    GroupInjectorControlModeTag.RESV: InjectorControlModeTag.RESV,
+}
+"""Injector analogue of `GROUP_TO_PRODUCER_MODE_TAG`. `VREP`/`REIN`/`FLD`
+deliberately absent, same reasoning."""
 RATE_QUANTITY_TAG = {
     RateQuantity.OIL: RateQuantityTag.OIL,
     RateQuantity.WATER: RateQuantityTag.WATER,
@@ -330,7 +348,11 @@ class CompiledWellControls(typing.NamedTuple):
 
 
 class CompiledGroupControls(typing.NamedTuple):
-    """Every group's current control target, one row per group."""
+    """Every group's current control target, one row per group, plus each
+    group's compiled well membership (direct or via a descendant group) -
+    a compute-once-patch-on-event quantity like `CompiledPerforations`'
+    geometry, since the group hierarchy is deck-defined and doesn't change
+    at solve time."""
 
     names: tuple[str, ...]
     """Shape `(n_groups,)`."""
@@ -348,6 +370,19 @@ class CompiledGroupControls(typing.NamedTuple):
 
     target_rates: NumberArray[OneDimension]
     """Shape `(n_groups,)`. `NaN` where unset."""
+
+    member_offsets: IntArray[OneDimension]
+    """Shape `(n_groups + 1,)`. Group `g`'s member well positions are
+    `member_well_indices[member_offsets[g]:member_offsets[g + 1]]`. A
+    member is any well whose own group is this group or a descendant of
+    it (`WellGroups.descendants`), regardless of that well's current
+    control mode - membership is static; mode eligibility (`GRUP` or not)
+    is dynamic and checked at allocation time instead."""
+
+    member_well_indices: IntArray[OneDimension]
+    """Shape `(n_members,)`. Positions into `CompiledWellSystem.names`/
+    `.controls` (not well names) - direct array indices, no further lookup
+    needed at allocation time."""
 
 
 class CompiledWellSystem(typing.NamedTuple):
@@ -706,17 +741,33 @@ def compile_well_controls(
 
 
 def compile_group_controls(
-    group_controls: GroupControls | None, dtype: npt.DTypeLike = None
+    group_controls: GroupControls | None,
+    wells: Wells,
+    names: typing.Sequence[str],
+    groups: WellGroups | None = None,
+    dtype: npt.DTypeLike = None,
 ) -> CompiledGroupControls | None:
     """
-    Builds `CompiledGroupControls` from a `GroupControls`.
+    Builds `CompiledGroupControls` from a `GroupControls`, including each
+    control's compiled well membership.
 
     Only compiles groups that have an explicit control - it does not
-    cross-reference `WellGroups`' hierarchy, so a group with no control of
-    its own is simply absent from the result, not included as an
-    `UNSET`-mode row the way an uncontrolled well is in `compile_well_controls`.
+    cross-reference `WellGroups`' hierarchy for which groups *exist*, so a
+    group with no control of its own is simply absent from the result, not
+    included as an `UNSET`-mode row the way an uncontrolled well is in
+    `compile_well_controls`. Membership *is* resolved through the
+    hierarchy (a well belongs to a controlled group if its own group is
+    that group or any descendant of it), independent of whether those
+    descendant groups have controls of their own.
 
     :param group_controls: Source `GroupControls`, or `None`.
+    :param wells: Every well in the system - `Well.group` supplies each
+        well's own (direct) group name.
+    :param names: Well names in `CompiledWellSystem.names` order -
+        `member_well_indices` positions are indices into this sequence.
+    :param groups: The group hierarchy, for descendant resolution. `None`
+        restricts membership to a group's *direct* members only (no
+        `WellGroups` to look up descendants through).
     :returns: `CompiledGroupControls`, one row per group with a control,
         in sorted name order; `None` if `group_controls` is `None`.
     :raises ValidationError: If a group's control mode isn't a recognized
@@ -725,13 +776,17 @@ def compile_group_controls(
     if group_controls is None:
         return None
 
-    names = sorted(group_controls.controls.keys())
+    control_names = sorted(group_controls.controls.keys())
     group_kinds: list[Integer] = []
     control_modes: list[Integer] = []
     injected_phases: list[Integer] = []
     target_rates: list[Number] = []
 
-    for name in names:
+    name_to_index = {name: i for i, name in enumerate(names)}
+    member_offsets: list[Integer] = [0]
+    member_well_indices: list[Integer] = []
+
+    for name in control_names:
         control = group_controls.controls[name]
         if isinstance(control.mode, GroupInjectorControlMode):
             group_kinds.append(GroupKind.INJECTOR)
@@ -749,9 +804,15 @@ def compile_group_controls(
             raise ValidationError(f"Unknown GroupControl mode type: {type(control.mode)!r}.")
         target_rates.append(control.target_rate if control.target_rate is not None else np.nan)
 
+        member_group_names = {name, *groups.descendants(name)} if groups is not None else {name}
+        for well_name in names:
+            if wells[well_name].group in member_group_names:
+                member_well_indices.append(name_to_index[well_name])
+        member_offsets.append(len(member_well_indices))
+
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     return CompiledGroupControls(
-        names=tuple(names),
+        names=tuple(control_names),
         group_kinds=typing.cast(IntArray[OneDimension], np.asarray(group_kinds, dtype=np.int32)),
         control_modes=typing.cast(
             IntArray[OneDimension], np.asarray(control_modes, dtype=np.int32)
@@ -760,6 +821,12 @@ def compile_group_controls(
             IntArray[OneDimension], np.asarray(injected_phases, dtype=np.int32)
         ),
         target_rates=typing.cast(NumberArray[OneDimension], np.asarray(target_rates, dtype=dtype)),
+        member_offsets=typing.cast(
+            IntArray[OneDimension], np.asarray(member_offsets, dtype=np.int32)
+        ),
+        member_well_indices=typing.cast(
+            IntArray[OneDimension], np.asarray(member_well_indices, dtype=np.int32)
+        ),
     )
 
 
@@ -769,6 +836,7 @@ def compile_well_system(
     grid: Grid,
     permeabilities: typing.Mapping[Orientation, NumberArray[OneDimension]],
     group_controls: GroupControls | None = None,
+    groups: WellGroups | None = None,
     dtype: npt.DTypeLike = None,
     **resolve_kwargs: typing.Any,
 ) -> CompiledWellSystem:
@@ -787,6 +855,10 @@ def compile_well_system(
     :param permeabilities: Per-axis permeability arrays, forwarded to
         `wells.indices.wells.build_wells_indices`.
     :param group_controls: Current group controls, if any.
+    :param groups: The group hierarchy, if any - `WellSystem.groups`.
+        Forwarded to `compile_group_controls` for descendant-aware
+        membership; a group control without a hierarchy still compiles,
+        with membership restricted to that group's direct members.
     :param resolve_kwargs: Forwarded to `build_wells_indices`.
     :returns: `CompiledWellSystem`, well rows in `wells.names` order.
     :raises ValidationError: If `controls.unit_system` doesn't match `wells.unit_system`.
@@ -833,6 +905,8 @@ def compile_well_system(
         reference_depths=reference_depths,
         perforations=perforations,
         controls=well_controls,
-        group_controls=compile_group_controls(group_controls=group_controls, dtype=dtype),
+        group_controls=compile_group_controls(
+            group_controls=group_controls, wells=wells, names=names, groups=groups, dtype=dtype
+        ),
         unit_system=wells.unit_system,
     )

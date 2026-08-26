@@ -535,8 +535,8 @@ def _expand_interval(
     end = tuple(max(s, e) for s, e in zip(start, end, strict=False))
 
     if dimensions == 2:
-        start = start + (0,)
-        end = end + (0,)
+        start = (*start, 0)
+        end = (*end, 0)
         dimensions = 3  # Pad to 3D for uniform logic
 
     # Create iterator for the correct orientation

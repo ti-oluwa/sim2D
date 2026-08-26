@@ -33,10 +33,10 @@ from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = [
     "MechanisticModel",
-    "mechanistic_model",
-    "compute_segment_drop",
     "compute_perforation_pressures",
+    "compute_segment_drop",
     "compute_tubing_head_pressure",
+    "mechanistic_model",
 ]
 
 

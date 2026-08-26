@@ -20,7 +20,7 @@ from bores.typing import IntArray, OneDimension, Side, UnitSystem
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["make_boundary_region", "make_axis_aligned_boundary_conditions"]
+__all__ = ["make_axis_aligned_boundary_conditions", "make_boundary_region"]
 
 
 def make_boundary_region(

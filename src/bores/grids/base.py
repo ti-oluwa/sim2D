@@ -34,7 +34,7 @@ from bores.typing import (
     UnitSystem,
 )
 
-__all__ = ["Grid", "ConnectionType", "CellStatus"]
+__all__ = ["CellStatus", "ConnectionType", "Grid"]
 
 
 class ConnectionType(enum.IntEnum):

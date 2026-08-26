@@ -25,14 +25,14 @@ from bores.deck.operators import Operation, apply_operation, resolve_operations
 from bores.typing import FloatArray, Number, OneDimension
 
 __all__ = [
-    "Keyword",
-    "Field",
-    "RecordKeyword",
-    "RepeatedRecordKeyword",
     "ArrayKeyword",
-    "FlagKeyword",
     "DateKeyword",
     "DatesKeyword",
+    "Field",
+    "FlagKeyword",
+    "Keyword",
+    "RecordKeyword",
+    "RepeatedRecordKeyword",
     "TableKeyword",
 ]
 
@@ -294,7 +294,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
     on top.
     """
 
-    __slots__ = ("dtype", "default_value", "is_multiplier", "column_shape")
+    __slots__ = ("column_shape", "default_value", "dtype", "is_multiplier")
 
     def __init__(
         self,

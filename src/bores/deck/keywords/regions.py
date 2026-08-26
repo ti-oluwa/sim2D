@@ -27,7 +27,7 @@ import numpy as np
 
 from bores.deck.keywords.base import ArrayKeyword
 
-__all__ = ["SATNUM", "PVTNUM", "EQLNUM", "ROCKNUM", "IMBNUM", "FIPNUM"]
+__all__ = ["EQLNUM", "FIPNUM", "IMBNUM", "PVTNUM", "ROCKNUM", "SATNUM"]
 
 
 SATNUM = ArrayKeyword("SATNUM", dtype=np.int32, default_value=1)

@@ -54,7 +54,7 @@ from bores.typing import (
     UnitSystem,
 )
 
-__all__ = ["load_grdecl", "dump_grdecl"]
+__all__ = ["dump_grdecl", "load_grdecl"]
 
 _PathOrStr = typing.Union[str, Path]
 _TextOrPath = typing.Union[str, bytes, Path]

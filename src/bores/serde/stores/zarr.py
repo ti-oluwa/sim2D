@@ -159,7 +159,7 @@ def _flatten(
         out_vtypes = {}
 
     for key, value in data.items():
-        path = prefix + (key,)
+        path = (*prefix, key)
         flat_key = _join_path(*path)
 
         if value is None:

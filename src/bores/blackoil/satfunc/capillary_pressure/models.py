@@ -93,7 +93,7 @@ def _compute_brooks_corey_capillary_pressures_scalar(
     :return: Tuple of (oil_water_capillary_pressure, gas_oil_capillary_pressure) in psi.
     """
     sw: Number = water_saturation
-    so: Number = oil_saturation  # noqa: F841  (kept for symmetry / future use)
+    so: Number = oil_saturation
     sg: Number = gas_saturation
     swc: Number = irreducible_water_saturation
     sorw: Number = residual_oil_saturation_water
@@ -2180,7 +2180,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
     :return: Tuple of (oil_water_capillary_pressure, gas_oil_capillary_pressure) in psi.
     """
     sw: Number = water_saturation
-    so: Number = oil_saturation  # noqa: F841  (kept for symmetry / future use)
+    so: Number = oil_saturation
     sg: Number = gas_saturation
     swc: Number = irreducible_water_saturation
     sorw: Number = residual_oil_saturation_water

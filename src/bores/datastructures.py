@@ -22,7 +22,7 @@ DType = typing.TypeVar("DType", float, np.floating)
 ShapeT = typing.TypeVar("ShapeT", bound=tuple[int, ...])
 
 
-__all__ = ["GridDimensions", "MapAxes", "ContextFlag"]
+__all__ = ["ContextFlag", "GridDimensions", "MapAxes"]
 
 
 class GridDimensions(NamedTuple):
@@ -153,7 +153,7 @@ class ContextFlag(typing.Generic[T]):
     threads, and async contexts. Each context maintains its own flag value.
     """
 
-    __slots__ = ("_var", "_token")
+    __slots__ = ("_token", "_var")
 
     def __init__(self, id: str, /, initial: T) -> None:
         """

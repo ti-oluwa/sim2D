@@ -86,7 +86,7 @@ VTK_CELL_TYPE_NAMES: dict[int, str] = {
 class _FaceRecord:
     """Mutable record accumulating owner/neighbour information for one face."""
 
-    __slots__ = ("owner_cell_index", "neighbour_cell_index", "face_vertex_indices")
+    __slots__ = ("face_vertex_indices", "neighbour_cell_index", "owner_cell_index")
 
     def __init__(self, owner_cell_index: Integer, face_vertex_indices: FaceVertexIndices) -> None:
         """

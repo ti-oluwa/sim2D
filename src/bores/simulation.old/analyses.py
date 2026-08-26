@@ -2981,7 +2981,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
                 centroid = tuple(float(np.mean(idx[:, d])) for d in range(idx.shape[1]))
             # Pad to 3-tuple if the grid is 2-D
             while len(centroid) < 3:
-                centroid = centroid + (0.0,)
+                centroid = (*centroid, 0.0)
         else:
             centroid = (0.0, 0.0, 0.0)
 

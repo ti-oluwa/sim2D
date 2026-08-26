@@ -29,13 +29,13 @@ from bores.wells.states import ConnectionSample, PhaseValues
 __all__ = [
     "BeggsAndBrillModel",
     "beggs_and_brill",
+    "compute_beggs_brill_holdup",
+    "compute_perforation_pressures",
+    "compute_segment_drop",
+    "compute_tubing_head_pressure",
+    "compute_two_phase_friction_factor",
     "flow_pattern_tag",
     "horizontal_holdup",
-    "compute_beggs_brill_holdup",
-    "compute_two_phase_friction_factor",
-    "compute_segment_drop",
-    "compute_perforation_pressures",
-    "compute_tubing_head_pressure",
 ]
 
 

@@ -414,7 +414,7 @@ class PVTTable(StoreSerializable):
         temperatures = data.temperatures
         n_p = len(pressures)
         n_t = len(temperatures)
-        pressure_table, temperature_table = np.meshgrid(pressures, temperatures, indexing="ij")
+        pressure_table, _temperature_table = np.meshgrid(pressures, temperatures, indexing="ij")
         dtype = self.dtype
 
         updates: dict[str, typing.Any] = {}
