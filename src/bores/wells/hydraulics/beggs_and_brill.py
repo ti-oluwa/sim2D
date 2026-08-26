@@ -503,7 +503,7 @@ def compute_perforation_pressures(
     model: BeggsAndBrillModel,
     reference_depth: Number,
     reference_pressure: Number,
-    phase_rates: PhaseValues,
+    connection_phase_rates: typing.Sequence[PhaseValues],
     representative_depths: NumberArray[OneDimension],
     inclinations_from_vertical: NumberArray[OneDimension],
     connection_samples: typing.Sequence[ConnectionSample],
@@ -512,12 +512,29 @@ def compute_perforation_pressures(
     dtype: npt.DTypeLike = None,
 ) -> NumberArray[OneDimension]:
     """
-    Computes flowing pressure at each perforation connection.
+    Computes flowing pressure at each perforation connection, integrating
+    the wellbore sequentially from `reference_depth` rather than treating
+    each connection as an independent path from the reference.
+
+    The wellbore is split at `reference_depth` into up to two branches -
+    connections at or below it, and connections above it - each walked
+    independently outward from the reference, nearest connection first.
+    The segment feeding into a connection carries the combined rate of
+    that connection and every connection beyond it on the same branch
+    (not yet joined/still to be added to the branch's cumulative flow);
+    once a connection is passed, its own rate is removed from the running
+    total for the next segment. This holds for both production (rate
+    accumulates as segments approach the reference) and injection (rate
+    depletes as segments move away from the reference) under the same
+    walk, since both describe a monotonically decreasing carried rate
+    with distance from the reference.
 
     :param model: This well's `BeggsAndBrillModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
-    :param phase_rates: Rate of each phase, at reservoir conditions.
+    :param connection_phase_rates: Each connection's own rate of each
+        phase, at reservoir conditions - not the well total. Same order
+        as `connection_samples`.
     :param representative_depths: One depth per connection, same order as `connection_samples`.
     :param inclinations_from_vertical: One inclination per connection, in
         radians, same order as `connection_samples`.
@@ -528,18 +545,22 @@ def compute_perforation_pressures(
     :param dtype: Optional output array data type. Ignored if `out` is given.
     :returns: Pressure at each connection, same order as `connection_samples`.
     :raises ValueError: If `representative_depths`, `inclinations_from_vertical`,
-        and `connection_samples` don't all have the same length.
+        `connection_phase_rates`, and `connection_samples` don't all have the same length.
     """
     n = len(connection_samples)
     if out is not None and len(out) != n:
         raise ValueError("If given, `out` must have the same length as `connection_samples`.")
-    if not (len(representative_depths) == len(inclinations_from_vertical) == n):
+    if not (
+        len(representative_depths)
+        == len(inclinations_from_vertical)
+        == len(connection_phase_rates)
+        == n
+    ):
         raise ValueError(
-            "`representative_depths`, `inclinations_from_vertical`, and "
-            "`connection_samples` must all have the same length."
+            "`representative_depths`, `inclinations_from_vertical`, "
+            "`connection_phase_rates`, and `connection_samples` must all have the same length."
         )
 
-    total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
     if out is not None:
         pressures = out
     else:
@@ -549,54 +570,84 @@ def compute_perforation_pressures(
     friction_sign = -1.0 if is_injector else 1.0
     cross_sectional_area = math.pi * (model.tubing_inner_diameter / 2.0) ** 2
 
-    for i in range(n):
-        sample = connection_samples[i]
-        dz = representative_depths[i] - reference_depth
-        geometric_sign = 1.0 if dz >= 0 else -1.0
+    below = sorted(
+        (i for i in range(n) if representative_depths[i] >= reference_depth),
+        key=lambda i: representative_depths[i],
+    )
+    above = sorted(
+        (i for i in range(n) if representative_depths[i] < reference_depth),
+        key=lambda i: -representative_depths[i],
+    )
 
-        if total_rate == 0.0:
-            drop = compute_static_hydrostatic_drop(
-                mixture_density=compute_static_mixture_density(
-                    phase_saturations=sample.phase_saturations,
-                    phase_densities=sample.phase_densities,
-                ),
-                length=abs(dz),
-                gravitational_acceleration=model.gravitational_acceleration,
-                unit_system=model.unit_system,
-            )
-            pressures[i] = reference_pressure + geometric_sign * drop.total
+    for branch in (below, above):
+        if not branch:
             continue
 
-        (
-            liquid_rate,
-            gas_rate,
-            liquid_density,
-            gas_density,
-            liquid_viscosity,
-            gas_viscosity,
-        ) = _split_liquid_gas(
-            phase_rates=phase_rates,
-            phase_densities=sample.phase_densities,
-            phase_viscosities=sample.phase_viscosities,
+        remaining_rates = PhaseValues(
+            oil=sum(connection_phase_rates[i].oil for i in branch),
+            water=sum(connection_phase_rates[i].water for i in branch),
+            gas=sum(connection_phase_rates[i].gas for i in branch),
         )
-        drop = compute_segment_drop(
-            model=model,
-            length=abs(dz),
-            inclination_from_vertical=inclinations_from_vertical[i],
-            superficial_liquid_velocity=liquid_rate / cross_sectional_area,
-            superficial_gas_velocity=gas_rate / cross_sectional_area,
-            liquid_density=liquid_density,
-            gas_density=gas_density,
-            liquid_viscosity=liquid_viscosity,
-            gas_viscosity=gas_viscosity,
-            liquid_surface_tension=sample.gas_liquid_surface_tension,
-            is_injector=is_injector,
-        )
-        pressures[i] = (
-            reference_pressure
-            + geometric_sign * (drop.hydrostatic + drop.acceleration)
-            + friction_sign * drop.friction
-        )
+        current_depth = reference_depth
+        current_pressure = reference_pressure
+
+        for i in branch:
+            length = abs(representative_depths[i] - current_depth)
+            geometric_sign = 1.0 if representative_depths[i] >= current_depth else -1.0
+            sample = connection_samples[i]
+            remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+
+            if remaining_total == 0.0:
+                drop = compute_static_hydrostatic_drop(
+                    mixture_density=compute_static_mixture_density(
+                        phase_saturations=sample.phase_saturations,
+                        phase_densities=sample.phase_densities,
+                    ),
+                    length=length,
+                    gravitational_acceleration=model.gravitational_acceleration,
+                    unit_system=model.unit_system,
+                )
+                current_pressure = current_pressure + geometric_sign * drop.total
+            else:
+                (
+                    liquid_rate,
+                    gas_rate,
+                    liquid_density,
+                    gas_density,
+                    liquid_viscosity,
+                    gas_viscosity,
+                ) = _split_liquid_gas(
+                    phase_rates=remaining_rates,
+                    phase_densities=sample.phase_densities,
+                    phase_viscosities=sample.phase_viscosities,
+                )
+                drop = compute_segment_drop(
+                    model=model,
+                    length=length,
+                    inclination_from_vertical=inclinations_from_vertical[i],
+                    superficial_liquid_velocity=liquid_rate / cross_sectional_area,
+                    superficial_gas_velocity=gas_rate / cross_sectional_area,
+                    liquid_density=liquid_density,
+                    gas_density=gas_density,
+                    liquid_viscosity=liquid_viscosity,
+                    gas_viscosity=gas_viscosity,
+                    liquid_surface_tension=sample.gas_liquid_surface_tension,
+                    is_injector=is_injector,
+                )
+                current_pressure = (
+                    current_pressure
+                    + geometric_sign * (drop.hydrostatic + drop.acceleration)
+                    + friction_sign * drop.friction
+                )
+
+            pressures[i] = current_pressure
+            current_depth = representative_depths[i]
+            remaining_rates = PhaseValues(
+                oil=remaining_rates.oil - connection_phase_rates[i].oil,
+                water=remaining_rates.water - connection_phase_rates[i].water,
+                gas=remaining_rates.gas - connection_phase_rates[i].gas,
+            )
+
     return pressures
 
 

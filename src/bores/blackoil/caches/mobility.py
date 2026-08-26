@@ -159,14 +159,14 @@ def _update_mobility_cache(
         μw = water_viscosity[i]
         μo = oil_viscosity[i]
         μg = gas_viscosity[i]
-        water_relative_permeability = water_relative_permeability[i]
-        oil_relative_permeability = oil_relative_permeability[i]
-        gas_relative_permeability = gas_relative_permeability[i]
+        krw = water_relative_permeability[i]
+        kro = oil_relative_permeability[i]
+        krg = gas_relative_permeability[i]
 
         # Values: ʎ_phase = kr_phase / μ_phase
-        ʎw = water_relative_permeability / μw
-        ʎo = oil_relative_permeability / μo
-        ʎg = gas_relative_permeability / μg
+        ʎw = krw / μw
+        ʎo = kro / μo
+        ʎg = krg / μg
         ʎt = ʎw + ʎo + ʎg
 
         out_water_mobility[i] = ʎw
@@ -186,9 +186,9 @@ def _update_mobility_cache(
         # Pressure derivatives: kr doesn't depend on P, so this is a plain
         # quotient rule with kr held constant:
         # d(ʎ_phase)/dP = -kr_phase * d(μ_phase)/dP / μ_phase**2
-        dʎw_dp = -water_relative_permeability * dμw_dp[i] / μw**2
-        dʎo_dp = -oil_relative_permeability * dμo_dp[i] / μo**2
-        dʎg_dp = -gas_relative_permeability * dμg_dp[i] / μg**2
+        dʎw_dp = -krw * dμw_dp[i] / μw**2
+        dʎo_dp = -kro * dμo_dp[i] / μo**2
+        dʎg_dp = -krg * dμg_dp[i] / μg**2
         out_dʎw_dP[i] = dʎw_dp
         out_dʎo_dP[i] = dʎo_dp
         out_dʎg_dP[i] = dʎg_dp

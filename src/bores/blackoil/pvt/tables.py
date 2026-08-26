@@ -171,7 +171,6 @@ def _build_bilinear_2d_derivative_interpolator(
             np.searchsorted(pressures, p, side="right") - 1,
             0,
             len(cell_interps) - 1,
-            dtype=dtype,
         )
         result = np.empty(len(p), dtype=dtype)
         for idx in np.unique(cell_idx):
@@ -373,9 +372,13 @@ class PVTTable(StoreSerializable):
             data.ensure_dtype(self.dtype, force=False)
 
         # Potentially augment data with derived tables before building interpolators
+        self._stock_tank_oil_density: Number | None = None
+        self._stock_tank_gas_density: Number | None = None
         if pvt is not None:
             if pvt.unit_system != data.unit_system:
                 pvt = pvt.convert(self.unit_system)
+            self._stock_tank_oil_density = pvt.stock_tank_oil_density
+            self._stock_tank_gas_density = pvt.stock_tank_gas_density
             data = self._build_derived_tables(data, pvt)
 
         self._data = data
@@ -1047,13 +1050,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:
@@ -1062,9 +1063,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
         return typing.cast(NumberArray[NDimension], result.astype(dtype, copy=False))
 
-    def _resolve_salinity(
-        self, salinity: TableQuery[NDimension] | None
-    ) -> TableQuery[NDimension]:
+    def _resolve_salinity(self, salinity: TableQuery[NDimension] | None) -> TableQuery[NDimension]:
         if salinity is not None:
             return salinity
         if self.default_salinity is not None:
@@ -1503,6 +1502,8 @@ class PVTTable(StoreSerializable):
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
         salinity: TableQuery[NDimension] | None = None,
+        solution_gor: TableQuery[NDimension] | None = None,
+        bubble_point_pressure: TableQuery[NDimension] | None = None,
     ) -> TableResult[NDimension] | None:
         """
         Get fluid density `ρ`. Units depend on `unit_system` (lbm/ft³ in FIELD, kg/m³ in METRIC/SI, g/cm³ in LAB).
@@ -1515,9 +1516,25 @@ class PVTTable(StoreSerializable):
                  `ρg = ρg,SC / Bg`                 [dry gas]
         - Water: `ρw = ρw,SC / Bw`
 
+        **Oil phase - saturated/undersaturated switching**: the pre-built
+        table's pressure axis is the bubble curve, so it's only exactly
+        correct where `pressure` equals the cell's own bubble point.
+        Above it (`pressure > bubble_point_arr`), `Rs` no longer changes
+        with pressure - the raw table would return `ρo` for whatever *other*
+        state has its bubble point at this `pressure`, not this cell's own
+        density. This branches the same way `formation_volume_factor`
+        does, using its own already-correct `Bo` for the undersaturated
+        recomputation, when the stock-tank densities needed for that
+        recomputation were supplied at construction (`pvt=`); falls back to
+        the raw table (potentially wrong above the bubble point) otherwise.
+
         :param pressure: Pressure. Units depend on `unit_system`.
         :param temperature: Temperature. Units depend on `unit_system`.
         :param salinity: Salinity (ppm NaCl). Water phase only.
+        :param solution_gor: Solution GOR. Oil, for 2-D `bubble_point_arr`
+            table only - also enables the undersaturated correction.
+        :param bubble_point_pressure: Pre-computed `bubble_point_arr`. Oil
+            only; skips the internal `bubble_point_arr` lookup when supplied.
         :returns: Density, or `None` if table not present.
         """
         if self._phase == FluidPhase.WATER:
@@ -1527,7 +1544,61 @@ class PVTTable(StoreSerializable):
                 temperature,
                 self._resolve_salinity(salinity),
             )
-        return self._pt_query("density", pressure, temperature)
+        if self._phase == FluidPhase.GAS:
+            return self._pt_query("density", pressure, temperature)
+
+        # Oil: mirror formation_volume_factor's own saturated/undersaturated
+        # split, recomputing live above the bubble point when possible.
+        if "density" not in self._interpolatants:
+            return None
+        if self._stock_tank_oil_density is None or self._stock_tank_gas_density is None:
+            return self._pt_query("density", pressure, temperature)
+
+        bubble_point_arr = (
+            bubble_point_pressure
+            if bubble_point_pressure is not None
+            else self.bubble_point_pressure(temperature=temperature, solution_gor=solution_gor)
+        )
+        if bubble_point_arr is None:
+            return self._pt_query("density", pressure, temperature)
+
+        dtype = self.dtype
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
+        bubble_point_arr = np.atleast_1d(bubble_point_arr)
+        pressure_arr, temperature_arr, bubble_point_arr = np.broadcast_arrays(
+            pressure_arr, temperature_arr, bubble_point_arr
+        )
+
+        result = np.zeros_like(pressure_arr, dtype=dtype)
+        saturated = pressure_arr <= bubble_point_arr
+        unsaturated = ~saturated
+
+        if np.any(saturated):
+            result[saturated] = self._pt_query(  # type: ignore[index]
+                "density", pressure_arr[saturated], temperature_arr[saturated]
+            )
+        if np.any(unsaturated):
+            # Rs is fixed at its bubble-point value above Pb - by
+            # construction, that value is exactly the `solution_gor` this
+            # cell's own bubble point was computed from.
+            solution_gor_arr = np.broadcast_to(np.atleast_1d(solution_gor), pressure_arr.shape)  # type: ignore[arg-type]
+            undersaturated_fvf = self.formation_volume_factor(
+                pressure_arr[unsaturated],
+                temperature_arr[unsaturated],
+                bubble_point_pressure=bubble_point_arr[unsaturated],
+            )
+            result[unsaturated] = (
+                self._stock_tank_oil_density
+                + solution_gor_arr[unsaturated] * self._stock_tank_gas_density
+            ) / np.asarray(undersaturated_fvf)
+
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result.item())  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
+        )
 
     ρ = rho = density
 
@@ -1536,13 +1607,33 @@ class PVTTable(StoreSerializable):
         pressure: TableQuery[NDimension],
         temperature: TableQuery[NDimension],
         salinity: TableQuery[NDimension] | None = None,
+        solution_gor: TableQuery[NDimension] | None = None,
+        bubble_point_pressure: TableQuery[NDimension] | None = None,
     ) -> TableResult[NDimension] | None:
         """
         Return `∂ρ/∂P` (density-unit / pressure-unit, unit_system-dependent - lbm/ft³/psi in FIELD).
 
+        **Oil phase - saturated/undersaturated switching**, matching
+        `density`'s own regime split:
+
+        - Saturated: the raw table interpolant's own derivative.
+        - Undersaturated: analytically differentiated from `density`'s own
+          undersaturated formula (`ρ = (ρo,SC + Rs·ρg,SC) / Bo`, `Rs` fixed
+          above `Pb`), which reduces to `∂ρ/∂P = -ρ · (∂Bo/∂P) / Bo` - reusing
+          `db_dp`'s already-correct undersaturated derivative rather than
+          re-deriving it.
+
+        Falls back to the raw table derivative throughout (potentially
+        wrong above the bubble point) when the stock-tank densities needed
+        for the undersaturated recomputation weren't supplied at
+        construction (`pvt=`).
+
         :param pressure: Pressure.
         :param temperature: Temperature.
         :param salinity: Salinity (ppm NaCl). Water phase only.
+        :param solution_gor: Solution GOR. Oil, for 2-D `bubble_point_arr`
+            table only - also enables the undersaturated correction.
+        :param bubble_point_pressure: Pre-computed `bubble_point_arr`. Oil only.
         :returns: `∂ρ/∂P` or `None`.
         """
         if self._phase == FluidPhase.WATER:
@@ -1553,7 +1644,65 @@ class PVTTable(StoreSerializable):
                 self._resolve_salinity(salinity),
                 derivative=True,
             )
-        return self._pt_query("density", pressure, temperature, derivative=True)
+        if self._phase == FluidPhase.GAS:
+            return self._pt_query("density", pressure, temperature, derivative=True)
+
+        if "density" not in self._interpolatants:
+            return None
+        if self._stock_tank_oil_density is None or self._stock_tank_gas_density is None:
+            return self._pt_query("density", pressure, temperature, derivative=True)
+
+        bubble_point_arr = (
+            bubble_point_pressure
+            if bubble_point_pressure is not None
+            else self.bubble_point_pressure(temperature=temperature, solution_gor=solution_gor)
+        )
+        if bubble_point_arr is None:
+            return self._pt_query("density", pressure, temperature, derivative=True)
+
+        dtype = self.dtype
+        pressure_arr = np.atleast_1d(pressure)
+        temperature_arr = np.atleast_1d(temperature)
+        bubble_point_arr = np.atleast_1d(bubble_point_arr)
+        pressure_arr, temperature_arr, bubble_point_arr = np.broadcast_arrays(
+            pressure_arr, temperature_arr, bubble_point_arr
+        )
+
+        result = np.zeros_like(pressure_arr, dtype=dtype)
+        saturated = pressure_arr <= bubble_point_arr
+        unsaturated = ~saturated
+
+        if np.any(saturated):
+            result[saturated] = self._pt_query(  # type: ignore[index]
+                "density",
+                pressure_arr[saturated],
+                temperature_arr[saturated],
+                derivative=True,
+            )
+        if np.any(unsaturated):
+            p_under = pressure_arr[unsaturated]
+            t_under = temperature_arr[unsaturated]
+            pb_under = bubble_point_arr[unsaturated]
+            rho_under = self.density(
+                p_under,
+                t_under,
+                solution_gor=solution_gor,
+                bubble_point_pressure=pb_under,
+            )
+            bo_under = self.formation_volume_factor(
+                p_under, t_under, bubble_point_pressure=pb_under
+            )
+            dbo_dp_under = self.db_dp(p_under, t_under, bubble_point_pressure=pb_under)
+            result[unsaturated] = (
+                -np.asarray(rho_under) * np.asarray(dbo_dp_under) / np.asarray(bo_under)
+            )
+
+        return typing.cast(
+            TableResult[NDimension],
+            dtype.type(result.item())  # type: ignore[attr-defined]
+            if result.size == 1
+            else result.astype(dtype, copy=False),
+        )
 
     drho_dp = dρ_dp
 

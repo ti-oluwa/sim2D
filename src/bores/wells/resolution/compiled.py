@@ -10,7 +10,7 @@ from bores.precision import get_dtype
 from bores.typing import Boolean, IntArray, Integer, Number, NumberArray, OneDimension
 from bores.wells.compile import UNSET_INT
 from bores.wells.resolution.spec import ControlResolverSpec
-from bores.wells.states import ConnectionSample
+from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = [
     "CompiledControlResolverSpec",
@@ -21,6 +21,7 @@ __all__ = [
     "compile_well_resolution",
     "compute_perforation_drawdown",
     "accumulate_phase_rates",
+    "build_connection_phase_rates",
 ]
 
 
@@ -96,6 +97,14 @@ class PerforationWorkspace(typing.NamedTuple):
     """Scratch buffer for `compute_perforation_pressures`' `out` parameter.
     Overwritten on every call - has no meaningful contents before the first one."""
 
+    connection_oil_rates: NumberArray[OneDimension]
+    connection_water_rates: NumberArray[OneDimension]
+    connection_gas_rates: NumberArray[OneDimension]
+    """Scratch buffers for `accumulate_phase_rates`' per-connection `out_*`
+    parameters - each connection's own reservoir-condition phase rate, `0.0`
+    for a phase not relevant to the current solve. Overwritten on every
+    call; feeds the segmented hydraulics walk's `connection_phase_rates`."""
+
 
 def build_perforation_workspace(
     well_indices: NumberArray[OneDimension],
@@ -153,6 +162,15 @@ def build_perforation_workspace(
             np.asarray(inclinations_from_vertical, dtype=resolved_dtype),
         ),
         connection_pressures=typing.cast(
+            NumberArray[OneDimension], np.empty(n, dtype=resolved_dtype)
+        ),
+        connection_oil_rates=typing.cast(
+            NumberArray[OneDimension], np.empty(n, dtype=resolved_dtype)
+        ),
+        connection_water_rates=typing.cast(
+            NumberArray[OneDimension], np.empty(n, dtype=resolved_dtype)
+        ),
+        connection_gas_rates=typing.cast(
             NumberArray[OneDimension], np.empty(n, dtype=resolved_dtype)
         ),
     )
@@ -247,11 +265,18 @@ def accumulate_phase_rates(
     relevant_water: Boolean,
     relevant_gas: Boolean,
     is_injector: Boolean,
+    out_connection_oil_rates: NumberArray[OneDimension],
+    out_connection_water_rates: NumberArray[OneDimension],
+    out_connection_gas_rates: NumberArray[OneDimension],
 ) -> tuple[Number, Number, Number, Number, Number, Number]:
     """
     Sums each relevant phase's reservoir-condition and surface-condition
     rate across every connection in a `PerforationWorkspace`, at a given
-    set of connection pressures.
+    set of connection pressures. Also writes each connection's own
+    reservoir-condition contribution into the `out_connection_*` buffers,
+    in the same pass - these feed the segmented hydraulics walk's
+    `connection_phase_rates`, which needs each connection's individual
+    rate rather than only the well total.
 
     :param connection_pressures: Flowing pressure at each connection.
     :param well_indices: `PerforationWorkspace.well_indices`.
@@ -266,9 +291,14 @@ def accumulate_phase_rates(
     :param relevant_water: Whether water counts toward the primary target.
     :param relevant_gas: Whether gas counts toward the primary target.
     :param is_injector: Whether this well is an injector.
+    :param out_connection_oil_rates: Written in place with each
+        connection's own reservoir-condition oil rate (`0.0` if
+        `relevant_oil` is `False`). `PerforationWorkspace.connection_oil_rates`.
+    :param out_connection_water_rates: Water analogue of `out_connection_oil_rates`.
+    :param out_connection_gas_rates: Gas analogue of `out_connection_oil_rates`.
     :returns: `(oil_rate, water_rate, gas_rate, surface_oil_rate,
         surface_water_rate, surface_gas_rate)` - reservoir- and
-        surface-condition rates. A non-relevant phase's rate is `0.0`.
+        surface-condition well totals. A non-relevant phase's rate is `0.0`.
     """
     oil_rate = 0.0
     water_rate = 0.0
@@ -289,14 +319,25 @@ def accumulate_phase_rates(
             contribution = well_index * oil_mobilities[i] * drawdown
             oil_rate += contribution
             surface_oil_rate += contribution / oil_formation_volume_factors[i]
+            out_connection_oil_rates[i] = contribution
+        else:
+            out_connection_oil_rates[i] = 0.0
+
         if relevant_water:
             contribution = well_index * water_mobilities[i] * drawdown
             water_rate += contribution
             surface_water_rate += contribution / water_formation_volume_factors[i]
+            out_connection_water_rates[i] = contribution
+        else:
+            out_connection_water_rates[i] = 0.0
+
         if relevant_gas:
             contribution = well_index * gas_mobilities[i] * drawdown
             gas_rate += contribution
             surface_gas_rate += contribution / gas_formation_volume_factors[i]
+            out_connection_gas_rates[i] = contribution
+        else:
+            out_connection_gas_rates[i] = 0.0
 
     return (
         oil_rate,
@@ -306,3 +347,34 @@ def accumulate_phase_rates(
         surface_water_rate,
         surface_gas_rate,
     )
+
+
+def build_connection_phase_rates(
+    connection_oil_rates: NumberArray[OneDimension],
+    connection_water_rates: NumberArray[OneDimension],
+    connection_gas_rates: NumberArray[OneDimension],
+) -> list[PhaseValues]:
+    """
+    Builds the per-connection `PhaseValues` sequence the segmented
+    hydraulics walk (`compute_perforation_pressures`'
+    `connection_phase_rates` parameter) needs, from `accumulate_phase_rates`'
+    per-connection output buffers.
+
+    Not `numba.njit` - `PhaseValues` is a plain `NamedTuple` consumed by
+    the still-Python `compute_perforation_pressures` orchestration, not
+    the jitted primitives. Callers on the hot path should expect this to
+    allocate one list and `n` tuples per call; folding the hydraulics
+    walk itself into the compiled layer (Step 5/8) is what removes this.
+
+    :param connection_oil_rates: `PerforationWorkspace.connection_oil_rates`,
+        already populated by `accumulate_phase_rates`.
+    :param connection_water_rates: Water analogue of `connection_oil_rates`.
+    :param connection_gas_rates: Gas analogue of `connection_oil_rates`.
+    :returns: One `PhaseValues` per connection, same order as the inputs.
+    """
+    return [
+        PhaseValues(oil=oil, water=water, gas=gas)
+        for oil, water, gas in zip(
+            connection_oil_rates, connection_water_rates, connection_gas_rates, strict=False
+        )
+    ]

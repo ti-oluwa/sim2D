@@ -1,20 +1,16 @@
 """
 PVT (pressure-volume-temperature) property cache for black-oil simulation.
 
-**Known limitation, inherited from `PVTTable` (not something this module
-works around)**: `PVTTable.formation_volume_factor`/`.viscosity` correctly
-switch between the saturated and Beggs-Robinson-corrected undersaturated
-correlations for oil, but `.db_dp`, `.dμ_dp`,
-`.density`, and `.dρ_dp` do not - they always evaluate the raw
-saturated-curve interpolant regardless of whether a cell is actually
-undersaturated. For an undersaturated cell (`PVTCache.is_saturated[i] ==
-False`), `dbo_dp`, `dμo_dp`, `oil_density`, and `dρo_dp` are consequently **not** reliable, they
-reflect the saturated-curve slope/value extrapolated to a pressure it wasn't
-built for, not the true undersaturated behaviour. This is a table-layer gap
-(`bores/blackoil/pvt/tables.py`), not a cache-layer one, and worth fixing
-there - `compute_pvt_cache` calls these methods as they exist rather than
-silently reimplementing a corrected version it can't validate against the
-table's own internals.
+`PVTTable.formation_volume_factor`/`.viscosity`/`.db_dp`/`.dμ_dp`/
+`.density`/`.dρ_dp` all correctly switch between the saturated and
+undersaturated correlations for oil, given `solution_gor`/
+`bubble_point_pressure` (which `compute_pvt_cache` passes to all six).
+
+`.density`/`.dρ_dp`'s undersaturated branch only activates when the table
+was built with stock-tank densities available (`pvt=` at `PVTTable`
+construction). Falls back to the raw (potentially wrong above the bubble
+point) saturated-curve table otherwise, since there's no way to recompute
+density live without them.
 """
 
 import typing
@@ -56,31 +52,31 @@ class PVTCache(typing.NamedTuple):
 
     # Viscosities
     oil_viscosity: CellArray
-    """Oil viscosity, $\mu_o$."""
+    r"""Oil viscosity, $\mu_o$."""
     dμo_dp: CellArray
-    """Pressure derivative of oil viscosity, $d\mu_o/dP$."""
+    r"""Pressure derivative of oil viscosity, $d\mu_o/dP$."""
     water_viscosity: CellArray
-    """Water viscosity, $\mu_w$."""
+    r"""Water viscosity, $\mu_w$."""
     dμw_dp: CellArray
-    """Pressure derivative of water viscosity, $d\mu_w/dP$."""
+    r"""Pressure derivative of water viscosity, $d\mu_w/dP$."""
     gas_viscosity: CellArray
-    """Gas viscosity, $\mu_g$."""
+    r"""Gas viscosity, $\mu_g$."""
     dμg_dp: CellArray
-    """Pressure derivative of gas viscosity, $d\mu_g/dP$."""
+    r"""Pressure derivative of gas viscosity, $d\mu_g/dP$."""
 
     # Densities
     oil_density: CellArray
-    """Oil density, $\rho_o$."""
+    r"""Oil density, $\rho_o$."""
     dρo_dp: CellArray
-    """Pressure derivative of oil density, $d\rho_o/dP$."""
+    r"""Pressure derivative of oil density, $d\rho_o/dP$."""
     water_density: CellArray
-    """Water density, $\rho_w$."""
+    r"""Water density, $\rho_w$."""
     dρw_dp: CellArray
-    """Pressure derivative of water density, $d\rho_w/dP$."""
+    r"""Pressure derivative of water density, $d\rho_w/dP$."""
     gas_density: CellArray
-    """Gas density, $\rho_g$."""
+    r"""Gas density, $\rho_g$."""
     dρg_dp: CellArray
-    """Pressure derivative of gas density, $d\rho_g/dP$."""
+    r"""Pressure derivative of gas density, $d\rho_g/dP$."""
 
     # Compressibilities (value only - c = -(1/B)(dB/dP) for oil/water,
     # 1/P - (1/z)(dz/dP) for gas; already what dB/dP-based Jacobian entries
@@ -266,13 +262,21 @@ def compute_pvt_cache(
             cache.oil_formation_volume_factor[mask] = oil.formation_volume_factor(  # type: ignore[arg-type]
                 p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
             )
-            cache.dbo_dp[mask] = oil.db_dp(p, t)  # type: ignore[arg-type]
+            cache.dbo_dp[mask] = oil.db_dp(  # type: ignore[arg-type]
+                p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
+            )
             cache.oil_viscosity[mask] = oil.viscosity(  # type: ignore[arg-type]
                 p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
             )
-            cache.dμo_dp[mask] = oil.dμ_dp(p, t)  # type: ignore[arg-type]
-            cache.oil_density[mask] = oil.density(p, t)  # type: ignore[arg-type]
-            cache.dρo_dp[mask] = oil.dρ_dp(p, t)  # type: ignore[arg-type]
+            cache.dμo_dp[mask] = oil.dμ_dp(  # type: ignore[arg-type]
+                p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
+            )
+            cache.oil_density[mask] = oil.density(  # type: ignore[arg-type]
+                p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
+            )
+            cache.dρo_dp[mask] = oil.dρ_dp(  # type: ignore[arg-type]
+                p, t, solution_gor=rs_estimate, bubble_point_pressure=bubble_point
+            )
 
             compressibility = oil.compressibility(p, t)
             if compressibility is not None:

@@ -15,6 +15,7 @@ from bores.wells.resolution.compiled import (
     CompiledControlResolverSpec,
     PerforationWorkspace,
     accumulate_phase_rates,
+    build_connection_phase_rates,
 )
 from bores.wells.states import ConnectionSample, PhaseValues
 
@@ -185,11 +186,13 @@ def solve_connection_pressures_and_rates(
     :returns: `(connection_pressures, phase_rates, surface_phase_rates)`.
     """
     zero_rates = PhaseValues(oil=0.0, water=0.0, gas=0.0)
+    n_connections = len(connection_samples)
+    zero_connection_phase_rates = [zero_rates] * n_connections
     connection_pressures = compute_perforation_pressures(
         wellbore=wellbore,
         reference_depth=reference_depth,
         reference_pressure=reference_pressure,
-        phase_rates=zero_rates,
+        connection_phase_rates=zero_connection_phase_rates,
         representative_depths=workspace.representative_depths,
         inclinations_from_vertical=workspace.inclinations_from_vertical,
         connection_samples=connection_samples,
@@ -226,6 +229,9 @@ def solve_connection_pressures_and_rates(
             relevant_water=relevant_water,
             relevant_gas=relevant_gas,
             is_injector=is_injector,
+            out_connection_oil_rates=workspace.connection_oil_rates,
+            out_connection_water_rates=workspace.connection_water_rates,
+            out_connection_gas_rates=workspace.connection_gas_rates,
         )
         phase_rates = PhaseValues(oil=oil_rate, water=water_rate, gas=gas_rate)
         surface_phase_rates = PhaseValues(
@@ -234,11 +240,16 @@ def solve_connection_pressures_and_rates(
             gas=surface_gas_rate,
         )
         new_total_rate = oil_rate + water_rate + gas_rate
+        connection_phase_rates = build_connection_phase_rates(
+            connection_oil_rates=workspace.connection_oil_rates,
+            connection_water_rates=workspace.connection_water_rates,
+            connection_gas_rates=workspace.connection_gas_rates,
+        )
         connection_pressures = compute_perforation_pressures(
             wellbore=wellbore,
             reference_depth=reference_depth,
             reference_pressure=reference_pressure,
-            phase_rates=phase_rates,
+            connection_phase_rates=connection_phase_rates,
             representative_depths=workspace.representative_depths,
             inclinations_from_vertical=workspace.inclinations_from_vertical,
             connection_samples=connection_samples,

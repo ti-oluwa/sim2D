@@ -66,7 +66,7 @@ def _show_invalid_saturation(val: NumberOrArray[NDimension], *, max_display: int
 #: Sentinel type for the `minimum_*_relperm` attributes on relperm tables and
 #: analytical models. `"auto"` derives the min_value from the active dtype;
 #: `None` disables the min/floor value entirely; a `Number` sets an explicit min_value.
-MinimumRelPerm = typing.Union[typing.Literal["auto"], None, Number]
+MinimumRelPerm = typing.Literal["auto"] | None | Number
 
 
 def _resolve_min_relperm(min_value: MinimumRelPerm) -> Number | None:
@@ -1899,21 +1899,21 @@ class ThreePhaseRelPermTable(
             + dkro_dkro_g * dkro_g_dsw
             + dkro_dkrw * dkrw_dsw
             + dkro_dkrg * dkrg_dsw
-            + dkro_dsw_explicit,
+            + dkro_dsw_explicit
         ).astype(dtype, copy=False)  # type: ignore[attr-defined]
         dkro_dso = (
             dkro_dkro_w * dkro_w_dso
             + dkro_dkro_g * dkro_g_dso
             + dkro_dkrw * dkrw_dso
             + dkro_dkrg * dkrg_dso
-            + dkro_dso_explicit,
+            + dkro_dso_explicit
         ).astype(dtype, copy=False)  # type: ignore[attr-defined]
         dkro_dsg = (
             dkro_dkro_w * dkro_w_dsg
             + dkro_dkro_g * dkro_g_dsg
             + dkro_dkrw * dkrw_dsg
             + dkro_dkrg * dkrg_dsg
-            + dkro_dsg_explicit,
+            + dkro_dsg_explicit
         ).astype(dtype, copy=False)  # type: ignore[attr-defined]
 
         results = (
