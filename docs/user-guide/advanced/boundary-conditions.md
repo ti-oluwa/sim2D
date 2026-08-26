@@ -153,8 +153,8 @@ Flux boundaries require cell dimension metadata to compute the spacing:
 
 ```python
 metadata = BoundaryMetadata(
-    cell_dimension=(20.0, 20.0),          # 20x20 ft cells
-    thickness_grid=thickness_array,        # Optional, for z-direction
+    cell_dimension=(20.0, 20.0),  # 20x20 ft cells
+    thickness_grid=thickness_array,  # Optional, for z-direction
     grid_shape=(50, 25),
 )
 ```
@@ -200,8 +200,8 @@ pressure_gradient = LinearGradientBoundary(
 
 # Hydrostatic pressure increases with depth
 hydrostatic = LinearGradientBoundary(
-    start=2000.0,    # Shallow
-    end=2300.0,      # Deep
+    start=2000.0,  # Shallow
+    end=2300.0,  # Deep
     direction="z",
 )
 ```
@@ -215,7 +215,7 @@ from bores.boundary_conditions import BoundaryMetadata
 metadata = BoundaryMetadata(
     cell_dimension=(20.0, 20.0),
     grid_shape=(50, 25, 10),
-    thickness_grid=thickness_array,    # Needed for z-coordinates
+    thickness_grid=thickness_array,  # Needed for z-coordinates
 )
 ```
 
@@ -241,19 +241,23 @@ Applies a spatially-varying boundary condition using a coordinate-based function
 from bores.boundary_conditions import SpatialBoundary, boundary_function
 import numpy as np
 
+
 # Register function for serialization
 @boundary_function
 def depth_dependent_pressure(x, y):
     """Hydrostatic pressure increasing with y (depth)."""
     return 2000.0 + 0.433 * y
 
+
 pressure_bc = SpatialBoundary(func=depth_dependent_pressure)
+
 
 # Radial pressure distribution centered at (500, 250)
 @boundary_function
 def radial_pressure(x, y):
-    r = np.sqrt((x - 500)**2 + (y - 250)**2)
+    r = np.sqrt((x - 500) ** 2 + (y - 250) ** 2)
     return 2000.0 + 0.5 * r
+
 
 radial_bc = SpatialBoundary(func=radial_pressure)
 ```
@@ -286,31 +290,39 @@ Applies a boundary condition that changes over simulation time. The function rec
 from bores.boundary_conditions import TimeDependentBoundary, boundary_function
 import numpy as np
 
+
 # Sinusoidal injection pressure (24-hour cycle)
 @boundary_function
 def daily_cycle(t):
     return 2000.0 + 200.0 * np.sin(2.0 * np.pi * t / 86400.0)
 
+
 cyclic_bc = TimeDependentBoundary(func=daily_cycle)
+
 
 # Linear pressure ramp-up (capped at 2500 psi)
 @boundary_function
 def pressure_ramp(t):
     return min(1000.0 + 0.1 * t, 2500.0)
 
+
 ramp_bc = TimeDependentBoundary(func=pressure_ramp)
+
 
 # Step function (pressure change at 30 minutes)
 @boundary_function
 def step_change(t):
     return 2500.0 if t > 1800.0 else 1500.0
 
+
 step_bc = TimeDependentBoundary(func=step_change)
+
 
 # Exponential decay (shut-in pressure buildup)
 @boundary_function
 def pressure_decay(t):
     return 2000.0 * np.exp(-t / 3600.0)
+
 
 decay_bc = TimeDependentBoundary(func=pressure_decay)
 ```
@@ -349,6 +361,7 @@ from bores.boundary_conditions import (
 )
 import numpy as np
 
+
 @boundary_function
 def direction_dependent_bc(grid, boundary_indices, direction, metadata):
     """Different behavior based on which face is being applied."""
@@ -363,6 +376,7 @@ def direction_dependent_bc(grid, boundary_indices, direction, metadata):
         # No-flow on other faces
         neighbor_indices = get_neighbor_indices(boundary_indices, direction)
         return grid[neighbor_indices]
+
 
 custom_bc = VariableBoundary(func=direction_dependent_bc)
 ```
@@ -405,17 +419,17 @@ from bores.boundary_conditions import RobinBoundary
 
 # Semi-permeable barrier (partial flow resistance)
 semi_permeable = RobinBoundary(
-    alpha=1.0,       # Dirichlet weight
-    beta=0.1,        # Neumann weight (small = more Dirichlet-like)
-    gamma=2000.0,    # Reference pressure
+    alpha=1.0,  # Dirichlet weight
+    beta=0.1,  # Neumann weight (small = more Dirichlet-like)
+    gamma=2000.0,  # Reference pressure
 )
 
 # Convective heat transfer: h*(T - T_ambient) = -k*dT/dn
 # Rearranged: alpha=h, beta=k, gamma=h*T_ambient
 convective = RobinBoundary(
-    alpha=10.0,      # Heat transfer coefficient (BTU/hr/ft2/F)
-    beta=0.5,        # Thermal conductivity (BTU/hr/ft/F)
-    gamma=700.0,     # h * T_ambient = 10 * 70F
+    alpha=10.0,  # Heat transfer coefficient (BTU/hr/ft2/F)
+    beta=0.5,  # Thermal conductivity (BTU/hr/ft/F)
+    gamma=700.0,  # h * T_ambient = 10 * 70F
 )
 ```
 
@@ -502,15 +516,15 @@ Specify the physical properties of the aquifer rock and fluid:
 from bores.boundary_conditions import CarterTracyAquifer
 
 edge_aquifer = CarterTracyAquifer(
-    aquifer_permeability=500.0,        # mD
-    aquifer_porosity=0.25,             # fraction
-    aquifer_compressibility=3e-6,      # psi-1 (rock + water)
-    water_viscosity=0.5,               # cP
-    inner_radius=1000.0,              # ft (reservoir-aquifer contact)
-    outer_radius=10000.0,             # ft (aquifer extent)
-    aquifer_thickness=50.0,            # ft
-    initial_pressure=2500.0,           # psi
-    angle=180.0,                       # degrees (half-circle edge drive)
+    aquifer_permeability=500.0,  # mD
+    aquifer_porosity=0.25,  # fraction
+    aquifer_compressibility=3e-6,  # psi-1 (rock + water)
+    water_viscosity=0.5,  # cP
+    inner_radius=1000.0,  # ft (reservoir-aquifer contact)
+    outer_radius=10000.0,  # ft (aquifer extent)
+    aquifer_thickness=50.0,  # ft
+    initial_pressure=2500.0,  # psi
+    angle=180.0,  # degrees (half-circle edge drive)
 )
 ```
 
@@ -526,10 +540,10 @@ When physical properties are uncertain, use a history-matched constant:
 
 ```python
 calibrated_aquifer = CarterTracyAquifer(
-    aquifer_constant=50.0,              # bbl/psi (from history match)
-    dimensionless_radius_ratio=10.0,    # r_e / r_w
-    initial_pressure=2500.0,            # psi
-    angle=180.0,                        # degrees
+    aquifer_constant=50.0,  # bbl/psi (from history match)
+    dimensionless_radius_ratio=10.0,  # r_e / r_w
+    initial_pressure=2500.0,  # psi
+    angle=180.0,  # degrees
 )
 ```
 
@@ -567,11 +581,11 @@ from bores.boundary_conditions import BoundaryMetadata
 import numpy as np
 
 metadata = BoundaryMetadata(
-    cell_dimension=(20.0, 20.0),              # (dx, dy) in feet
-    grid_shape=(50, 25, 10),                  # Original grid shape (no ghost cells)
+    cell_dimension=(20.0, 20.0),  # (dx, dy) in feet
+    grid_shape=(50, 25, 10),  # Original grid shape (no ghost cells)
     thickness_grid=np.full((50, 25, 10), 10.0),  # Cell thicknesses (no ghost cells)
-    time=86400.0,                             # Current time in seconds
-    property_name="pressure",                 # Which property is being updated
+    time=86400.0,  # Current time in seconds
+    property_name="pressure",  # Which property is being updated
 )
 ```
 
@@ -616,9 +630,9 @@ from bores.boundary_conditions import (
 )
 
 pressure_bc = GridBoundaryCondition(
-    left=ConstantBoundary(constant=2500.0),    # West: constant pressure
-    right=FluxBoundary(flux=-50.0),            # East: production
-    front=NoFlowBoundary(),                    # South: sealed (explicit)
+    left=ConstantBoundary(constant=2500.0),  # West: constant pressure
+    right=FluxBoundary(flux=-50.0),  # East: production
+    front=NoFlowBoundary(),  # South: sealed (explicit)
     # back, top, bottom: no-flow by default
 )
 ```
@@ -686,15 +700,18 @@ For complex boundary behavior not captured by the built-in types, you can define
 ```python
 from bores.boundary_conditions import boundary_function
 
+
 # Simple registration (uses function name)
 @boundary_function
 def hydrostatic_pressure(x, y):
     return 14.696 + 0.433 * y
 
+
 # Custom registration name
 @boundary_function(name="custom_gradient")
 def my_gradient(x, y):
     return 2500.0 + 0.1 * x - 0.05 * y
+
 
 # Override existing registration
 @boundary_function(name="hydrostatic_pressure", override=True)
@@ -709,9 +726,11 @@ For functions with tunable parameters, use `ParameterizedBoundaryFunction` as a 
 ```python
 from bores.boundary_conditions import ParameterizedBoundaryFunction
 
+
 @boundary_function
 def parametric_gradient(x, y, slope=0.5, intercept=2000):
     return intercept - slope * x
+
 
 # Create parameterized version with custom parameters
 custom_gradient = ParameterizedBoundaryFunction(
@@ -771,7 +790,7 @@ Model an infinite aquifer providing pressure support on one or more faces:
 boundary_conditions = BoundaryConditions(
     conditions={
         "pressure": GridBoundaryCondition(
-            left=ConstantBoundary(constant=2500.0),   # Aquifer on west
+            left=ConstantBoundary(constant=2500.0),  # Aquifer on west
             bottom=ConstantBoundary(constant=2600.0),  # Aquifer below
         ),
     },
@@ -791,8 +810,8 @@ metadata = BoundaryMetadata(
 boundary_conditions = BoundaryConditions(
     conditions={
         "pressure": GridBoundaryCondition(
-            left=FluxBoundary(flux=100.0),     # Inject 100 units on west
-            right=FluxBoundary(flux=-50.0),    # Produce 50 units on east
+            left=FluxBoundary(flux=100.0),  # Inject 100 units on west
+            right=FluxBoundary(flux=-50.0),  # Produce 50 units on east
         ),
     },
 )
@@ -861,11 +880,11 @@ boundary_conditions = BoundaryConditions(
                 initial_pressure=2500.0,
                 angle=180.0,
             ),
-            right=FluxBoundary(flux=-100.0),         # Production face
-            front=NoFlowBoundary(),                    # Sealed by fault
-            back=ConstantBoundary(constant=2400.0),    # Adjacent reservoir
-            top=NoFlowBoundary(),                      # Caprock
-            bottom=NoFlowBoundary(),                   # Basement
+            right=FluxBoundary(flux=-100.0),  # Production face
+            front=NoFlowBoundary(),  # Sealed by fault
+            back=ConstantBoundary(constant=2400.0),  # Adjacent reservoir
+            top=NoFlowBoundary(),  # Caprock
+            bottom=NoFlowBoundary(),  # Basement
         ),
     },
 )

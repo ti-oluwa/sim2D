@@ -9,6 +9,7 @@ from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
 from bores.typing import Number, UnitConversionTable, UnitSystem
+from bores.utils import scale
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl
 
@@ -111,11 +112,11 @@ class PerforationState(StoreSerializable):
         rate_factor = factors["reservoir_rate"]
         return attrs.evolve(
             self,
-            flowing_pressure=self.flowing_pressure * factors["pressure"],
+            flowing_pressure=scale(self.flowing_pressure, factors["pressure"]),
             phase_rates=PhaseValues(
-                oil=self.phase_rates.oil * rate_factor,
-                water=self.phase_rates.water * rate_factor,
-                gas=self.phase_rates.gas * rate_factor,
+                oil=scale(self.phase_rates.oil, rate_factor),
+                water=scale(self.phase_rates.water, rate_factor),
+                gas=scale(self.phase_rates.gas, rate_factor),
             ),
             unit_system=target,
         )
@@ -218,12 +219,12 @@ class WellState(StoreSerializable):
         rate_factor = factors["reservoir_rate"]
         return attrs.evolve(
             self,
-            bhp=self.bhp * factors["pressure"],
-            thp=self.thp * factors["pressure"] if self.thp is not None else None,
+            bhp=scale(self.bhp, factors["pressure"]),
+            thp=scale(self.thp, factors["pressure"]) if self.thp is not None else None,
             phase_rates=PhaseValues(
-                oil=self.phase_rates.oil * rate_factor,
-                water=self.phase_rates.water * rate_factor,
-                gas=self.phase_rates.gas * rate_factor,
+                oil=scale(self.phase_rates.oil, rate_factor),
+                water=scale(self.phase_rates.water, rate_factor),
+                gas=scale(self.phase_rates.gas, rate_factor),
             ),
             perforation_states=tuple(
                 perforation_state.convert(target, table=table)
@@ -241,7 +242,7 @@ class WellsStates(
     StoreSerializable,
     fields={
         "states": typing.Mapping[str, WellState],
-        "unit_system": typing.Optional[UnitSystem],
+        "unit_system": typing.Optional[UnitSystem],  # noqa: UP045
     },
 ):
     """Name-keyed collection of `WellState`, one per well, for a single timestep."""

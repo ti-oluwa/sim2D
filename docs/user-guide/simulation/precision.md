@@ -17,9 +17,9 @@ BORES provides three precision levels through simple function calls:
 ```python
 import bores
 
-bores.use_32bit_precision()    # numpy.float32 (default)
-bores.use_64bit_precision()    # numpy.float64
-bores.use_128bit_precision()   # numpy.float128
+bores.use_32bit_precision()  # numpy.float32 (default)
+bores.use_64bit_precision()  # numpy.float64
+bores.use_128bit_precision()  # numpy.float128
 ```
 
 These functions set the global precision for all subsequent BORES operations. Call them before building your reservoir model, as the precision affects every array that BORES creates from that point forward.

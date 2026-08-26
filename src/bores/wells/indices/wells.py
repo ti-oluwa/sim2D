@@ -1,11 +1,13 @@
 """
 Well index (connection factor) computation.
 
-Resolves each open perforation to a connection factor per cell it
-intersects. The pipeline is three steps. First, an effective
-(direction-aware, geometric-mean) permeability is derived first, then an
-effective drainage radius from that permeability and the local cell
-geometry, then the well index itself from the standard Peaceman equation.
+Resolves each open perforation to a connection factor (index) per cell it
+intersects. The pipeline is three steps.
+
+First, an effective (direction-aware, geometric-mean) permeability is
+derived first, then an effective drainage radius from that permeability
+and the local cell geometry, then the well index itself from the standard
+Peaceman equation.
 
 Cells that aren't locally Cartesian-like fall back to an isotropic equivalent-radius
 formulation instead, since Peaceman's anisotropic radius formula assumes a clean
@@ -33,6 +35,7 @@ from bores.typing import (
     UnitConversionTable,
     UnitSystem,
 )
+from bores.utils import scale
 from bores.wells.base import AnyPerforation, MDPerforation, Perforation, Wells
 from bores.wells.indices.perforations import (
     PerforationIndex,
@@ -96,8 +99,8 @@ class WellIndex(Serializable):
             return 1.0
         if perforation.well_index is None:
             raise ValidationError(
-                "`perforation.well_index` is None - this PerforationIndex "
-                "hasn't been resolved by build_wells_indices yet."
+                "`perforation.well_index` is None. This `PerforationIndex` "
+                "hasn't been resolved by `build_wells_indices` yet."
             )
         return perforation.well_index / self.total_well_index
 
@@ -122,13 +125,13 @@ class WellIndex(Serializable):
         if target == self.unit_system:
             return self
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        well_index_factor = factors["permeability"] * factors["length"]
+        index_factor = factors["permeability"] * factors["length"]
         return attrs.evolve(
             self,
             perforations=tuple(
                 perforation.convert(target, table=table) for perforation in self.perforations
             ),
-            total_well_index=self.total_well_index * well_index_factor,
+            total_well_index=scale(self.total_well_index, index_factor),
             unit_system=target,
         )
 
@@ -163,7 +166,7 @@ def resolve_well_index_direction(
 
 def is_locally_cartesian(grid: Grid, cell_index: Integer, tolerance: Number = 0.05) -> bool:
     """
-    Decide whether `cell_index` is "Cartesian-like enough" for Peaceman's
+    Decide whether a cell is "Cartesian-like enough" for Peaceman's
     formula to be valid, vs. requiring the equivalent-radius fallback.
 
     Compares the cell's true volume against the volume of its own AABB; if
@@ -363,8 +366,7 @@ def resolve_connection_factor(
 
     Resolution order: `perforation.connection_factor_override` if set;
     otherwise Peaceman (`compute_peaceman_well_index`) if `is_locally_cartesian`;
-    otherwise the equivalent-radius fallback
-    (`compute_equivalent_radius_well_index`).
+    otherwise the equivalent-radius fallback (`compute_equivalent_radius_well_index`).
 
     :param perforation: Source perforation (for skin, override).
     :param grid: Grid providing geometry.
@@ -492,9 +494,9 @@ def build_wells_indices(
 
         resolved: list[PerforationIndex] = []
         total_well_index = 0.0
-        for perforation_idx in perforation_indices:
-            perforation = perforation_idx.perforation
-            cell_idx = perforation_idx.cell_index
+        for perforation_index in perforation_indices:
+            perforation = perforation_index.perforation
+            cell_idx = perforation_index.cell_index
             wellbore_radius = perforation.wellbore_radius
             cell_permeabilities = {axis: array[cell_idx] for axis, array in permeabilities.items()}
             cell_net_to_gross = (
@@ -504,13 +506,13 @@ def build_wells_indices(
                 perforation=perforation,
                 grid=grid,
                 cell_index=cell_idx,
-                partial_penetration_fraction=perforation_idx.partial_penetration_fraction,
+                partial_penetration_fraction=perforation_index.partial_penetration_fraction,
                 wellbore_radius=wellbore_radius,
                 permeabilities=cell_permeabilities,
                 regime_constant=regime_constant,
                 net_to_gross=cell_net_to_gross,
             )
-            resolved.append(attrs.evolve(perforation_idx, well_index=well_index))
+            resolved.append(attrs.evolve(perforation_index, well_index=well_index))
             total_well_index += well_index
 
         result[well.name] = WellIndex(

@@ -746,18 +746,16 @@ def _run_impes_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Transport solve completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1172,18 +1170,16 @@ def _run_sequential_implicit_step(
         current_fluid_properties=fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Sequential implicit step completed.")
     return StepResult(
         fluid_properties=fluid_properties,
@@ -1688,18 +1684,16 @@ def _run_full_sequential_implicit_step(
         current_fluid_properties=iter_fluid_properties,
         previous_fluid_properties=initial_fluid_properties,
     )
-    timer_context.update(
-        {
-            "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
-            "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
-            "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
-            "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
-            "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
-            "relative_water_mbe": material_balance_errors.relative_water_mbe,
-            "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
-            "total_relative_mbe": material_balance_errors.total_relative_mbe,
-        }
-    )
+    timer_context.update({
+        "absolute_oil_mbe": material_balance_errors.absolute_oil_mbe,
+        "absolute_water_mbe": material_balance_errors.absolute_water_mbe,
+        "absolute_gas_mbe": material_balance_errors.absolute_gas_mbe,
+        "total_absolute_mbe": material_balance_errors.total_absolute_mbe,
+        "relative_oil_mbe": material_balance_errors.relative_oil_mbe,
+        "relative_water_mbe": material_balance_errors.relative_water_mbe,
+        "relative_gas_mbe": material_balance_errors.relative_gas_mbe,
+        "total_relative_mbe": material_balance_errors.total_relative_mbe,
+    })
     logger.debug("Full sequential implicit step completed.")
     return StepResult(
         fluid_properties=iter_fluid_properties,

@@ -349,7 +349,7 @@ class GroupControls(
     StoreSerializable,
     fields={
         "controls": typing.Mapping[str, GroupControl],
-        "unit_system": typing.Optional[UnitSystem],
+        "unit_system": typing.Optional[UnitSystem],  # noqa: UP045
     },
 ):
     """

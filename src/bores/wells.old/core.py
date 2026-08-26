@@ -317,7 +317,7 @@ def compute_oil_well_rate(
     if phase_mobility < 0:
         raise ValidationError("Phase mobility must be a positive value.")
 
-    if well_index == 0.0 or phase_mobility == 0.0:
+    if well_index == 0 or phase_mobility == 0:
         return 0.0
 
     pressure_difference = bottom_hole_pressure - pressure
@@ -402,7 +402,7 @@ def compute_required_bhp_for_oil_rate(
     if phase_mobility < 0:
         raise ValidationError("Phase mobility must be a positive value.")
 
-    if well_index == 0.0 or phase_mobility == 0.0:
+    if well_index == 0 or phase_mobility == 0:
         return float(pressure)
 
     denominator = 7.08e-3 * well_index * phase_mobility
@@ -500,7 +500,7 @@ def compute_gas_well_rate(
     if phase_mobility < 0:
         raise ValidationError("Phase mobility must be a positive value.")
 
-    if well_index == 0.0 or phase_mobility == 0.0:
+    if well_index == 0 or phase_mobility == 0:
         return 0.0
 
     temperature_rankine = fahrenheit_to_rankine(temperature)
@@ -587,7 +587,7 @@ def compute_required_bhp_for_gas_rate(
     if formation_volume_factor is None:
         raise ValidationError("`formation_volume_factor` must be provided.")
 
-    if well_index == 0.0 or phase_mobility == 0.0:
+    if well_index == 0 or phase_mobility == 0:
         return float(pressure)
 
     temperature_rankine = fahrenheit_to_rankine(temperature)

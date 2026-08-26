@@ -19,8 +19,10 @@ model = bores.BlackOil.from_file("reservoir.h5")
 config = bores.Config.from_file("simulation.yaml")
 
 for state in bores.run(model, config):
-    print(f"Step {state.step}: time = {state.time:.1f} s, "
-          f"avg pressure = {state.average_pressure:.1f} psi")
+    print(
+        f"Step {state.step}: time = {state.time:.1f} s, "
+        f"avg pressure = {state.average_pressure:.1f} psi"
+    )
 ```
 
 For interactive work where you want a live display in your terminal:
@@ -70,8 +72,8 @@ def run(
 
 ```python
 def handle_rejection(result, step_size, elapsed_time):
-    print(f"Step rejected at t={elapsed_time:.1f}s, "
-          f"step size {step_size:.3f}s: {result.message}")
+    print(f"Step rejected at t={elapsed_time:.1f}s, step size {step_size:.3f}s: {result.message}")
+
 
 for state in bores.run(model, config, on_step_rejected=handle_rejection):
     pass
@@ -82,8 +84,10 @@ for state in bores.run(model, config, on_step_rejected=handle_rejection):
 ```python
 newton_counts = []
 
+
 def on_accepted(result, step_size, elapsed_time):
     newton_counts.append(result.timer_kwargs.get("newton_iterations", -1))
+
 
 for state in bores.run(model, config, on_step_accepted=on_accepted):
     pass
@@ -148,15 +152,9 @@ for state in bores.run(model, config):
 
         loc = well.location
         production_history[well_name]["time"].append(state.time)
-        production_history[well_name]["oil"].append(
-            state.production_rates.oil.get(loc, 0.0)
-        )
-        production_history[well_name]["water"].append(
-            state.production_rates.water.get(loc, 0.0)
-        )
-        production_history[well_name]["gas"].append(
-            state.production_rates.gas.get(loc, 0.0)
-        )
+        production_history[well_name]["oil"].append(state.production_rates.oil.get(loc, 0.0))
+        production_history[well_name]["water"].append(state.production_rates.water.get(loc, 0.0))
+        production_history[well_name]["gas"].append(state.production_rates.gas.get(loc, 0.0))
 
 for well_name, history in production_history.items():
     final_oil = history["oil"][-1] if history["oil"] else 0.0
@@ -217,7 +215,7 @@ from bores import Run
 run_spec = Run.from_files(
     model_path="path/to/model.h5",
     config_path="path/to/config.yaml",
-    pvt_tables_path="path/to/pvt_tables.h5",   # Optional
+    pvt_tables_path="path/to/pvt_tables.h5",  # Optional
 )
 
 for state in run_spec:
@@ -282,12 +280,12 @@ print(stats.summary_table())
 from bores import MonitorConfig
 
 monitor_cfg = MonitorConfig(
-    use_rich=True,              # Live Rich panel (default: True)
-    use_tqdm=True,              # tqdm progress bar (default: False)
-    refresh_interval=1,         # Update display every N accepted steps
-    extended_every=10,          # Show p95 wall time and avg Newton every N steps
-    show_wells=True,            # Include per-well rates table in display
-    color_theme="dark",         # "dark" or "light"
+    use_rich=True,  # Live Rich panel (default: True)
+    use_tqdm=True,  # tqdm progress bar (default: False)
+    refresh_interval=1,  # Update display every N accepted steps
+    extended_every=10,  # Show p95 wall time and avg Newton every N steps
+    show_wells=True,  # Include per-well rates table in display
+    color_theme="dark",  # "dark" or "light"
 )
 
 for state in bores.monitor(model, config, monitor=monitor_cfg):
@@ -348,7 +346,7 @@ for state, stats in bores.monitor(
     hysteresis_state.append(state.average_water_saturation)
 
 # Post-simulation analysis
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print(stats.summary())
 
 final = pressure_history[-1]
@@ -403,19 +401,17 @@ If your analysis requires per-step data (not just output-frequency data), callba
 ```python
 metrics = {"rejections": 0, "max_newton": 0, "step_times": []}
 
+
 def on_rejected(result, step_size, elapsed):
     metrics["rejections"] += 1
+
 
 def on_accepted(result, step_size, elapsed):
     ni = result.timer_kwargs.get("newton_iterations", 0)
     metrics["max_newton"] = max(metrics["max_newton"], ni)
 
-for state in bores.run(
-    model, 
-    config,
-    on_step_rejected=on_rejected,
-    on_step_accepted=on_accepted
-):
+
+for state in bores.run(model, config, on_step_rejected=on_rejected, on_step_accepted=on_accepted):
     pass
 ```
 
@@ -430,21 +426,22 @@ for state in bores.run(model, config):
     # Compute total production rates across all wells (sum all surface rates)
     total_oil_production_ft3_day = state.production_rates.oil.sum()
     total_water_production_ft3_day = state.production_rates.water.sum()
-    
+
     # Convert to surface conditions using formation volume factors
     # Production rates are negative by convention, so take absolute value
     total_oil_production_stb = (
-        abs(total_oil_production_ft3_day) * 5.615 /
-        state.production_formation_volume_factors.oil.mean()
+        abs(total_oil_production_ft3_day)
+        * 5.615
+        / state.production_formation_volume_factors.oil.mean()
     )
-    
+
     # Compute statistics on production across all active cells
     oil_prod_grid = state.production_rates.oil.array()
     producing_cells = np.abs(oil_prod_grid[oil_prod_grid != 0])
     if producing_cells.size > 0:
         mean_rate_ft3_day = producing_cells.mean()
         max_rate_ft3_day = producing_cells.max()
-        
+
     print(
         f"Step {state.step} ({state.time_in_days:.1f} days): "
         f"Oil production = {total_oil_production_stb:.1f} STB/day, "
@@ -487,9 +484,11 @@ High step rejection rates are the most common cause of slow simulations. Check w
 ```python
 rejection_count = 0
 
+
 def track(result, step_size, elapsed):
     global rejection_count
     rejection_count += 1
+
 
 for state in bores.run(model, config, on_step_rejected=track):
     pass
@@ -512,7 +511,7 @@ config = bores.Config(..., output_frequency=1000)
 
 # Stream without storing
 for state in bores.run(model, config):
-    write_to_disk(state)   # Write and discard
+    write_to_disk(state)  # Write and discard
 ```
 
 ### Convergence Failures

@@ -19,11 +19,11 @@ states = list(bores.run(model, config))
 state = states[-1]  # Last time step
 
 # Time information
-print(state.step)              # Time step index (0-based)
-print(state.step_size)         # Step size in seconds
-print(state.time)              # Elapsed time in seconds
-print(state.time_in_days)      # Elapsed time in days
-print(state.time_in_years)     # Elapsed time in years
+print(state.step)  # Time step index (0-based)
+print(state.step_size)  # Step size in seconds
+print(state.time)  # Elapsed time in seconds
+print(state.time_in_days)  # Elapsed time in days
+print(state.time_in_years)  # Elapsed time in years
 ```
 
 ### Accessing Reservoir Properties
@@ -176,15 +176,14 @@ print(f"Total oil injection: {total_oil_injection} ft³/day")
 
 # Convert reservoir rates to surface rates using FVF
 # (FVF = formation volume factor, which is also a SparseTensor)
-surface_oil_rate = state.injection_rates.oil.sum() / state.injection_formation_volume_factors.oil.array().mean()
+surface_oil_rate = (
+    state.injection_rates.oil.sum() / state.injection_formation_volume_factors.oil.array().mean()
+)
 print(f"Surface oil rate (approximate): {surface_oil_rate} STB/day")
 
 # Get oil injection for a specific well's cells
 well_injection_cells = [(10, 20, 5), (10, 20, 6), (10, 20, 7)]  # Perforation cells
-well_oil_rate = sum(
-    state.injection_rates.oil[cell] 
-    for cell in well_injection_cells
-)
+well_oil_rate = sum(state.injection_rates.oil[cell] for cell in well_injection_cells)
 print(f"Oil rate for this well: {well_oil_rate} ft³/day")
 ```
 
@@ -226,12 +225,12 @@ num_oil_injection_cells = state.injection_rates.oil.nnz
 
 # How many active well perforations total?
 total_perforation_cells = (
-    state.injection_rates.oil.nnz +
-    state.injection_rates.water.nnz +
-    state.injection_rates.gas.nnz +
-    state.production_rates.oil.nnz +
-    state.production_rates.water.nnz +
-    state.production_rates.gas.nnz
+    state.injection_rates.oil.nnz
+    + state.injection_rates.water.nnz
+    + state.injection_rates.gas.nnz
+    + state.production_rates.oil.nnz
+    + state.production_rates.water.nnz
+    + state.production_rates.gas.nnz
 )
 print(f"Total well perforation cells active: {total_perforation_cells}")
 ```
@@ -281,12 +280,8 @@ states = list(bores.run(model, config))
 import numpy as np
 
 time_days = np.array([s.time_in_days for s in states])
-avg_pressure = np.array([
-    s.model.fluid_properties.pressure_grid.mean() for s in states
-])
-avg_So = np.array([
-    s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-])
+avg_pressure = np.array([s.model.fluid_properties.pressure_grid.mean() for s in states])
+avg_So = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
 ```
 
 This is fine for simulations that produce a manageable number of states (up to a few hundred). For longer runs, consider using `output_frequency` in the `Config` to reduce the number of states, or use `StateStream` for disk-backed persistence.
@@ -326,7 +321,9 @@ with StateStream(
     batch_size=10,
 ) as stream:
     for state in stream:
-        print(f"Step {state.step}: P_avg = {state.model.fluid_properties.pressure_grid.mean():.1f}")
+        print(
+            f"Step {state.step}: P_avg = {state.model.fluid_properties.pressure_grid.mean():.1f}"
+        )
 ```
 
 ### Configuration Options
@@ -402,9 +399,7 @@ The `until()` method iterates through the stream, yielding states one at a time,
 ```python
 with StateStream(states=bores.run(model, config), store=store) as stream:
     # Run until average pressure drops below 1500 psi
-    for state in stream.until(
-        lambda s: s.model.fluid_properties.pressure_grid.mean() < 1500.0
-    ):
+    for state in stream.until(lambda s: s.model.fluid_properties.pressure_grid.mean() < 1500.0):
         print(f"Step {state.step}: P = {state.model.fluid_properties.pressure_grid.mean():.1f}")
 ```
 
@@ -510,10 +505,10 @@ When `background_io=True`, two additional keys are available: `io_queue_size` (c
 The stream also exposes several read-only properties for quick status checks:
 
 ```python
-stream.yield_count       # Total states yielded so far
-stream.saved_count       # Total states saved to store
-stream.checkpoints_count # Total checkpoints created
-stream.is_consumed       # Whether the underlying generator is exhausted
+stream.yield_count  # Total states yielded so far
+stream.saved_count  # Total states saved to store
+stream.checkpoints_count  # Total checkpoints created
+stream.is_consumed  # Whether the underlying generator is exhausted
 ```
 
 ---
@@ -641,7 +636,13 @@ with StateStream(states=bores.run(model, config), store=store) as stream:
     # Stop when water cut exceeds 95%
     final = None
     for state in stream.until(
-        lambda s: (s.production.water.sum() / max(s.production.oil.sum() + s.production.water.sum(), 1e-10)) > 0.95
+        lambda s: (
+            (
+                s.production.water.sum()
+                / max(s.production.oil.sum() + s.production.water.sum(), 1e-10)
+            )
+            > 0.95
+        )
     ):
         final = state
 ```

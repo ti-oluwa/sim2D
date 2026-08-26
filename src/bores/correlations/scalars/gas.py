@@ -722,7 +722,7 @@ def compute_gas_compressibility(
     # Numerical derivative dZ/dP (central difference)
     # Relative perturbation (stable across pressure scales)
     dP = 1e-4 * pressure
-    if dP == 0.0:
+    if dP == 0:
         dP = 1e-6  # absolute fallback
 
     P_plus = pressure + dP

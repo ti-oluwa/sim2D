@@ -10,14 +10,11 @@ from typing_extensions import Self
 from bores.constants import get_conversion_factors
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
-from bores.serde.base import (
-    Serializable,
-)
-from bores.serde.registry import (
-    make_serializable_type_registrar,
-)
+from bores.serde.base import Serializable
+from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores.base import StoreSerializable
 from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
+from bores.utils import scale
 
 __all__ = [
     "BHPLimit",
@@ -128,16 +125,16 @@ class Limit(Serializable):
         raise NotImplementedError
 
 
-_LIMIT_TYPES: dict[str, type[Limit]] = {}
-_limit_type = make_serializable_type_registrar(
+LIMIT_TYPES: dict[str, type[Limit]] = {}
+limit_type = make_serializable_type_registrar(
     base_cls=Limit,
-    registry=_LIMIT_TYPES,
+    registry=LIMIT_TYPES,
     lock=threading.Lock(),
     key_attr="__type__",
 )
 
 
-@_limit_type
+@limit_type
 @attrs.frozen(kw_only=True, slots=True)
 class RateLimit(Limit):
     """
@@ -184,10 +181,10 @@ class RateLimit(Limit):
             if self.quantity is RateQuantity.RESERVOIR
             else factors["liquid_surface_rate"]
         )
-        return attrs.evolve(self, max_value=self.max_value * factor, unit_system=target)
+        return attrs.evolve(self, max_value=scale(self.max_value, factor), unit_system=target)
 
 
-@_limit_type
+@limit_type
 @attrs.frozen(kw_only=True, slots=True)
 class BHPLimit(Limit):
     """
@@ -238,13 +235,13 @@ class BHPLimit(Limit):
         factor = get_conversion_factors(self.unit_system, target, table=table)["pressure"]
         return attrs.evolve(
             self,
-            min_value=self.min_value * factor if self.min_value is not None else None,
-            max_value=self.max_value * factor if self.max_value is not None else None,
+            min_value=scale(self.min_value, factor) if self.min_value is not None else None,
+            max_value=scale(self.max_value, factor) if self.max_value is not None else None,
             unit_system=target,
         )
 
 
-@_limit_type
+@limit_type
 @attrs.frozen(kw_only=True, slots=True)
 class THPLimit(Limit):
     """
@@ -298,13 +295,13 @@ class THPLimit(Limit):
         factor = get_conversion_factors(self.unit_system, target, table=table)["pressure"]
         return attrs.evolve(
             self,
-            min_value=self.min_value * factor if self.min_value is not None else None,
-            max_value=self.max_value * factor if self.max_value is not None else None,
+            min_value=scale(self.min_value, factor) if self.min_value is not None else None,
+            max_value=scale(self.max_value, factor) if self.max_value is not None else None,
             unit_system=target,
         )
 
 
-@_limit_type
+@limit_type
 @attrs.frozen(kw_only=True, slots=True)
 class EconomicLimit(Limit):
     """
@@ -347,7 +344,7 @@ class EconomicLimit(Limit):
             if self.quantity is EconomicQuantity.GOR
             else factors["oil_gas_ratio"]  # `WATER_GAS_RATIO`: water is dimensionally
         )  # identical to oil (liquid_surface_volume)
-        return attrs.evolve(self, max_value=self.max_value * factor, unit_system=target)
+        return attrs.evolve(self, max_value=scale(self.max_value, factor), unit_system=target)
 
 
 class WellControl(Serializable):
@@ -376,10 +373,10 @@ class WellControl(Serializable):
         raise NotImplementedError
 
 
-_CONTROL_TYPES: dict[str, type[WellControl]] = {}
+CONTROL_TYPES: dict[str, type[WellControl]] = {}
 control_type = make_serializable_type_registrar(
     base_cls=WellControl,
-    registry=_CONTROL_TYPES,
+    registry=CONTROL_TYPES,
     lock=threading.Lock(),
     key_attr="__type__",
 )
@@ -478,13 +475,13 @@ class ProducerControl(WellControl):
         rate_factor = factors[rate_modes[self.mode]] if self.mode in rate_modes else None
         return attrs.evolve(
             self,
-            target_rate=self.target_rate * rate_factor
+            target_rate=scale(self.target_rate, rate_factor)
             if rate_factor and self.target_rate is not None
             else self.target_rate,
-            target_bhp=self.target_bhp * factors["pressure"]
+            target_bhp=scale(self.target_bhp, factors["pressure"])
             if self.target_bhp is not None
             else None,
-            target_thp=self.target_thp * factors["pressure"]
+            target_thp=scale(self.target_thp, factors["pressure"])
             if self.target_thp is not None
             else None,
             limits=tuple(limit.convert(target, table=table) for limit in self.limits),
@@ -569,11 +566,13 @@ class InjectorControl(WellControl):
 
         return attrs.evolve(
             self,
-            target_rate=self.target_rate * rate_factor if self.target_rate is not None else None,
-            target_bhp=self.target_bhp * factors["pressure"]
+            target_rate=scale(self.target_rate, rate_factor)
+            if self.target_rate is not None
+            else None,
+            target_bhp=scale(self.target_bhp, factors["pressure"])
             if self.target_bhp is not None
             else None,
-            target_thp=self.target_thp * factors["pressure"]
+            target_thp=scale(self.target_thp, factors["pressure"])
             if self.target_thp is not None
             else None,
             limits=tuple(limit.convert(target, table=table) for limit in self.limits),
@@ -585,7 +584,7 @@ class WellControls(
     StoreSerializable,
     fields={
         "controls": typing.Mapping[str, WellControl],
-        "unit_system": typing.Optional[UnitSystem],
+        "unit_system": typing.Optional[UnitSystem],  # noqa: UP045
     },
 ):
     """Name-keyed, mutable mapping from well name to its current `WellControl`."""

@@ -74,20 +74,20 @@ grid_shape = (10, 10, 3)
 cell_dimension = (100.0, 100.0)  # (dx, dy) in feet
 
 # Build uniform property grids
-thickness = bores.build_uniform_grid(grid_shape, value=20.0)        # ft per layer
-pressure = bores.build_uniform_grid(grid_shape, value=3000.0)       # psi
-porosity = bores.build_uniform_grid(grid_shape, value=0.20)         # fraction
-temperature = bores.build_uniform_grid(grid_shape, value=180.0)     # deg F
-oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.5)     # cP
-bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)   # psi
-oil_sg = bores.build_uniform_grid(grid_shape, value=0.85)           # ~35 deg API
+thickness = bores.build_uniform_grid(grid_shape, value=20.0)  # ft per layer
+pressure = bores.build_uniform_grid(grid_shape, value=3000.0)  # psi
+porosity = bores.build_uniform_grid(grid_shape, value=0.20)  # fraction
+temperature = bores.build_uniform_grid(grid_shape, value=180.0)  # deg F
+oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.5)  # cP
+bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)  # psi
+oil_sg = bores.build_uniform_grid(grid_shape, value=0.85)  # ~35 deg API
 
 # Residual and irreducible saturations
 sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
 Swir = bores.build_uniform_grid(grid_shape, value=0.20)  # Irreducible water
-swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
+swc = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
 
 # Build initial saturations from fluid contacts
 # Depth grid: top of reservoir at 5000 ft, 20 ft per layer
@@ -95,8 +95,8 @@ depth = bores.depth_grid(thickness_grid=thickness, datum=5000.0)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
-    oil_water_contact=5055.0,     # OWC near reservoir bottom
+    gas_oil_contact=4900.0,  # GOC above reservoir (no initial gas cap)
+    oil_water_contact=5055.0,  # OWC near reservoir bottom
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -144,7 +144,7 @@ model = bores.reservoir_model(
     cell_dimension=cell_dimension,
     thickness_grid=thickness,
     pressure_grid=pressure,
-    rock_compressibility=3e-6,            # psi⁻¹
+    rock_compressibility=3e-6,  # psi⁻¹
     absolute_permeability=permeability,
     porosity_grid=porosity,
     temperature_grid=temperature,
@@ -185,25 +185,31 @@ producer = bores.production_well(
     control=bores.ProducerRateControl(
         primary_phase=bores.FluidPhase.OIL,
         primary_control=bores.AdaptiveRateControl(
-            target_rate=-200.0,    # produce 200 STB/day of oil
+            target_rate=-200.0,  # produce 200 STB/day of oil
             target_phase="oil",
-            bhp_limit=500.0,       # minimum BHP constraint
+            bhp_limit=500.0,  # minimum BHP constraint
             clamp=bores.ProductionClamp(),
         ),
         secondary_clamp=bores.ProductionClamp(),
     ),
     produced_fluids=[
         bores.ProducedFluid(
-            name="Oil", phase=bores.FluidPhase.OIL,
-            specific_gravity=0.85, molecular_weight=200.0,
+            name="Oil",
+            phase=bores.FluidPhase.OIL,
+            specific_gravity=0.85,
+            molecular_weight=200.0,
         ),
         bores.ProducedFluid(
-            name="Water", phase=bores.FluidPhase.WATER,
-            specific_gravity=1.0, molecular_weight=18.015,
+            name="Water",
+            phase=bores.FluidPhase.WATER,
+            specific_gravity=1.0,
+            molecular_weight=18.015,
         ),
         bores.ProducedFluid(
-            name="Gas", phase=bores.FluidPhase.GAS,
-            specific_gravity=0.65, molecular_weight=16.04,
+            name="Gas",
+            phase=bores.FluidPhase.GAS,
+            specific_gravity=0.65,
+            molecular_weight=16.04,
         ),
     ],
 )
@@ -261,7 +267,7 @@ config = bores.Config(
         initial_step_size=bores.Time(days=1),
         maximum_step_size=bores.Time(days=15),
         minimum_step_size=bores.Time(hours=1),
-        simulation_time=bores.Time(days=730),   # 2 years
+        simulation_time=bores.Time(days=730),  # 2 years
     ),
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
@@ -311,9 +317,7 @@ import numpy as np
 
 # Extract time series data
 time_days = np.array([s.time_in_days for s in states])
-avg_pressure = np.array([
-    s.model.fluid_properties.pressure_grid.mean() for s in states
-])
+avg_pressure = np.array([s.model.fluid_properties.pressure_grid.mean() for s in states])
 
 # Plot pressure vs time
 pressure_series = np.column_stack([time_days, avg_pressure])
@@ -331,12 +335,8 @@ You should see pressure declining from 3,000 psi toward lower values over the 2-
 ### Saturation Evolution
 
 ```python
-avg_So = np.array([
-    s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-])
-avg_Sg = np.array([
-    s.model.fluid_properties.gas_saturation_grid.mean() for s in states
-])
+avg_So = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
+avg_Sg = np.array([s.model.fluid_properties.gas_saturation_grid.mean() for s in states])
 
 fig = bores.make_series_plot(
     data={

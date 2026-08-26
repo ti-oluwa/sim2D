@@ -458,12 +458,10 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array(
-                [
-                    [x_surf, y_surf, z_surface],
-                    [x_surf, y_surf, z_perf],
-                ]
-            )
+            casing_pts = np.array([
+                [x_surf, y_surf, z_surface],
+                [x_surf, y_surf, z_perf],
+            ])
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(
@@ -560,12 +558,10 @@ def _render_wells(
 
         # Render casing (surface to first perforation)
         if show_wellbore and cell_dimension is not None:
-            casing_pts = np.array(
-                [
-                    [x_surf, y_surf, z_surface],
-                    [x_surf, y_surf, z_perf],
-                ]
-            )
+            casing_pts = np.array([
+                [x_surf, y_surf, z_surface],
+                [x_surf, y_surf, z_perf],
+            ])
             casing = pv.PolyData(casing_pts)
             casing.lines = np.array([2, 0, 1])
             plotter.add_mesh(
@@ -1321,15 +1317,15 @@ def _add_styled_slider(
     :param fmt: printf-style format string for the live value readout
     """
     lo, hi = rng
-    _state: dict[str, typing.Any] = {
+    state: dict[str, typing.Any] = {
         "label": None,
         "label_mode": None,  # "actor" | "property" | "overlay"
     }
 
     def _update_label(corrected: float) -> None:
         """Push corrected value string to whichever label mechanism is active."""
-        label = _state["label"]
-        mode = _state["label_mode"]
+        label = state["label"]
+        mode = state["label_mode"]
         if label is None or mode is None:
             return
         text = fmt % corrected
@@ -1379,8 +1375,8 @@ def _add_styled_slider(
         try:
             actor = rep.GetLabelActor()  # type: ignore
             actor.SetInput(fmt % value)
-            _state["label"] = actor
-            _state["label_mode"] = "actor"
+            state["label"] = actor
+            state["label_mode"] = "actor"
             # Style via the actor's text property
             tp = actor.GetTextProperty()
             tp.SetColor(0.4, 0.78, 1.0)
@@ -1391,13 +1387,13 @@ def _add_styled_slider(
         except Exception:
             pass
 
-    if _state["label_mode"] is None:
+    if state["label_mode"] is None:
         # Fallback 1: label property object
         try:
             label_prop = rep.GetLabelProperty()  # type: ignore
             label_prop.SetInput(fmt % value)
-            _state["label"] = label_prop
-            _state["label_mode"] = "property"
+            state["label"] = label_prop
+            state["label_mode"] = "property"
             label_prop.SetColor(0.4, 0.78, 1.0)
             label_prop.SetFontFamilyToArial()
             label_prop.BoldOff()
@@ -1405,7 +1401,7 @@ def _add_styled_slider(
         except Exception:
             pass
 
-    if _state["label_mode"] is None:
+    if state["label_mode"] is None:
         # Fallback 2: floating overlay text actor (always works)
         mid_x = (pointa[0] + pointb[0]) / 2 + 0.01
         mid_y = (pointa[1] + pointb[1]) / 2
@@ -1420,8 +1416,8 @@ def _add_styled_slider(
             )
             # label reference not needed for overlay mode since
             # add_text with the same name replaces in-place
-            _state["label"] = True  # sentinel so _update_label fires
-            _state["label_mode"] = "overlay"
+            state["label"] = True  # sentinel so _update_label fires
+            state["label_mode"] = "overlay"
         except Exception:
             pass
 
@@ -1523,18 +1519,18 @@ def _setup_interactive_widgets(
         data_min = float(scalars.min()) if scalars is not None else 0.0
         data_max = float(scalars.max()) if scalars is not None else 1.0
 
-        _thresh: dict[str, typing.Any] = {"actor": None}
+        thresh: dict[str, typing.Any] = {"actor": None}
 
         def _apply_threshold(value: float) -> None:
-            if _thresh["actor"] is not None:
-                plotter.remove_actor(_thresh["actor"])
-                _thresh["actor"] = None
+            if thresh["actor"] is not None:
+                plotter.remove_actor(thresh["actor"])
+                thresh["actor"] = None
             if value <= data_min:
                 return
             try:
                 threshed = mesh.threshold(value, scalars="values")  # type: ignore
                 if threshed.n_cells > 0:
-                    _thresh["actor"] = plotter.add_mesh(
+                    thresh["actor"] = plotter.add_mesh(
                         threshed, opacity=config.opacity, **mesh_kwargs
                     )
             except Exception as exc:
@@ -1554,13 +1550,13 @@ def _setup_interactive_widgets(
     # Slider: Z-scale  (vertical exaggeration)
     # Live-rescales the mesh by adjusting the renderer's Z-scale rather
     # than rebuilding geometry, so it works for any renderer type.
-    _zscale_state = {"current": 1.0}
+    zscale_state = {"current": 1.0}
 
     def _set_zscale(value: float) -> None:
         # Clamp to avoid zero/negative which would invert the grid
         value = max(value, 0.05)
-        factor = value / _zscale_state["current"]
-        _zscale_state["current"] = value
+        factor = value / zscale_state["current"]
+        zscale_state["current"] = value
         # Scale every actor's Z; avoids rebuilding the mesh entirely
         for actor in plotter.renderer.actors.values():
             if hasattr(actor, "SetScale"):
@@ -1583,31 +1579,31 @@ def _setup_interactive_widgets(
     # Two stacked sliders.  Guards prevent min > max and max < min.
     if has_grid:
         scalars = mesh.active_scalars  # type: ignore
-        _cdata_min = float(scalars.min()) if scalars is not None else 0.0
-        _cdata_max = float(scalars.max()) if scalars is not None else 1.0
-        _clim: dict[str, float] = {"lo": _cdata_min, "hi": _cdata_max}
+        cdata_min = float(scalars.min()) if scalars is not None else 0.0
+        cdata_max = float(scalars.max()) if scalars is not None else 1.0
+        clim: dict[str, float] = {"lo": cdata_min, "hi": cdata_max}
 
         def _apply_clim() -> None:
             """Push current lo/hi to every scalar-bar-linked actor."""
             for name in list(plotter.scalar_bars.keys()):
                 mapper = plotter.scalar_bars[name].GetMapper()
                 if mapper is not None:
-                    mapper.SetScalarRange(_clim["lo"], _clim["hi"])
+                    mapper.SetScalarRange(clim["lo"], clim["hi"])
             plotter.render()
 
         def _set_cmin(value: float) -> None:
-            _clim["lo"] = min(value, _clim["hi"] - 1e-9)
+            clim["lo"] = min(value, clim["hi"] - 1e-9)
             _apply_clim()
 
         def _set_cmax(value: float) -> None:
-            _clim["hi"] = max(value, _clim["lo"] + 1e-9)
+            clim["hi"] = max(value, clim["lo"] + 1e-9)
             _apply_clim()
 
         _add_styled_slider(
             plotter,
             _set_cmin,
-            rng=(_cdata_min, _cdata_max),
-            value=_cdata_min,
+            rng=(cdata_min, cdata_max),
+            value=cdata_min,
             title="C-min",
             pointa=(0.06, 0.38),
             pointb=(0.06, 0.27),
@@ -1617,8 +1613,8 @@ def _setup_interactive_widgets(
         _add_styled_slider(
             plotter,
             _set_cmax,
-            rng=(_cdata_min, _cdata_max),
-            value=_cdata_max,
+            rng=(cdata_min, cdata_max),
+            value=cdata_max,
             title="C-max",
             pointa=(0.06, 0.21),
             pointb=(0.06, 0.10),
@@ -1628,21 +1624,21 @@ def _setup_interactive_widgets(
     # Slice planes  (1/2/3 keys)
     # Inserts a draggable orange cutting plane.  User clicks the handle
     # and drags it through the volume.  Same key removes it.
-    _slice_actors: dict[str, bool] = {}
-    _slice_status: dict[str, typing.Any] = {"actor": None}
+    slice_actors: dict[str, bool] = {}
+    slice_status: dict[str, typing.Any] = {"actor": None}
 
     def _update_slice_status() -> None:
         """Show/hide a small HUD line telling the user what to do."""
-        if _slice_status["actor"] is not None:
-            plotter.remove_actor(_slice_status["actor"])
-            _slice_status["actor"] = None
+        if slice_status["actor"] is not None:
+            plotter.remove_actor(slice_status["actor"])
+            slice_status["actor"] = None
 
-        active = sorted(_slice_actors.keys())
+        active = sorted(slice_actors.keys())
         if not active:
             return
 
         axes_label = "/".join(a.upper() for a in active)
-        _slice_status["actor"] = plotter.add_text(
+        slice_status["actor"] = plotter.add_text(
             f"Slice active ({axes_label}). Click the orange handle and drag to move",
             position=(10, 30),
             font_size=8,
@@ -1653,11 +1649,11 @@ def _setup_interactive_widgets(
     def _toggle_slice(axis: str, normal: str) -> None:
         if not has_grid:
             return
-        if axis in _slice_actors:
+        if axis in slice_actors:
             # Remove this plane: rebuild remaining ones from scratch
-            active = {k: v for k, v in _slice_actors.items() if k != axis}
+            active = {k: v for k, v in slice_actors.items() if k != axis}
             plotter.clear_plane_widgets()
-            _slice_actors.clear()
+            slice_actors.clear()
             for ax in active:
                 plotter.add_mesh_slice(
                     mesh,
@@ -1665,7 +1661,7 @@ def _setup_interactive_widgets(
                     interaction_event="always",
                     **mesh_kwargs,
                 )
-                _slice_actors[ax] = True
+                slice_actors[ax] = True
             logger.info("Removed %s slice plane", axis.upper())
         else:
             plotter.add_mesh_slice(
@@ -1674,7 +1670,7 @@ def _setup_interactive_widgets(
                 interaction_event="always",
                 **mesh_kwargs,
             )
-            _slice_actors[axis] = True
+            slice_actors[axis] = True
             logger.info(
                 "Added %s slice. Click the orange handle on the mesh and drag",
                 axis.upper(),
@@ -1686,14 +1682,14 @@ def _setup_interactive_widgets(
     plotter.add_key_event("3", lambda: _toggle_slice("z", "z"))  # type: ignore
 
     # Box-crop widget  (b key)
-    _box_state = {"active": False}
+    box_state = {"active": False}
 
     def _toggle_box() -> None:
         if not has_grid:
             return
-        if _box_state["active"]:
+        if box_state["active"]:
             plotter.clear_box_widgets()
-            _box_state["active"] = False
+            box_state["active"] = False
             logger.info("Box crop removed")
         else:
             plotter.add_mesh_clip_box(
@@ -1702,18 +1698,18 @@ def _setup_interactive_widgets(
                 color="grey",
                 **mesh_kwargs,
             )
-            _box_state["active"] = True
+            box_state["active"] = True
             logger.info("Box crop enabled. Drag the grey handles to crop")
 
     plotter.add_key_event("b", _toggle_box)  # type: ignore
 
     # View presets  (v key)
-    _VIEWS = ["isometric", "xy", "xz", "yz"]
-    _view_idx = {"i": 0}
+    VIEWS = ["isometric", "xy", "xz", "yz"]
+    view_idx = {"i": 0}
 
     def _cycle_view() -> None:
-        _view_idx["i"] = (_view_idx["i"] + 1) % len(_VIEWS)
-        view = _VIEWS[_view_idx["i"]]
+        view_idx["i"] = (view_idx["i"] + 1) % len(VIEWS)
+        view = VIEWS[view_idx["i"]]
         if view == "isometric":
             plotter.view_isometric()  # type: ignore
         else:
@@ -1733,11 +1729,11 @@ def _setup_interactive_widgets(
     plotter.add_key_event("s", _screenshot)  # type: ignore
     plotter.add_key_event("0", lambda: plotter.reset_camera())  # type: ignore
 
-    _axes_vis = {"v": config.show_axes}
+    axes_vis = {"v": config.show_axes}
 
     def _toggle_axes() -> None:
-        (plotter.hide_axes if _axes_vis["v"] else plotter.show_axes)()  # type: ignore
-        _axes_vis["v"] = not _axes_vis["v"]
+        (plotter.hide_axes if axes_vis["v"] else plotter.show_axes)()  # type: ignore
+        axes_vis["v"] = not axes_vis["v"]
 
     plotter.add_key_event("a", _toggle_axes)  # type: ignore
 
@@ -1745,19 +1741,19 @@ def _setup_interactive_widgets(
     # Captured after all meshes have been added so arrows / tubes / wells
     # are already present. Toggle-off restores this instead of forcing True
     # on every actor (which would add outlines to surface markers etc.).
-    _original_edge_vis: dict[int, bool] = {}
+    original_edge_vis: dict[int, bool] = {}
     for actor in plotter.renderer.actors.values():
         prop = getattr(actor, "GetProperty", None)
         if prop is not None:
             p = prop()
             if hasattr(p, "GetEdgeVisibility"):
-                _original_edge_vis[id(actor)] = bool(p.GetEdgeVisibility())
+                original_edge_vis[id(actor)] = bool(p.GetEdgeVisibility())
 
-    _edge_vis = {"on": True}  # tracks whether edges are currently shown
+    edge_vis = {"on": True}  # tracks whether edges are currently shown
 
     def _toggle_edges() -> None:
-        turning_off = _edge_vis["on"]
-        _edge_vis["on"] = not turning_off
+        turning_off = edge_vis["on"]
+        edge_vis["on"] = not turning_off
         for actor in plotter.renderer.actors.values():
             prop = getattr(actor, "GetProperty", None)
             if prop is not None:
@@ -1769,25 +1765,25 @@ def _setup_interactive_widgets(
                         # Restore to whatever the actor originally had —
                         # arrows/tubes/wells had False, grid mesh had True/False
                         # per config. Never force True on actors that didn't have it.
-                        original = _original_edge_vis.get(id(actor), False)
+                        original = original_edge_vis.get(id(actor), False)
                         p.SetEdgeVisibility(original)
         plotter.render()
 
     plotter.add_key_event("g", _toggle_edges)  # type: ignore
 
-    _cbar_vis = {"v": config.show_colorbar}
+    cbar_vis = {"v": config.show_colorbar}
 
     def _toggle_colorbar() -> None:
-        _cbar_vis["v"] = not _cbar_vis["v"]
+        cbar_vis["v"] = not cbar_vis["v"]
         for name in list(plotter.scalar_bars.keys()):
             actor = plotter.scalar_bars[name]
-            actor.SetVisibility(_cbar_vis["v"])
+            actor.SetVisibility(cbar_vis["v"])
         plotter.render()
 
     plotter.add_key_event("k", _toggle_colorbar)  # type: ignore
 
     # Help overlay  (h key)
-    _HELP_LINES = (
+    HELP_LINES = (
         "  ── Keyboard shortcuts ──────────────────\n"
         "  '1' '2' '3' - Add X / Y / Z slice plane\n"
         "               -> click the orange handle\n"
@@ -1808,22 +1804,22 @@ def _setup_interactive_widgets(
         "  Z-scale     - Vertical exaggeration\n"
         "  C-min/C-max - Narrow colormap range"
     )
-    _help_state: dict[str, typing.Any] = {"actor": None, "visible": False}
+    help_state: dict[str, typing.Any] = {"actor": None, "visible": False}
 
     def _toggle_help() -> None:
-        if _help_state["visible"] and _help_state["actor"] is not None:
-            plotter.remove_actor(_help_state["actor"])
-            _help_state["actor"] = None
-            _help_state["visible"] = False
+        if help_state["visible"] and help_state["actor"] is not None:
+            plotter.remove_actor(help_state["actor"])
+            help_state["actor"] = None
+            help_state["visible"] = False
         else:
-            _help_state["actor"] = plotter.add_text(
-                _HELP_LINES,
+            help_state["actor"] = plotter.add_text(
+                HELP_LINES,
                 position="upper_right",
                 font_size=7,
                 color=config.text_color,
                 name="_bores_help",
             )
-            _help_state["visible"] = True
+            help_state["visible"] = True
 
     plotter.add_key_event("h", _toggle_help)  # type: ignore
     plotter.add_text(

@@ -14,8 +14,8 @@ config = bores.Config(
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
     scheme="impes",
-    pressure_solver="bicgstab",      # Solver for pressure
-    transport_solver="bicgstab",    # Solver for saturation
+    pressure_solver="bicgstab",  # Solver for pressure
+    transport_solver="bicgstab",  # Solver for saturation
 )
 ```
 
@@ -131,11 +131,13 @@ You can register custom solver functions using the `@solver_func` decorator. A c
 ```python
 from bores.solvers.base import solver_func
 
+
 @solver_func(name="my_custom_solver")
 def my_solver(A, b, x0=None, *, rtol=1e-6, atol=0.0, maxiter=None, M=None, callback=None):
     # Your solver implementation here
     # Must return the solution array x
     ...
+
 
 # Then use it in Config
 config = bores.Config(

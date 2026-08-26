@@ -35,7 +35,7 @@ These utility functions convert between temperature scales. They accept both sca
 ```python
 from bores.correlations.scalars import fahrenheit_to_kelvin, kelvin_to_fahrenheit
 
-temp_K = fahrenheit_to_kelvin(200.0)   # 366.48 K
+temp_K = fahrenheit_to_kelvin(200.0)  # 366.48 K
 temp_F = kelvin_to_fahrenheit(366.48)  # 200.0 F
 ```
 
@@ -125,8 +125,8 @@ Computes the specific gravity of a gas relative to air at standard conditions. A
 ```python
 from bores.correlations.scalars import compute_gas_gravity
 
-methane_gravity = compute_gas_gravity("Methane")   # ~0.554
-co2_gravity = compute_gas_gravity("CO2")           # ~1.52
+methane_gravity = compute_gas_gravity("Methane")  # ~0.554
+co2_gravity = compute_gas_gravity("CO2")  # ~1.52
 ```
 
 ### `compute_gas_gravity_from_density`

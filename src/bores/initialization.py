@@ -49,11 +49,7 @@ from bores.typing import (
 )
 from bores.utils import get_hydrostatic_gradient_factor
 
-__all__ = [
-    "EquilibriumArrays",
-    "initialize_equilibrium_arrays",
-    "initialize_reservoir_state",
-]
+__all__ = ["EquilibriumArrays", "initialize_equilibrium_arrays", "initialize_reservoir_state"]
 
 N_SATURATION_SAMPLES = 100
 """
@@ -567,9 +563,9 @@ def _initialize_horizontal_subdivision_equilibrium(
     def _average(field: CellArray) -> CellArray:
         return typing.cast(CellArray, field.reshape(n_cells, n_sub).mean(axis=1))
 
-    return EquilibriumArrays(
-        **{name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields}
-    )
+    return EquilibriumArrays(**{
+        name: _average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def _get_dip_aware_top_bottom_faces(
@@ -726,12 +722,9 @@ def _initialize_tilted_subdivision_equilibrium(
             np.sum(field_2d * area_weights, axis=1) / np.sum(area_weights, axis=1),
         )
 
-    return EquilibriumArrays(
-        **{
-            name: _weighted_average(getattr(sub_arrays, name))
-            for name in EquilibriumArrays._fields
-        }
-    )
+    return EquilibriumArrays(**{
+        name: _weighted_average(getattr(sub_arrays, name)) for name in EquilibriumArrays._fields
+    })
 
 
 def initialize_equilibrium_arrays(
@@ -1039,8 +1032,8 @@ def initialize_reservoir_state(
     (`gas_dew_point_pressure = 0`).
 
     Note:
-        Ensure the unit system of all inputs (`reservoir`, `pvt`, ..., and any explicit arrays) is consistent.
-        The function will raise a `ValidationError` if there is a detected mismatch.
+    Ensure the unit system of all inputs (`reservoir`, `pvt`, ..., and any explicit arrays) is consistent.
+    The function will raise a `ValidationError` if there is a detected mismatch.
 
     :param reservoir: Reservoir geometry and rock properties.
     :param pvt: PVT tables for all regions.

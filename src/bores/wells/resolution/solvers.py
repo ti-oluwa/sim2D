@@ -335,10 +335,10 @@ def bisect_bhp(
     a higher producer rate, higher BHP means a higher injector rate;
     `metric="thp"` - higher BHP means higher THP, for both well types.
 
-    `min_pressure`/`max_pressure` must bracket the target - callers pick
+    `min_pressure`/`max_pressure` must bracket the target. Callers should pick
     these via `get_default_pressure_bracket` (or their own). Best-effort
-    (no exception) if `target` isn't achievable within the bracket -
-    returns the closest bound reached after `resolver_spec.max_bisection_iterations`.
+    (no exception) if `target` isn't achievable within the bracket.
+    Returns the closest bound reached after `resolver_spec.max_bisection_iterations`.
 
     :param wellbore: Hydraulics correlation for this well.
     :param reference_depth: The well's BHP/THP reporting datum.
@@ -426,7 +426,7 @@ def solve_producer_rate_mode(
     """
     Resolves a producer under `control_mode in {ORAT, WRAT, GRAT, LRAT, RESV}`.
 
-    Nominal resolution only - does not check limits; the caller applies
+    Nominal resolution only. Does not check limits; the caller applies
     those afterward via `wells.resolution.limits.apply_limits`.
 
     :param control_mode: `ProducerControlModeTag` value.
@@ -482,7 +482,7 @@ def solve_producer_bhp_mode(
     """
     Resolves a producer held at a fixed BHP; rates are the output.
 
-    Nominal resolution only - see `solve_producer_rate_mode`.
+    Nominal resolution only. See `solve_producer_rate_mode`.
     """
     phase_rates = compute_phase_rates(
         wellbore=wellbore,
@@ -512,7 +512,7 @@ def solve_injector_rate_mode(
     Injector analogue of `solve_producer_rate_mode` - `injected_phase`
     selects the single phase being allocated.
 
-    Nominal resolution only - see `solve_producer_rate_mode`.
+    Nominal resolution only. See `solve_producer_rate_mode`.
 
     :param control_mode: `InjectorControlModeTag` value.
     :param target_rate: The rate target.
@@ -569,7 +569,7 @@ def solve_injector_bhp_mode(
     """
     Injector analogue of `solve_producer_bhp_mode`.
 
-    Nominal resolution only - see `solve_producer_rate_mode`.
+    Nominal resolution only. See `solve_producer_rate_mode`.
     """
     relevant_phases = phase_mask(injected_phase)
     phase_rates = compute_phase_rates(

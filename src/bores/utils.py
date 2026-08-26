@@ -419,7 +419,7 @@ def scale_and_offset(
     a: NumberOrArray[NDimension] | None, /, factor: Number, offset: Number
 ) -> NumberOrArray[NDimension] | None:
     """Return `a * factor + offset` as the same dtype; identity when trivial."""
-    if a is None or (factor == 1.0 and offset == 0.0):
+    if a is None or (factor == 1.0 and offset == 0):
         return a
 
     result = (a * factor) + offset

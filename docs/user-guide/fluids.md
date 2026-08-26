@@ -53,14 +53,14 @@ from bores.tables.pvt import build_gas_pvt_data, PVTTable
 bores.use_32bit_precision()
 
 # Define pressure and temperature grid for CO2 PVT
-pressures = np.linspace(500, 8000, 80)      # psi - cover supercritical range
-temperatures = np.linspace(80, 300, 30)     # F
+pressures = np.linspace(500, 8000, 80)  # psi - cover supercritical range
+temperatures = np.linspace(80, 300, 30)  # F
 
 # Build PVT data for CO2 using its specific gravity (air = 1)
 co2_pvt_data = build_gas_pvt_data(
     pressures=pressures,
     temperatures=temperatures,
-    gas_gravity=1.52,       # CO2 specific gravity relative to air
+    gas_gravity=1.52,  # CO2 specific gravity relative to air
 )
 
 # Wrap in a PVTTable to build the interpolators
@@ -79,7 +79,9 @@ co2 = Fluid(
 # Query CO2 properties at reservoir conditions
 p, T = 3000.0, 150.0
 print(f"CO2 viscosity at {p} psi, {T} F: {co2.pvt_table.viscosity(p, T):.4f} cP")
-print(f"CO2 FVF:                          {co2.pvt_table.formation_volume_factor(p, T):.4f} ft3/SCF")
+print(
+    f"CO2 FVF:                          {co2.pvt_table.formation_volume_factor(p, T):.4f} ft3/SCF"
+)
 print(f"CO2 Z-factor:                     {co2.pvt_table.compressibility_factor(p, T):.4f}")
 ```
 
@@ -123,9 +125,9 @@ reservoir_gas = Fluid(
 # Build the pseudo-pressure table at reservoir temperature
 # BORES uses the Z-factor and viscosity interpolators from pvt_table
 ppt = reservoir_gas.get_pseudo_pressure_table(
-    temperature=185.0,                          # F - your reservoir temperature
-    pressure_range=(200.0, 8000.0),             # psi - bracket your expected range
-    points=300,                                 # integration grid density
+    temperature=185.0,  # F - your reservoir temperature
+    pressure_range=(200.0, 8000.0),  # psi - bracket your expected range
+    points=300,  # integration grid density
 )
 
 # Query the pseudo-pressure at a specific pressure
@@ -162,7 +164,7 @@ ppt = PseudoPressureTable.load("data/pseudo_pressure.h5")
 reservoir_gas = Fluid(
     name="ReservoirGas",
     phase=FluidPhase.GAS,
-    pseudo_pressure_table=ppt,      # Attach directly - bypasses automatic construction
+    pseudo_pressure_table=ppt,  # Attach directly - bypasses automatic construction
 )
 ```
 
@@ -195,7 +197,7 @@ global_pvt = PVTTables.load("run/pvt_tables.h5")
 lean_gas = Fluid(name="LeanGas", phase=FluidPhase.GAS)
 ppt = lean_gas.get_pseudo_pressure_table(
     temperature=175.0,
-    pvt_tables=global_pvt,          # Provide global bundle as fallback source
+    pvt_tables=global_pvt,  # Provide global bundle as fallback source
 )
 ```
 
@@ -211,7 +213,7 @@ To bypass the cache (for example, when testing different integration densities),
 ppt_fine = gas.get_pseudo_pressure_table(
     temperature=185.0,
     points=1000,
-    use_cache=False,        # Always recompute
+    use_cache=False,  # Always recompute
 )
 ```
 

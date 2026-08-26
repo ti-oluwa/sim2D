@@ -50,7 +50,7 @@ def resolve_control(
 
     A `PENDING` well (`compiled_system.schedule_statuses[well_row] == 0`)
     or an `UNSET`-mode well is left untouched (still `NaN`/`UNSET_INT`/`0`
-    from `compile_well_resolution`) - there's nothing to resolve.
+    from `compile_well_resolution`) as there's nothing to resolve.
 
     :param compiled_system: The compiled well system.
     :param well_row: Which well, by row index into `compiled_system`.

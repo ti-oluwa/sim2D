@@ -44,15 +44,15 @@ from bores.boundary_conditions import (
 
 # Edge water drive with known aquifer properties
 edge_aquifer = CarterTracyAquifer(
-    aquifer_permeability=500.0,        # mD
-    aquifer_porosity=0.25,             # fraction
-    aquifer_compressibility=3e-6,      # psi-1 (rock + water)
-    water_viscosity=0.5,               # cP
-    inner_radius=1000.0,               # ft (reservoir-aquifer contact)
-    outer_radius=10000.0,              # ft (aquifer outer boundary)
-    aquifer_thickness=50.0,            # ft
-    initial_pressure=2500.0,           # psi
-    angle=180.0,                       # degrees (half-circle, edge drive)
+    aquifer_permeability=500.0,  # mD
+    aquifer_porosity=0.25,  # fraction
+    aquifer_compressibility=3e-6,  # psi-1 (rock + water)
+    water_viscosity=0.5,  # cP
+    inner_radius=1000.0,  # ft (reservoir-aquifer contact)
+    outer_radius=10000.0,  # ft (aquifer outer boundary)
+    aquifer_thickness=50.0,  # ft
+    initial_pressure=2500.0,  # psi
+    angle=180.0,  # degrees (half-circle, edge drive)
 )
 ```
 
@@ -98,8 +98,8 @@ When the physical properties of the aquifer are uncertain (common in practice), 
 
 ```python
 calibrated_aquifer = CarterTracyAquifer(
-    aquifer_constant=5000.0,             # Pre-computed B value
-    dimensionless_radius_ratio=10.0,     # r_e / r_w
+    aquifer_constant=5000.0,  # Pre-computed B value
+    dimensionless_radius_ratio=10.0,  # r_e / r_w
     initial_pressure=2500.0,
 )
 ```

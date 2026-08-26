@@ -846,7 +846,7 @@ class RateControl(WellControl[WellFluidTcon]):
 
     def __attrs_post_init__(self) -> None:
         """Validate control parameters."""
-        if self.target_rate == 0.0:
+        if self.target_rate == 0:
             raise ValidationError("Target rate cannot be zero. Use `well.shut_in` instead.")
         if self.bhp_limit is not None and self.bhp_limit <= 0.0:
             raise ValidationError("Minimum bottom hole pressure must be positive.")
@@ -1187,7 +1187,7 @@ class RateControl(WellControl[WellFluidTcon]):
 
         # If the rate clamp fired the well is effectively shut in; collapse BHP to
         # reservoir pressure so the matrix sees no drawdown.
-        if rate_was_clamped and final_rate == 0.0:
+        if rate_was_clamped and final_rate == 0:
             final_bhp = pressure
         else:
             # Apply BHP clamp after the bhp_limit cap.
@@ -1266,7 +1266,7 @@ class AdaptiveRateControl(WellControl[WellFluidTcon]):
 
     def __attrs_post_init__(self) -> None:
         """Validate control parameters."""
-        if self.target_rate == 0.0:
+        if self.target_rate == 0:
             raise ValidationError("Target rate cannot be zero. Use `well.shut_in` instead.")
         if self.bhp_limit <= 0.0:
             raise ValidationError("Minimum bottom hole pressure must be positive.")
@@ -1682,7 +1682,7 @@ class AdaptiveRateControl(WellControl[WellFluidTcon]):
                     rate_was_clamped = True
 
             # If the rate clamp zeroed the well, collapse BHP to reservoir pressure.
-            if rate_was_clamped and final_rate == 0.0:
+            if rate_was_clamped and final_rate == 0:
                 final_bhp = pressure
             else:
                 final_bhp = effective_bhp
@@ -1766,7 +1766,7 @@ class AdaptiveRateControl(WellControl[WellFluidTcon]):
                 rate_was_clamped = True
 
         # If the rate clamp zeroed the well, collapse BHP to reservoir pressure.
-        if rate_was_clamped and final_rate == 0.0:
+        if rate_was_clamped and final_rate == 0:
             final_bhp = pressure
         else:
             final_bhp = bhp_limit

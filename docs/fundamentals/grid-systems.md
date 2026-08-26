@@ -123,6 +123,7 @@ porosity = bores.build_layered_grid(
 # Permeability varies in the x-direction (e.g., facies change):
 # 30 values, one for each column along x
 import numpy as np
+
 perm_values = np.linspace(200.0, 50.0, 30)  # Decreasing from left to right
 perm_x = bores.build_layered_grid(
     grid_shape=grid_shape,

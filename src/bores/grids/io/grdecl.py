@@ -693,7 +693,8 @@ def _emit_mult_array(
     lines.append("")
     lines.append(keyword)
     flat = (
-        np.asarray(arr, dtype=np.float64, copy=False)
+        np
+        .asarray(arr, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")

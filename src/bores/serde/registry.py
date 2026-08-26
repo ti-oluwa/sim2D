@@ -17,7 +17,7 @@ def make_serializable_type_registrar(
     base_cls: type[SerializableT],
     registry: dict[str, type[SerializableT]],
     key_attr: str = "__type__",
-    lock: threading.Lock | None = None,
+    lock: typing.Optional[threading.Lock] = None,  # noqa: UP045
     key_factory: typing.Callable[[type[SerializableT]], str] | None = None,
     override: bool = False,
     auto_register_serializer: bool = True,

@@ -124,12 +124,12 @@ import bores
 Time = bores.Time
 
 timer = bores.Timer(
-    initial_step_size=Time(days=0.5),     # Start with half-day steps
-    maximum_step_size=Time(days=30),          # Allow up to 30-day steps
-    minimum_step_size=Time(minutes=30),       # Never go below 30 minutes
-    simulation_time=Time(years=10),       # Run for 10 years
-    maximum_growth_per_step=1.3,              # Grow at most 30% per step
-    backoff_factor=0.5,                   # Halve step size on failure
+    initial_step_size=Time(days=0.5),  # Start with half-day steps
+    maximum_step_size=Time(days=30),  # Allow up to 30-day steps
+    minimum_step_size=Time(minutes=30),  # Never go below 30 minutes
+    simulation_time=Time(years=10),  # Run for 10 years
+    maximum_growth_per_step=1.3,  # Grow at most 30% per step
+    backoff_factor=0.5,  # Halve step size on failure
 )
 ```
 

@@ -60,14 +60,14 @@ import bores
 
 # Production at 500 STB/day with 1000 psi minimum BHP
 control = bores.RateControl(
-    target_rate=-500.0,    # STB/day (negative = production)
-    bhp_limit=1000.0,      # psi (minimum BHP for producers)
+    target_rate=-500.0,  # STB/day (negative = production)
+    bhp_limit=1000.0,  # psi (minimum BHP for producers)
 )
 
 # Injection at 800 STB/day with 5000 psi maximum BHP
 control = bores.RateControl(
-    target_rate=800.0,     # STB/day (positive = injection)
-    bhp_limit=5000.0,      # psi (maximum BHP for injectors)
+    target_rate=800.0,  # STB/day (positive = injection)
+    bhp_limit=5000.0,  # psi (maximum BHP for injectors)
 )
 ```
 
@@ -90,9 +90,9 @@ The most commonly used control for production wells. It operates at a constant t
 import bores
 
 control = bores.AdaptiveRateControl(
-    target_rate=-500.0,    # STB/day (production)
-    bhp_limit=1000.0,      # psi
-    target_phase="oil",    # Only controls oil phase rate
+    target_rate=-500.0,  # STB/day (production)
+    bhp_limit=1000.0,  # psi
+    target_phase="oil",  # Only controls oil phase rate
 )
 ```
 

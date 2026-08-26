@@ -516,8 +516,8 @@ def compute_perforation_pressures(
     the wellbore sequentially from `reference_depth` rather than treating
     each connection as an independent path from the reference.
 
-    The wellbore is split at `reference_depth` into up to two branches -
-    connections at or below it, and connections above it - each walked
+    The wellbore is split at `reference_depth` into up to two branches,
+    connections at or below it, and connections above it, each walked
     independently outward from the reference, nearest connection first.
     The segment feeding into a connection carries the combined rate of
     that connection and every connection beyond it on the same branch
@@ -533,7 +533,7 @@ def compute_perforation_pressures(
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
     :param connection_phase_rates: Each connection's own rate of each
-        phase, at reservoir conditions - not the well total. Same order
+        phase, at reservoir conditions, not the well total in same order
         as `connection_samples`.
     :param representative_depths: One depth per connection, same order as `connection_samples`.
     :param inclinations_from_vertical: One inclination per connection, in
@@ -597,7 +597,7 @@ def compute_perforation_pressures(
             sample = connection_samples[i]
             remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
 
-            if remaining_total == 0.0:
+            if remaining_total == 0:
                 drop = compute_static_hydrostatic_drop(
                     mixture_density=compute_static_mixture_density(
                         phase_saturations=sample.phase_saturations,
@@ -668,7 +668,7 @@ def compute_tubing_head_pressure(
     :param phase_rates: Rate of each phase, at reservoir conditions.
     :param surface_fluid_properties: Fluid properties at surface conditions.
         `phase_densities`, `phase_viscosities`, and `gas_liquid_surface_tension`
-        are all required - a two-phase correlation needs a real liquid/gas
+        are all required, as a two-phase correlation needs a real liquid/gas
         split, not just a single mixture value.
     :param is_injector: Whether this well is an injector.
     :returns: Tubing head pressure.
@@ -696,7 +696,7 @@ def compute_tubing_head_pressure(
     friction_sign = -1.0 if is_injector else 1.0
     cross_sectional_area = math.pi * (model.tubing_inner_diameter / 2.0) ** 2
 
-    if total_rate == 0.0:
+    if total_rate == 0:
         drop = compute_static_hydrostatic_drop(
             mixture_density=compute_static_mixture_density(
                 phase_saturations=PhaseValues(

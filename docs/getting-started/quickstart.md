@@ -22,6 +22,7 @@ Before starting, make sure you have BORES installed and working. If you have not
 
 ```python
 import bores
+
 print(f"BORES version: {bores.__version__}")
 ```
 
@@ -61,19 +62,19 @@ cell_dimension = (100.0, 100.0)  # (dx, dy) in feet
 
 # Build uniform grids for each property.
 # In a real study you would load heterogeneous data from files.
-thickness = bores.build_uniform_grid(grid_shape, value=20.0)        # ft per layer
-pressure = bores.build_uniform_grid(grid_shape, value=3000.0)       # psi
-porosity = bores.build_uniform_grid(grid_shape, value=0.20)         # fraction
-temperature = bores.build_uniform_grid(grid_shape, value=180.0)     # deg F
-oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.5)     # cP
-bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)   # psi
+thickness = bores.build_uniform_grid(grid_shape, value=20.0)  # ft per layer
+pressure = bores.build_uniform_grid(grid_shape, value=3000.0)  # psi
+porosity = bores.build_uniform_grid(grid_shape, value=0.20)  # fraction
+temperature = bores.build_uniform_grid(grid_shape, value=180.0)  # deg F
+oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.5)  # cP
+bubble_point = bores.build_uniform_grid(grid_shape, value=2500.0)  # psi
 
 # Residual and irreducible saturations
 sorw = bores.build_uniform_grid(grid_shape, value=0.20)  # Residual oil (waterflood)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)  # Residual oil (gas flood)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)  # Residual gas
 Swir = bores.build_uniform_grid(grid_shape, value=0.20)  # Irreducible water
-swc  = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
+swc = bores.build_uniform_grid(grid_shape, value=0.20)  # Connate water
 
 # Build depth grid from thickness and a datum (top of reservoir at 5000 ft)
 depth = bores.build_depth_grid(thickness, datum=5000.0)
@@ -83,8 +84,8 @@ depth = bores.build_depth_grid(thickness, datum=5000.0)
 # are in the oil zone (undersaturated, no initial gas cap).
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4999.0,      # Above reservoir top (no gas cap)
-    oil_water_contact=5100.0,    # Below reservoir base (all oil zone)
+    gas_oil_contact=4999.0,  # Above reservoir top (no gas cap)
+    oil_water_contact=5100.0,  # Below reservoir base (all oil zone)
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -109,7 +110,7 @@ model = bores.reservoir_model(
     cell_dimension=cell_dimension,
     thickness_grid=thickness,
     pressure_grid=pressure,
-    rock_compressibility=3e-6,            # psi⁻¹
+    rock_compressibility=3e-6,  # psi⁻¹
     absolute_permeability=permeability,
     porosity_grid=porosity,
     temperature_grid=temperature,
@@ -137,10 +138,10 @@ injector = bores.injection_well(
     perforating_intervals=[((0, 0, 0), (0, 0, 2))],
     radius=0.25,  # ft
     control=bores.RateControl(
-        target_rate=8000.0, # 8000 STB/day
+        target_rate=8000.0,  # 8000 STB/day
         bhp_limit=5000,
         clamp=bores.InjectionClamp(),
-    ),  
+    ),
     injected_fluid=bores.InjectedFluid(
         name="Water",
         phase=bores.FluidPhase.WATER,
@@ -158,21 +159,25 @@ producer = bores.production_well(
     control=bores.ProducerRateControl(
         primary_phase=bores.FluidPhase.OIL,
         primary_control=bores.AdaptiveRateControl(
-            target_rate=-10_000.0,    # produce 10,000 STB/day of oil
+            target_rate=-10_000.0,  # produce 10,000 STB/day of oil
             target_phase="oil",
-            bhp_limit=1000.0,      # never drop below 1000 psi
+            bhp_limit=1000.0,  # never drop below 1000 psi
             clamp=bores.ProductionClamp(),
         ),
         secondary_clamp=bores.ProductionClamp(),
     ),
     produced_fluids=[
         bores.ProducedFluid(
-            name="Oil", phase=bores.FluidPhase.OIL,
-            specific_gravity=0.85, molecular_weight=200.0,
+            name="Oil",
+            phase=bores.FluidPhase.OIL,
+            specific_gravity=0.85,
+            molecular_weight=200.0,
         ),
         bores.ProducedFluid(
-            name="Water", phase=bores.FluidPhase.WATER,
-            specific_gravity=1.0, molecular_weight=18.015,
+            name="Water",
+            phase=bores.FluidPhase.WATER,
+            specific_gravity=1.0,
+            molecular_weight=18.015,
         ),
     ],
 )
@@ -224,7 +229,9 @@ final = states[-1]
 print(f"Completed {final.step} steps in {final.time_in_days:.1f} days")
 print(f"Final avg pressure: {final.model.fluid_properties.pressure_grid.mean():.1f} psi")
 print(f"Final avg oil saturation: {final.model.fluid_properties.oil_saturation_grid.mean():.4f}")
-print(f"Final avg water saturation: {final.model.fluid_properties.water_saturation_grid.mean():.4f}")
+print(
+    f"Final avg water saturation: {final.model.fluid_properties.water_saturation_grid.mean():.4f}"
+)
 ```
 
 !!! note "First-run compilation"
@@ -318,14 +325,16 @@ import bores
 store = bores.HDF5Store("waterflood_results.h5")
 
 with bores.StateStream(
-    states=bores.run(model, config), 
-    store=store, 
+    states=bores.run(model, config),
+    store=store,
     background_io=True,
 ) as stream:
     for state in stream:
         # Each state is persisted to disk automatically
         if state.step % 10 == 0:
-            print(f"Step {state.step}: P_avg = {state.model.fluid_properties.pressure_grid.mean():.1f} psi")
+            print(
+                f"Step {state.step}: P_avg = {state.model.fluid_properties.pressure_grid.mean():.1f} psi"
+            )
 ```
 
 `StateStream` currently supports two storage backends `ZarrStore` and `HDF5Store`. Zarr is recommended for large simulations because it supports chunked, compressed storage and is efficient for both writing and later analysis.
@@ -344,9 +353,7 @@ import numpy as np
 
 # Extract average pressure over time
 time_days = np.array([s.time_in_days for s in states])
-avg_pressure = np.array([
-    s.model.fluid_properties.pressure_grid.mean() for s in states
-])
+avg_pressure = np.array([s.model.fluid_properties.pressure_grid.mean() for s in states])
 
 # Create pressure vs time plot
 pressure_series = np.column_stack([time_days, avg_pressure])

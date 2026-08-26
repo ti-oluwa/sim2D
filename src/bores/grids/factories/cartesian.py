@@ -185,13 +185,11 @@ def make_cartesian_grid(
             len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
         )
         fault_nnc_transmissibilities = np.full(len(fault_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append(
-            (
-                fault_pairs,
-                fault_nnc_connection_types,
-                fault_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_nnc_connection_types,
+            fault_nnc_transmissibilities,
+        ))
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
         for local_idx, (_, _, name) in enumerate(fault_nnc_pairs):
             fault_nnc_indices.setdefault(name, []).append(fault_nnc_offset + local_idx)
@@ -206,13 +204,11 @@ def make_cartesian_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (
-                user_nnc_pairs,
-                user_nnc_connection_types,
-                user_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: npt.NDArray[np.int32] | None = None
     merged_nnc_connection_types: npt.NDArray[np.int8] | None = None
@@ -475,13 +471,11 @@ def _build_vertex_coordinates(
     xx, yy, zz = np.meshgrid(x_nodes, y_nodes, z_nodes, indexing="ij")
     return typing.cast(
         VertexCoordinates,
-        np.column_stack(
-            [
-                xx.ravel(order="F"),
-                yy.ravel(order="F"),
-                zz.ravel(order="F"),
-            ]
-        ),
+        np.column_stack([
+            xx.ravel(order="F"),
+            yy.ravel(order="F"),
+            zz.ravel(order="F"),
+        ]),
     )
 
 

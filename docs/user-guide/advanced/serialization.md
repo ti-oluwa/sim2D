@@ -91,8 +91,8 @@ The `new_store` factory function creates the appropriate store based on the file
 ```python
 from bores.stores import new_store
 
-store = new_store("output.zarr")   # ZarrStore
-store = new_store("output.h5")    # HDF5Store
+store = new_store("output.zarr")  # ZarrStore
+store = new_store("output.h5")  # HDF5Store
 store = new_store("output.json")  # JSONStore
 store = new_store("output.yaml")  # YAMLStore
 ```
@@ -211,6 +211,7 @@ If you create custom classes that need to be serialized, you can implement the `
 ```python
 from bores.serialization.base import Serializable
 
+
 class MyData(Serializable):
     def __init__(self, values):
         self.values = values
@@ -221,6 +222,7 @@ class MyData(Serializable):
     @classmethod
     def __load__(cls, data):
         import numpy as np
+
         return cls(values=np.array(data["values"]))
 ```
 
@@ -231,19 +233,16 @@ You can register custom storage backends using the `@data_store` decorator:
 ```python
 from bores.stores import data_store, DataStore
 
+
 @data_store("parquet")
 class ParquetStore(DataStore):
-    def dump(self, data, **kwargs):
-        ...
+    def dump(self, data, **kwargs): ...
 
-    def load(self, typ, **kwargs):
-        ...
+    def load(self, typ, **kwargs): ...
 
-    def entries(self):
-        ...
+    def entries(self): ...
 
-    def flush(self):
-        ...
+    def flush(self): ...
 ```
 
 ---
@@ -344,6 +343,7 @@ model.to_file("reservoir_model.h5")
 
 # Load model
 from bores.model import BlackOil
+
 loaded_model = BlackOil.from_file("reservoir_model.h5")
 ```
 
@@ -353,10 +353,10 @@ The timer supports its own state serialization for checkpointing mid-simulation:
 
 ```python
 # Save timer state
-timer_state = timer.dump_state() # or `timer.dump()` which does same thing
+timer_state = timer.dump_state()  # or `timer.dump()` which does same thing
 
 # Restore timer
-restored_timer = bores.Timer.load_state(timer_state) # or `timer.load()
+restored_timer = bores.Timer.load_state(timer_state)  # or `timer.load()
 ```
 
 ---

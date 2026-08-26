@@ -32,7 +32,7 @@ timer = bores.Timer(
     maximum_step_size=bores.Time(days=30),
     minimum_step_size=bores.Time(seconds=1),
     simulation_time=bores.Time(years=5),
-    maximum_cfl=0.9,   # Default, good for most problems
+    maximum_cfl=0.9,  # Default, good for most problems
 )
 ```
 
@@ -133,8 +133,8 @@ timer = bores.Timer(
     maximum_step_size=bores.Time(days=5),
     minimum_step_size=bores.Time(milliseconds=100),
     simulation_time=bores.Time(years=5),
-    maximum_cfl=0.5,        # More conservative for fully explicit
-    maximum_growth_per_step=1.2,   # Slower growth
+    maximum_cfl=0.5,  # More conservative for fully explicit
+    maximum_growth_per_step=1.2,  # Slower growth
 )
 ```
 
@@ -150,9 +150,9 @@ timer = bores.Timer(
     maximum_step_size=bores.Time(days=90),
     minimum_step_size=bores.Time(days=0.1),
     simulation_time=bores.Time(years=20),
-    maximum_cfl=5.0,         # Much higher, not a hard limit
-    maximum_growth_per_step=1.5,    # Can grow faster
-    ramp_up_factor=1.2,         # Additional growth when stable
+    maximum_cfl=5.0,  # Much higher, not a hard limit
+    maximum_growth_per_step=1.5,  # Can grow faster
+    ramp_up_factor=1.2,  # Additional growth when stable
 )
 ```
 

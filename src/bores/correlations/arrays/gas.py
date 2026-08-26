@@ -751,7 +751,7 @@ def compute_gas_compressibility(
 
     # Numerical derivative dZ/dP (central difference)
     dP = 1e-4 * pressure
-    dP = np.where(dP == 0.0, 1e-6, dP)
+    dP = np.where(dP == 0, 1e-6, dP)
 
     P_plus = pressure + dP
     P_minus = pressure - dP

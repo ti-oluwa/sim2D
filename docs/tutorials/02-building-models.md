@@ -79,15 +79,9 @@ ky_values = [150.0, 50.0, 80.0, 200.0, 300.0]
 # Vertical permeability is typically 10-20% of horizontal
 kz_values = [15.0, 5.0, 8.0, 20.0, 30.0]
 
-kx_grid = bores.build_layered_grid(
-    grid_shape=grid_shape, layer_values=kx_values, orientation="z"
-)
-ky_grid = bores.build_layered_grid(
-    grid_shape=grid_shape, layer_values=ky_values, orientation="z"
-)
-kz_grid = bores.build_layered_grid(
-    grid_shape=grid_shape, layer_values=kz_values, orientation="z"
-)
+kx_grid = bores.build_layered_grid(grid_shape=grid_shape, layer_values=kx_values, orientation="z")
+ky_grid = bores.build_layered_grid(grid_shape=grid_shape, layer_values=ky_values, orientation="z")
+kz_grid = bores.build_layered_grid(grid_shape=grid_shape, layer_values=kz_values, orientation="z")
 
 permeability = bores.Permeability(x=kx_grid, y=ky_grid, z=kz_grid)
 ```
@@ -110,26 +104,26 @@ The anisotropy has important implications for fluid flow. Water or gas injected 
 
 ```python
 # Uniform properties for simplicity
-pressure = bores.build_uniform_grid(grid_shape, value=3500.0)       # psi
-temperature = bores.build_uniform_grid(grid_shape, value=200.0)     # deg F
-oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.2)     # cP
-bubble_point = bores.build_uniform_grid(grid_shape, value=2800.0)   # psi
-oil_sg = bores.build_uniform_grid(grid_shape, value=0.82)           # ~40 deg API
+pressure = bores.build_uniform_grid(grid_shape, value=3500.0)  # psi
+temperature = bores.build_uniform_grid(grid_shape, value=200.0)  # deg F
+oil_viscosity = bores.build_uniform_grid(grid_shape, value=1.2)  # cP
+bubble_point = bores.build_uniform_grid(grid_shape, value=2800.0)  # psi
+oil_sg = bores.build_uniform_grid(grid_shape, value=0.82)  # ~40 deg API
 
 # Residual saturations
 sorw = bores.build_uniform_grid(grid_shape, value=0.20)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 Swir = bores.build_uniform_grid(grid_shape, value=0.25)
-swc  = bores.build_uniform_grid(grid_shape, value=0.25)
+swc = bores.build_uniform_grid(grid_shape, value=0.25)
 
 # Build initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
-    oil_water_contact=5120.0,     # OWC below reservoir
+    gas_oil_contact=4900.0,  # GOC above reservoir (no initial gas cap)
+    oil_water_contact=5120.0,  # OWC below reservoir
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -167,8 +161,8 @@ model = bores.reservoir_model(
     residual_gas_saturation_grid=sgr,
     irreducible_water_saturation_grid=Swir,
     connate_water_saturation_grid=swc,
-    dip_angle=3.0,        # 3 degrees from horizontal
-    dip_azimuth=90.0,     # dipping toward East
+    dip_angle=3.0,  # 3 degrees from horizontal
+    dip_azimuth=90.0,  # dipping toward East
     datum_depth=5000,
 )
 ```

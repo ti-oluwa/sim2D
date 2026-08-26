@@ -42,9 +42,9 @@ When the earliest available state is not step 0, or when you want to override th
 ```python
 analyst = ModelAnalyst(
     states,
-    stoiip=5_000_000.0,     # STB
-    stgiip=2_000_000_000.0, # SCF
-    stwiip=10_000_000.0,    # STB
+    stoiip=5_000_000.0,  # STB
+    stgiip=2_000_000_000.0,  # SCF
+    stwiip=10_000_000.0,  # STB
 )
 ```
 
@@ -55,9 +55,9 @@ If you do not provide these values, the analyst computes them from the earliest 
 The analyst exposes several properties for navigating the state collection:
 
 ```python
-analyst.min_step          # Earliest step number
-analyst.max_step          # Latest step number
-analyst.available_steps   # Sorted list of all step numbers
+analyst.min_step  # Earliest step number
+analyst.max_step  # Latest step number
+analyst.available_steps  # Sorted list of all step numbers
 
 # Retrieve a specific state
 state = analyst.get_state(50)  # Returns None if step 50 is not available
@@ -90,9 +90,9 @@ These methods compute the volume of each phase remaining in the reservoir at a g
 
 ```python
 # Oil, gas, and water in place at the final step
-oil_remaining = analyst.oil_in_place(step=-1)      # STB
-gas_remaining = analyst.gas_in_place(step=-1)       # SCF (free + solution gas)
-water_in_place = analyst.water_in_place(step=-1)    # STB
+oil_remaining = analyst.oil_in_place(step=-1)  # STB
+gas_remaining = analyst.gas_in_place(step=-1)  # SCF (free + solution gas)
+water_in_place = analyst.water_in_place(step=-1)  # STB
 
 # Free gas only (excludes solution gas dissolved in oil)
 free_gas_remaining = analyst.free_gas_in_place(step=-1)  # SCF
@@ -142,16 +142,16 @@ oil_50_to_100 = analyst.oil_produced(from_step=50, to_step=100)
 
 # Gas and water
 gas_produced = analyst.free_gas_produced(from_step=0, to_step=-1)  # SCF
-water_produced = analyst.water_produced(from_step=0, to_step=-1)   # STB
+water_produced = analyst.water_produced(from_step=0, to_step=-1)  # STB
 ```
 
 ### Injection
 
 ```python
 # Total injection volumes
-oil_injected = analyst.oil_injected(from_step=0, to_step=-1)     # STB
-water_injected = analyst.water_injected(from_step=0, to_step=-1) # STB
-gas_injected = analyst.gas_injected(from_step=0, to_step=-1)     # SCF
+oil_injected = analyst.oil_injected(from_step=0, to_step=-1)  # STB
+water_injected = analyst.water_injected(from_step=0, to_step=-1)  # STB
+gas_injected = analyst.gas_injected(from_step=0, to_step=-1)  # SCF
 ```
 
 ### Cell Filtering
@@ -194,9 +194,9 @@ print(f"Cumulative gas: {analyst.cumulative_free_gas_produced:,.0f} SCF")
 print(f"Cumulative water: {analyst.cumulative_water_produced:,.0f} STB")
 
 # Short aliases using standard petroleum notation
-print(f"Np: {analyst.No:,.0f} STB")   # Same as cumulative_oil_produced
-print(f"Gp: {analyst.Ng:,.0f} SCF")   # Same as cumulative_gas_produced
-print(f"Wp: {analyst.Nw:,.0f} STB")   # Same as cumulative_water_produced
+print(f"Np: {analyst.No:,.0f} STB")  # Same as cumulative_oil_produced
+print(f"Gp: {analyst.Ng:,.0f} SCF")  # Same as cumulative_gas_produced
+print(f"Wp: {analyst.Nw:,.0f} STB")  # Same as cumulative_water_produced
 ```
 
 ---
@@ -562,7 +562,7 @@ print(f"Front centroid (i,j,k): {front.front_centroid}")
 
 # Access the saturation change grid for visualization
 delta_grid = front.saturation_delta_grid  # 3D numpy array
-contact_mask = front.front_cells          # 3D boolean array
+contact_mask = front.front_cells  # 3D boolean array
 ```
 
 ### Parameters
@@ -749,7 +749,7 @@ The `decline_curve_analysis()` method fits a single decline model to the product
 
 ```python
 result = analyst.decline_curve_analysis(
-    from_step=50,       # Skip early transient
+    from_step=50,  # Skip early transient
     to_step=-1,
     phase="oil",
     decline_type="exponential",

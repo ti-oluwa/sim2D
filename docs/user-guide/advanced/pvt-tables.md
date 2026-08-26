@@ -25,16 +25,16 @@ bores.use_32bit_precision()
 
 # Define the pressure and temperature grid for your simulation conditions.
 # Always extend slightly beyond your expected simulation range to avoid extrapolation.
-pressures = np.linspace(500, 5000, 50)      # 500 to 5000 psi
-temperatures = np.linspace(100, 250, 30)    # 100 to 250 F
+pressures = np.linspace(500, 5000, 50)  # 500 to 5000 psi
+temperatures = np.linspace(100, 250, 30)  # 100 to 250 F
 
 # Build all three phase datasets in one call
 pvt_dataset = build_pvt_dataset(
     pressures=pressures,
     temperatures=temperatures,
     oil_specific_gravity=0.85,
-    gas_gravity=0.65,           # Relative to air
-    water_salinity=50000.0,     # ppm NaCl
+    gas_gravity=0.65,  # Relative to air
+    water_salinity=50000.0,  # ppm NaCl
 )
 ```
 
@@ -50,7 +50,7 @@ oil_data = build_oil_pvt_data(
     temperatures=temperatures,
     oil_specific_gravity=0.87,
     gas_gravity=0.65,
-    estimatedsolution_gor=500.0,   # SCF/STB - helps estimate bubble point
+    estimatedsolution_gor=500.0,  # SCF/STB - helps estimate bubble point
 )
 
 gas_data = build_gas_pvt_data(
@@ -62,7 +62,7 @@ gas_data = build_gas_pvt_data(
 water_data = build_water_pvt_data(
     pressures=pressures,
     temperatures=temperatures,
-    water_salinity=50000.0,         # ppm NaCl
+    water_salinity=50000.0,  # ppm NaCl
 )
 ```
 
@@ -78,9 +78,9 @@ from bores.tables.pvt import build_oil_pvt_data, PVTDataSet
 
 # Load your lab-measured tables. Shape must be (n_pressures, n_temperatures).
 # If your lab only measured at one temperature, you can broadcast.
-lab_oil_fvf = np.loadtxt("lab_fvf.csv")           # (50, 30) array in bbl/STB
-lab_oil_gor = np.loadtxt("lab_gor.csv")            # (50, 30) array in SCF/STB
-lab_bubble_points = np.loadtxt("lab_pb.csv")       # 1D array of length 30 (one per temperature)
+lab_oil_fvf = np.loadtxt("lab_fvf.csv")  # (50, 30) array in bbl/STB
+lab_oil_gor = np.loadtxt("lab_gor.csv")  # (50, 30) array in SCF/STB
+lab_bubble_points = np.loadtxt("lab_pb.csv")  # 1D array of length 30 (one per temperature)
 
 oil_data = build_oil_pvt_data(
     pressures=pressures,
@@ -113,7 +113,7 @@ salinities = np.array([10000, 50000, 100000, 200000], dtype=np.float32)  # ppm N
 water_data = build_water_pvt_data(
     pressures=pressures,
     temperatures=temperatures,
-    salinities=salinities,          # Makes all water tables 3D: (n_p, n_t, n_s)
+    salinities=salinities,  # Makes all water tables 3D: (n_p, n_t, n_s)
     gas_gravity=0.65,
 )
 ```
@@ -198,7 +198,7 @@ from bores.tables.pvt import PVTTable, PVTTables
 
 # Custom clamps for oil (for a heavy oil study)
 oil_clamps = {
-    "viscosity": (0.1, 500.0),     # Tighter range for heavy oil
+    "viscosity": (0.1, 500.0),  # Tighter range for heavy oil
     "density": (30.0, 60.0),
 }
 
@@ -256,8 +256,8 @@ The `PVTTables` object exposes individual phase tables through its `.oil`, `.gas
 pvt_tables = PVTTables.from_dataset(pvt_dataset)
 
 # Look up oil properties at a single point
-pressure = 2500.0       # psi
-temperature = 180.0     # F
+pressure = 2500.0  # psi
+temperature = 180.0  # F
 
 oil_viscosity = pvt_tables.oil.viscosity(pressure, temperature)
 oil_fvf = pvt_tables.oil.formation_volume_factor(pressure, temperature)
@@ -318,7 +318,7 @@ Water lookups require a salinity argument. If you omit it, BORES falls back to t
 
 ```python
 # Water lookup with explicit salinity
-salinity = 50000.0   # ppm NaCl
+salinity = 50000.0  # ppm NaCl
 
 water_viscosity = pvt_tables.water.viscosity(pressure, temperature, salinity=salinity)
 water_fvf = pvt_tables.water.formation_volume_factor(pressure, temperature, salinity=salinity)
@@ -359,7 +359,7 @@ config = bores.Config(
     timer=timer,
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
-    pvt_tables=pvt_tables,      # Tables override correlations everywhere
+    pvt_tables=pvt_tables,  # Tables override correlations everywhere
 )
 
 model = bores.BlackOil.from_file("reservoir.h5")

@@ -19,6 +19,7 @@ from bores.typing import (
     UnitConversionTable,
     UnitSystem,
 )
+from bores.utils import scale
 from bores.wells.trajectory import WellTrajectory
 
 __all__ = [
@@ -321,7 +322,7 @@ class MDPerforation(Serializable):
         return self.bottom_md - self.top_md
 
 
-AnyPerforation = typing.Union[Perforation, MDPerforation]
+AnyPerforation = Perforation | MDPerforation
 
 
 @attrs.frozen(kw_only=True, slots=True)
@@ -503,10 +504,10 @@ class Well(Serializable):
                 stations=tuple(
                     attrs.evolve(
                         station,
-                        x=station.x * length_factor,
-                        y=station.y * length_factor,
-                        z=station.z * length_factor,
-                        measured_depth=station.measured_depth * length_factor,
+                        x=scale(station.x, length_factor),
+                        y=scale(station.y, length_factor),
+                        z=scale(station.z, length_factor),
+                        measured_depth=scale(station.measured_depth, length_factor),
                     )
                     for station in self.trajectory.stations
                 )
@@ -514,9 +515,9 @@ class Well(Serializable):
             perforations = tuple(
                 attrs.evolve(
                     perforation,
-                    top_md=perforation.top_md * length_factor,  # type: ignore[union-attr]
-                    bottom_md=perforation.bottom_md * length_factor,  # type: ignore[union-attr]
-                    wellbore_radius=perforation.wellbore_radius * length_factor,
+                    top_md=scale(perforation.top_md, length_factor),  # type: ignore[union-attr]
+                    bottom_md=scale(perforation.bottom_md, length_factor),  # type: ignore[union-attr]
+                    wellbore_radius=scale(perforation.wellbore_radius, length_factor),
                 )
                 for perforation in self.perforations
             )
@@ -525,19 +526,19 @@ class Well(Serializable):
             perforations = tuple(
                 attrs.evolve(
                     perforation,
-                    top_depth=perforation.top_depth * length_factor,  # type: ignore[union-attr]
-                    bottom_depth=perforation.bottom_depth * length_factor,  # type: ignore[union-attr]
-                    wellbore_radius=perforation.wellbore_radius * length_factor,
+                    top_depth=scale(perforation.top_depth, length_factor),  # type: ignore[union-attr]
+                    bottom_depth=scale(perforation.bottom_depth, length_factor),  # type: ignore[union-attr]
+                    wellbore_radius=scale(perforation.wellbore_radius, length_factor),
                 )
                 for perforation in self.perforations
             )
         return attrs.evolve(
             self,
             surface_location=(
-                self.surface_location[0] * length_factor,
-                self.surface_location[1] * length_factor,
+                scale(self.surface_location[0], length_factor),
+                scale(self.surface_location[1], length_factor),
             ),
-            reference_depth=self.reference_depth * length_factor,
+            reference_depth=scale(self.reference_depth, length_factor),
             perforations=perforations,
             trajectory=trajectory,
             unit_system=target,
@@ -548,7 +549,7 @@ class Wells(
     StoreSerializable,
     fields={
         "wells": typing.Mapping[str, Well],
-        "unit_system": typing.Optional[UnitSystem],
+        "unit_system": typing.Optional[UnitSystem],  # noqa: UP045
     },
 ):
     """Name-keyed container of `Well` objects"""

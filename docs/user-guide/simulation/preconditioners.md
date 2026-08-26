@@ -152,11 +152,13 @@ You can register custom preconditioner factories using the `@preconditioner_fact
 ```python
 from bores.solvers.base import preconditioner_factory
 
+
 @preconditioner_factory(name="my_precond")
 def my_preconditioner(A_csr):
     # Build and return a LinearOperator that approximates A^-1
     # A_csr is a scipy.sparse.csr_array or csr_matrix
     ...
+
 
 # Use in Config
 config = bores.Config(
@@ -191,7 +193,7 @@ config = bores.Config(
     timer=timer,
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
-    pressure_preconditioner=None,    # No preconditioning
+    pressure_preconditioner=None,  # No preconditioning
     transport_preconditioner=None,
 )
 ```

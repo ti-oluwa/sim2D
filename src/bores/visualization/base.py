@@ -1215,17 +1215,17 @@ def merge_plots(
 
                 # Store background colors and font settings for this subplot
                 if hasattr(fig.layout, "plot_bgcolor") and fig.layout.plot_bgcolor:
-                    subplot_backgrounds[(row, col)] = {
+                    subplot_backgrounds[row, col] = {
                         "plot_bgcolor": fig.layout.plot_bgcolor,
                     }
                 if hasattr(fig.layout, "paper_bgcolor") and fig.layout.paper_bgcolor:
                     if (row, col) not in subplot_backgrounds:
-                        subplot_backgrounds[(row, col)] = {}
-                    subplot_backgrounds[(row, col)]["paper_bgcolor"] = fig.layout.paper_bgcolor
+                        subplot_backgrounds[row, col] = {}
+                    subplot_backgrounds[row, col]["paper_bgcolor"] = fig.layout.paper_bgcolor
 
                 # Store font settings for this subplot
                 if hasattr(fig.layout, "font") and fig.layout.font:
-                    subplot_fonts[(row, col)] = fig.layout.font.to_plotly_json()
+                    subplot_fonts[row, col] = fig.layout.font.to_plotly_json()
 
             # Copy colorbar settings for heatmaps/contours with smart positioning
             for trace_idx, trace in enumerate(fig.data):
@@ -1259,20 +1259,18 @@ def merge_plots(
             yaxis_key = "y" if row == 1 and col == 1 else f"y{(row - 1) * cols + col}"
 
             # Add a rectangle shape covering the subplot area using axis domain coordinates
-            shapes.append(
-                {
-                    "type": "rect",
-                    "xref": f"{xaxis_key} domain",
-                    "yref": f"{yaxis_key} domain",
-                    "x0": 0,
-                    "y0": 0,
-                    "x1": 1,
-                    "y1": 1,
-                    "fillcolor": bg_settings["plot_bgcolor"],
-                    "layer": "below",
-                    "line": {"width": 0},
-                }
-            )
+            shapes.append({
+                "type": "rect",
+                "xref": f"{xaxis_key} domain",
+                "yref": f"{yaxis_key} domain",
+                "x0": 0,
+                "y0": 0,
+                "x1": 1,
+                "y1": 1,
+                "fillcolor": bg_settings["plot_bgcolor"],
+                "layer": "below",
+                "line": {"width": 0},
+            })
 
     # Apply font settings per subplot
     for (row, col), font_settings in subplot_fonts.items():

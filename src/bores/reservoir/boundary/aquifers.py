@@ -658,7 +658,7 @@ class CarterTracyAquifer(BoundaryCondition):
         td_25 = t_d**2.5
         E = 716.441 + 46.7984 * sqrt_td + 270.038 * t_d + 71.0098 * td_15
         F = 1296.86 * sqrt_td + 1204.73 * t_d + 618.618 * td_15 + 538.072 * td_2 + 142.41 * td_25
-        if F == 0.0:
+        if F == 0:
             return 0.0
         return E / F
 
@@ -1016,17 +1016,15 @@ class CarterTracyAquifer(BoundaryCondition):
             "bounded_aquifer": self.bounded_aquifer,
         }
         if self._hydraulic_diffusivity is not None:
-            data.update(
-                {
-                    "aquifer_permeability": self.aquifer_permeability,
-                    "aquifer_porosity": self.aquifer_porosity,
-                    "aquifer_compressibility": self.aquifer_compressibility,
-                    "water_viscosity": self.water_viscosity,
-                    "inner_radius": self.inner_radius,
-                    "outer_radius": self.outer_radius,
-                    "aquifer_thickness": self.aquifer_thickness,
-                }
-            )
+            data.update({
+                "aquifer_permeability": self.aquifer_permeability,
+                "aquifer_porosity": self.aquifer_porosity,
+                "aquifer_compressibility": self.aquifer_compressibility,
+                "water_viscosity": self.water_viscosity,
+                "inner_radius": self.inner_radius,
+                "outer_radius": self.outer_radius,
+                "aquifer_thickness": self.aquifer_thickness,
+            })
         else:
             data["aquifer_constant"] = self.aquifer_constant
         return data

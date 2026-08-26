@@ -52,7 +52,6 @@ __all__ = [
     "harmonic_mean_rule",
     "hustad_hansen_rule",
     "max_rule",
-    "max_rule",
     "mixing_rule",
     "stone_II_rule",
     "stone_I_rule",

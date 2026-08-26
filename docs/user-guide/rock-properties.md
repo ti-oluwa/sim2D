@@ -70,9 +70,9 @@ import bores
 
 grid_shape = (20, 20, 5)
 
-kx = bores.build_uniform_grid(grid_shape, value=200.0)   # 200 mD horizontal
-ky = bores.build_uniform_grid(grid_shape, value=200.0)   # Same in y
-kz = bores.build_uniform_grid(grid_shape, value=20.0)    # 20 mD vertical (kv/kh = 0.1)
+kx = bores.build_uniform_grid(grid_shape, value=200.0)  # 200 mD horizontal
+ky = bores.build_uniform_grid(grid_shape, value=200.0)  # Same in y
+kz = bores.build_uniform_grid(grid_shape, value=20.0)  # 20 mD vertical (kv/kh = 0.1)
 
 permeability = bores.Permeability(x=kx, y=ky, z=kz)
 ```
@@ -177,10 +177,10 @@ bubble_pt = bores.build_uniform_grid(grid_shape, value=2800.0)
 
 # Saturations from fluid contacts
 depth = bores.build_depth_grid(thickness) + 5000.0
-swc  = bores.build_uniform_grid(grid_shape, value=0.25)
+swc = bores.build_uniform_grid(grid_shape, value=0.25)
 sorw = bores.build_uniform_grid(grid_shape, value=0.25)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,

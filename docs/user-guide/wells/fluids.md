@@ -18,22 +18,22 @@ import bores
 oil = bores.ProducedFluid(
     name="Oil",
     phase=bores.FluidPhase.OIL,
-    specific_gravity=0.85,    # Oil gravity relative to water (~35 API)
-    molecular_weight=200.0,   # Average molecular weight (g/mol)
+    specific_gravity=0.85,  # Oil gravity relative to water (~35 API)
+    molecular_weight=200.0,  # Average molecular weight (g/mol)
 )
 
 water = bores.ProducedFluid(
     name="Formation Water",
     phase=bores.FluidPhase.WATER,
-    specific_gravity=1.02,    # Slightly saline
+    specific_gravity=1.02,  # Slightly saline
     molecular_weight=18.015,  # H2O
 )
 
 gas = bores.ProducedFluid(
     name="Associated Gas",
     phase=bores.FluidPhase.GAS,
-    specific_gravity=0.65,    # Light hydrocarbon gas
-    molecular_weight=16.04,   # Close to methane
+    specific_gravity=0.65,  # Light hydrocarbon gas
+    molecular_weight=16.04,  # Close to methane
 )
 ```
 
@@ -57,7 +57,7 @@ import bores
 water_fluid = bores.InjectedFluid(
     name="Injection Water",
     phase=bores.FluidPhase.WATER,
-    specific_gravity=1.0,     # Fresh water
+    specific_gravity=1.0,  # Fresh water
     molecular_weight=18.015,
 )
 ```
@@ -105,10 +105,10 @@ import bores
 co2_fluid = bores.InjectedFluid(
     name="CO2",
     phase=bores.FluidPhase.GAS,
-    specific_gravity=1.52,      # CO2 gravity relative to air
-    molecular_weight=44.01,     # CO2 molecular weight
-    density=35.0,               # lbm/ft³ - from EOS or lab data
-    viscosity=0.05,             # cP - from EOS or lab data
+    specific_gravity=1.52,  # CO2 gravity relative to air
+    molecular_weight=44.01,  # CO2 molecular weight
+    density=35.0,  # lbm/ft³ - from EOS or lab data
+    viscosity=0.05,  # cP - from EOS or lab data
 )
 ```
 
@@ -145,9 +145,7 @@ import bores
 
 # From your PVT measurements or EOS calculations
 pressures = np.array([100, 500, 1000, 1500, 2000, 3000, 4000, 5000])  # psi
-pseudo_pressures = np.array([
-    2.1e4, 5.3e5, 1.2e6, 1.9e6, 2.8e6, 4.5e6, 6.4e6, 8.1e6
-])  # psi²/cP
+pseudo_pressures = np.array([2.1e4, 5.3e5, 1.2e6, 1.9e6, 2.8e6, 4.5e6, 6.4e6, 8.1e6])  # psi²/cP
 
 # Build table from your data
 custom_table = bores.PseudoPressureTable(
@@ -174,16 +172,19 @@ co2_fluid = bores.InjectedFluid(
 import numpy as np
 import bores
 
+
 # Your custom correlation functions (must support arrays)
 def my_z_factor(pressure):
     """Custom Z-factor correlation from EOS."""
     # Your equation-of-state calculations here
     return z_array  # Must return numpy array
 
+
 def my_viscosity(pressure):
     """Custom viscosity correlation from lab data."""
     # Your viscosity model here
     return mu_array  # Must return numpy array
+
 
 # Mark functions as array-compatible
 my_z_factor._supports_arrays = True
@@ -246,8 +247,8 @@ co2_miscible = bores.InjectedFluid(
     viscosity=0.05,
     is_miscible=True,
     minimum_miscibility_pressure=1200.0,  # psi
-    todd_longstaff_omega=0.67,            # Mixing parameter (0-1)
-    miscibility_transition_width=500.0,   # Pressure range for smooth transition
+    todd_longstaff_omega=0.67,  # Mixing parameter (0-1)
+    miscibility_transition_width=500.0,  # Pressure range for smooth transition
 )
 ```
 
@@ -277,8 +278,8 @@ import bores
 n2_fluid = bores.InjectedFluid(
     name="Nitrogen",
     phase=bores.FluidPhase.GAS,
-    specific_gravity=0.967,     # N2 gravity relative to air
-    molecular_weight=28.013,    # N2 molecular weight
+    specific_gravity=0.967,  # N2 gravity relative to air
+    molecular_weight=28.013,  # N2 molecular weight
 )
 ```
 

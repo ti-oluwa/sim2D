@@ -2136,12 +2136,10 @@ class Scatter3DRenderer(BaseRenderer):
                 coordinate_offsets=coordinate_offsets,
             )
 
-            z_physical = np.array(
-                [
-                    (z_boundaries[x, y, z] + z_boundaries[x, y, z + 1]) / 2
-                    for x, y, z in zip(x_coords, y_coords, z_coords, strict=False)
-                ]
-            )
+            z_physical = np.array([
+                (z_boundaries[x, y, z] + z_boundaries[x, y, z + 1]) / 2
+                for x, y, z in zip(x_coords, y_coords, z_coords, strict=False)
+            ])
 
             # Extract index offsets to show original dataset indices in hover text
             x_index_offset, y_index_offset, z_index_offset = coordinate_offsets or (

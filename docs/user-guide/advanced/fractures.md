@@ -42,7 +42,7 @@ shallow_fault = vertical_sealing_fault(
     fault_id="shallow_fault",
     orientation="y",
     index=40,
-    z_range=(0, 15),         # Only in upper 16 layers
+    z_range=(0, 15),  # Only in upper 16 layers
     permeability_multiplier=5e-5,
 )
 
@@ -52,8 +52,8 @@ partial_fault = vertical_sealing_fault(
     orientation="x",
     index=50,
     permeability_multiplier=0.01,
-    y_range=(0, 60),          # Limited lateral extent
-    z_range=(10, 35),         # Offsetting layers 10-35
+    y_range=(0, 60),  # Limited lateral extent
+    z_range=(10, 35),  # Offsetting layers 10-35
 )
 ```
 
@@ -67,10 +67,10 @@ from bores.fractures import inclined_sealing_fault
 # Fault dipping at 60 degrees (slope = tan(60) = 1.73)
 dipping_fault = inclined_sealing_fault(
     fault_id="dipping_fault",
-    orientation="y",          # Strikes in y-direction
-    index=30,                 # Intersects at y=30
-    slope=1.73,               # dz/dx (eastward dip)
-    intercept=5.0,            # Fault at z=5 when x=0
+    orientation="y",  # Strikes in y-direction
+    index=30,  # Intersects at y=30
+    slope=1.73,  # dz/dx (eastward dip)
+    intercept=5.0,  # Fault at z=5 when x=0
     permeability_multiplier=1e-4,
 )
 ```
@@ -87,10 +87,10 @@ from bores.fractures import damage_zone_fault
 fault_with_damage = damage_zone_fault(
     fault_id="thrust_fault",
     orientation="x",
-    cell_range=(48, 52),          # 5 cells wide
-    permeability_multiplier=1e-5, # Very low cross-fault flow
-    zone_permeability=10.0,       # Damaged rock: 10 mD (vs 100 mD matrix)
-    zone_porosity=0.12,           # Reduced porosity (vs 0.20 matrix)
+    cell_range=(48, 52),  # 5 cells wide
+    permeability_multiplier=1e-5,  # Very low cross-fault flow
+    zone_permeability=10.0,  # Damaged rock: 10 mD (vs 100 mD matrix)
+    zone_porosity=0.12,  # Reduced porosity (vs 0.20 matrix)
     z_range=(15, 45),
 )
 ```
@@ -107,10 +107,10 @@ from bores.fractures import conductive_fracture_network
 fracture_swarm = conductive_fracture_network(
     fracture_id="fracture_corridor",
     orientation="y",
-    cell_range=(15, 18),              # 3-cell-wide corridor
-    fracture_permeability=5000.0,     # High perm: 5 Darcy
-    fracture_porosity=0.01,           # Low storage (fractures)
-    permeability_multiplier=10.0,     # 10x enhanced cross-corridor flow
+    cell_range=(15, 18),  # 3-cell-wide corridor
+    fracture_permeability=5000.0,  # High perm: 5 Darcy
+    fracture_porosity=0.01,  # Low storage (fractures)
+    permeability_multiplier=10.0,  # 10x enhanced cross-corridor flow
     z_range=(20, 40),
 )
 ```
@@ -156,8 +156,8 @@ You can model horizontal barriers (shale layers, tight streaks, cemented zones) 
 ```python
 shale_barrier = vertical_sealing_fault(
     fault_id="shale_layer",
-    orientation="z",          # Horizontal plane
-    index=12,                 # At layer 12
+    orientation="z",  # Horizontal plane
+    index=12,  # At layer 12
     permeability_multiplier=1e-6,
     x_range=(0, 80),
     y_range=(0, 60),
@@ -178,10 +178,10 @@ from bores.fractures import FractureGeometry
 # Vertical fault at x=25, limited extent
 geom = FractureGeometry(
     orientation="x",
-    x_range=(25, 25),         # Single cell plane
-    y_range=(10, 40),         # Lateral extent
-    z_range=(0, 20),          # Vertical extent
-    slope=0.0,                # Vertical (no dip)
+    x_range=(25, 25),  # Single cell plane
+    y_range=(10, 40),  # Lateral extent
+    z_range=(0, 20),  # Vertical extent
+    slope=0.0,  # Vertical (no dip)
     intercept=0.0,
 )
 ```

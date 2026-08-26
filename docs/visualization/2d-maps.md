@@ -85,14 +85,16 @@ from bores.visualization.plotly2d import DataVisualizer, PlotConfig
 viz = DataVisualizer()
 
 # Custom configuration
-viz = DataVisualizer(config=PlotConfig(
-    width=1000,
-    height=800,
-    color_scheme="plasma",
-    contour_levels=25,
-    show_colorbar=True,
-    font_size=14,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        width=1000,
+        height=800,
+        color_scheme="plasma",
+        contour_levels=25,
+        show_colorbar=True,
+        font_size=14,
+    )
+)
 ```
 
 ### `make_plot`
@@ -367,7 +369,7 @@ pressure_meta = PropertyMeta(
 )
 
 # Select snapshots at day 0, 365, and 730
-snapshots = [states[0], states[len(states)//2], states[-1]]
+snapshots = [states[0], states[len(states) // 2], states[-1]]
 pressure_grids = [s.model.fluid_properties.pressure_grid for s in snapshots]
 titles = [f"Day {s.time_in_days:.0f}" for s in snapshots]
 

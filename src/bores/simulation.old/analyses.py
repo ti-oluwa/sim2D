@@ -3855,7 +3855,7 @@ class ModelAnalyst(typing.Generic[NDimension]):
         )
         return DeclineCurveResult(
             decline_type="hyperbolic",
-            initial_rate=float(hyperbolic_initial_rate),  #  use fitted qi
+            initial_rate=float(hyperbolic_initial_rate),  # use fitted qi
             decline_rate_per_timestep=float(
                 hyperbolic_decline_rate_per_timestep
             ),  # Now per timestep

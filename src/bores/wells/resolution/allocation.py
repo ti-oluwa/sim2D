@@ -32,13 +32,13 @@ def allocate_group_targets(group_name: str, well_system: CompiledWellSystem) -> 
 
     Writes the resulting per-well control (mode switched to a concrete
     rate mode, `target_rates` set to the well's share) directly into
-    `well_system.controls.target_rates`/`.control_modes` in place - no new
-    arrays allocated, no rich objects touched. Member wells were resolved
-    once at compile time (`compile_group_controls`); this only re-evaluates
-    which of them currently sit in `GRUP` mode, since that's dynamic.
+    `well_system.controls.target_rates`/`.control_modes` in place.
 
-    :param group_name: Group to allocate - a row in
-        `well_system.group_controls.names`.
+    Member wells were resolved once at compile time (`compile_group_controls`);
+    this only re-evaluates which of them currently sit in `GRUP` mode,
+    since that's dynamic.
+
+    :param group_name: Group to allocate. A row in  `well_system.group_controls.names`.
     :param well_system: Supplies `.group_controls` (target and compiled
         membership) and `.controls`/`.well_kinds` (written to in place).
     :returns: Names of the wells actually allocated, for the eligible

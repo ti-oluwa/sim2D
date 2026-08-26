@@ -77,17 +77,17 @@ oil_sg = bores.build_uniform_grid(grid_shape, value=0.87)
 
 sorw = bores.build_uniform_grid(grid_shape, value=0.22)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 Swir = bores.build_uniform_grid(grid_shape, value=0.22)
-swc  = bores.build_uniform_grid(grid_shape, value=0.22)
+swc = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Build initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
-    oil_water_contact=5100.0,     # OWC near reservoir bottom
+    gas_oil_contact=4900.0,  # GOC above reservoir (no initial gas cap)
+    oil_water_contact=5100.0,  # OWC near reservoir bottom
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -135,7 +135,7 @@ co2_injector = bores.injection_well(
     perforating_intervals=[((0, 0, 0), (0, 0, 2))],
     radius=0.25,
     control=bores.RateControl(
-        target_rate=5_000_000.0, 
+        target_rate=5_000_000.0,
         bhp_limit=5000,
     ),
     injected_fluid=bores.InjectedFluid(
@@ -146,8 +146,8 @@ co2_injector = bores.injection_well(
         is_miscible=True,
         minimum_miscibility_pressure=1800.0,
         todd_longstaff_omega=0.67,
-        density=35.0,       # lbm/ft³ at reservoir conditions
-        viscosity=0.05,     # cP at reservoir conditions
+        density=35.0,  # lbm/ft³ at reservoir conditions
+        viscosity=0.05,  # cP at reservoir conditions
     ),
 )
 ```
@@ -186,16 +186,22 @@ producer = bores.production_well(
     ),
     produced_fluids=[
         bores.ProducedFluid(
-            name="Oil", phase=bores.FluidPhase.OIL,
-            specific_gravity=0.87, molecular_weight=200.0,
+            name="Oil",
+            phase=bores.FluidPhase.OIL,
+            specific_gravity=0.87,
+            molecular_weight=200.0,
         ),
         bores.ProducedFluid(
-            name="Water", phase=bores.FluidPhase.WATER,
-            specific_gravity=1.0, molecular_weight=18.015,
+            name="Water",
+            phase=bores.FluidPhase.WATER,
+            specific_gravity=1.0,
+            molecular_weight=18.015,
         ),
         bores.ProducedFluid(
-            name="CO2", phase=bores.FluidPhase.GAS,
-            specific_gravity=1.52, molecular_weight=44.01,
+            name="CO2",
+            phase=bores.FluidPhase.GAS,
+            specific_gravity=1.52,
+            molecular_weight=44.01,
         ),
     ],
 )
@@ -296,9 +302,7 @@ The average solvent concentration increases over time as more CO2 enters the res
 ## Step 6 - Compare Miscible vs Immiscible Recovery
 
 ```python
-avg_So = np.array([
-    s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-])
+avg_So = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
 
 initial_So = 0.75
 recovery_factor = (initial_So - avg_So) / initial_So
@@ -360,9 +364,7 @@ for omega in omega_values:
 
     # Store recovery factor
     time_d = np.array([s.time_in_days for s in states])
-    avg_so = np.array([
-        s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-    ])
+    avg_so = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
     rf = (initial_So - avg_so) / initial_So
     results[f"omega = {omega:.2f}"] = np.column_stack([time_d, rf])
 

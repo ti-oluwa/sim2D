@@ -28,10 +28,10 @@ The scalar correlations in `bores.correlations.scalars` are also accessible thro
 from bores.correlations.scalars import compute_oil_formation_volume_factor_standing
 
 Bo = compute_oil_formation_volume_factor_standing(
-    temperature=200.0,          # degrees F
+    temperature=200.0,  # degrees F
     oil_specific_gravity=0.85,
     gas_gravity=0.7,
-    gas_to_oil_ratio=500.0,     # SCF/STB
+    gas_to_oil_ratio=500.0,  # SCF/STB
 )
 print(f"Bo = {Bo:.4f} bbl/STB")
 ```

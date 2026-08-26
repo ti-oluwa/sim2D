@@ -377,7 +377,7 @@ def _validate_porosity(rock_properties: RockProperties, report: ValidationReport
 
     n_negative = int(np.sum(porosity_grid < 0.0))
     n_above_one = int(np.sum(porosity_grid > 1.0))
-    n_zero = int(np.sum(porosity_grid == 0.0))
+    n_zero = int(np.sum(porosity_grid == 0))
     total_cells = porosity_grid.size
 
     if n_negative > 0:
@@ -434,7 +434,7 @@ def _validate_net_to_gross(rock_properties: RockProperties, report: ValidationRe
         return
 
     ntg_mean = float(np.mean(net_to_gross_grid))
-    n_zero_ntg = int(np.sum(net_to_gross_grid == 0.0))
+    n_zero_ntg = int(np.sum(net_to_gross_grid == 0))
     fraction_zero = n_zero_ntg / net_to_gross_grid.size
 
     report.info(check, f"NTG valid. Mean = {ntg_mean:.4f}  Zero-NTG cells: {n_zero_ntg}.")
@@ -476,7 +476,7 @@ def _validate_permeability(rock_properties: RockProperties, report: ValidationRe
         )
         return
 
-    n_zero_horizontal = int(np.sum((permeability_x == 0.0) | (permeability_y == 0.0)))
+    n_zero_horizontal = int(np.sum((permeability_x == 0) | (permeability_y == 0)))
     if n_zero_horizontal > 0:
         report.warn(
             check,
@@ -901,16 +901,14 @@ def _validate_wells(
                     )
                 else:
                     cell_porosity = float(porosity_grid[ci, cj, ck])
-                    if cell_porosity == 0.0:
+                    if cell_porosity == 0:
                         placement_errors.append(
                             f"Well '{well.name}': perforation ({ci},{cj},{ck}) is in a zero-porosity cell."
                         )
                     else:
                         well_active_pore_volume += cell_porosity
 
-        if well_active_pore_volume == 0.0 and not any(
-            well.name in msg for msg in placement_errors
-        ):
+        if well_active_pore_volume == 0 and not any(well.name in msg for msg in placement_errors):
             dead_well_names.append(well.name)
 
     for error_message in placement_errors:
@@ -1020,7 +1018,7 @@ def _validate_rock_compressibility(
             check,
             f"Rock compressibility is negative: {rock_compressibility:.3e} psi⁻¹.",
         )
-    elif rock_compressibility == 0.0:
+    elif rock_compressibility == 0:
         report.warn(check, "Rock compressibility is zero. Reservoir is perfectly rigid.")
     elif rock_compressibility > 1e-3:
         report.warn(

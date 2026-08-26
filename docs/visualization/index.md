@@ -33,6 +33,7 @@ states = list(bores.run(model, config))
 
 # 1D: Plot pressure decline over time
 import numpy as np
+
 time_pressure = np.column_stack([
     [s.time_in_days for s in states],
     [s.model.fluid_properties.pressure_grid.mean() for s in states],
@@ -55,6 +56,7 @@ fig.show()
 
 # 3D (PyVista): Cell block rendering in a native window
 from bores.visualization import pyvista3d
+
 viz_pv = pyvista3d.DataVisualizer()
 plotter = viz_pv.make_plot(state, "pressure", plot_type="cell_blocks")
 plotter.show()
@@ -110,7 +112,9 @@ fig_oil_sat = viz3d.make_plot(state, "oil_saturation")
 fig_water_sat = viz3d.make_plot(state, "water_saturation")
 
 combined = merge_plots(
-    fig_pressure, fig_oil_sat, fig_water_sat,
+    fig_pressure,
+    fig_oil_sat,
+    fig_water_sat,
     cols=3,
     subplot_titles=["Pressure", "Oil Saturation", "Water Saturation"],
     title="Reservoir State at Final Time Step",
@@ -146,11 +150,13 @@ Both 3D modules support animation export. The Plotly module exports to HTML with
 ```python
 # Plotly: Interactive HTML animation
 from bores.visualization import plotly3d
+
 viz3d = plotly3d.DataVisualizer()
 fig = viz3d.animate(states, "oil_saturation", save="animation.html")
 
 # PyVista: GIF animation
 from bores.visualization import pyvista3d
+
 viz_pv = pyvista3d.DataVisualizer()
 viz_pv.animate(states, "oil_saturation", save="animation.gif")
 
@@ -172,5 +178,6 @@ To see the current configuration:
 
 ```python
 from bores.visualization.config import config_summary
+
 print(config_summary())
 ```

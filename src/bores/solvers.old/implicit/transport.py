@@ -2312,7 +2312,7 @@ def assemble_well_contributions(
     vals: list[float] = []
 
     def _add_contribution(cell_idx: int, row_offset: int, col_offset: int, value: float) -> None:
-        if value == 0.0:
+        if value == 0:
             return
         rows.append(2 * cell_idx + row_offset)
         cols.append(2 * cell_idx + col_offset)

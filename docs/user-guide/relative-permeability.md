@@ -165,8 +165,8 @@ relperm_mixed = bores.BrooksCoreyRelPermModel(
     residual_oil_saturation_water=0.28,
     residual_oil_saturation_gas=0.18,
     residual_gas_saturation=0.05,
-    water_exponent=2.0,     # Lower than typical water-wet (2.5-3.0)
-    oil_exponent=1.8,       # Lower than typical oil-wet (2.0-2.5)
+    water_exponent=2.0,  # Lower than typical water-wet (2.5-3.0)
+    oil_exponent=1.8,  # Lower than typical oil-wet (2.0-2.5)
     gas_exponent=2.0,
     wettability=bores.Wettability.WATER_WET,
 )
@@ -231,18 +231,15 @@ relperm = bores.LETThreePhaseRelPermModel(
     residual_oil_saturation_water=0.25,
     residual_oil_saturation_gas=0.15,
     residual_gas_saturation=0.05,
-
     # LET parameters for each phase-pair
     water=bores.LETParameters(L=2.5, E=1.2, T=1.8),
     oil_water=bores.LETParameters(L=2.0, E=1.0, T=2.0),
     gas_oil=bores.LETParameters(L=2.0, E=0.8, T=1.5),
     gas=bores.LETParameters(L=1.5, E=1.5, T=2.5),
-
     # Endpoint relative permeabilities
     max_water_relperm=0.35,
     max_oil_relperm=0.90,
     max_gas_relperm=0.75,
-
     # Same wettability and mixing rule options as Brooks-Corey
     wettability=bores.Wettability.WATER_WET,
     mixing_rule="eclipse_rule",
@@ -360,7 +357,16 @@ oil_water_table = bores.TwoPhaseRelPermTable(
     non_wetting_phase=bores.FluidPhase.OIL,
     reference_saturation=np.array([0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.70, 0.75]),
     wetting_phase_relative_permeability=np.array([0.0, 0.01, 0.03, 0.10, 0.22, 0.40, 0.65, 0.80]),
-    non_wetting_phase_relative_permeability=np.array([1.0, 0.85, 0.68, 0.40, 0.20, 0.08, 0.01, 0.0]),
+    non_wetting_phase_relative_permeability=np.array([
+        1.0,
+        0.85,
+        0.68,
+        0.40,
+        0.20,
+        0.08,
+        0.01,
+        0.0,
+    ]),
     reference_phase="wetting",
 )
 ```
@@ -472,8 +478,8 @@ Sg = bores.build_uniform_grid((20, 20, 5), value=0.05)
 
 result = relperm(water_saturation=Sw, oil_saturation=So, gas_saturation=Sg)
 krw_grid = result["water"]  # Shape: (20, 20, 5)
-kro_grid = result["oil"]    # Shape: (20, 20, 5)
-krg_grid = result["gas"]    # Shape: (20, 20, 5)
+kro_grid = result["oil"]  # Shape: (20, 20, 5)
+krg_grid = result["gas"]  # Shape: (20, 20, 5)
 ```
 
 The returned dictionary uses string keys `"water"`, `"oil"`, and `"gas"`. Each value is either a float (for scalar inputs) or a NumPy array matching the shape of the input saturations (for array inputs). This makes it easy to sweep over saturations for plotting or to evaluate the model on a full simulation grid.
@@ -591,7 +597,9 @@ kro_values = np.zeros_like(Sw_values)
 for i, sw in enumerate(Sw_values):
     so = 1.0 - sw  # No free gas: So = 1 - Sw
     result = relperm.get_relative_permeabilities(
-        water_saturation=sw, oil_saturation=so, gas_saturation=0.0,
+        water_saturation=sw,
+        oil_saturation=so,
+        gas_saturation=0.0,
     )
     krw_values[i] = result["water"]
     kro_values[i] = result["oil"]
@@ -625,7 +633,9 @@ kro_g_values = np.zeros_like(Sg_values)
 for i, sg in enumerate(Sg_values):
     so = 1.0 - 0.25 - sg  # Sw = swc = 0.25
     result = relperm.get_relative_permeabilities(
-        water_saturation=0.25, oil_saturation=so, gas_saturation=sg,
+        water_saturation=0.25,
+        oil_saturation=so,
+        gas_saturation=sg,
     )
     krg_values[i] = result["gas"]
     kro_g_values[i] = result["oil"]
@@ -675,7 +685,9 @@ kro_bc = np.zeros_like(Sw_range)
 
 for i, sw in enumerate(Sw_range):
     result = relperm_bc.get_relative_permeabilities(
-        water_saturation=sw, oil_saturation=1.0 - sw, gas_saturation=0.0,
+        water_saturation=sw,
+        oil_saturation=1.0 - sw,
+        gas_saturation=0.0,
     )
     krw_bc[i] = result["water"]
     kro_bc[i] = result["oil"]
@@ -775,15 +787,11 @@ The query interface adapts based on `reference_phase`:
 
 ```python
 # For a table with reference_phase="wetting"
-kr_w = oil_water_table.get_wetting_phase_relative_permeability(
-    wetting_saturation=0.45
-)
+kr_w = oil_water_table.get_wetting_phase_relative_permeability(wetting_saturation=0.45)
 # non_wetting_saturation is optional (and ignored)
 
 # For a table with reference_phase="non_wetting"
-kr_g = gas_oil_table.get_non_wetting_phase_relative_permeability(
-    non_wetting_saturation=0.25
-)
+kr_g = gas_oil_table.get_non_wetting_phase_relative_permeability(non_wetting_saturation=0.25)
 # wetting_saturation is optional (and ignored if present)
 ```
 

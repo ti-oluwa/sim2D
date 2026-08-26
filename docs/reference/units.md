@@ -104,8 +104,8 @@ If you are accustomed to SI units, you will need to convert your input data to o
     ```python
     import bores
 
-    one_day = bores.Time(days=1)          # 86400.0 seconds
-    one_year = bores.Time(years=1)        # 31557600.0 seconds
+    one_day = bores.Time(days=1)  # 86400.0 seconds
+    one_year = bores.Time(years=1)  # 31557600.0 seconds
     combined = bores.Time(days=30, hours=6)  # 2613600.0 seconds
     ```
 
@@ -155,15 +155,15 @@ import numpy as np
 
 # Convert SI pressure data to oil-field units
 pressure_mpa = np.array([20.0, 25.0, 30.0])  # MPa
-pressure_psi = pressure_mpa * 145.0377         # psi
+pressure_psi = pressure_mpa * 145.0377  # psi
 
 # Convert SI permeability to oil-field units
-perm_m2 = 1e-13                                # m^2
-perm_md = perm_m2 * 1.01325e15                 # mD (= 101.325 mD)
+perm_m2 = 1e-13  # m^2
+perm_md = perm_m2 * 1.01325e15  # mD (= 101.325 mD)
 
 # Convert Celsius to Fahrenheit
-temp_c = 93.3                                  # Celsius
-temp_f = temp_c * 9.0 / 5.0 + 32.0            # Fahrenheit (= 200 F)
+temp_c = 93.3  # Celsius
+temp_f = temp_c * 9.0 / 5.0 + 32.0  # Fahrenheit (= 200 F)
 ```
 
 ---
@@ -184,7 +184,7 @@ You can access these values programmatically through the constants system:
 ```python
 import bores
 
-print(bores.c.STANDARD_PRESSURE_SI)     # 14.696 psi
+print(bores.c.STANDARD_PRESSURE_SI)  # 14.696 psi
 print(bores.c.STANDARD_TEMPERATURE_SI)  # 60.0 F
 ```
 

@@ -1140,18 +1140,18 @@ def monitor(
     config = config.new(log_interval=0)
     total_simulation_time = config.timer.simulation_time
     stats = RunStats()
-    _step_result: StepResult | None = None
+    step_result_: StepResult | None = None
 
     def _on_step_rejected(step_result: StepResult) -> None:
-        nonlocal _step_result, on_step_rejected
+        nonlocal step_result_, on_step_rejected
         stats.record_rejection()
-        _step_result = step_result
+        step_result_ = step_result
         if on_step_rejected is not None:
             on_step_rejected(step_result)
 
     def _on_step_accepted(step_result: StepResult) -> None:
-        nonlocal _step_result, on_step_accepted
-        _step_result = step_result
+        nonlocal step_result_, on_step_accepted
+        step_result_ = step_result
         if on_step_accepted is not None:
             on_step_accepted(step_result)
 
@@ -1235,7 +1235,7 @@ def monitor(
             diagnostics = build_step_diagnostics(
                 state=state,
                 wall_time_ms=wall_ms,
-                step_result=_step_result,
+                step_result=step_result_,
             )
             stats.record(diagnostics)
             last_diagnostics = diagnostics

@@ -32,7 +32,6 @@ __all__ = [
     "UnitSystem",
     "WellFluidType",
     "Wettability",
-    "Wettability",
 ]
 
 T = typing.TypeVar("T")

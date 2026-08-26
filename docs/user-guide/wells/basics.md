@@ -104,7 +104,7 @@ injector = bores.injection_well(
     ),
     control=bores.RateControl(
         target_rate=800.0,  # Positive = injection
-        bhp_limit=5000.0,   # Max injection pressure
+        bhp_limit=5000.0,  # Max injection pressure
     ),
 )
 ```

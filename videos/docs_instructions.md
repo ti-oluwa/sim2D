@@ -1075,11 +1075,7 @@ BORES visualization uses a **renderer pattern** for each plot type. Each rendere
   ```python
   viz = bores.plotly3d.DataVisualizer()
   fig = viz.make_plot(
-      state,
-      property="oil-saturation",
-      plot_type="volume",
-      show_wells=True,
-      opacity=0.7
+      state, property="oil-saturation", plot_type="volume", show_wells=True, opacity=0.7
   )
   fig.show()
   # Output: [PLACEHOLDER: Insert 3d_oil_saturation_volume.png]

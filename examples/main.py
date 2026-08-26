@@ -38,9 +38,9 @@ reservoir = Reservoir(grid=grid, rock=rock, regions=regions)
 temperature = Temperature(200)
 pvt = PVT.from_deck(df, temperature=temperature)
 blackoil = BlackOil(pvt=pvt, satfunc=satfunc)
-table = pvt.region(1).tables.gas
+table = pvt.region(1).tables.oil
 assert table is not None, "`table` should not be None"
-print(table.viscosity([4700, 200, 3456, 10000, 4000], 400))
+print(table.viscosity([4700, 200, 3456, 10000, 4000], 400, solution_gor=800))
 
 # Load initial state
 equilibrium = Equilibrium.from_deck(df)

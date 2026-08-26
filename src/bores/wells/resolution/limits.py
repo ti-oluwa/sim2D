@@ -29,7 +29,7 @@ from bores.wells.states import ConnectionSample, PhaseValues
 __all__ = ["apply_limits"]
 
 
-def _bhp_bound(
+def get_bhp_bound(
     *, min_value: Number, max_value: Number, bhp: Number, is_injector: bool
 ) -> Number | None:
     """
@@ -50,7 +50,7 @@ def _bhp_bound(
     return None
 
 
-def _rate_bound(
+def get_rate_bound(
     *,
     quantity_tag: Integer,
     max_value: Number,
@@ -67,12 +67,14 @@ def _rate_bound(
     """
     Gets the bounding BHP for a `RateLimit` row, if violated.
 
-    Found by bisecting BHP against `max_value` as a rate target - against
+    Found by bisecting BHP against `max_value` as a rate target, against
     the reservoir-condition total for a `RESERVOIR`-quantity limit, the
-    surface-condition total otherwise. The violation check itself
-    recomputes whichever total is relevant at `bhp` rather than relying on
-    an already-computed reservoir-condition total, since a `RateLimit` on
-    a surface quantity needs the surface-condition total to check correctly.
+    surface-condition total otherwise.
+
+    The violation check itself recomputes whichever total is relevant at `bhp`
+    rather than relying on an already-computed reservoir-condition total, since
+    a `RateLimit` on a surface quantity needs the surface-condition total to
+    check correctly.
 
     :param quantity_tag: `RateQuantityTag` value.
     :param max_value: The limit row's `max_value`.
@@ -128,7 +130,7 @@ def _rate_bound(
     return bound_bhp
 
 
-def _thp_bound(
+def get_thp_bound(
     *,
     min_value: Number,
     max_value: Number,
@@ -202,7 +204,7 @@ def _thp_bound(
     return bound_bhp
 
 
-def _check_economic_violation(
+def check_economic_violation(
     *,
     limits: CompiledLimits,
     limits_start: Integer,
@@ -265,11 +267,11 @@ def apply_limits(
     on the same axis every mode solver already searches. Because total
     rate and THP are both monotonic in BHP, the single most extreme
     required BHP among every violated limit automatically satisfies every
-    other violated limit too - no outer iteration needed.
+    other violated limit too so no outer iteration needed.
 
     Returns `(bhp, phase_rates, UNSET_INT, False)` unchanged if nothing is violated.
 
-    Called for every control mode (rate and BHP alike) - a well held at a
+    Called for every control mode (rate and BHP alike) because a well held at a
     fixed BHP can still violate a `RateLimit`/`THPLimit` configured
     alongside that BHP target, so this isn't skipped for BHP-mode resolutions.
 
@@ -303,14 +305,14 @@ def apply_limits(
             continue
 
         if kind == LimitKind.BHP:
-            bound = _bhp_bound(
+            bound = get_bhp_bound(
                 min_value=limits.min_values[row],
                 max_value=limits.max_values[row],
                 bhp=bhp,
                 is_injector=is_injector,
             )
         elif kind == LimitKind.RATE:
-            bound = _rate_bound(
+            bound = get_rate_bound(
                 quantity_tag=limits.quantity_tags[row],
                 max_value=limits.max_values[row],
                 bhp=bhp,
@@ -330,7 +332,7 @@ def apply_limits(
                     "was supplied to `apply_limits`. THP limits can't be "
                     "evaluated without it."
                 )
-            bound = _thp_bound(
+            bound = get_thp_bound(
                 min_value=limits.min_values[row],
                 max_value=limits.max_values[row],
                 bhp=bhp,
@@ -374,7 +376,7 @@ def apply_limits(
         is_injector=is_injector,
         resolver_spec=resolver_spec,
     )
-    violated_row = _check_economic_violation(
+    violated_row = check_economic_violation(
         limits=limits,
         limits_start=limits_start,
         limits_end=limits_end,

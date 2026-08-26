@@ -489,14 +489,12 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         if scalars:
             item_group.attrs.update(scalars)
 
-        item_group.attrs.update(
-            {
-                "_vtypes": vtypes,
-                "_meta": meta(item) if meta is not None else {},
-                "_index": index,
-                "_group_name": group_name,
-            }
-        )
+        item_group.attrs.update({
+            "_vtypes": vtypes,
+            "_meta": meta(item) if meta is not None else {},
+            "_index": index,
+            "_group_name": group_name,
+        })
         return EntryMeta(idx=index, group_name=group_name, meta={})
 
     def _read_entry(self, item_group: zarr.Group) -> dict[str, typing.Any]:

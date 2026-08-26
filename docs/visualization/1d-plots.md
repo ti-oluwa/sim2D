@@ -64,14 +64,16 @@ from bores.visualization.plotly1d import DataVisualizer, PlotConfig
 viz = DataVisualizer()
 
 # Custom configuration
-viz = DataVisualizer(config=PlotConfig(
-    width=1000,
-    height=500,
-    line_width=3.0,
-    font_size=14,
-    show_legend=True,
-    legend_position="top",
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        width=1000,
+        height=500,
+        line_width=3.0,
+        font_size=14,
+        show_legend=True,
+        legend_position="top",
+    )
+)
 ```
 
 ### `make_plot`
@@ -196,10 +198,10 @@ Tornado plots display sensitivity analysis results as horizontal bars, showing t
 ```python
 # Each row: [parameter_index, low_delta, high_delta]
 sensitivity_data = np.array([
-    [1, -50, 80],     # Permeability: base - 50, base + 80
-    [2, -30, 25],     # Porosity
-    [3, -20, 15],     # Water saturation
-    [4, -10, 12],     # Oil viscosity
+    [1, -50, 80],  # Permeability: base - 50, base + 80
+    [2, -30, 25],  # Porosity
+    [3, -20, 15],  # Water saturation
+    [4, -10, 12],  # Oil viscosity
 ])
 fig = viz.make_plot(
     sensitivity_data,

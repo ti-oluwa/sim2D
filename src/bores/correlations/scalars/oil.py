@@ -1217,7 +1217,7 @@ def compute_effective_todd_longstaff_omega(
     0.54  # Partial miscibility developed
     ```
     """
-    if base_omega == 0.0:
+    if base_omega == 0:
         return 0.0
 
     transition_factor = compute_miscibility_transition_factor(

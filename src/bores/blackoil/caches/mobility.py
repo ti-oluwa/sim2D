@@ -29,7 +29,7 @@ class MobilityCache(typing.NamedTuple):
     directly, which isn't settled yet. Add them here if/when it turns out
     they're needed rather than building unused surface now.
 
-    Where `total_mobility[i] == 0.0` (all three phases immobile, e.g. a cell
+    Where `total_mobility[i] == 0` (all three phases immobile, e.g. a cell
     pinned at residual saturations for every phase), fractional flows are
     `0.0`, not `NaN`: unlike `PVTCache`/`SatFuncCache`'s
     NaN-for-absent-data convention, a zero-total-mobility cell is a normal,

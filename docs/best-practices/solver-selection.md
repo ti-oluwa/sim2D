@@ -87,8 +87,8 @@ import bores
 
 cached_ilu = bores.CachedPreconditionerFactory(
     factory="ilu",
-    update_frequency=10,        # Rebuild every 10 timesteps
-    recompute_threshold=0.3,    # Or when matrix values change by more than 30%
+    update_frequency=10,  # Rebuild every 10 timesteps
+    recompute_threshold=0.3,  # Or when matrix values change by more than 30%
 )
 cached_ilu.register(override=True)
 
@@ -110,13 +110,13 @@ The `Config` class provides four solver-related parameters:
 config = bores.Config(
     timer=timer,
     wells=wells,
-    pressure_solver="bicgstab",                  # Solver for the pressure equation
-    transport_solver="bicgstab",                 # Solver for the saturation equation
-    pressure_preconditioner="ilu",                # Preconditioner for pressure
-    transport_preconditioner="ilu",              # Preconditioner for saturation
-    pressure_convergence_tolerance=1e-6,          # Relative tolerance for pressure
-    transport_convergence_tolerance=1e-4,        # Relative tolerance for saturation
-    maximum_solver_iterations=250,                           # Max iterations per solve
+    pressure_solver="bicgstab",  # Solver for the pressure equation
+    transport_solver="bicgstab",  # Solver for the saturation equation
+    pressure_preconditioner="ilu",  # Preconditioner for pressure
+    transport_preconditioner="ilu",  # Preconditioner for saturation
+    pressure_convergence_tolerance=1e-6,  # Relative tolerance for pressure
+    transport_convergence_tolerance=1e-4,  # Relative tolerance for saturation
+    maximum_solver_iterations=250,  # Max iterations per solve
 )
 ```
 

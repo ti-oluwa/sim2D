@@ -1081,12 +1081,10 @@ class Grid(
         """Return sorted indices of all cells that touch at least one boundary face."""
         owners = self.face_cell_indices[self.boundary_face_indices, 0]
         neighbours = self.face_cell_indices[self.boundary_face_indices, 1]
-        all_boundary = np.concatenate(
-            [
-                owners[owners >= 0],
-                neighbours[neighbours >= 0],
-            ]
-        )
+        all_boundary = np.concatenate([
+            owners[owners >= 0],
+            neighbours[neighbours >= 0],
+        ])
         return typing.cast(IntArray[OneDimension], np.unique(all_boundary).astype(np.int32))
 
     def get_interior_cell_indices(self) -> IntArray[OneDimension]:

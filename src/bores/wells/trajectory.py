@@ -54,7 +54,7 @@ class WellTrajectory(Serializable):
     def __attrs_post_init__(self) -> None:
         if len(self.stations) < 2:
             raise ValidationError(
-                "`WellTrajectory` needs at least 2 stations to define a "
+                f"`{type(self).__name__}` needs at least 2 stations to define a "
                 f"path; got {len(self.stations)}."
             )
         for previous, current in zip(self.stations, self.stations[1:], strict=False):
@@ -75,7 +75,7 @@ class WellTrajectory(Serializable):
         """Measured depth of the last station."""
         return self.stations[-1].measured_depth
 
-    def _bracketing_leg(
+    def get_bracketing_leg(
         self, measured_depth: Number
     ) -> tuple[TrajectoryStation, TrajectoryStation]:
         """Returns the two consecutive stations whose measured-depth range contains `measured_depth`."""
@@ -128,7 +128,7 @@ class WellTrajectory(Serializable):
         :returns: `(x, y, z)`.
         :raises ValidationError: If `measured_depth` is outside range.
         """
-        previous, current = self._bracketing_leg(measured_depth)
+        previous, current = self.get_bracketing_leg(measured_depth)
         span = current.measured_depth - previous.measured_depth
         fraction = 0.0 if span == 0 else (measured_depth - previous.measured_depth) / span
         return (
@@ -145,7 +145,7 @@ class WellTrajectory(Serializable):
         :returns: Unit vector `(dx, dy, dz)`.
         :raises ValidationError: If the bracketing leg has zero length.
         """
-        previous, current = self._bracketing_leg(measured_depth)
+        previous, current = self.get_bracketing_leg(measured_depth)
         dx = current.x - previous.x
         dy = current.y - previous.y
         dz = current.z - previous.z

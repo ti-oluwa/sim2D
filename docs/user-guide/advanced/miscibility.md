@@ -109,8 +109,8 @@ co2_fluid = bores.InjectedFluid(
     molecular_weight=44.01,
     is_miscible=True,
     minimum_miscibility_pressure=1200.0,
-    density=35.0,      # lbm/ft³ from lab data or EOS
-    viscosity=0.05,    # cP from lab data or EOS
+    density=35.0,  # lbm/ft³ from lab data or EOS
+    viscosity=0.05,  # cP from lab data or EOS
 )
 ```
 

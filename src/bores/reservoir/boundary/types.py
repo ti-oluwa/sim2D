@@ -131,8 +131,8 @@ class ConstantFluxBoundary(BoundaryCondition):
         return self.__class__(flux=self.flux * factors["reservoir_rate"], unit_system=target)
 
     def is_no_flow(self) -> bool:
-        """Return `True` if `flux == 0.0` (sealed boundary)."""
-        return self.flux == 0.0
+        """Return `True` if `flux == 0` (sealed boundary)."""
+        return self.flux == 0
 
 
 @boundary_condition

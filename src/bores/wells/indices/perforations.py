@@ -36,7 +36,7 @@ __all__ = [
 
 @attrs.frozen(kw_only=True, slots=True)
 class PerforationIndex(Serializable):
-    """One resolved (perforation, cell) pair - a connection."""
+    """One resolved (perforation, cell) pair, Basically, a connection."""
 
     perforation: Perforation | MDPerforation
     """The perforation this connection belongs to."""
@@ -45,18 +45,23 @@ class PerforationIndex(Serializable):
     """The grid cell this connection resolves to."""
 
     partial_penetration_fraction: Number
-    """Fraction of the cell's completion-direction length that `perforation`
-    actually overlaps, in `(0, 1]`."""
+    """
+    Fraction of the cell's completion-direction length that `perforation`
+    actually overlaps, in `(0, 1]`.
+    """
 
     representative_depth: Number
-    """Midpoint true vertical depth of the overlap between `perforation`'s
-    interval and this cell."""
+    """
+    Midpoint true vertical depth of the overlap between `perforation`'s
+    interval and this cell.
+    """
 
     inclination_from_vertical: Number
-    """Angle in radians between this connection's local wellbore direction
-    and vertical - `0` for a straight-down connection, `pi/2` for a
-    horizontal one. `wells.hydraulics` reads this directly; nothing in
-    that package derives an inclination itself."""
+    """
+    Angle in radians between this connection's local wellbore direction
+    and the vertical. `0` for a straight-down connection, `pi/2` for a
+    horizontal one. `wells.hydraulics` reads this directly for computations.
+    """
 
     well_index: Number | None = None
     """Connection factor for this connection. `None` until computed."""
@@ -128,7 +133,7 @@ def get_default_horizontal_tolerance(grid: Grid, x: Number, y: Number) -> Number
     return 0.5 * math.sqrt(dx**2 + dy**2)
 
 
-def _get_vertical_column_candidates(
+def get_vertical_column_candidates(
     grid: Grid, x: Number, y: Number, tolerance: Number
 ) -> IntArray[OneDimension]:
     """
@@ -163,15 +168,15 @@ def _get_vertical_column_candidates(
     return typing.cast(IntArray[OneDimension], np.sort(filtered))
 
 
-def _compute_local_vertical_extent_aabb(
-    grid: Grid, cell_index: int, x: Number, y: Number
+def compute_local_vertical_extent_aabb(
+    grid: Grid, cell_index: Integer, x: Number, y: Number
 ) -> tuple[Number, Number] | None:
     """
-    Get vertical extent of cell `cell_index`'s axis-aligned bounding box.
+    Get vertical extent of a cell's axis-aligned bounding box.
 
     Every point within the cell's horizontal footprint sees the same
-    `[cell_min_z, cell_max_z]` window under this method - `x`/`y` are
-    accepted for signature parity with `_compute_local_vertical_extent_exact` and
+    `[cell_min_z, cell_max_z]` window under this method. `x`/`y` are
+    accepted for signature parity with `compute_local_vertical_extent_exact` and
     otherwise unused.
 
     :param grid: Grid providing `cell_min_xyz`/`cell_max_xyz`.
@@ -186,7 +191,7 @@ def _compute_local_vertical_extent_aabb(
     )
 
 
-def _point_on_segment(
+def check_point_on_segment(
     px: Number,
     py: Number,
     x1: Number,
@@ -207,7 +212,7 @@ def _point_on_segment(
     return -tolerance <= dot <= (segment_length**2 + tolerance)
 
 
-def _point_in_polygon_2d(
+def check_point_in_polygon_2d(
     x: Number,
     y: Number,
     polygon_xy: NumberArray[TwoDimensions],
@@ -230,7 +235,7 @@ def _point_in_polygon_2d(
     for i in range(n):
         xi, yi = polygon_xy[i, 0], polygon_xy[i, 1]
         xj, yj = polygon_xy[j, 0], polygon_xy[j, 1]
-        if _point_on_segment(x, y, xi, yi, xj, yj, tolerance):
+        if check_point_on_segment(x, y, xi, yi, xj, yj, tolerance):
             return True
         if (yi > y) != (yj > y):
             x_intersect = xi + (y - yi) * (xj - xi) / (yj - yi)
@@ -240,7 +245,7 @@ def _point_in_polygon_2d(
     return inside
 
 
-def _point_in_polygon_3d(
+def check_point_in_polygon_3d(
     point: tuple[Number, Number, Number],
     polygon_xyz: NumberArray[TwoDimensions],
     normal: NumberArray[OneDimension],
@@ -252,7 +257,7 @@ def _point_in_polygon_3d(
 
     Projects both the polygon and the point onto whichever pair of axes
     `normal` is *least* aligned with (drops the axis `normal` is most
-    aligned with), then runs `_point_in_polygon_2d` on that projection.
+    aligned with), then runs `check_point_in_polygon_2d` on that projection.
 
     Dropping a fixed axis (as the purely-vertical-line special case could
     get away with, since every face it tested was near-horizontal) would
@@ -263,14 +268,14 @@ def _point_in_polygon_3d(
     :param point: 3-D point on the polygon's plane.
     :param polygon_xyz: Shape `(n, 3)` polygon vertices, in order.
     :param normal: The polygon's (unit) normal.
-    :param tolerance: Forwarded to `_point_in_polygon_2d`.
+    :param tolerance: Forwarded to `check_point_in_polygon_2d`.
     :returns: `True` if `point` is inside or on the boundary of the polygon.
     """
     abs_normal = (abs(float(normal[0])), abs(float(normal[1])), abs(float(normal[2])))
     dominant_axis = abs_normal.index(max(abs_normal))
     u_axis, v_axis = (axis for axis in (0, 1, 2) if axis != dominant_axis)
     polygon_uv = polygon_xyz[:, [u_axis, v_axis]]
-    return _point_in_polygon_2d(
+    return check_point_in_polygon_2d(
         point[u_axis],
         point[v_axis],
         polygon_xy=polygon_uv,  # type: ignore[arg-type]
@@ -278,11 +283,11 @@ def _point_in_polygon_3d(
     )
 
 
-def _compute_local_vertical_extent_exact(
-    grid: Grid, cell_index: int, x: Number, y: Number
+def compute_local_vertical_extent_exact(
+    grid: Grid, cell_index: Integer, x: Number, y: Number
 ) -> tuple[Number, Number] | None:
     """
-    Get exact vertical extent of cell `cell_index` at horizontal position
+    Get exact vertical extent of a cell at horizontal position
     `(x, y)`.
 
     A vertical line through `(x, y)` pierces a convex cell's boundary at
@@ -318,7 +323,7 @@ def _compute_local_vertical_extent_exact(
         )
 
         face_vertex_xy = grid.get_face_vertex_coordinates(face_idx)[:, :2]
-        if _point_in_polygon_2d(x, y, polygon_xy=face_vertex_xy):  # type: ignore[arg-type]
+        if check_point_in_polygon_2d(x, y, polygon_xy=face_vertex_xy):  # type: ignore[arg-type]
             crossings.append(z_intersect)
 
     if not crossings:
@@ -335,15 +340,14 @@ def resolve_perforations_indices(
 ) -> tuple[PerforationIndex, ...]:
     """
     Resolve every open `Perforation` on `well` to the `Grid` cell(s) it
-    intersects. Only valid for a `well` with no `trajectory` - see
-    `resolve_md_perforations_indices` for one with a trajectory.
+    intersects. Only valid for a `well` with no `trajectory`.
+    See `resolve_md_perforations_indices` for one with a trajectory.
 
-    For each open perforation, finds every cell whose vertical extent
+    For each open perforation, this finds every cell whose vertical extent
     overlaps `[top_depth, bottom_depth]` at `well.surface_location`, and
     computes a partial-penetration fraction and a representative depth per
-    cell from the overlap window. A point perforation
-    (`top_depth == bottom_depth`) resolves to exactly one cell with
-    `partial_penetration_fraction = 1.0`.
+    cell from the overlap window. A point perforation (`top_depth == bottom_depth`)
+    resolves to exactly one cell with `partial_penetration_fraction = 1.0`.
 
     :param grid: Grid to resolve against.
     :param well: `Well` whose perforations are resolved. Not modified.
@@ -353,7 +357,7 @@ def resolve_perforations_indices(
         size at `surface_location`.
     :param method: `"aabb"` (default) or `"exact"`.
     :returns: Tuple of `PerforationIndex`, one per (perforation, cell) pair
-        that overlaps - a single `Perforation` spanning multiple layers
+        that overlaps. A single `Perforation` spanning multiple layers
         yields multiple `PerforationIndex` entries.
     :raises ValidationError: If `well.trajectory` is set (use
         `resolve_md_perforations_indices` instead), or a perforation's
@@ -361,7 +365,7 @@ def resolve_perforations_indices(
     """
     if well.trajectory is not None:
         raise ValidationError(
-            f"Well {well.name!r} has a trajectory; use resolve_md_perforations_indices instead."
+            f"Well {well.name!r} has a trajectory; use `resolve_md_perforations_indices` instead."
         )
 
     if grid.unit_system != well.unit_system:
@@ -376,11 +380,11 @@ def resolve_perforations_indices(
         if horizontal_tolerance is not None
         else get_default_horizontal_tolerance(grid, x, y)
     )
-    candidates = _get_vertical_column_candidates(grid, x, y, tolerance)
-    extent_func = (
-        _compute_local_vertical_extent_aabb
+    candidates = get_vertical_column_candidates(grid, x, y, tolerance)
+    compute_extent = (
+        compute_local_vertical_extent_aabb
         if method == "aabb"
-        else _compute_local_vertical_extent_exact
+        else compute_local_vertical_extent_exact
     )
 
     results: list[PerforationIndex] = []
@@ -394,8 +398,7 @@ def resolve_perforations_indices(
         if perforation.is_point_perforation:
             depth = perforation.top_depth
             for cell_index in candidates:
-                cell_index = int(cell_index)
-                extent = extent_func(grid, cell_index, x, y)
+                extent = compute_extent(grid, cell_index, x, y)
                 if extent is None:
                     continue
 
@@ -414,8 +417,7 @@ def resolve_perforations_indices(
                     break
         else:
             for cell_index in candidates:
-                cell_index = int(cell_index)
-                extent = extent_func(grid, cell_index, x, y)
+                extent = compute_extent(grid, cell_index, x, y)
                 if extent is None:
                     continue
 
@@ -447,7 +449,7 @@ def resolve_perforations_indices(
     return tuple(results)
 
 
-def _check_cell_contains_point(
+def check_cell_contains_point(
     grid: Grid,
     cell_index: Integer,
     point: tuple[Number, Number, Number],
@@ -455,7 +457,7 @@ def _check_cell_contains_point(
 ) -> bool:
     """
     `True` if `point` lies inside (or on the boundary of, within
-    `tolerance`) cell `cell_index`'s convex hull - every face's outward
+    `tolerance`) cell `cell_index`'s convex hull as every face's outward
     normal points away from `point`.
 
     :param grid: Grid providing face geometry.
@@ -477,7 +479,7 @@ def _check_cell_contains_point(
     return True
 
 
-def _locate_cell(
+def locate_cell(
     grid: Grid, point: tuple[Number, Number, Number], search_radius: Number
 ) -> Integer | None:
     """
@@ -487,7 +489,7 @@ def _locate_cell(
     time); if that guess isn't actually the containing cell (common near a
     distorted or unstructured cell boundary), falls back to an
     expanding-radius search over every cell whose centroid is nearby,
-    testing each with `_check_cell_contains_point`.
+    testing each with `check_cell_contains_point`.
 
     :param grid: Grid to search.
     :param point: Point to locate.
@@ -497,20 +499,20 @@ def _locate_cell(
         search budget (point outside the grid, or resolution too coarse).
     """
     nearest = grid.find_nearest_cell(*point)
-    if _check_cell_contains_point(grid, nearest, point):
+    if check_cell_contains_point(grid, nearest, point):
         return nearest
 
     radius = search_radius
     for _ in range(6):
         candidates = grid.find_cells_in_radius(point[0], point[1], point[2], radius)
         for candidate in candidates:
-            if _check_cell_contains_point(grid, candidate, point):
+            if check_cell_contains_point(grid, candidate, point):
                 return candidate
         radius *= 2.0
     return None
 
 
-def _get_segment_face_intersection(
+def get_segment_face_intersection(
     start: tuple[Number, Number, Number],
     direction: tuple[Number, Number, Number],
     grid: Grid,
@@ -520,12 +522,11 @@ def _get_segment_face_intersection(
     """
     Get a parameter `t` (`point = start + t * direction`) at which the ray from
     `start` along `direction` crosses `face_index`'s plane *and* actually
-    lands within that face's polygon - `None` if the ray is (near-)
-    parallel to the plane, or the crossing point falls outside the
-    polygon.
+    lands within that face's polygon. Returns `None` if the ray is (near-)
+    parallel to the plane, or the crossing point falls outside the polygon.
 
     :param start: Ray origin.
-    :param direction: Ray direction (any length - `t` is in units of
+    :param direction: Ray direction (any length. `t` is in units of
         `direction`'s own length, i.e. `t=1` reaches `start + direction`).
     :param grid: Grid providing face geometry.
     :param face_index: Face to test.
@@ -551,12 +552,12 @@ def _get_segment_face_intersection(
         start[2] + t * direction[2],
     )
     face_vertices = grid.get_face_vertex_coordinates(face_index)
-    if not _point_in_polygon_3d(point, face_vertices, normal):
+    if not check_point_in_polygon_3d(point, face_vertices, normal):
         return None
     return t
 
 
-def _walk_segment_through_grid(
+def walk_segment_through_grid(
     grid: Grid,
     start: tuple[Number, Number, Number],
     end: tuple[Number, Number, Number],
@@ -573,7 +574,7 @@ def _walk_segment_through_grid(
     crosses to that face's neighbor (`face_cell_indices`), accumulating
     `(cell_index, entry_md, exit_md)` for each cell entered, until the
     segment reaches `end` or exits the grid through a boundary face (no
-    neighbor - the trajectory leaves the active domain; the walk simply
+    neighbor so the trajectory leaves the active domain; the walk simply
     stops there rather than guessing where it re-enters).
 
     :param grid: Grid to walk.
@@ -581,16 +582,16 @@ def _walk_segment_through_grid(
     :param end: Segment end point.
     :param start_md: Measured depth at `start`.
     :param end_md: Measured depth at `end`.
-    :param search_radius: Forwarded to `_locate_cell` for the initial cell.
+    :param search_radius: Forwarded to `locate_cell` for the initial cell.
     :returns: Ordered list of `(cell_index, entry_md, exit_md)`. Empty if
         `start` isn't inside any cell.
     """
     direction = (end[0] - start[0], end[1] - start[1], end[2] - start[2])
     segment_length = math.sqrt(sum(component**2 for component in direction))
-    if segment_length == 0.0:
+    if segment_length == 0:
         return []
 
-    current_cell = _locate_cell(grid, start, search_radius)
+    current_cell = locate_cell(grid, start, search_radius)
     if current_cell is None:
         return []
 
@@ -603,7 +604,7 @@ def _walk_segment_through_grid(
         best_t: Number | None = None
         best_face: Integer | None = None
         for face_idx in grid.get_cell_face_indices(current_cell):
-            t = _get_segment_face_intersection(
+            t = get_segment_face_intersection(
                 start=start,
                 direction=direction,
                 grid=grid,
@@ -617,23 +618,19 @@ def _walk_segment_through_grid(
 
         if best_t is None or best_face is None:
             # Segment ends inside `current_cell` without crossing another face.
-            results.append(
-                (
-                    current_cell,
-                    start_md + current_t * md_span,
-                    start_md + 1.0 * md_span,
-                )
-            )
+            results.append((
+                current_cell,
+                start_md + current_t * md_span,
+                start_md + 1.0 * md_span,
+            ))
             break
 
         exit_t = min(best_t, 1.0)
-        results.append(
-            (
-                current_cell,
-                start_md + current_t * md_span,
-                start_md + exit_t * md_span,
-            )
-        )
+        results.append((
+            current_cell,
+            start_md + current_t * md_span,
+            start_md + exit_t * md_span,
+        ))
         if best_t >= 1.0 - 1e-9:
             break
 
@@ -665,13 +662,13 @@ def resolve_md_perforations_indices(
     For each open perforation, gets the trajectory polyline vertices
     covering `[top_md, bottom_md]` (`WellTrajectory.stations_between`),
     then walks each leg of that polyline through `grid`
-    (`_walk_segment_through_grid`) to find every cell it passes through,
+    (`walk_segment_through_grid`) to find every cell it passes through,
     the measured-depth sub-range within each, and (from the leg's
     direction) the local inclination from vertical.
 
     :param grid: Grid to resolve against.
     :param well: `Well` whose perforations are resolved. Not modified.
-    :param search_radius: Forwarded to `_locate_cell` for each leg's
+    :param search_radius: Forwarded to `locate_cell` for each leg's
         starting-cell search. `None` derives a default from the grid's
         local cell size at `well.surface_location`.
     :returns: Tuple of `PerforationIndex`, one per (perforation, cell) the
@@ -724,11 +721,11 @@ def resolve_md_perforations_indices(
                 end[2] - start[2],
             )
             leg_length = math.sqrt(leg_dx**2 + leg_dy**2 + leg_dz**2)
-            if leg_length == 0.0:
+            if leg_length == 0:
                 continue
             inclination = math.acos(max(-1.0, min(1.0, leg_dz / leg_length)))
 
-            crossings = _walk_segment_through_grid(
+            crossings = walk_segment_through_grid(
                 grid=grid,
                 start=start,
                 end=end,

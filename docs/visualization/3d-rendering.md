@@ -77,15 +77,17 @@ from bores.visualization.base import ColorScheme
 viz = DataVisualizer()
 
 # Custom configuration
-viz = DataVisualizer(config=PlotConfig(
-    width=1400,
-    height=1000,
-    plot_type=PlotType.VOLUME,
-    color_scheme=ColorScheme.PLASMA,
-    opacity=0.7,
-    show_colorbar=True,
-    show_axes=True,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        width=1400,
+        height=1000,
+        plot_type=PlotType.VOLUME,
+        color_scheme=ColorScheme.PLASMA,
+        opacity=0.7,
+        show_colorbar=True,
+        show_axes=True,
+    )
+)
 ```
 
 The `PlotConfig` for 3D plots has additional parameters not found in the 2D config, including camera position, lighting, opacity scaling, cell outline styling, and aspect mode. These are covered in the [Configuration Reference](#configuration-reference) section below.
@@ -154,14 +156,16 @@ Volume rendering works well for smooth, continuous properties like pressure and 
 You can control opacity scaling through the `PlotConfig` to emphasize high or low values:
 
 ```python
-viz = DataVisualizer(config=PlotConfig(
-    use_opacity_scaling=True,
-    opacity_scale_values=[
-        [0.0, 0.1],   # Low values are nearly transparent
-        [0.5, 0.5],   # Mid values are semi-transparent
-        [1.0, 1.0],   # High values are fully opaque
-    ],
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        use_opacity_scaling=True,
+        opacity_scale_values=[
+            [0.0, 0.1],  # Low values are nearly transparent
+            [0.5, 0.5],  # Mid values are semi-transparent
+            [1.0, 1.0],  # High values are fully opaque
+        ],
+    )
+)
 ```
 
 ### Isosurface
@@ -326,11 +330,13 @@ The `Labels` class manages collections of labels and provides convenience method
 labels = Labels()
 
 # Add individual labels
-labels.add(Label(
-    position=LabelCoordinate(x=5, y=10, z=0),
-    text_template="Injector: {formatted_value} {unit}",
-    name="INJ-1",
-))
+labels.add(
+    Label(
+        position=LabelCoordinate(x=5, y=10, z=0),
+        text_template="Injector: {formatted_value} {unit}",
+        name="INJ-1",
+    )
+)
 
 # Add labels at regular grid intervals
 labels.add_grid_labels(
@@ -391,9 +397,9 @@ from bores.visualization.plotly3d import PlotConfig, CameraPosition
 
 config = PlotConfig(
     camera_position=CameraPosition(
-        eye={"x": 2.2, "y": 2.2, "z": 1.8},     # Camera location
-        center={"x": 0.0, "y": 0.0, "z": 0.0},   # Look-at point
-        up={"x": 0.0, "y": 0.0, "z": 1.0},        # Up direction
+        eye={"x": 2.2, "y": 2.2, "z": 1.8},  # Camera location
+        center={"x": 0.0, "y": 0.0, "z": 0.0},  # Look-at point
+        up={"x": 0.0, "y": 0.0, "z": 1.0},  # Up direction
     ),
 )
 ```
@@ -409,11 +415,11 @@ from bores.visualization.plotly3d import PlotConfig, Lighting
 
 config = PlotConfig(
     lighting=Lighting(
-        ambient=0.5,      # Background illumination
-        diffuse=0.8,      # Surface scattering
-        specular=0.2,     # Shiny highlights
-        roughness=0.5,    # Surface roughness
-        fresnel=0.2,      # Edge reflections
+        ambient=0.5,  # Background illumination
+        diffuse=0.8,  # Surface scattering
+        specular=0.2,  # Shiny highlights
+        roughness=0.5,  # Surface roughness
+        fresnel=0.2,  # Edge reflections
     ),
 )
 ```
@@ -478,15 +484,17 @@ fig_xsec.show()
 Track the waterflood front advancing through the reservoir:
 
 ```python
-viz = DataVisualizer(config=PlotConfig(
-    use_opacity_scaling=True,
-    opacity_scale_values=[
-        [0.0, 0.0],   # Dry cells are transparent
-        [0.3, 0.3],   # Partially swept cells semi-transparent
-        [0.8, 0.8],   # Mostly swept cells visible
-        [1.0, 1.0],   # Fully swept cells opaque
-    ],
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        use_opacity_scaling=True,
+        opacity_scale_values=[
+            [0.0, 0.0],  # Dry cells are transparent
+            [0.3, 0.3],  # Partially swept cells semi-transparent
+            [0.8, 0.8],  # Mostly swept cells visible
+            [1.0, 1.0],  # Fully swept cells opaque
+        ],
+    )
+)
 
 states = list(bores.run(model, config))
 
@@ -506,9 +514,11 @@ fig.show()
 Visualize well placement in the context of the reservoir property distribution:
 
 ```python
-viz = DataVisualizer(config=PlotConfig(
-    opacity=0.5,  # Make reservoir semi-transparent to see wells
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        opacity=0.5,  # Make reservoir semi-transparent to see wells
+    )
+)
 
 fig = viz.make_plot(
     states[-1],

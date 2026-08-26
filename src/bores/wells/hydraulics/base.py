@@ -60,12 +60,16 @@ class SurfaceFluidProperties(typing.NamedTuple):
     two-phase slip correlation such as Beggs & Brill."""
 
     phase_viscosities: PhaseValues | None = None
-    """Viscosity of each phase at surface conditions. Required for a
-    two-phase slip correlation such as Beggs & Brill."""
+    """
+    Viscosity of each phase at surface conditions. Required for a
+    two-phase slip correlation such as Beggs & Brill.
+    """
 
     gas_liquid_surface_tension: Number | None = None
-    """Surface tension between the gas and liquid phases. Required for a
-    two-phase slip correlation such as Beggs & Brill."""
+    """
+    Surface tension between the gas and liquid phases. Required for a
+    two-phase slip correlation such as Beggs & Brill.
+    """
 
 
 class WellBoreModel(typing.NamedTuple):
@@ -75,8 +79,9 @@ class WellBoreModel(typing.NamedTuple):
     """Which correlation this is: `"mechanistic"` or `"beggs_brill"`."""
 
     options: typing.Any
-    """This correlation's configuration: a `wells.hydraulics.mechanistic.MechanisticModel`
-    or a `wells.hydraulics.beggs_and_brill.BeggsAndBrillModel`."""
+    """
+    This correlation's configuration: a `MechanisticModel` or a `BeggsAndBrillModel`.
+    """
 
     def convert(
         self,
@@ -113,8 +118,8 @@ def compute_mixture_density(phase_rates: PhaseValues, phase_densities: PhaseValu
         `compute_static_hydrostatic_drop` for a well with no flow.
     """
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
-    if total_rate == 0.0:
-        raise ValueError("phase_rates sums to zero; use the static no-flow case instead")
+    if total_rate == 0:
+        raise ValueError("`phase_rates` sums to zero; use the static no-flow case instead")
     return (
         phase_rates.oil * phase_densities.oil
         + phase_rates.water * phase_densities.water
@@ -134,8 +139,8 @@ def compute_mixture_viscosity(phase_rates: PhaseValues, phase_viscosities: Phase
         `compute_static_hydrostatic_drop` for a well with no flow.
     """
     total_rate = phase_rates.oil + phase_rates.water + phase_rates.gas
-    if total_rate == 0.0:
-        raise ValueError("phase_rates sums to zero; use the static no-flow case instead")
+    if total_rate == 0:
+        raise ValueError("`phase_rates` sums to zero; use the static no-flow case instead")
     return (
         phase_rates.oil * phase_viscosities.oil
         + phase_rates.water * phase_viscosities.water
@@ -426,7 +431,7 @@ def compute_static_mixture_density(
     :raises ValueError: If `phase_saturations` sums to zero.
     """
     total_saturation = phase_saturations.oil + phase_saturations.water + phase_saturations.gas
-    if total_saturation == 0.0:
+    if total_saturation == 0:
         raise ValueError("`phase_saturations` sums to zero; cannot derive a static density")
     return (
         phase_saturations.oil * phase_densities.oil

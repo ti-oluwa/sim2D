@@ -316,7 +316,7 @@ def compute_perforation_pressures(
             sample = connection_samples[i]
             remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
 
-            if remaining_total == 0.0:
+            if remaining_total == 0:
                 drop = compute_static_hydrostatic_drop(
                     mixture_density=compute_static_mixture_density(
                         phase_saturations=sample.phase_saturations,
@@ -389,7 +389,7 @@ def compute_tubing_head_pressure(
         properties=surface_fluid_properties, phase_rates=phase_rates
     )
 
-    if total_rate == 0.0:
+    if total_rate == 0:
         drop = compute_static_hydrostatic_drop(
             mixture_density=mixture_density,
             length=abs(dz),

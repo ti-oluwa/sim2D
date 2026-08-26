@@ -73,17 +73,19 @@ from bores.visualization.base import ColorScheme
 viz = DataVisualizer()
 
 # Custom configuration
-viz = DataVisualizer(config=PlotConfig(
-    width=1400,
-    height=1000,
-    plot_type=PlotType.CELL_BLOCKS,
-    color_scheme=ColorScheme.PLASMA,
-    opacity=0.7,
-    show_colorbar=True,
-    show_axes=True,
-    show_cell_outlines=True,
-    enable_interactive=True,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        width=1400,
+        height=1000,
+        plot_type=PlotType.CELL_BLOCKS,
+        color_scheme=ColorScheme.PLASMA,
+        opacity=0.7,
+        show_colorbar=True,
+        show_axes=True,
+        show_cell_outlines=True,
+        enable_interactive=True,
+    )
+)
 ```
 
 A global instance `viz` is also available for quick use:
@@ -201,7 +203,7 @@ plotter = viz.make_plot(
     states[-1],
     "oil_saturation",
     plot_type="cell_blocks",
-    subsampling_factor=2,       # Sample every 2nd cell per axis
+    subsampling_factor=2,  # Sample every 2nd cell per axis
     threshold_percentile=10.0,  # Hide cells below 10th percentile
 )
 ```
@@ -227,7 +229,7 @@ plotter = viz.make_plot(
     "pressure",
     plot_type="volume",
     volume_mapper="smart",  # "smart" (auto), "gpu" (force GPU), "fixed_point" (CPU)
-    shade=True,             # Enable surface shading
+    shade=True,  # Enable surface shading
 )
 ```
 
@@ -269,8 +271,8 @@ plotter = viz.make_plot(
     states[-1],
     property="gas_saturation",
     plot_type="scatter_3d",
-    threshold=0.05,     # Only show cells with Sg > 0.05
-    sample_rate=0.5,    # Render 50% of qualifying cells
+    threshold=0.05,  # Only show cells with Sg > 0.05
+    sample_rate=0.5,  # Render 50% of qualifying cells
     point_size=5.0,
 )
 plotter.show()
@@ -458,11 +460,13 @@ The `PlotConfig` class for PyVista 3D plots extends the base configuration with 
 For batch processing or CI pipelines where no display is available, set `off_screen=True`:
 
 ```python
-viz = DataVisualizer(config=PlotConfig(
-    off_screen=True,
-    width=1920,
-    height=1080,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        off_screen=True,
+        width=1920,
+        height=1080,
+    )
+)
 
 plotter = viz.make_plot(states[-1], "pressure")
 plotter.screenshot("pressure_highres.png")
@@ -511,12 +515,14 @@ Examine individual cells with cell outlines enabled:
 ```python
 from bores.visualization.pyvista3d import DataVisualizer, PlotConfig
 
-viz = DataVisualizer(config=PlotConfig(
-    show_cell_outlines=True,
-    cell_outline_color="#404040",
-    cell_outline_width=1.0,
-    enable_interactive=True,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        show_cell_outlines=True,
+        cell_outline_color="#404040",
+        cell_outline_width=1.0,
+        enable_interactive=True,
+    )
+)
 
 plotter = viz.make_plot(states[-1], "permeability", plot_type="cell_blocks")
 plotter.show()
@@ -560,12 +566,14 @@ plotter.show()
 Generate publication-quality images without a display:
 
 ```python
-viz = DataVisualizer(config=PlotConfig(
-    off_screen=True,
-    width=3840,
-    height=2160,
-    show_cell_outlines=True,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        off_screen=True,
+        width=3840,
+        height=2160,
+        show_cell_outlines=True,
+    )
+)
 
 for prop in ["pressure", "oil_saturation", "water_saturation"]:
     plotter = viz.make_plot(states[-1], prop)
@@ -579,10 +587,12 @@ Export an animation of the waterflood advancing through the reservoir:
 ```python
 states = list(bores.run(model, config))
 
-viz = DataVisualizer(config=PlotConfig(
-    off_screen=True,
-    show_cell_outlines=False,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        off_screen=True,
+        show_cell_outlines=False,
+    )
+)
 
 viz.animate(
     sequence=states,

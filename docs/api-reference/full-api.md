@@ -551,13 +551,15 @@ Import from `bores.visualization.pyvista3d`:
 ```python
 from bores.visualization.pyvista3d import DataVisualizer, PlotConfig, PlotType
 
-viz = DataVisualizer(config=PlotConfig(
-    width=1200,
-    height=960,
-    plot_type=PlotType.CELL_BLOCKS,
-    smooth_shading=True,
-    enable_picking=True,
-))
+viz = DataVisualizer(
+    config=PlotConfig(
+        width=1200,
+        height=960,
+        plot_type=PlotType.CELL_BLOCKS,
+        smooth_shading=True,
+        enable_picking=True,
+    )
+)
 
 # Single plot from a model state
 plotter = viz.make_plot(state, property="pressure", title="Reservoir Pressure")
@@ -669,9 +671,9 @@ The constants system provides named, documented physical constants with unit inf
 ```python
 import bores
 
-print(bores.c.STANDARD_PRESSURE_SI)      # 14.696 psi
-print(bores.c.STANDARD_TEMPERATURE_SI)   # 60.0 F
-print(bores.c.GAS_CONSTANT)           # 10.7316 psi*ft³/(lbmol*R)
+print(bores.c.STANDARD_PRESSURE_SI)  # 14.696 psi
+print(bores.c.STANDARD_TEMPERATURE_SI)  # 60.0 F
+print(bores.c.GAS_CONSTANT)  # 10.7316 psi*ft³/(lbmol*R)
 ```
 
 ---

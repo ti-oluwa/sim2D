@@ -29,16 +29,14 @@ __all__ = [
 
 _BOX_KEYWORD = "BOX"
 _ENDBOX_KEYWORD = "ENDBOX"
-_OPERATOR_KEYWORDS: frozenset[str] = frozenset(
-    {
-        "EQUALS",
-        "ADD",
-        "MULTIPLY",
-        "COPY",
-        "MAXVALUE",
-        "MINVALUE",
-    }
-)
+_OPERATOR_KEYWORDS: frozenset[str] = frozenset({
+    "EQUALS",
+    "ADD",
+    "MULTIPLY",
+    "COPY",
+    "MAXVALUE",
+    "MINVALUE",
+})
 
 OPERATOR_CONTROL_KEYWORDS: frozenset[str] = (
     frozenset({_BOX_KEYWORD, _ENDBOX_KEYWORD}) | _OPERATOR_KEYWORDS

@@ -55,17 +55,17 @@ oil_sg = bores.build_uniform_grid(grid_shape, value=0.87)
 
 sorw = bores.build_uniform_grid(grid_shape, value=0.22)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 Swir = bores.build_uniform_grid(grid_shape, value=0.22)
-swc  = bores.build_uniform_grid(grid_shape, value=0.22)
+swc = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Build initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
-    oil_water_contact=5100.0,     # OWC near reservoir bottom
+    gas_oil_contact=4900.0,  # GOC above reservoir (no initial gas cap)
+    oil_water_contact=5100.0,  # OWC near reservoir bottom
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -153,12 +153,16 @@ producer = bores.production_well(
     ),
     produced_fluids=[
         bores.ProducedFluid(
-            name="Oil", phase=bores.FluidPhase.OIL,
-            specific_gravity=0.87, molecular_weight=200.0,
+            name="Oil",
+            phase=bores.FluidPhase.OIL,
+            specific_gravity=0.87,
+            molecular_weight=200.0,
         ),
         bores.ProducedFluid(
-            name="Water", phase=bores.FluidPhase.WATER,
-            specific_gravity=1.0, molecular_weight=18.015,
+            name="Water",
+            phase=bores.FluidPhase.WATER,
+            specific_gravity=1.0,
+            molecular_weight=18.015,
         ),
     ],
 )
@@ -251,12 +255,8 @@ The timing of breakthrough depends on the distance between injector and producer
 
 ```python
 # Average saturations over time
-avg_So = np.array([
-    s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-])
-avg_Sw = np.array([
-    s.model.fluid_properties.water_saturation_grid.mean() for s in states
-])
+avg_So = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
+avg_Sw = np.array([s.model.fluid_properties.water_saturation_grid.mean() for s in states])
 
 # Water cut: fraction of total production that is water
 # Approximate using average saturation change
@@ -296,9 +296,7 @@ The recovery factor curve is the primary metric for evaluating a waterflood. You
 ## Step 8 - Pressure Maintenance
 
 ```python
-avg_pressure = np.array([
-    s.model.fluid_properties.pressure_grid.mean() for s in states
-])
+avg_pressure = np.array([s.model.fluid_properties.pressure_grid.mean() for s in states])
 
 fig = bores.make_series_plot(
     data=np.column_stack([time_days, avg_pressure]),

@@ -39,9 +39,9 @@ The pore size distribution index $\lambda$ controls how rapidly capillary pressu
 import bores
 
 capillary_pressure = bores.BrooksCoreyCapillaryPressureModel(
-    oil_water_entry_pressure_water_wet=5.0,     # psi
+    oil_water_entry_pressure_water_wet=5.0,  # psi
     oil_water_pore_size_distribution_index_water_wet=2.0,
-    gas_oil_entry_pressure=1.0,                  # psi
+    gas_oil_entry_pressure=1.0,  # psi
     gas_oil_pore_size_distribution_index=2.0,
 )
 ```
@@ -144,10 +144,10 @@ The key advantage of Van Genuchten over Brooks-Corey is its behavior at the endp
 import bores
 
 capillary_pressure = bores.VanGenuchtenCapillaryPressureModel(
-    oil_water_alpha_water_wet=0.01,    # psi⁻¹ (roughly: entry pressure ~ 1/alpha)
-    oil_water_n_water_wet=2.0,          # Shape parameter (must be > 1)
-    gas_oil_alpha=0.02,                 # psi⁻¹
-    gas_oil_n=2.0,                      # Shape parameter
+    oil_water_alpha_water_wet=0.01,  # psi⁻¹ (roughly: entry pressure ~ 1/alpha)
+    oil_water_n_water_wet=2.0,  # Shape parameter (must be > 1)
+    gas_oil_alpha=0.02,  # psi⁻¹
+    gas_oil_n=2.0,  # Shape parameter
 )
 ```
 
@@ -196,14 +196,14 @@ The Leverett J-function approach is most valuable in heterogeneous reservoirs wh
 import bores
 
 capillary_pressure = bores.LeverettJCapillaryPressureModel(
-    permeability=100.0,                 # mD (reference permeability)
-    porosity=0.2,                        # Reference porosity
+    permeability=100.0,  # mD (reference permeability)
+    porosity=0.2,  # Reference porosity
     oil_water_interfacial_tension=30.0,  # dyne/cm
-    gas_oil_interfacial_tension=20.0,    # dyne/cm
-    oil_water_contact_angle=0.0,         # degrees (0 = water-wet)
-    gas_oil_contact_angle=0.0,           # degrees
-    j_function_coefficient=0.5,          # Empirical coefficient 'a'
-    j_function_exponent=0.5,             # Empirical exponent 'b'
+    gas_oil_interfacial_tension=20.0,  # dyne/cm
+    oil_water_contact_angle=0.0,  # degrees (0 = water-wet)
+    gas_oil_contact_angle=0.0,  # degrees
+    j_function_coefficient=0.5,  # Empirical coefficient 'a'
+    j_function_exponent=0.5,  # Empirical exponent 'b'
 )
 ```
 
@@ -358,7 +358,7 @@ Sg = bores.build_uniform_grid((20, 20, 5), value=0.05)
 
 result = capillary_pressure(water_saturation=Sw, oil_saturation=So, gas_saturation=Sg)
 pcoil_water_grid = result["oil_water"]  # Shape: (20, 20, 5)
-pcgas_oil_grid = result["gas_oil"]    # Shape: (20, 20, 5)
+pcgas_oil_grid = result["gas_oil"]  # Shape: (20, 20, 5)
 ```
 
 The `get_capillary_pressures()` method also accepts optional residual saturation overrides that take precedence over the model defaults. This is useful when the simulator passes cell-level saturation endpoints from the grid:
@@ -368,7 +368,7 @@ result = capillary_pressure.get_capillary_pressures(
     water_saturation=0.35,
     oil_saturation=0.60,
     gas_saturation=0.05,
-    irreducible_water_saturation=0.20,   # Override model default
+    irreducible_water_saturation=0.20,  # Override model default
     residual_oil_saturation_water=0.30,  # Override model default
 )
 ```
@@ -401,7 +401,9 @@ print(f"Pcow at Sw=0.45: {capillary_pressure_scalar:.2f} psi")
 
 # Grid array query
 Sw_grid = np.random.uniform(0.2, 0.8, size=(20, 20, 5))
-capillary_pressure_grid = oil_water_capillary_pressure_table.get_capillary_pressure(Sw_grid)  # Shape: (20, 20, 5)
+capillary_pressure_grid = oil_water_capillary_pressure_table.get_capillary_pressure(
+    Sw_grid
+)  # Shape: (20, 20, 5)
 ```
 
 The `ThreePhaseCapillaryPressureTable` uses `get_capillary_pressures()` or `__call__` with all three saturations:
@@ -521,7 +523,9 @@ pcoil_water_values = np.zeros_like(Sw_values)
 for i, sw in enumerate(Sw_values):
     so = 1.0 - sw  # No free gas
     result = capillary_pressure.get_capillary_pressures(
-        water_saturation=sw, oil_saturation=so, gas_saturation=0.0,
+        water_saturation=sw,
+        oil_saturation=so,
+        gas_saturation=0.0,
     )
     pcoil_water_values[i] = result["oil_water"]
 
@@ -569,10 +573,14 @@ pcoil_water_van_genuchten = np.zeros_like(Sw_range)
 for i, sw in enumerate(Sw_range):
     so = 1.0 - sw
     result_brookes_corey = brookes_corey_water_wet.get_capillary_pressures(
-        water_saturation=sw, oil_saturation=so, gas_saturation=0.0,
+        water_saturation=sw,
+        oil_saturation=so,
+        gas_saturation=0.0,
     )
     result_van_genuchten = van_genuchten_water_wet.get_capillary_pressures(
-        water_saturation=sw, oil_saturation=so, gas_saturation=0.0,
+        water_saturation=sw,
+        oil_saturation=so,
+        gas_saturation=0.0,
     )
     pcoil_water_brookes_corey[i] = result_brookes_corey["oil_water"]
     pcoil_water_van_genuchten[i] = result_van_genuchten["oil_water"]
@@ -638,8 +646,8 @@ The choice of capillary pressure model depends on the data available and the sim
 
         ```python
         capillary_pressure = bores.VanGenuchtenCapillaryPressureModel(
-            oil_water_alpha_water_wet=0.5,     # Low capillary_pressure pressure
-            oil_water_n_water_wet=3.0,          # Narrow pore size distribution
+            oil_water_alpha_water_wet=0.5,  # Low capillary_pressure pressure
+            oil_water_n_water_wet=3.0,  # Narrow pore size distribution
             gas_oil_alpha=0.8,
             gas_oil_n=2.5,
         )

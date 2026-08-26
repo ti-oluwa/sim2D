@@ -299,13 +299,11 @@ def _structure_namedtuple(data: typing.Any, typ: type[typing.Any]) -> typing.Any
     if not isinstance(data, Mapping):
         return typ(*data)
     hints = typing.get_type_hints(typ, include_extras=False)
-    return typ(
-        **{
-            field: converter.structure(data[field], hints[field])
-            for field in getattr(typ, "_fields", ())
-            if field in data and field in hints
-        }
-    )
+    return typ(**{
+        field: converter.structure(data[field], hints[field])
+        for field in getattr(typ, "_fields", ())
+        if field in data and field in hints
+    })
 
 
 converter.register_unstructure_hook_func(_is_namedtuple_type, _unstructure_namedtuple)
@@ -523,13 +521,13 @@ def _build_serializer(
 ) -> typing.Callable[["Serializable"], dict[str, typing.Any]]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(serializers or {})
-    _discovered: dict[typing.Any, typing.Any] | None = None
+    discovered: dict[typing.Any, typing.Any] | None = None
 
     def __dump__(self) -> dict[str, typing.Any]:
-        nonlocal _discovered
-        if _discovered is None:
-            _discovered = _discover_type_serializers(fields)
-        active = {**_discovered, **explicit}
+        nonlocal discovered
+        if discovered is None:
+            discovered = _discover_type_serializers(fields)
+        active = {**discovered, **explicit}
 
         result: dict[str, typing.Any] = {}
         for field, typ in fields.items():
@@ -585,17 +583,17 @@ def _build_deserializer(
 ) -> typing.Callable[..., "Serializable"]:
     exclude_set = set(exclude) if exclude else set()
     explicit = dict(deserializers or {})
-    _discovered: dict[typing.Any, typing.Any] | None = None
+    discovered: dict[typing.Any, typing.Any] | None = None
 
     @classmethod
     def __load__(
         cls: type[SerializableT],
         data: typing.Mapping[str, typing.Any],
     ) -> SerializableT:
-        nonlocal _discovered
-        if _discovered is None:
-            _discovered = _discover_type_deserializers(fields)
-        active = {**_discovered, **explicit}
+        nonlocal discovered
+        if discovered is None:
+            discovered = _discover_type_deserializers(fields)
+        active = {**discovered, **explicit}
 
         init_kwargs: dict[str, typing.Any] = {}
         for field, typ in fields.items():
@@ -707,7 +705,7 @@ class SerializableMeta(type):
         all_serializers = {**parent_serializers, **(serializers or {})}
         all_deserializers = {**parent_deserializers, **(deserializers or {})}
 
-        is_abstract_cls = bool(namespace.get("__abstract_serializable__", False))
+        is_abstract_cls = bool(namespace.get("__abstract_serializable__"))
         if not is_abstract_cls and not all_fields:
             raise ValidationError(
                 "Serializable subclasses must define fields. If the class "

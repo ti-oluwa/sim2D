@@ -243,13 +243,11 @@ def make_corner_point_grid(
 
     if geo_nnc_pairs is not None and len(geo_nnc_pairs) > 0:
         geo_transmissibilities = np.full(len(geo_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append(
-            (
-                np.asarray(geo_nnc_pairs, dtype=np.int32, copy=False),
-                geo_nnc_connection_types,
-                geo_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            np.asarray(geo_nnc_pairs, dtype=np.int32, copy=False),
+            geo_nnc_connection_types,
+            geo_transmissibilities,
+        ))
 
     fault_nnc_indices: dict[str, list[int]] = {}
     if fault_nnc_pairs:
@@ -260,13 +258,11 @@ def make_corner_point_grid(
             len(fault_nnc_pairs), int(ConnectionType.FAULT_NNC), dtype=np.int8
         )
         fault_transmissibilities = np.full(len(fault_nnc_pairs), np.nan, dtype=np.float64)
-        all_nnc_parts.append(
-            (
-                fault_pairs,
-                fault_connection_types,
-                fault_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            fault_pairs,
+            fault_connection_types,
+            fault_transmissibilities,
+        ))
         # Build nnc_fault_indices: fault name -> positions into the merged NNC array.
         # The offset is the total NNC count already accumulated before this block.
         fault_nnc_offset = sum(len(p) for p, _, _ in all_nnc_parts[:-1])
@@ -283,13 +279,11 @@ def make_corner_point_grid(
             if nnc_transmissibilities is not None
             else np.full(len(user_nnc_pairs), np.nan, dtype=np.float64)
         )
-        all_nnc_parts.append(
-            (
-                user_nnc_pairs,
-                user_nnc_connection_types,
-                user_nnc_transmissibilities,
-            )
-        )
+        all_nnc_parts.append((
+            user_nnc_pairs,
+            user_nnc_connection_types,
+            user_nnc_transmissibilities,
+        ))
 
     merged_nnc_pairs: npt.NDArray[np.int32] | None = None
     merged_nnc_connection_types: npt.NDArray[np.int8] | None = None
@@ -702,7 +696,7 @@ def _resolve_fault_face_indices(
     """
     kji_to_cell: dict[tuple[int, int, int], int] = {}
     for cell_idx, (k, j, i) in enumerate(active_cells):
-        kji_to_cell[(int(k), int(j), int(i))] = cell_idx
+        kji_to_cell[int(k), int(j), int(i)] = cell_idx
 
     cell_pair_to_face: dict[frozenset[int], int] = {}
     for face_idx, (owner, neighbour) in enumerate(face_cell_indices):

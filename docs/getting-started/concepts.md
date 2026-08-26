@@ -203,9 +203,9 @@ injector_control = bores.RateControl(
 producer_control = bores.ProducerRateControl(
     primary_phase=bores.FluidPhase.OIL,
     primary_control=bores.AdaptiveRateControl(
-        target_rate=-500.0,       # -500 STB/day of oil (production)
+        target_rate=-500.0,  # -500 STB/day of oil (production)
         target_phase="oil",
-        bhp_limit=1000.0,         # minimum BHP constraint
+        bhp_limit=1000.0,  # minimum BHP constraint
         clamp=bores.ProductionClamp(),
     ),
     secondary_clamp=bores.ProductionClamp(),
@@ -265,7 +265,7 @@ model.to_file("my_model.h5")
 loaded_model = bores.BlackOil.from_file("my_model.h5")
 
 # Save a config to YAML
-config.to_file("config.yaml") # or config.save("config.yaml")
+config.to_file("config.yaml")  # or config.save("config.yaml")
 
 # Load it back
 loaded_config = bores.Config.from_file("config.yaml")
@@ -298,29 +298,27 @@ config = bores.Config(
         minimum_step_size=Time(hours=1),
         simulation_time=Time(days=365),
     ),
-
     # Rock-fluid properties
     rock_fluid_tables=bores.RockFluidTables(
         relative_permeability_table=bores.BrooksCoreyRelPermModel(
-            water_exponent=2.0, oil_exponent=2.0, gas_exponent=2.0,
+            water_exponent=2.0,
+            oil_exponent=2.0,
+            gas_exponent=2.0,
         ),
         capillary_pressure_table=bores.BrooksCoreyCapillaryPressureModel(),
     ),
-
     # Wells
     wells=wells,
-
     # Solver settings
     scheme="impes",
     pressure_solver="bicgstab",
     pressure_preconditioner="ilu",
     pressure_convergence_tolerance=1e-6,
     maximum_solver_iterations=250,
-
     # Stability controls
-    maximum_pressure_change=100.0,           # psi per step
-    maximum_oil_saturation_change=0.5,       # fraction per step
-    maximum_water_saturation_change=0.4,     # fraction per step
+    maximum_pressure_change=100.0,  # psi per step
+    maximum_oil_saturation_change=0.5,  # fraction per step
+    maximum_water_saturation_change=0.4,  # fraction per step
 )
 ```
 
@@ -330,8 +328,8 @@ config = bores.Config(
 
         ```python
         screening_config = config.new(
-            output_frequency=10,             # Output every 10th step
-            maximum_pressure_change=200.0,       # Relax stability constraints
+            output_frequency=10,  # Output every 10th step
+            maximum_pressure_change=200.0,  # Relax stability constraints
             pressure_preconditioner="diagonal",  # Cheap preconditioner
         )
         ```
@@ -341,9 +339,9 @@ config = bores.Config(
         ```python
         accurate_config = config.new(
             pressure_convergence_tolerance=1e-8,
-            maximum_pressure_change=50.0,        # Tighter stability constraints
+            maximum_pressure_change=50.0,  # Tighter stability constraints
             maximum_water_saturation_change=0.2,
-            pressure_preconditioner="cpr",   # Strong preconditioner
+            pressure_preconditioner="cpr",  # Strong preconditioner
         )
         ```
 
@@ -352,7 +350,7 @@ config = bores.Config(
         ```python
         explicit_config = config.new(
             scheme="explicit",
-            cfl_threshold=0.6,    # CFL stability limit
+            cfl_threshold=0.6,  # CFL stability limit
             pressure_cfl_threshold=0.9,
         )
         ```

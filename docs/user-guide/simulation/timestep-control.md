@@ -20,12 +20,12 @@ All timer parameters are specified in seconds, but thinking in seconds is inconv
 import bores
 
 # Single component
-one_day = bores.Time(days=1)           # 86400.0
-six_hours = bores.Time(hours=6)        # 21600.0
-three_years = bores.Time(years=3)      # ~94608000.0
+one_day = bores.Time(days=1)  # 86400.0
+six_hours = bores.Time(hours=6)  # 21600.0
+three_years = bores.Time(years=3)  # ~94608000.0
 
 # Combined components
-mixed = bores.Time(days=1, hours=6)    # 108000.0
+mixed = bores.Time(days=1, hours=6)  # 108000.0
 ```
 
 `Time()` accepts any combination of `milliseconds`, `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, and `years`. Components are additive. One year is defined as 365.25 days (by default), and one month is one-twelfth of a year (approximately 30.4 days). These are engineering approximations, not calendar-accurate durations, and they are standard conventions in reservoir simulation.
@@ -142,10 +142,10 @@ config = bores.Config(
     timer=timer,
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
-    maximum_oil_saturation_change=0.5,      # Default
-    maximum_water_saturation_change=0.4,    # Default
-    maximum_gas_saturation_change=0.85,     # Default
-    maximum_pressure_change=100.0,          # Default, psi
+    maximum_oil_saturation_change=0.5,  # Default
+    maximum_water_saturation_change=0.4,  # Default
+    maximum_gas_saturation_change=0.85,  # Default
+    maximum_pressure_change=100.0,  # Default, psi
 )
 ```
 
@@ -183,8 +183,8 @@ config = bores.Config(
     timer=timer,
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
-    cfl_threshold=0.6,   # Default
-    pressure_cfl_threshold=0.9,     # Default
+    cfl_threshold=0.6,  # Default
+    pressure_cfl_threshold=0.9,  # Default
 )
 ```
 
@@ -208,8 +208,8 @@ timer = bores.Timer(
     maximum_step_size=bores.Time(days=15),
     minimum_step_size=bores.Time(hours=1),
     simulation_time=bores.Time(years=5),
-    ramp_up_factor=1.2,              # 20% extra growth
-    growth_cooldown_steps=5,          # After 5 stable steps
+    ramp_up_factor=1.2,  # 20% extra growth
+    growth_cooldown_steps=5,  # After 5 stable steps
 )
 ```
 

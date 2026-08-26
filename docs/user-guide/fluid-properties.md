@@ -76,8 +76,8 @@ lab_rs = np.loadtxt("measured_rs.csv").reshape(grid_shape)
 model = bores.reservoir_model(
     grid_shape=grid_shape,
     # ...other required parameters...
-    oil_bubble_point_pressure_grid=lab_pb,      # Uses your lab data
-    solution_gas_to_oil_ratio_grid=lab_rs,      # Uses your lab data
+    oil_bubble_point_pressure_grid=lab_pb,  # Uses your lab data
+    solution_gas_to_oil_ratio_grid=lab_rs,  # Uses your lab data
     # Bo, Co, viscosity still computed from correlations using your Pb and Rs
 )
 ```
@@ -140,8 +140,8 @@ import numpy as np
 grid_shape = (20, 20, 5)
 
 # Spatially varying salinity - higher in deeper zones
-salinity = np.ones(grid_shape) * 50000.0    # 50,000 ppm background
-salinity[:, :, 3:] = 100000.0               # 100,000 ppm in bottom two layers
+salinity = np.ones(grid_shape) * 50000.0  # 50,000 ppm background
+salinity[:, :, 3:] = 100000.0  # 100,000 ppm in bottom two layers
 
 model = bores.reservoir_model(
     grid_shape=grid_shape,
@@ -193,35 +193,35 @@ model = bores.reservoir_model(...)
 fp = model.fluid_properties
 
 # Pressure and saturation
-pressure = fp.pressure_grid                         # psi
-So = fp.oil_saturation_grid                         # fraction
-Sw = fp.water_saturation_grid                       # fraction
-Sg = fp.gas_saturation_grid                         # fraction
+pressure = fp.pressure_grid  # psi
+So = fp.oil_saturation_grid  # fraction
+Sw = fp.water_saturation_grid  # fraction
+Sg = fp.gas_saturation_grid  # fraction
 
 # Oil PVT
-Rs  = fp.solution_gas_to_oil_ratio_grid             # SCF/STB
-Bo  = fp.oil_formation_volume_factor_grid           # bbl/STB
-co  = fp.oil_compressibility_grid                   # psi⁻¹
-Pb  = fp.oil_bubble_point_pressure_grid             # psi
-rho_o = fp.oil_density_grid                         # lb/ft³
-mu_o  = fp.oil_viscosity_grid                       # cP
+Rs = fp.solution_gas_to_oil_ratio_grid  # SCF/STB
+Bo = fp.oil_formation_volume_factor_grid  # bbl/STB
+co = fp.oil_compressibility_grid  # psi⁻¹
+Pb = fp.oil_bubble_point_pressure_grid  # psi
+rho_o = fp.oil_density_grid  # lb/ft³
+mu_o = fp.oil_viscosity_grid  # cP
 
 # Gas PVT
-Bg    = fp.gas_formation_volume_factor_grid         # ft³/SCF
-z     = fp.gas_compressibility_factor_grid          # dimensionless
-cg    = fp.gas_compressibility_grid                 # psi⁻¹
-rho_g = fp.gas_density_grid                         # lb/ft³
-mu_g  = fp.gas_viscosity_grid                       # cP
+Bg = fp.gas_formation_volume_factor_grid  # ft³/SCF
+z = fp.gas_compressibility_factor_grid  # dimensionless
+cg = fp.gas_compressibility_grid  # psi⁻¹
+rho_g = fp.gas_density_grid  # lb/ft³
+mu_g = fp.gas_viscosity_grid  # cP
 
 # Water PVT
-Bw    = fp.water_formation_volume_factor_grid       # bbl/STB
-cw    = fp.water_compressibility_grid               # psi⁻¹
-rho_w = fp.water_density_grid                       # lb/ft³
-mu_w  = fp.water_viscosity_grid                     # cP
+Bw = fp.water_formation_volume_factor_grid  # bbl/STB
+cw = fp.water_compressibility_grid  # psi⁻¹
+rho_w = fp.water_density_grid  # lb/ft³
+mu_w = fp.water_viscosity_grid  # cP
 
 # Saliniy and gas gravity (constant for a given fluid type)
-salinity  = fp.water_salinity_grid                  # ppm NaCl
-gg        = fp.gas_gravity_grid                     # dimensionless
+salinity = fp.water_salinity_grid  # ppm NaCl
+gg = fp.gas_gravity_grid  # dimensionless
 ```
 
 These arrays reflect the initial conditions you provided. As the simulation runs, BORES updates them at each time step to reflect the evolving pressure and saturation distribution. When you access fluid properties on a `ModelState` yielded during simulation, you are reading the state at that specific time step.

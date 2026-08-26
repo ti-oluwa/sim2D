@@ -62,6 +62,7 @@ You can write any function that accepts a well and a model state and returns a b
 ```python
 import bores
 
+
 @bores.event_predicate
 def high_water_cut(well, state):
     """Trigger when water cut exceeds 90%."""
@@ -69,6 +70,7 @@ def high_water_cut(well, state):
     oil_rate = abs(state.well_results.get(well.name, {}).get("oil_rate", 1e-10))
     water_cut = water_rate / (water_rate + oil_rate)
     return water_cut > 0.90
+
 
 @bores.event_predicate
 def low_pressure(well, state):
@@ -134,11 +136,12 @@ Like predicates, you can write custom action functions and register them:
 ```python
 import bores
 
+
 @bores.event_action
 def reduce_rate_by_half(well, state):
     """Reduce the well's target rate by 50%."""
     current_control = well.control
-    if hasattr(current_control, 'primary_control'):
+    if hasattr(current_control, "primary_control"):
         current_rate = current_control.primary_control.target_rate
         new_control = bores.ProducerRateControl(
             primary_phase=current_control.primary_phase,
@@ -166,20 +169,23 @@ import bores
 schedule = bores.WellSchedule()
 
 # Add events using `add(id, event)`
-schedule.add("rate_reduction", bores.WellEvent(
-    predicate=bores.time_predicate(time_step=50),
-    action=bores.update_well(
-        control=bores.ProducerRateControl(
-            primary_phase=bores.FluidPhase.OIL,
-            primary_control=bores.AdaptiveRateControl(
-                target_rate=-200.0,
-                target_phase="oil",
-                bhp_limit=800.0,
+schedule.add(
+    "rate_reduction",
+    bores.WellEvent(
+        predicate=bores.time_predicate(time_step=50),
+        action=bores.update_well(
+            control=bores.ProducerRateControl(
+                primary_phase=bores.FluidPhase.OIL,
+                primary_control=bores.AdaptiveRateControl(
+                    target_rate=-200.0,
+                    target_phase="oil",
+                    bhp_limit=800.0,
+                ),
+                secondary_clamp=bores.ProductionClamp(),
             ),
-            secondary_clamp=bores.ProductionClamp(),
         ),
     ),
-))
+)
 
 # Or use like a dictionary
 schedule["shut_in"] = bores.WellEvent(
@@ -199,34 +205,40 @@ schedules = bores.WellSchedules()
 
 # Add schedule for a production well
 prod_schedule = bores.WellSchedule()
-prod_schedule.add("reduce_rate", bores.WellEvent(
-    predicate=bores.time_predicate(time_step=100),
-    action=bores.update_well(
-        control=bores.ProducerRateControl(
-            primary_phase=bores.FluidPhase.OIL,
-            primary_control=bores.AdaptiveRateControl(
-                target_rate=-200.0,
-                target_phase="oil",
-                bhp_limit=800.0,
+prod_schedule.add(
+    "reduce_rate",
+    bores.WellEvent(
+        predicate=bores.time_predicate(time_step=100),
+        action=bores.update_well(
+            control=bores.ProducerRateControl(
+                primary_phase=bores.FluidPhase.OIL,
+                primary_control=bores.AdaptiveRateControl(
+                    target_rate=-200.0,
+                    target_phase="oil",
+                    bhp_limit=800.0,
+                ),
+                secondary_clamp=bores.ProductionClamp(),
             ),
-            secondary_clamp=bores.ProductionClamp(),
         ),
     ),
-))
+)
 schedules["PROD-1"] = prod_schedule
 
 # Add schedule for an injection well
 inj_schedule = bores.WellSchedule()
-inj_schedule.add("increase_rate", bores.WellEvent(
-    predicate=bores.time_predicate(time_step=100),
-    action=bores.update_well(
-        control=bores.RateControl(
-            target_rate=1200.0,
-            bhp_limit=5000.0,
+inj_schedule.add(
+    "increase_rate",
+    bores.WellEvent(
+        predicate=bores.time_predicate(time_step=100),
+        action=bores.update_well(
+            control=bores.RateControl(
+                target_rate=1200.0,
+                bhp_limit=5000.0,
+            ),
         ),
     ),
-))
-schedules.add("INJ-1", inj_schedule) # Same as doing `schedules["INJ-1"] = inj_schedule`
+)
+schedules.add("INJ-1", inj_schedule)  # Same as doing `schedules["INJ-1"] = inj_schedule`
 ```
 
 Pass the schedules to the `Config`:
@@ -251,9 +263,7 @@ The `EventPredicate` class supports logical composition using Python operators:
 import bores
 
 # Create individual predicates
-after_year_one = bores.EventPredicate.from_func(
-    bores.time_predicate(time=365.0)
-)
+after_year_one = bores.EventPredicate.from_func(bores.time_predicate(time=365.0))
 
 # Combine with AND
 combined = bores.EventPredicate.all_of(
@@ -281,7 +291,7 @@ import bores
 
 # Execute both actions when the event triggers
 combined_action = bores.EventAction.sequence(
-    bores.update_well(skin_factor=-2.0),       # Workover
+    bores.update_well(skin_factor=-2.0),  # Workover
     bores.update_well(
         control=bores.ProducerRateControl(
             primary_phase=bores.FluidPhase.OIL,

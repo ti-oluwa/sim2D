@@ -182,9 +182,7 @@ config = bores.Config(
 states = list(bores.monitor(model, config))
 final = states[-1][0]
 print(f"Completed {final.step} steps in {final.time_in_days:.2f} days")
-print(
-    f"Final avg pressure: {final.model.fluid_properties.pressure_grid.mean():.1f} psi"
-)
+print(f"Final avg pressure: {final.model.fluid_properties.pressure_grid.mean():.1f} psi")
 ```
 
 <p align="center">

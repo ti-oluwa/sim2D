@@ -93,6 +93,7 @@ Run the following script to confirm that BORES is installed correctly and its co
 
 ```python
 import bores
+
 print(f"BORES version: {bores.__version__}")
 print(f"Default precision: {bores.get_dtype()}")
 ```
@@ -219,11 +220,13 @@ To see which threading layer Numba is currently using, run:
 ```python
 import numba
 
+
 def get_threading_backend():
     try:
         return numba.threading_layer()
     except Exception:
         return "unknown"
+
 
 print(f"Numba threading layer: {get_threading_backend()}")
 ```
@@ -248,6 +251,7 @@ Expected output (one of):
 
     ```python
     import numba
+
     numba.set_num_threads(4)
     ```
 
@@ -274,6 +278,7 @@ If you want to ensure **TBB** (the fastest threading layer) is used, install it 
 
     ```python
     import numba
+
     print(numba.threading_layer())  # Should print: tbb
     ```
 
@@ -296,6 +301,7 @@ If you want to ensure **TBB** (the fastest threading layer) is used, install it 
 
     ```python
     import numba
+
     print(numba.threading_layer())  # Should print: tbb
     ```
 
@@ -312,6 +318,7 @@ If you want to ensure **TBB** (the fastest threading layer) is used, install it 
 
     ```python
     import numba
+
     print(numba.threading_layer())  # Should print: tbb
     ```
 

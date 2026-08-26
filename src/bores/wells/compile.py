@@ -113,8 +113,9 @@ class InjectorControlModeTag(enum.IntEnum):
     """
     Tag value for `CompiledWellControls.control_modes` on a
     `WellKind.INJECTOR` row. Check `well_kinds` before interpreting a
-    `control_modes` entry - this is a separate tag space from
-    `ProducerControlModeTag`, even though both start at `0`.
+    `control_modes` entry.
+
+    This is a separate tag space from `ProducerControlModeTag`, even though both start at `0`.
     """
 
     RATE = 0
@@ -208,23 +209,29 @@ GROUP_INJECTOR_MODE_TAG = {
     GroupInjectorControlMode.REIN: GroupInjectorControlModeTag.REIN,
     GroupInjectorControlMode.FLD: GroupInjectorControlModeTag.FLD,
 }
-GROUP_TO_PRODUCER_MODE_TAG: dict[int, int] = {
+GROUP_TO_PRODUCER_MODE_TAG = {
     GroupProducerControlModeTag.ORAT: ProducerControlModeTag.ORAT,
     GroupProducerControlModeTag.WRAT: ProducerControlModeTag.WRAT,
     GroupProducerControlModeTag.GRAT: ProducerControlModeTag.GRAT,
     GroupProducerControlModeTag.LRAT: ProducerControlModeTag.LRAT,
     GroupProducerControlModeTag.RESV: ProducerControlModeTag.RESV,
 }
-"""Maps a `GroupProducerControlModeTag` to the concrete `ProducerControlModeTag`
+"""
+Maps a `GroupProducerControlModeTag` to the concrete `ProducerControlModeTag`
 a `GRUP`-mode member well switches to once allocated a share of it.
-`FLD`/`NONE` are deliberately absent - neither has a directly allocatable
-per-well target."""
-GROUP_TO_INJECTOR_MODE_TAG: dict[int, int] = {
+
+`FLD`/`NONE` are deliberately absent because neither has a directly allocatable per-well target.
+"""
+
+GROUP_TO_INJECTOR_MODE_TAG = {
     GroupInjectorControlModeTag.RATE: InjectorControlModeTag.RATE,
     GroupInjectorControlModeTag.RESV: InjectorControlModeTag.RESV,
 }
-"""Injector analogue of `GROUP_TO_PRODUCER_MODE_TAG`. `VREP`/`REIN`/`FLD`
-deliberately absent, same reasoning."""
+"""
+Injector analogue of `GROUP_TO_PRODUCER_MODE_TAG`. `VREP`/`REIN`/`FLD`
+deliberately absent, same reasoning.
+"""
+
 RATE_QUANTITY_TAG = {
     RateQuantity.OIL: RateQuantityTag.OIL,
     RateQuantity.WATER: RateQuantityTag.WATER,
@@ -280,9 +287,11 @@ class CompiledPerforations(typing.NamedTuple):
     """Shape `(n_rows,)`. `1` for `CompletionStatus.OPEN`, `0` for `SHUT`."""
 
     schedule_statuses: IntArray[OneDimension]
-    """Shape `(n_rows,)`. `1` for `WellStatus.ACTIVE`, `0` for `PENDING`.
+    """
+    Shape `(n_rows,)`. `1` for `WellStatus.ACTIVE`, `0` for `PENDING`.
     A row with either this or `completion_statuses` at `0` is skipped by
-    every solver kernel."""
+    every solver kernel.
+    """
 
     saturation_regions: IntArray[OneDimension]
     """Shape `(n_rows,)`. Per-connection SATNUM override; `-1` means use the cell's own region."""
@@ -302,8 +311,10 @@ class CompiledLimits(typing.NamedTuple):
     """Shape `(n_rows,)`."""
 
     quantity_tags: IntArray[OneDimension]
-    """Shape `(n_rows,)`. A `RateQuantityTag` on a `RATE` row, an
-    `EconomicQuantityTag` on an `ECONOMIC` row, `UNSET_INT` otherwise."""
+    """
+    Shape `(n_rows,)`. A `RateQuantityTag` on a `RATE` row, an
+    `EconomicQuantityTag` on an `ECONOMIC` row, `UNSET_INT` otherwise.
+    """
 
     min_values: NumberArray[OneDimension]
     """Shape `(n_rows,)`. `NaN` where this limit has no floor."""
@@ -313,24 +324,29 @@ class CompiledLimits(typing.NamedTuple):
 
 
 class CompiledWellControls(typing.NamedTuple):
-    """Every well's current control target, one row per well, positionally
-    aligned with `CompiledWellSystem`."""
+    """
+    Every well's current control target, one row per well, positionally
+    aligned with `CompiledWellSystem`.
+    """
 
     well_kinds: IntArray[OneDimension]
     """Shape `(n_wells,)`."""
 
     control_modes: IntArray[OneDimension]
-    """Shape `(n_wells,)`. A `ProducerControlModeTag` on a `PRODUCER` row,
-    an `InjectorControlModeTag` on an `INJECTOR` row - check `well_kinds`
-    first. `UNSET` for a well with no control yet."""
+    """
+    Shape `(n_wells,)`. A `ProducerControlModeTag` on a `PRODUCER` row,
+    an `InjectorControlModeTag` on an `INJECTOR` row. Check `well_kinds`
+    first. `UNSET` for a well with no control yet.
+    """
 
     injected_phases: IntArray[OneDimension]
-    """Shape `(n_wells,)`. A `FluidPhaseTag` on an `INJECTOR` row with a
-    control set; `UNSET_INT` otherwise."""
+    """
+    Shape `(n_wells,)`. A `FluidPhaseTag` on an `INJECTOR` row with a
+    control set; `UNSET_INT` otherwise.
+    """
 
     target_rates: NumberArray[OneDimension]
-    """Shape `(n_wells,)`. `NaN` where unset. Whichever rate `control_modes`
-    currently selects."""
+    """Shape `(n_wells,)`. `NaN` where unset. Whichever rate `control_modes` currently selects."""
 
     target_bhps: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where unset."""
@@ -348,11 +364,14 @@ class CompiledWellControls(typing.NamedTuple):
 
 
 class CompiledGroupControls(typing.NamedTuple):
-    """Every group's current control target, one row per group, plus each
-    group's compiled well membership (direct or via a descendant group) -
-    a compute-once-patch-on-event quantity like `CompiledPerforations`'
+    """
+    Every group's current control target, one row per group, plus each
+    group's compiled well membership (direct or via a descendant group).
+
+    A compute once, patch on event quantity like `CompiledPerforations`'
     geometry, since the group hierarchy is deck-defined and doesn't change
-    at solve time."""
+    at solve time.
+    """
 
     names: tuple[str, ...]
     """Shape `(n_groups,)`."""
@@ -361,9 +380,11 @@ class CompiledGroupControls(typing.NamedTuple):
     """Shape `(n_groups,)`."""
 
     control_modes: IntArray[OneDimension]
-    """Shape `(n_groups,)`. A `GroupProducerControlModeTag` on a
-    `PRODUCER` row, a `GroupInjectorControlModeTag` on an `INJECTOR` row -
-    check `group_kinds` first."""
+    """
+    Shape `(n_groups,)`. A `GroupProducerControlModeTag` on a
+    `PRODUCER` row, a `GroupInjectorControlModeTag` on an `INJECTOR` row.
+    Check `group_kinds` first.
+    """
 
     injected_phases: IntArray[OneDimension]
     """Shape `(n_groups,)`. A `FluidPhaseTag` on an `INJECTOR` row; `UNSET_INT` otherwise."""
@@ -372,34 +393,42 @@ class CompiledGroupControls(typing.NamedTuple):
     """Shape `(n_groups,)`. `NaN` where unset."""
 
     member_offsets: IntArray[OneDimension]
-    """Shape `(n_groups + 1,)`. Group `g`'s member well positions are
-    `member_well_indices[member_offsets[g]:member_offsets[g + 1]]`. A
-    member is any well whose own group is this group or a descendant of
+    """
+    Shape `(n_groups + 1,)`. Group `g`'s member well positions are
+    `member_well_indices[member_offsets[g]:member_offsets[g + 1]]`. 
+    
+    A member is any well whose own group is this group or a descendant of
     it (`WellGroups.descendants`), regardless of that well's current
-    control mode - membership is static; mode eligibility (`GRUP` or not)
-    is dynamic and checked at allocation time instead."""
+    control mode. Membership is static; mode eligibility (`GRUP` or not)
+    is dynamic and checked at allocation time instead.
+    """
 
     member_well_indices: IntArray[OneDimension]
-    """Shape `(n_members,)`. Positions into `CompiledWellSystem.names`/
-    `.controls` (not well names) - direct array indices, no further lookup
-    needed at allocation time."""
+    """
+    Shape `(n_members,)`. Positions into `CompiledWellSystem.names`/
+    `.controls` (not well names). Direct array indices so there's no further 
+    lookup needed at allocation time.
+    """
 
 
 class CompiledWellSystem(typing.NamedTuple):
     """
-    Top-level compiled wells bundle for the solver hot path. Pass
-    `.perforations`/`.controls`/`.group_controls` (or their individual
-    arrays) into a jitted kernel - never this whole tuple, since `names`
-    and `unit_system` aren't valid `@njit` argument types.
+    Top-level compiled wells bundle for the solver hot path.
+
+    Pass `.perforations`/`.controls`/`.group_controls` (or their individual
+    arrays) into a jitted kernel and never this whole tuple, since `names`
+    and `unit_system` aren't valid jittable argument types.
     """
 
     names: tuple[str, ...]
     """Shape `(n_wells,)`. Every other array here is positional against this order."""
 
     well_kinds: IntArray[OneDimension]
-    """Shape `(n_wells,)`. Duplicated from `controls.well_kinds`, kept in
+    """
+    Shape `(n_wells,)`. Duplicated from `controls.well_kinds`, kept in
     lockstep by construction, for a kernel that needs well identity
-    without threading `controls` through too."""
+    without threading `controls` through too.
+    """
 
     schedule_statuses: IntArray[OneDimension]
     """Shape `(n_wells,)`."""
@@ -451,7 +480,7 @@ def _resolve_perforations_geometry(
     perforation on a well, open or shut.
 
     `resolve_perforations_indices`/`resolve_md_perforations_indices` only
-    resolve `well.open_perforations`, so this builds a "shadow" copy of
+    resolve `well.open_perforations`, so this builds a shadow copy of
     `well` with every perforation forced `CompletionStatus.OPEN` for
     resolution purposes only, then reads each connection's real status
     back off the matching original perforation.
@@ -523,17 +552,19 @@ def compile_perforations(
             permeabilities=permeabilities,
             **resolve_kwargs,
         )
-        for connection in perforation_indices:
-            original = original_by_id[id(connection.perforation)]
-            cell_indices.append(connection.cell_index)
+        for perforation_index in perforation_indices:
+            original = original_by_id[id(perforation_index.perforation)]
+            cell_indices.append(perforation_index.cell_index)
             well_indices.append(
-                connection.well_index if connection.well_index is not None else np.nan
+                perforation_index.well_index
+                if perforation_index.well_index is not None
+                else np.nan
             )
             wellbore_radii.append(original.wellbore_radius)
             skins.append(original.skin)
-            partial_penetration_fractions.append(connection.partial_penetration_fraction)
-            representative_depths.append(connection.representative_depth)
-            inclinations_from_vertical.append(connection.inclination_from_vertical)
+            partial_penetration_fractions.append(perforation_index.partial_penetration_fraction)
+            representative_depths.append(perforation_index.representative_depth)
+            inclinations_from_vertical.append(perforation_index.inclination_from_vertical)
             completion_statuses.append(get_completion_status_tag(status=original.status))
             schedule_statuses.append(get_well_status_tag(status=original.schedule_status))
             saturation_regions.append(
@@ -626,16 +657,17 @@ def compile_well_controls(
     Builds `CompiledWellControls` for a set of wells, in order.
 
     A well with no entry in `controls` gets an `UNSET`-mode row with every
-    target `NaN` and `efficiency_factor=1.0`, rather than an error - an
-    uncontrolled well is a normal roster state, not a data problem. Shared
-    fields (`target_rate`, `target_bhp`, `target_thp`, `efficiency_factor`,
-    `guide_rate`, `limits`) are read via `getattr` with a default rather
-    than assumed present, since `WellControl` itself is an abstract base
-    declaring none of them - only its concrete subclasses do.
+    target as `NaN` and `efficiency_factor=1.0`, rather than an erroring since an
+    uncontrolled well is a normal roster state, not a data problem.
+
+    Shared fields (`target_rate`, `target_bhp`, `target_thp`, `efficiency_factor`,
+    `guide_rate`, `limits`) are read via `getattr` with a default rather than assumed
+    present, since `WellControl` itself is an abstract base declaring none of them,
+    as only its concrete subclasses do.
 
     :param names: Well names, in row order.
     :param controls: Source `WellControls`.
-    :param wells: Source `Wells` - only `well_type` is read, to set
+    :param wells: Source `Wells`. Only `well_type` is read, to set
         `well_kinds` even for a well with no control yet.
     :returns: `CompiledWellControls`.
     :raises ValidationError: If a control is neither a `ProducerControl` nor `InjectorControl`.
@@ -787,7 +819,7 @@ def compile_group_controls(
     member_well_indices: list[Integer] = []
 
     for name in control_names:
-        control = group_controls.controls[name]
+        control = group_controls[name]
         if isinstance(control.mode, GroupInjectorControlMode):
             group_kinds.append(GroupKind.INJECTOR)
             control_modes.append(GROUP_INJECTOR_MODE_TAG[control.mode])
@@ -844,7 +876,7 @@ def compile_well_system(
     Compiles a rich `Wells`/`WellControls` pair into a `CompiledWellSystem`.
 
     Every well `wells` contains is included, regardless of `schedule_status`
-    - this is the load-once roster: a `WellStatus.PENDING` well is compiled
+    as this is the load-once roster: a `WellStatus.PENDING` well is compiled
     the same as an `ACTIVE` one, just tagged, so a later schedule event can
     activate it in place without recompiling.
 
@@ -906,7 +938,11 @@ def compile_well_system(
         perforations=perforations,
         controls=well_controls,
         group_controls=compile_group_controls(
-            group_controls=group_controls, wells=wells, names=names, groups=groups, dtype=dtype
+            group_controls=group_controls,
+            wells=wells,
+            names=names,
+            groups=groups,
+            dtype=dtype,
         ),
         unit_system=wells.unit_system,
     )

@@ -1,2 +1,2 @@
 from .pressure import solve_nonlinear_pressure, solve_pressure  # noqa: F401
-from .transport import solve_transport
+from .transport import solve_transport as solve_transport

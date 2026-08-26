@@ -103,14 +103,14 @@ def classify_boundary_faces(grid: Grid) -> dict[Side, IntArray[OneDimension]]:
     raw_normals = grid.face_unit_normals[boundary]
     outward_ref = face_centroids - cell_centroids
     flip = np.sign(np.einsum("ij,ij->i", raw_normals, outward_ref))
-    flip[flip == 0.0] = 1.0
+    flip[flip == 0] = 1.0
     normals = raw_normals * flip[:, None]
 
     dominant_axis = np.argmax(np.abs(normals), axis=1)
     dominant_sign = np.sign(normals[np.arange(len(boundary)), dominant_axis])
     # A stored/rederived unit normal should never be exactly zero on its own
     # dominant axis. We guard against it anyway rather than silently dropping.
-    dominant_sign[dominant_sign == 0.0] = 1.0
+    dominant_sign[dominant_sign == 0] = 1.0
 
     positions = np.arange(len(boundary))
     result: dict[Side, IntArray[OneDimension]] = {}
@@ -377,12 +377,10 @@ def as_pyvista_grid(
 
     # Next, exclusive prefix sum -> start positions for each cell
     cell_starts = np.zeros(n_cells, dtype=np.int64)
-    cell_starts[valid_cell_mask] = np.concatenate(
-        [
-            [0],
-            np.cumsum(counts[valid_cell_mask])[:-1],
-        ]
-    )
+    cell_starts[valid_cell_mask] = np.concatenate([
+        [0],
+        np.cumsum(counts[valid_cell_mask])[:-1],
+    ])
     total_entries = int(counts.sum())
 
     # Lastly, fill buffer

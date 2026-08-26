@@ -130,8 +130,8 @@ config = bores.Config(
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
     scheme="explicit",
-    pressure_cfl_threshold=0.9,     # Max pressure CFL number
-    cfl_threshold=0.6,   # Max saturation CFL number
+    pressure_cfl_threshold=0.9,  # Max pressure CFL number
+    cfl_threshold=0.6,  # Max saturation CFL number
 )
 ```
 
@@ -178,25 +178,21 @@ config = bores.Config(
     rock_fluid_tables=rock_fluid_tables,
     wells=wells,
     scheme="impes",
-
     # Solver convergence
     pressure_convergence_tolerance=1e-6,
     transport_convergence_tolerance=1e-4,
     maximum_solver_iterations=250,
-
     # Saturation change limits (trigger timestep rejection if exceeded)
     maximum_oil_saturation_change=0.5,
     maximum_water_saturation_change=0.4,
     maximum_gas_saturation_change=0.85,
-    maximum_pressure_change=100.0,         # psi per step
-
+    maximum_pressure_change=100.0,  # psi per step
     # CFL thresholds (explicit and IMPES saturation)
     cfl_threshold=0.6,
     pressure_cfl_threshold=0.9,
-
     # Output control
-    output_frequency=1,                # Yield state every N steps
-    log_interval=5,                    # Log progress every N steps
+    output_frequency=1,  # Yield state every N steps
+    log_interval=5,  # Log progress every N steps
 )
 ```
 

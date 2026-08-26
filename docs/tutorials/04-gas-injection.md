@@ -55,17 +55,17 @@ oil_sg = bores.build_uniform_grid(grid_shape, value=0.87)
 
 sorw = bores.build_uniform_grid(grid_shape, value=0.22)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 Swir = bores.build_uniform_grid(grid_shape, value=0.22)
-swc  = bores.build_uniform_grid(grid_shape, value=0.22)
+swc = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Build initial saturations from fluid contacts
 depth = bores.build_depth_grid(thickness, datum=5000.0)
 
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4900.0,       # GOC above reservoir (no initial gas cap)
-    oil_water_contact=5100.0,     # OWC near reservoir bottom
+    gas_oil_contact=4900.0,  # GOC above reservoir (no initial gas cap)
+    oil_water_contact=5100.0,  # OWC near reservoir bottom
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -112,7 +112,7 @@ gas_injector = bores.injection_well(
     perforating_intervals=[((0, 0, 0), (0, 0, 2))],
     radius=0.25,
     control=bores.RateControl(
-        target_rate=5_000_000.0, 
+        target_rate=5_000_000.0,
         bhp_limit=5000,
     ),
     injected_fluid=bores.InjectedFluid(
@@ -161,16 +161,22 @@ producer = bores.production_well(
     ),
     produced_fluids=[
         bores.ProducedFluid(
-            name="Oil", phase=bores.FluidPhase.OIL,
-            specific_gravity=0.87, molecular_weight=200.0,
+            name="Oil",
+            phase=bores.FluidPhase.OIL,
+            specific_gravity=0.87,
+            molecular_weight=200.0,
         ),
         bores.ProducedFluid(
-            name="Water", phase=bores.FluidPhase.WATER,
-            specific_gravity=1.0, molecular_weight=18.015,
+            name="Water",
+            phase=bores.FluidPhase.WATER,
+            specific_gravity=1.0,
+            molecular_weight=18.015,
         ),
         bores.ProducedFluid(
-            name="Gas", phase=bores.FluidPhase.GAS,
-            specific_gravity=0.65, molecular_weight=16.04,
+            name="Gas",
+            phase=bores.FluidPhase.GAS,
+            specific_gravity=0.65,
+            molecular_weight=16.04,
         ),
     ],
 )
@@ -284,9 +290,7 @@ The 3D visualization makes the gravity override visually obvious. You should see
 ## Step 6 - Compare Gas Flood vs Waterflood Recovery
 
 ```python
-avg_So = np.array([
-    s.model.fluid_properties.oil_saturation_grid.mean() for s in states
-])
+avg_So = np.array([s.model.fluid_properties.oil_saturation_grid.mean() for s in states])
 
 initial_So = 0.75
 Sor_gas = 0.15  # Residual oil to gas
@@ -314,9 +318,7 @@ The residual oil saturation to gas (sorg = 0.15) is actually lower than to water
 ## Step 7 - Pressure Response
 
 ```python
-avg_pressure = np.array([
-    s.model.fluid_properties.pressure_grid.mean() for s in states
-])
+avg_pressure = np.array([s.model.fluid_properties.pressure_grid.mean() for s in states])
 
 fig = bores.make_series_plot(
     data=np.column_stack([time_days, avg_pressure]),

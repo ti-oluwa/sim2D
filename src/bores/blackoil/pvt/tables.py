@@ -66,7 +66,7 @@ def _build_pchip_2d_interpolator(
     :param table: 2-D array of shape `(n_p, n_t)` containing property values.
     :returns: Callable with signature `(p, t) -> values`.
     """
-    _p_interps: list[PchipInterpolator] = [
+    p_interps: list[PchipInterpolator] = [
         PchipInterpolator(pressures, table[:, j], extrapolate=True)
         for j in range(len(temperatures))
     ]
@@ -77,7 +77,7 @@ def _build_pchip_2d_interpolator(
         n = len(p)
 
         values = np.empty((len(temperatures), n), dtype=dtype)
-        for j, interp in enumerate(_p_interps):
+        for j, interp in enumerate(p_interps):
             values[j] = interp(p)
 
         result = np.empty(n, dtype=dtype)
@@ -108,7 +108,7 @@ def _build_pchip_2d_derivative_interpolator(
     :param table: 2-D array of shape `(n_p, n_t)`.
     :returns: Callable `(p, t) -> ∂table/∂P`.
     """
-    _dp_interps: list[PchipInterpolator] = [
+    dp_interps: list[PchipInterpolator] = [
         PchipInterpolator(pressures, table[:, j], extrapolate=True).derivative(1)
         for j in range(len(temperatures))
     ]
@@ -119,7 +119,7 @@ def _build_pchip_2d_derivative_interpolator(
         n = len(p)
 
         values = np.empty((len(temperatures), n), dtype=dtype)
-        for j, d_interp in enumerate(_dp_interps):
+        for j, d_interp in enumerate(dp_interps):
             values[j] = d_interp(p)
 
         result = np.empty(n, dtype=dtype)
@@ -1050,13 +1050,11 @@ class PVTTable(StoreSerializable):
         pressure_arr, temperature_arr, salinity_arr = np.broadcast_arrays(
             pressure_arr, temperature_arr, salinity_arr
         )
-        points = np.column_stack(
-            [
-                pressure_arr.ravel(),
-                temperature_arr.ravel(),
-                salinity_arr.ravel(),
-            ]
-        )
+        points = np.column_stack([
+            pressure_arr.ravel(),
+            temperature_arr.ravel(),
+            salinity_arr.ravel(),
+        ])
         result = interp(points).reshape(pressure_arr.shape).astype(dtype, copy=False)
 
         if result.ndim == 0:

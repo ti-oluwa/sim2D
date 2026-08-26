@@ -61,7 +61,7 @@ class TestPropertyMeta:
             min_val=0.0,
             max_val=1.0,
         )
-        assert meta.min_val == 0.0
+        assert meta.min_val == 0
         assert meta.max_val == 1.0
 
     def test_property_meta_with_aliases(self):

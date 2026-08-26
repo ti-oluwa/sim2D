@@ -22,7 +22,7 @@ grid_shape = (20, 20, 5)
 # Every cell gets the same value
 porosity = bores.build_uniform_grid(grid_shape, value=0.22)
 pressure = bores.build_uniform_grid(grid_shape, value=3500.0)  # psi
-thickness = bores.build_uniform_grid(grid_shape, value=15.0)   # ft per layer
+thickness = bores.build_uniform_grid(grid_shape, value=15.0)  # ft per layer
 ```
 
 The function returns a NumPy array of the specified shape, filled with the given value, using the currently active precision (float32 by default). You can also use the shorter alias `bores.uniform_grid()`.
@@ -61,8 +61,8 @@ The `orientation` parameter selects the layering axis: `"z"` for vertical layeri
 
     ```python
     perm = bores.build_uniform_grid(grid_shape, value=100.0)
-    perm[:, :, 3] = 10.0   # Low-permeability barrier in layer 3
-    perm[:, :, 4] = 5.0    # Even tighter at the bottom
+    perm[:, :, 3] = 10.0  # Low-permeability barrier in layer 3
+    perm[:, :, 4] = 5.0  # Even tighter at the bottom
     ```
 
 ---
@@ -123,8 +123,8 @@ elevation = bores.build_elevation_grid(thickness)
 # Apply a 5-degree dip toward the east (azimuth = 90 degrees)
 dipped = bores.apply_structural_dip(
     elevation_grid=elevation,
-    dip_angle=5.0,           # degrees from horizontal
-    dip_azimuth=90.0,        # direction of dip (degrees from north)
+    dip_angle=5.0,  # degrees from horizontal
+    dip_azimuth=90.0,  # direction of dip (degrees from north)
     cell_dimensions=(100.0, 100.0),  # (dx, dy) in feet
 )
 ```
@@ -148,20 +148,20 @@ import bores
 
 grid_shape = (20, 20, 5)
 thickness = bores.build_uniform_grid(grid_shape, value=15.0)
-depth = bores.build_depth_grid(thickness, datum=5000.0) # Absolute depth from datum
+depth = bores.build_depth_grid(thickness, datum=5000.0)  # Absolute depth from datum
 
 # Residual saturation grids
-swc  = bores.build_uniform_grid(grid_shape, value=0.25)
+swc = bores.build_uniform_grid(grid_shape, value=0.25)
 sorw = bores.build_uniform_grid(grid_shape, value=0.30)
 sorg = bores.build_uniform_grid(grid_shape, value=0.15)
-sgr  = bores.build_uniform_grid(grid_shape, value=0.05)
+sgr = bores.build_uniform_grid(grid_shape, value=0.05)
 porosity = bores.build_uniform_grid(grid_shape, value=0.22)
 
 # Sharp contacts (no transition zones)
 Sw, So, Sg = bores.build_saturation_grids(
     depth_grid=depth,
-    gas_oil_contact=4950.0,       # GOC depth (ft)
-    oil_water_contact=5060.0,     # OWC depth (ft)
+    gas_oil_contact=4950.0,  # GOC depth (ft)
+    oil_water_contact=5060.0,  # OWC depth (ft)
     connate_water_saturation_grid=swc,
     residual_oil_saturation_water_grid=sorw,
     residual_oil_saturation_gas_grid=sorg,
@@ -193,9 +193,9 @@ Sw, So, Sg = bores.build_saturation_grids(
     residual_gas_saturation_grid=sgr,
     porosity_grid=porosity,
     use_transition_zones=True,
-    gas_oil_transition_thickness=10.0,   # ft
-    oil_water_transition_thickness=15.0, # ft
-    transition_curvature_exponent=2.0,   # Power-law shape
+    gas_oil_transition_thickness=10.0,  # ft
+    oil_water_transition_thickness=15.0,  # ft
+    transition_curvature_exponent=2.0,  # Power-law shape
 )
 ```
 

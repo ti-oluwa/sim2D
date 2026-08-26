@@ -18,10 +18,10 @@ BORES provides a global constants proxy `c` that gives direct access to all defa
 from bores.constants import c
 
 # Access constant values with dot notation
-print(c.STANDARD_PRESSURE_IMPERIAL)       # 14.696
-print(c.STANDARD_TEMPERATURE_IMPERIAL)    # 60.0
-print(c.MOLECULAR_WEIGHT_CO2)             # 44.01
-print(c.BARRELS_TO_CUBIC_FEET)            # 5.614583
+print(c.STANDARD_PRESSURE_IMPERIAL)  # 14.696
+print(c.STANDARD_TEMPERATURE_IMPERIAL)  # 60.0
+print(c.MOLECULAR_WEIGHT_CO2)  # 44.01
+print(c.BARRELS_TO_CUBIC_FEET)  # 5.614583
 ```
 
 The proxy automatically returns the unwrapped value of each constant. If you need the full `Constant` object (with description and unit metadata), use bracket notation:
@@ -30,9 +30,9 @@ The proxy automatically returns the unwrapped value of each constant. If you nee
 from bores.constants import c
 
 const = c["STANDARD_PRESSURE_IMPERIAL"]
-print(const.value)        # 14.696
+print(const.value)  # 14.696
 print(const.description)  # "Standard atmospheric pressure (Imperial units)"
-print(const.unit)         # "psi"
+print(const.unit)  # "psi"
 ```
 
 You can also use `get_constant()` for safe access with a default:

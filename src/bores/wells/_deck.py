@@ -91,7 +91,7 @@ def load_well_from_records(
                 # this file's other reissue semantics (WCONPROD/WCONINJE).
                 whole_well_multiplier = record["multiplier"]
             else:
-                multiplier_by_ijk[(i, j, k1, k2)] = record["multiplier"]
+                multiplier_by_ijk[i, j, k1, k2] = record["multiplier"]
 
     for record in compdat_records:
         # Minus 1, to move from 1-based to 0-based indexing used internally

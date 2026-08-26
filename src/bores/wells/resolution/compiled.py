@@ -45,15 +45,13 @@ class CompiledControlResolverSpec(typing.NamedTuple):
     bisection bracket upper bound."""
 
 
-def compile_control_resolver_spec(
-    spec: ControlResolverSpec,
-) -> CompiledControlResolverSpec:
+def compile_control_resolver_spec(spec: ControlResolverSpec) -> CompiledControlResolverSpec:
     """
     Builds a `CompiledControlResolverSpec` from a `ControlResolverSpec`.
 
-    :param spec: Source spec. `ControlResolverSpec.__attrs_post_init__`
-        already resolves every field, so this is a direct copy, not a
-        second round of defaulting.
+    :param spec: Source spec. `ControlResolverSpec` post initilization
+        already resolves every field, so this is a direct copy, but
+        with no defaulting.
     :returns: `CompiledControlResolverSpec`.
     """
     return CompiledControlResolverSpec(
@@ -69,11 +67,12 @@ class PerforationWorkspace(typing.NamedTuple):
     """
     One well's active-connection data for the resolution hot path.
 
-    Built once per well per `resolve_control` call and reused across every
-    fixed-point and bisection iteration within that call. The per-connection
-    values never change mid-resolution, and `connection_pressures` is a
-    scratch buffer callers overwrite in place via
-    `compute_perforation_pressures(..., out=workspace.connection_pressures)`
+    Built once per well per `resolve_control` call, and reused across every
+    fixed-point and bisection iteration within that call.
+
+    The per-connection values never change mid-resolution, and `connection_pressures`
+    is a scratch buffer callers overwrite in place (via
+    `compute_perforation_pressures(..., out=workspace.connection_pressures)`)
     rather than allocating a fresh array on every iteration.
     """
 
@@ -94,16 +93,20 @@ class PerforationWorkspace(typing.NamedTuple):
     inclinations_from_vertical: NumberArray[OneDimension]
 
     connection_pressures: NumberArray[OneDimension]
-    """Scratch buffer for `compute_perforation_pressures`' `out` parameter.
-    Overwritten on every call - has no meaningful contents before the first one."""
+    """
+    Scratch buffer for `compute_perforation_pressures`' `out` parameter.
+    Overwritten on every call and has no meaningful contents before the first one.
+    """
 
     connection_oil_rates: NumberArray[OneDimension]
     connection_water_rates: NumberArray[OneDimension]
     connection_gas_rates: NumberArray[OneDimension]
-    """Scratch buffers for `accumulate_phase_rates`' per-connection `out_*`
-    parameters - each connection's own reservoir-condition phase rate, `0.0`
+    """
+    Scratch buffers for `accumulate_phase_rates`' per-connection `out_*`
+    parameters. Each connection's own reservoir-condition phase rate, `0.0`
     for a phase not relevant to the current solve. Overwritten on every
-    call; feeds the segmented hydraulics walk's `connection_phase_rates`."""
+    call; feeds the segmented hydraulics walk's `connection_phase_rates`.
+    """
 
 
 def build_perforation_workspace(
@@ -178,10 +181,11 @@ def build_perforation_workspace(
 
 class CompiledWellResolution(typing.NamedTuple):
     """
-    Every well's control-resolution result for one timestep, one row per
-    well. Built once per resolve pass (`compile_well_resolution`) and
+    Every well's control-resolution result for one timestep, one row per well.
+
+    Built once per resolve pass (`compile_well_resolution`) and
     updated one well's row at a time as `resolve_control` resolves each
-    well - never reallocated per well or per iteration.
+    well. Never reallocated per well or per iteration.
     """
 
     bhps: NumberArray[OneDimension]
@@ -196,13 +200,17 @@ class CompiledWellResolution(typing.NamedTuple):
     """Shape `(n_wells,)`. `NaN` where not computed."""
 
     active_limit_rows: IntArray[OneDimension]
-    """Shape `(n_wells,)`. Row index into that well's slice of
+    """
+    Shape `(n_wells,)`. Row index into that well's slice of
     `CompiledLimits` identifying the currently-binding limit; `UNSET_INT`
-    if none is binding."""
+    if none is binding.
+    """
 
     economic_shutins: IntArray[OneDimension]
-    """Shape `(n_wells,)`. `1` if an `EconomicLimit` shut this well in
-    this pass, `0` otherwise."""
+    """
+    Shape `(n_wells,)`. `1` if an `EconomicLimit` shut this well in
+    this pass, `0` otherwise.
+    """
 
 
 def compile_well_resolution(
@@ -272,11 +280,12 @@ def accumulate_phase_rates(
     """
     Sums each relevant phase's reservoir-condition and surface-condition
     rate across every connection in a `PerforationWorkspace`, at a given
-    set of connection pressures. Also writes each connection's own
-    reservoir-condition contribution into the `out_connection_*` buffers,
-    in the same pass - these feed the segmented hydraulics walk's
-    `connection_phase_rates`, which needs each connection's individual
-    rate rather than only the well total.
+    set of connection pressures.
+
+    Also writes each connection's own reservoir-condition contribution
+    into the `out_connection_*` buffers, in the same pass.
+    These feed the segmented hydraulics walk's `connection_phase_rates`,
+    which needs each connection's individual rate rather than only the well total.
 
     :param connection_pressures: Flowing pressure at each connection.
     :param well_indices: `PerforationWorkspace.well_indices`.
