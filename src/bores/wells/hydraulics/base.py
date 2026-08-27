@@ -81,13 +81,13 @@ class SurfaceFluidProperties(typing.NamedTuple):
 
 class WellBoreModel(typing.NamedTuple):
     """
-    A wellbore hydraulics model: which correlation to use, and its configuration. 
+    A wellbore hydraulics model: which correlation to use, and its configuration.
     """
 
     name: str
     """Which correlation this is: `"mechanistic"` or `"beggs_brill"`."""
 
-    options: typing.Any 
+    options: typing.Any
     """
     This correlation's own configuration. `MechanisticModel`,
     `BeggsAndBrillModel`, or any other correlation's own `NamedTuple`.
