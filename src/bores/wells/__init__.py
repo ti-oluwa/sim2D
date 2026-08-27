@@ -1,4 +1,4 @@
-from ._deck import *
+from .deck import *
 from .base import *
 from .controls import *
 from .groups import *

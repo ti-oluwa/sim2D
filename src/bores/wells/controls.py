@@ -659,7 +659,7 @@ class WellControls(
         :param deck_file: Parsed deck containing WCONPROD/WCONINJE/WECON.
         :returns: WellControls for every well with a control record.
         """
-        from bores.wells._deck import load_well_controls_from_deck
+        from bores.wells.deck import load_well_controls_from_deck
 
         return typing.cast(Self, load_well_controls_from_deck(deck_file))
 

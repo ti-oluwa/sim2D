@@ -48,29 +48,29 @@ def load_well_from_records(
     current_time: float = 0.0,
 ) -> Well:
     """
-    Builds one well from its WELSPECS record and its COMPDAT records.
+    Builds one well from its `WELSPECS` record and its `COMPDAT` records.
 
-    Every COMPDAT record for the well is included, no matter when in the
+    Every `COMPDAT` record for the well is included, no matter when in the
     schedule it takes effect. A completion whose scheduled time has not
     been reached yet is included but marked as not yet active, so a
     workover completion added later in the schedule is already part of the
     well from the start and just needs switching on when its time comes,
     rather than being added on the fly. The well itself is marked the same
-    way, based on when its WELSPECS record takes effect.
+    way, based on when its `WELSPECS` record takes effect.
 
     :param grid: Grid the well's completions are resolved against.
-    :param welspecs_record: The well's WELSPECS record.
-    :param compdat_records: Every COMPDAT record for this well, from any
+    :param welspecs_record: The well's `WELSPECS` record.
+    :param compdat_records: Every `COMPDAT` record for this well, from any
         point in the schedule.
     :param unit_system: The deck's unit system.
     :param well_type: Whether this well is a producer or an injector. Not
-        derivable from WELSPECS/COMPDAT alone.
+        derivable from `WELSPECS`/`COMPDAT` alone.
     :param current_time: The point on the schedule clock this well is
         being built for, in the deck's time unit. Anything scheduled at or
         before this time is marked active; anything later is marked
         pending. Defaults to zero, the start of the run.
     :returns: The constructed well.
-    :raises ValidationError: If there are no COMPDAT records for this well.
+    :raises ValidationError: If there are no `COMPDAT` records for this well.
     """
     if not compdat_records:
         raise ValidationError(f"No `COMPDAT` records for well {welspecs_record['well']!r}.")
@@ -184,7 +184,7 @@ def load_wells_from_records(
     current_time: float = 0.0,
 ) -> Wells:
     """
-    Builds a full well roster from every WELSPECS and COMPDAT record in a
+    Builds a full well roster from every `WELSPECS` and `COMPDAT` record in a
     deck, no matter where in the schedule each one occurs.
 
     A well introduced later in the schedule, or a completion added to an
@@ -195,11 +195,11 @@ def load_wells_from_records(
     instead of being added partway through the run.
 
     :param grid: Grid the wells' completions are resolved against.
-    :param welspecs_records: Every WELSPECS record in the deck.
-    :param compdat_records: Every COMPDAT record in the deck.
+    :param welspecs_records: Every `WELSPECS` record in the deck.
+    :param compdat_records: Every `COMPDAT` record in the deck.
     :param unit_system: The deck's unit system.
-    :param injector_names: Names of wells that appear in WCONINJE. Every
-        other well is built as a producer, since WELSPECS and COMPDAT
+    :param injector_names: Names of wells that appear in `WCONINJE`. Every
+        other well is built as a producer, since `WELSPECS` and `COMPDAT`
         alone don't say which a well is.
     :param current_time: The point on the schedule clock the roster is
         being built for, in the deck's time unit. Anything scheduled at or
@@ -238,7 +238,7 @@ def from_deck_gas_rate(value: float | None, unit_system: UnitSystem) -> float | 
     :param value: Raw gas rate value as written in the deck, or None.
     :param unit_system: The deck's unit system.
     :returns: value unchanged, except multiplied by 1000 when
-        `unit_system` is FIELD - Eclipse's FIELD convention reports gas
+        `unit_system` is FIELD. Eclipse's FIELD convention reports gas
         rates in Mscf/day; this codebase's internal FIELD convention is
         raw scf/day, dimensionally consistent with oil/water in stb/day.
         Not applied for any other `unit_system`.
@@ -248,7 +248,7 @@ def from_deck_gas_rate(value: float | None, unit_system: UnitSystem) -> float | 
     return value * c.MSCF_TO_SCF if unit_system is UnitSystem.FIELD else value
 
 
-def _select_current_records(
+def select_current_records(
     records: typing.Sequence[typing.Mapping[str, typing.Any]],
     *,
     key: str,
@@ -286,7 +286,7 @@ def load_producer_control_from_record(
     """
     Build a `ProducerControl` from one `WCONPROD` record.
 
-    :param record: One parsed WCONPROD record.
+    :param record: One parsed `WCONPROD` record.
     :param unit_system: The deck's unit system.
     :returns: Constructed `ProducerControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
@@ -359,9 +359,9 @@ def load_economic_limits_from_record(
     """
     Load `EconomicLimit`s from `WECON` records.
 
-    :param record: One parsed WECON record.
+    :param record: One parsed `WECON` record.
     :param unit_system: The deck's unit system.
-    :returns: One `EconomicLimit` per non-None ratio item present on the
+    :returns: One `EconomicLimit` per non-`None` ratio item present on the
         record (water cut, GOR, water-gas ratio). Min-rate items
         (min_oil_rate/min_gas_rate) aren't covered by `EconomicLimit`'s
         current shape - not converted here, flagged rather than dropped
@@ -394,22 +394,22 @@ def apply_economic_limits(
 ) -> None:
     """
     Adds each well's economic limits onto its existing control in
-    `controls`, in place, using whichever WECON record is in effect for
+    `controls`, in place, using whichever `WECON` record is in effect for
     that well at a given point in the schedule.
 
-    If a well has more than one WECON record over the schedule, only the
+    If a well has more than one `WECON` record over the schedule, only the
     most recent one that has already taken effect is used. A reissue
     replaces that well's earlier economic limits rather than adding to
     them, matching how a well's other controls are reissued.
 
     :param controls: Well controls to update.
-    :param wecon_records: Every WECON record in the deck.
+    :param wecon_records: Every `WECON` record in the deck.
     :param unit_system: The deck's unit system.
     :param current_time: The point on the schedule clock to resolve limits
         for, in the deck's time unit. Defaults to zero, the start of the run.
     :raises KeyError: If a record's well has no control set in `controls` yet.
     """
-    current_records = _select_current_records(wecon_records, key="well", current_time=current_time)
+    current_records = select_current_records(wecon_records, key="well", current_time=current_time)
     for well_name, record in current_records.items():
         current_control = controls[well_name]
         new_limits = load_economic_limits_from_record(record, unit_system=unit_system)
@@ -431,19 +431,19 @@ def load_controls_from_records(
     current_time: float = 0.0,
 ) -> WellControls:
     """
-    Builds well controls from every WCONPROD and WCONINJE record in a
+    Builds well controls from every `WCONPROD` and `WCONINJE` record in a
     deck, resolved to whichever control is actually in effect for each
     well at a given point in the schedule.
 
     A well with more than one control record over the course of the
     schedule is changing control mode partway through the run, or in some
     cases converting between producer and injector. Only the most recent
-    record that has already taken effect is used, comparing WCONPROD and
-    WCONINJE records for the same well against each other by their actual
+    record that has already taken effect is used, comparing `WCONPROD` and
+    `WCONINJE` records for the same well against each other by their actual
     time in the schedule rather than assuming one keyword always wins.
 
-    :param wconprod_records: Every WCONPROD record in the deck.
-    :param wconinje_records: Every WCONINJE record in the deck.
+    :param wconprod_records: Every `WCONPROD` record in the deck.
+    :param wconinje_records: Every `WCONINJE` record in the deck.
     :param unit_system: The deck's unit system.
     :param current_time: The point on the schedule clock to resolve
         controls for, in the deck's time unit. Defaults to zero, the start
@@ -537,18 +537,18 @@ def load_group_controls_from_records(
     current_time: float = 0.0,
 ) -> GroupControls:
     """
-    Builds group controls from every GCONPROD and GCONINJE record in a
+    Builds group controls from every `GCONPROD` and `GCONINJE` record in a
     deck, resolved to whichever control is actually in effect for each
     group at a given point in the schedule.
 
     A group with more than one control record over the course of the
     schedule is changing control mode partway through the run. Only the
     most recent one that has already taken effect is used, comparing
-    GCONPROD and GCONINJE records for the same group against each other by
+    `GCONPROD` and `GCONINJE` records for the same group against each other by
     their actual time in the schedule.
 
-    :param gconprod_records: Every GCONPROD record in the deck.
-    :param gconinje_records: Every GCONINJE record in the deck.
+    :param gconprod_records: Every `GCONPROD` record in the deck.
+    :param gconinje_records: Every `GCONINJE` record in the deck.
     :param unit_system: The deck's unit system.
     :param current_time: The point on the schedule clock to resolve
         controls for, in the deck's time unit. Defaults to zero, the start
@@ -586,16 +586,16 @@ def apply_guide_rates(
 ) -> None:
     """
     Sets each well's guide rate on its existing control in `controls`, in
-    place, using whichever WGRUPCON record is in effect for that well at a
+    place, using whichever `WGRUPCON` record is in effect for that well at a
     given point in the schedule.
 
     :param controls: Well controls to update.
-    :param wgrupcon_records: Every WGRUPCON record in the deck.
+    :param wgrupcon_records: Every `WGRUPCON` record in the deck.
     :param current_time: The point on the schedule clock to resolve guide
         rates for, in the deck's time unit. Defaults to zero, the start of the run.
     :raises KeyError: If a record's well has no control set in `controls` yet.
     """
-    current_records = _select_current_records(
+    current_records = select_current_records(
         wgrupcon_records, key="well", current_time=current_time
     )
     for well_name, record in current_records.items():
@@ -611,7 +611,7 @@ def load_wells_from_deck(deck_file: DeckFile, grid: Grid, current_time: float = 
     Builds the full well roster from a parsed deck, covering every well
     and completion the deck ever defines across the whole schedule.
 
-    :param deck_file: Parsed deck containing WELSPECS, COMPDAT, and WCONINJE.
+    :param deck_file: Parsed deck containing `WELSPECS`, `COMPDAT`, and `WCONINJE`.
     :param grid: Grid built from the same deck, used to resolve completion depths.
     :param current_time: The point on the schedule clock the roster is
         being built for, in the deck's time unit. Anything scheduled at or
@@ -646,7 +646,7 @@ def load_well_controls_from_deck(deck_file: DeckFile, current_time: float = 0.0)
     Builds well controls from a parsed deck, resolved to whatever is
     actually in effect for each well at a given point in the schedule.
 
-    :param deck_file: Parsed deck containing WCONPROD, WCONINJE, WECON, and WGRUPCON.
+    :param deck_file: Parsed deck containing `WCONPROD`, `WCONINJE`, `WECON`, and `WGRUPCON`.
     :param current_time: The point on the schedule clock to resolve
         controls for, in the deck's time unit. Defaults to zero, the start
         of the run.
@@ -678,8 +678,8 @@ def load_groups_from_deck(deck_file: DeckFile) -> WellGroups:
     Builds the group hierarchy from a parsed deck.
 
     :param deck_file: Parsed deck.
-    :returns: Well groups from GRUPTREE.
-    :raises DeckParseError: If the deck has no GRUPTREE.
+    :returns: Well groups from `GRUPTREE`.
+    :raises DeckParseError: If the deck has no `GRUPTREE`.
     """
     gruptree = deck_file.get("GRUPTREE")
     if not gruptree:
@@ -697,7 +697,7 @@ def load_group_controls_from_deck(deck_file: DeckFile, current_time: float = 0.0
         controls for, in the deck's time unit. Defaults to zero, the start
         of the run.
     :returns: Group controls for every group that has a control in effect by this time.
-    :raises DeckParseError: If the deck has neither GCONPROD nor GCONINJE.
+    :raises DeckParseError: If the deck has neither `GCONPROD` nor `GCONINJE`.
     """
     gconprod = deck_file.get("GCONPROD") or []
     gconinje = deck_file.get("GCONINJE") or []
