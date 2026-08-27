@@ -79,21 +79,15 @@ class SurfaceFluidProperties(typing.NamedTuple):
     """
 
 
-class WellBoreModel(typing.NamedTuple, typing.Generic[WellBoreModelOptions]):
+class WellBoreModel(typing.NamedTuple):
     """
-    A wellbore hydraulics model: which correlation to use, and its
-    configuration. Generic over `options`' own type, so
-    `WellBoreModel[MechanisticModel]`/`WellBoreModel[BeggsAndBrillModel]`
-    (or any future correlation's own config type) each type-check as a
-    distinct, concrete `WellBoreModel` - no `options: Any` to unify them
-    under, and no new correlation needs to register anywhere for this to
-    keep working; the type parameter falls out of whatever's constructed.
+    A wellbore hydraulics model: which correlation to use, and its configuration. 
     """
 
     name: str
     """Which correlation this is: `"mechanistic"` or `"beggs_brill"`."""
 
-    options: WellBoreModelOptions
+    options: typing.Any 
     """
     This correlation's own configuration. `MechanisticModel`,
     `BeggsAndBrillModel`, or any other correlation's own `NamedTuple`.

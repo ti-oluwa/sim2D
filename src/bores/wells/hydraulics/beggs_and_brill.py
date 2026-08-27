@@ -118,12 +118,9 @@ def beggs_and_brill(
     turbulent_reynolds_limit: Number | None = None,
     friction_max_iterations: int | None = None,
     friction_tolerance: Number | None = None,
-) -> WellBoreModel[BeggsAndBrillModel]:
+) -> WellBoreModel:
     """
-    Builds a `WellBoreModel` wrapping a fully configured `BeggsAndBrillModel`
-    - ready to use directly anywhere a `WellBoreModel` is expected
-    (`WellSystem.default_wellbore`, `.wellbore_overrides`, `resolve_control`'s
-    `wellbore=`), no separate wrapping step needed.
+    Builds a `WellBoreModel` wrapping a fully configured `BeggsAndBrillModel`.
 
     :param tubing_inner_diameter: Tubing inner diameter.
     :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
