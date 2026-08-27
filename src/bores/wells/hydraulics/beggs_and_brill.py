@@ -17,6 +17,7 @@ from bores.typing import (
     UnitConversionTable,
     UnitSystem,
 )
+from bores.utils import scale
 from bores.wells.hydraulics.base import (
     PressureDrop,
     SurfaceFluidProperties,
@@ -50,9 +51,11 @@ class BeggsAndBrillModel(typing.NamedTuple):
     """Absolute pipe roughness. `NaN` for a smooth pipe."""
 
     friction_method: int
-    """Which single-phase friction-factor correlation the two-phase
+    """
+    Which single-phase friction-factor correlation the two-phase
     correction is applied to: `0` for the simplified correlation, `1` for
-    Colebrook."""
+    Colebrook.
+    """
 
     gravitational_acceleration: Number
     """Acceleration due to gravity, in this model's unit system."""
@@ -95,13 +98,19 @@ class BeggsAndBrillModel(typing.NamedTuple):
         factors = get_conversion_factors(self.unit_system, target, table=table)
         length_factor = factors["length"]
         return self._replace(
-            tubing_inner_diameter=self.tubing_inner_diameter * length_factor,
-            tubing_roughness=self.tubing_roughness * length_factor,
-            gravitational_acceleration=self.gravitational_acceleration * length_factor,
+            tubing_inner_diameter=scale(self.tubing_inner_diameter, length_factor),
+            tubing_roughness=scale(self.tubing_roughness, length_factor),
+            gravitational_acceleration=scale(
+                self.gravitational_acceleration, length_factor
+            ),
             hydrostatic_scale=1.0
             / (
-                get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=target)
-                * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target)
+                get_unit_system_constant(
+                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
+                )
+                * get_unit_system_constant(
+                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
+                )
             ),
             unit_system=target,
         )
@@ -150,7 +159,9 @@ def beggs_and_brill(
 
     options = BeggsAndBrillModel(
         tubing_inner_diameter=tubing_inner_diameter,
-        tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
+        tubing_roughness=tubing_roughness
+        if tubing_roughness is not None
+        else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
         gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
         laminar_reynolds_limit=(
@@ -169,12 +180,18 @@ def beggs_and_brill(
             else c.COLEBROOK_MAX_ITERATIONS
         ),
         friction_tolerance=(
-            friction_tolerance if friction_tolerance is not None else c.COLEBROOK_TOLERANCE
+            friction_tolerance
+            if friction_tolerance is not None
+            else c.COLEBROOK_TOLERANCE
         ),
         hydrostatic_scale=1.0
         / (
-            get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system)
-            * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system)
+            get_unit_system_constant(
+                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
+            )
+            * get_unit_system_constant(
+                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
+            )
         ),
         unit_system=unit_system,
     )
@@ -209,7 +226,9 @@ def flow_pattern_tag(no_slip_holdup: Number, froude_number: Number) -> int:
 
 
 @numba.njit(cache=True)
-def horizontal_holdup(pattern_tag: int, no_slip_holdup: Number, froude_number: Number) -> Number:
+def horizontal_holdup(
+    pattern_tag: int, no_slip_holdup: Number, froude_number: Number
+) -> Number:
     """
     Computes horizontal (zero-inclination) liquid holdup for a given flow pattern.
 
@@ -228,7 +247,8 @@ def horizontal_holdup(pattern_tag: int, no_slip_holdup: Number, froude_number: N
         hl_intermittent = 0.845 * no_slip_holdup**0.5351 / froude_number**0.0173
         interpolation_weight = (l3 - froude_number) / (l3 - l2)
         holdup = (
-            interpolation_weight * hl_segregated + (1.0 - interpolation_weight) * hl_intermittent
+            interpolation_weight * hl_segregated
+            + (1.0 - interpolation_weight) * hl_intermittent
         )
     elif pattern_tag == 0:
         holdup = 0.98 * no_slip_holdup**0.4846 / froude_number**0.0868
@@ -268,12 +288,18 @@ def compute_beggs_brill_holdup(
     """
     mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
     no_slip_holdup = superficial_liquid_velocity / mixture_velocity
-    froude_number = mixture_velocity**2 / (gravitational_acceleration * tubing_inner_diameter)
+    froude_number = mixture_velocity**2 / (
+        gravitational_acceleration * tubing_inner_diameter
+    )
     liquid_velocity_number = (
-        1.938 * superficial_liquid_velocity * (liquid_density / liquid_surface_tension) ** 0.25
+        1.938
+        * superficial_liquid_velocity
+        * (liquid_density / liquid_surface_tension) ** 0.25
     )
 
-    pattern_tag = flow_pattern_tag(no_slip_holdup=no_slip_holdup, froude_number=froude_number)
+    pattern_tag = flow_pattern_tag(
+        no_slip_holdup=no_slip_holdup, froude_number=froude_number
+    )
     holdup_at_horizontal = horizontal_holdup(
         pattern_tag=pattern_tag,
         no_slip_holdup=no_slip_holdup,
@@ -289,7 +315,9 @@ def compute_beggs_brill_holdup(
             * liquid_velocity_number**f_coef
             * froude_number**g_coef
         )
-        correction_coefficient = max(0.0, (1.0 - no_slip_holdup) * math.log(correction_argument))
+        correction_coefficient = max(
+            0.0, (1.0 - no_slip_holdup) * math.log(correction_argument)
+        )
     else:
         if pattern_tag == 3:  # distributed: no correction
             correction_coefficient = 0.0
@@ -353,7 +381,12 @@ def compute_two_phase_friction_factor(
         else:
             no_slip_friction_factor = (
                 0.25
-                / (math.log10(relative_roughness / 3.7 + 5.74 / no_slip_reynolds_number**0.9)) ** 2
+                / (
+                    math.log10(
+                        relative_roughness / 3.7 + 5.74 / no_slip_reynolds_number**0.9
+                    )
+                )
+                ** 2
             )
     else:
         no_slip_friction_factor = 0.02
@@ -417,7 +450,9 @@ def compute_segment_drop(
         is_injector=is_injector,
         gravitational_acceleration=model.gravitational_acceleration,
     )
-    in_situ_density = liquid_density * in_situ_holdup + gas_density * (1.0 - in_situ_holdup)
+    in_situ_density = liquid_density * in_situ_holdup + gas_density * (
+        1.0 - in_situ_holdup
+    )
     vertical_length = length * math.cos(inclination_from_vertical)
     hydrostatic_drop = (
         in_situ_density
@@ -428,15 +463,22 @@ def compute_segment_drop(
 
     mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
     no_slip_holdup = superficial_liquid_velocity / mixture_velocity
-    no_slip_density = liquid_density * no_slip_holdup + gas_density * (1.0 - no_slip_holdup)
-    no_slip_viscosity = liquid_viscosity * no_slip_holdup + gas_viscosity * (1.0 - no_slip_holdup)
+    no_slip_density = liquid_density * no_slip_holdup + gas_density * (
+        1.0 - no_slip_holdup
+    )
+    no_slip_viscosity = liquid_viscosity * no_slip_holdup + gas_viscosity * (
+        1.0 - no_slip_holdup
+    )
     relative_roughness = (
         0.0
         if math.isnan(model.tubing_roughness)
         else model.tubing_roughness / model.tubing_inner_diameter
     )
     no_slip_reynolds_number = (
-        no_slip_density * mixture_velocity * model.tubing_inner_diameter / no_slip_viscosity
+        no_slip_density
+        * mixture_velocity
+        * model.tubing_inner_diameter
+        / no_slip_viscosity
     )
     friction_factor = compute_two_phase_friction_factor(
         no_slip_holdup=no_slip_holdup,
@@ -455,9 +497,16 @@ def compute_segment_drop(
         * (no_slip_density * mixture_velocity**2 / 2.0)
     )
 
-    # This model doesn't vary velocity within one segment, so this is
-    # always 0.0 - see compute_perforation_pressures.
-    acceleration_drop = no_slip_density * (mixture_velocity**2 - mixture_velocity**2) / 2.0
+    # Velocity is only ever set at a connection, where a perforation's own
+    # rate joins or leaves the flow (see compute_perforation_pressures).
+    # Within one segment there is no other source of velocity change
+    # (constant PVT properties are assumed along the segment), so this
+    # term is always zero today. The density convention below still
+    # follows the correlation's own spec (slip density, matching the
+    # gravity term) for whenever that stops being true.
+    acceleration_drop = (
+        in_situ_density * (mixture_velocity**2 - mixture_velocity**2) / 2.0
+    )
     return PressureDrop(
         hydrostatic=hydrostatic_drop,
         friction=friction_drop,
@@ -483,10 +532,12 @@ def _split_liquid_gas(
     gas_rate = phase_rates.gas
     if liquid_rate > 0.0:
         liquid_density = (
-            phase_rates.oil * phase_densities.oil + phase_rates.water * phase_densities.water
+            phase_rates.oil * phase_densities.oil
+            + phase_rates.water * phase_densities.water
         ) / liquid_rate
         liquid_viscosity = (
-            phase_rates.oil * phase_viscosities.oil + phase_rates.water * phase_viscosities.water
+            phase_rates.oil * phase_viscosities.oil
+            + phase_rates.water * phase_viscosities.water
         ) / liquid_rate
     else:
         liquid_density = phase_densities.oil
@@ -551,7 +602,9 @@ def compute_perforation_pressures(
     """
     n = len(connection_samples)
     if out is not None and len(out) != n:
-        raise ValueError("If given, `out` must have the same length as `connection_samples`.")
+        raise ValueError(
+            "If given, `out` must have the same length as `connection_samples`."
+        )
     if not (
         len(representative_depths)
         == len(inclinations_from_vertical)
@@ -597,7 +650,9 @@ def compute_perforation_pressures(
             length = abs(representative_depths[i] - current_depth)
             geometric_sign = 1.0 if representative_depths[i] >= current_depth else -1.0
             sample = connection_samples[i]
-            remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+            remaining_total = (
+                remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+            )
 
             if remaining_total == 0:
                 drop = compute_static_hydrostatic_drop(
@@ -738,5 +793,7 @@ def compute_tubing_head_pressure(
         is_injector=is_injector,
     )
     return (
-        reference_pressure - (drop.hydrostatic + drop.acceleration) - friction_sign * drop.friction
+        reference_pressure
+        - (drop.hydrostatic + drop.acceleration)
+        - friction_sign * drop.friction
     )

@@ -139,7 +139,7 @@ class PVTData(StoreSerializable):
     - Gas: ft³/SCF (FIELD), m³/Sm³ (METRIC/SI), cc/scc (LAB)
     """
 
-    # Shared derived tables (optional; built at PVTTable construction when absent)
+    # Shared derived tables (optional; built at `PVTTable` construction when absent)
     density_table: NumberArray[TwoDimensions] | NumberArray[ThreeDimensions] | None = None
     """
     Density ρ(P, T). 2-D for oil/gas, 3-D for water.
@@ -348,7 +348,7 @@ class PVTDataSet(StoreSerializable):
                 f"{type(self).__name__}: At least one of oil, gas, or water must be provided."
             )
 
-        # Check that the phase field of each PVTData matches the attribute name
+        # Check that the phase field of each `PVTData` matches the attribute name
         for phase, data in (
             (FluidPhase.OIL, self.oil),
             (FluidPhase.GAS, self.gas),
@@ -359,7 +359,7 @@ class PVTDataSet(StoreSerializable):
                     f"{type(self).__name__}: {phase.value!r} `PVTData` has phase={data.phase}"
                 )
 
-        # Check that all present PVTData have the same unit system
+        # Check that all present `PVTData` have the same unit system
         unit_systems = {
             data.unit_system for data in (self.oil, self.gas, self.water) if data is not None
         }

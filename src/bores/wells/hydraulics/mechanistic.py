@@ -100,8 +100,12 @@ class MechanisticModel(typing.NamedTuple):
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
             hydrostatic_scale=1.0
             / (
-                get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=target)
-                * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target)
+                get_unit_system_constant(
+                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
+                )
+                * get_unit_system_constant(
+                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
+                )
             ),
             unit_system=target,
         )
@@ -149,7 +153,9 @@ def mechanistic_model(
 
     options = MechanisticModel(
         tubing_inner_diameter=tubing_inner_diameter,
-        tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
+        tubing_roughness=tubing_roughness
+        if tubing_roughness is not None
+        else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
         gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
         laminar_reynolds_limit=(
@@ -168,12 +174,18 @@ def mechanistic_model(
             else c.COLEBROOK_MAX_ITERATIONS
         ),
         friction_tolerance=(
-            friction_tolerance if friction_tolerance is not None else c.COLEBROOK_TOLERANCE
+            friction_tolerance
+            if friction_tolerance is not None
+            else c.COLEBROOK_TOLERANCE
         ),
         hydrostatic_scale=1.0
         / (
-            get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system)
-            * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system)
+            get_unit_system_constant(
+                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
+            )
+            * get_unit_system_constant(
+                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
+            )
         ),
         unit_system=unit_system,
     )
@@ -271,7 +283,9 @@ def compute_perforation_pressures(
     """
     n = len(connection_samples)
     if out is not None and len(out) != n:
-        raise ValueError("If given, `out` must have the same length as `connection_samples`.")
+        raise ValueError(
+            "If given, `out` must have the same length as `connection_samples`."
+        )
     if not (
         len(representative_depths)
         == len(inclinations_from_vertical)
@@ -316,7 +330,9 @@ def compute_perforation_pressures(
             length = abs(representative_depths[i] - current_depth)
             geometric_sign = 1.0 if representative_depths[i] >= current_depth else -1.0
             sample = connection_samples[i]
-            remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+            remaining_total = (
+                remaining_rates.oil + remaining_rates.water + remaining_rates.gas
+            )
 
             if remaining_total == 0:
                 drop = compute_static_hydrostatic_drop(
@@ -334,11 +350,20 @@ def compute_perforation_pressures(
                     phase_rates=remaining_rates, phase_densities=sample.phase_densities
                 )
                 mixture_viscosity = compute_mixture_viscosity(
-                    phase_rates=remaining_rates, phase_viscosities=sample.phase_viscosities
+                    phase_rates=remaining_rates,
+                    phase_viscosities=sample.phase_viscosities,
                 )
                 velocity = compute_mixture_velocity(
-                    phase_rates=remaining_rates, tubing_inner_diameter=model.tubing_inner_diameter
+                    phase_rates=remaining_rates,
+                    tubing_inner_diameter=model.tubing_inner_diameter,
                 )
+                # Velocity is only ever set at a connection, where a
+                # perforation's own rate joins or leaves the flow (see the
+                # walk above). Within one segment there is no other
+                # source of velocity change (constant PVT properties are
+                # assumed along the segment), so passing the same value
+                # in and out here means the acceleration term always
+                # comes out to zero.
                 drop = compute_segment_drop(
                     model=model,
                     length=length,
@@ -406,6 +431,9 @@ def compute_tubing_head_pressure(
     velocity = compute_mixture_velocity(
         phase_rates=phase_rates, tubing_inner_diameter=model.tubing_inner_diameter
     )
+    # Same simplification as compute_perforation_pressures: velocity is
+    # held constant across this tubing segment, so the acceleration term
+    # always comes out to zero here too.
     drop = compute_segment_drop(
         model=model,
         length=abs(dz),
@@ -416,5 +444,7 @@ def compute_tubing_head_pressure(
         mixture_velocity_out=velocity,
     )
     return (
-        reference_pressure - (drop.hydrostatic + drop.acceleration) - friction_sign * drop.friction
+        reference_pressure
+        - (drop.hydrostatic + drop.acceleration)
+        - friction_sign * drop.friction
     )
