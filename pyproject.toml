@@ -11,7 +11,7 @@ where = ["src"]
 [project]
 name = "bores-framework"
 version = "0.1.0"
-description = "Black-Oil RE-servoir Simulation in Python."
+description = "Black-Oil RE-servoir Simulation Framework."
 authors = [
     { name = "tioluwa", email = "tioluwa.dev@gmail.com" }
 ]

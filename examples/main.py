@@ -12,7 +12,7 @@ from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import Equilibrium
 from bores.types import UnitSystem
-from bores.wells.hydraulics.mechanistic import mechanistic_model
+from bores.wells.hydraulics.homogeneous import homogeneous_model
 from bores.wells.model import WellSystem
 
 df = DeckFile(
@@ -57,7 +57,7 @@ initial_state = initialize_reservoir_state(
 wells = WellSystem.from_deck(
     df,
     grid=grid,
-    default_wellbore=mechanistic_model(tubing_inner_diameter=0.5),
+    default_wellbore=homogeneous_model(tubing_inner_diameter=0.5),
 )
 # rich.print(wells.dump())
 
