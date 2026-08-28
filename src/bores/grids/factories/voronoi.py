@@ -11,7 +11,7 @@ from scipy.spatial import Voronoi
 from bores.errors import InvalidGridError, ValidationError
 from bores.grids.base import Grid
 from bores.grids.factories.base import FaceVertexIndices, build_csr_face_arrays
-from bores.typing import (
+from bores.types import (
     IntArray,
     Number,
     NumberArray,

@@ -20,7 +20,7 @@ from bores.serde.registry import (
     register_type_serializer,
 )
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     Coordinates,
     FluidPhase,
     Orientation,

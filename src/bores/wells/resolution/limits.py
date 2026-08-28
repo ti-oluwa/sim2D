@@ -4,7 +4,7 @@ import math
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import Integer, Number
+from bores.types import Integer, Number
 from bores.wells.compile import (
     UNSET_INT,
     CompiledLimits,

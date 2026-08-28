@@ -142,7 +142,7 @@ from bores.deck.keywords.summary import (
     WWPR,
 )
 from bores.deck.operators import Operation, resolve_operations
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 
 __all__ = ["DeckFile"]
 

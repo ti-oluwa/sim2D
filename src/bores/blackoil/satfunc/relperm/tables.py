@@ -25,7 +25,7 @@ from bores.errors import ValidationError
 from bores.precision import get_dtype, get_floating_point_info
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     NDimension,
     Number,

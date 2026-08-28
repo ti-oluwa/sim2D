@@ -12,7 +12,7 @@ from bores.grids.factories.base import (
     VertexCoordinates,
     build_csr_face_arrays,
 )
-from bores.typing import (
+from bores.types import (
     IntArray,
     Integer,
     NumberArray,

@@ -9,7 +9,7 @@ from bores.errors import DeserializationError, SerializationError, ValidationErr
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
 from bores.states import ModelState
-from bores.typing import Coordinates, S, T
+from bores.types import Coordinates, S, T
 from bores.wells.base import InjectionWell, ProductionWell, Well, Wells, WellT
 from bores.wells.controls import WellControl
 from bores.wells.core import InjectedFluid, ProducedFluid, WellFluid

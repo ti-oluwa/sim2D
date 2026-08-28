@@ -6,7 +6,7 @@ from typing_extensions import Self
 from bores.errors import ValidationError
 from bores.reservoir.state.base import ReservoirState
 from bores.serde.base import Serializable
-from bores.typing import Number, UnitConversionTable, UnitSystem
+from bores.types import Number, UnitConversionTable, UnitSystem
 from bores.wells.states import WellsStates
 
 __all__ = ["BlackOilModelState"]

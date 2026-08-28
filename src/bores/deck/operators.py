@@ -18,7 +18,7 @@ import numpy as np
 
 from bores.datastructures import GridDimensions
 from bores.deck.core import Deck, tokenize
-from bores.typing import FloatArray, IntArray, OneDimension
+from bores.types import FloatArray, IntArray, OneDimension
 
 __all__ = [
     "OPERATOR_CONTROL_KEYWORDS",

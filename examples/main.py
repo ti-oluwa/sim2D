@@ -11,7 +11,7 @@ from bores.initialization import initialize_reservoir_state
 from bores.reservoir import Regions, Reservoir, Temperature
 from bores.reservoir.rock import Rock
 from bores.reservoir.state import Equilibrium
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 from bores.wells.hydraulics.mechanistic import mechanistic_model
 from bores.wells.model import WellSystem
 

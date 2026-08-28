@@ -13,7 +13,7 @@ from bores.grids.satfunc import build_rock_fluid_properties_grids
 from bores.reservoir import FluidProperties, RockProperties
 from bores.solvers.explicit.transport import assemble_flux_contributions
 from bores.transmissibility import FaceTransmissibilities
-from bores.typing import FluidPhase, ThreeDimensionalGrid, ThreeDimensions
+from bores.types import FluidPhase, ThreeDimensionalGrid, ThreeDimensions
 from bores.wells.base import Wells
 from bores.wells.indices import WellsIndices
 

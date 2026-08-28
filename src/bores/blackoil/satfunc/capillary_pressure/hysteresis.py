@@ -29,7 +29,7 @@ from bores.blackoil.satfunc.utils import (
     compute_killough_scanning_curve_derivative,
 )
 from bores.errors import ValidationError
-from bores.typing import (
+from bores.types import (
     BooleanArray,
     CapillaryPressureDerivatives,
     CapillaryPressures,

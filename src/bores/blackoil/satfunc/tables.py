@@ -25,7 +25,7 @@ from bores.constants import UnitConversionTable
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     Number,
     NumberArray,

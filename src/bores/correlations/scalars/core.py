@@ -9,7 +9,7 @@ from bores.correlations.core import (
     fahrenheit_to_kelvin,
 )
 from bores.errors import ValidationError
-from bores.typing import Number
+from bores.types import Number
 
 logger = logging.getLogger(__name__)
 

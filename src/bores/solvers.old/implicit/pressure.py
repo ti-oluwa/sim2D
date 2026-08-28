@@ -27,7 +27,7 @@ from bores.solvers.base import (
 )
 from bores.solvers.rates import WellRates, compute_well_rates
 from bores.transmissibility import FaceTransmissibilities
-from bores.typing import (
+from bores.types import (
     MiscibilityModel,
     NumberOrArray,
     ThreeDimensionalGrid,

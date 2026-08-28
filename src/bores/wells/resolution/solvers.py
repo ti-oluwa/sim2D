@@ -3,7 +3,7 @@
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import Integer, Number, NumberArray, OneDimension
+from bores.types import Integer, Number, NumberArray, OneDimension
 from bores.wells.compile import (
     FluidPhaseTag,
     InjectorControlModeTag,
@@ -82,14 +82,20 @@ def compute_perforation_pressures(
     :returns: Pressure at each connection.
     :raises ValidationError: If `wellbore.name` isn't recognized.
     """
-    if wellbore.name == "mechanistic":
-        from bores.wells.hydraulics.mechanistic import (
+    if wellbore.name == "homogeneous":
+        from bores.wells.hydraulics.homogeneous import (
             compute_perforation_pressures as compute,
         )
 
         return compute(model=wellbore.options, **kwargs)
     if wellbore.name in ("beggs_brill", "beggs_and_brill"):
         from bores.wells.hydraulics.beggs_and_brill import (
+            compute_perforation_pressures as compute,
+        )
+
+        return compute(model=wellbore.options, **kwargs)
+    if wellbore.name == "hagedorn_brown":
+        from bores.wells.hydraulics.hagedorn_brown import (
             compute_perforation_pressures as compute,
         )
 
@@ -107,14 +113,20 @@ def compute_tubing_head_pressure(*, wellbore: WellBoreModel, **kwargs: typing.An
     :returns: Tubing head pressure.
     :raises ValidationError: If `wellbore.name` isn't recognized.
     """
-    if wellbore.name == "mechanistic":
-        from bores.wells.hydraulics.mechanistic import (
+    if wellbore.name == "homogeneous":
+        from bores.wells.hydraulics.homogeneous import (
             compute_tubing_head_pressure as compute,
         )
 
         return compute(model=wellbore.options, **kwargs)
     if wellbore.name in ("beggs_brill", "beggs_and_brill"):
         from bores.wells.hydraulics.beggs_and_brill import (
+            compute_tubing_head_pressure as compute,
+        )
+
+        return compute(model=wellbore.options, **kwargs)
+    if wellbore.name == "hagedorn_brown":
+        from bores.wells.hydraulics.hagedorn_brown import (
             compute_tubing_head_pressure as compute,
         )
 

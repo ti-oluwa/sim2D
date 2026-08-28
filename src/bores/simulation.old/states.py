@@ -26,7 +26,7 @@ from bores.reservoir import (
 )
 from bores.serde.base import Serializable
 from bores.timing import TimerState
-from bores.typing import NDimension
+from bores.types import NDimension
 from bores.wells.base import Wells
 
 logger = logging.getLogger(__name__)

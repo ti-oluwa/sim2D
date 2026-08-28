@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 
 try:
     import meshio  # type: ignore[import-untyped]

@@ -18,7 +18,7 @@ from bores.grids.base import RelPermGrids
 from bores.reservoir import FluidProperties
 from bores.rock_fluid.relperm import RelPermEndpoints
 from bores.solvers.base import _warn_injection_rate, _warn_production_rate, to_1D_index
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     NDimension,
     NDimensionalGrid,

@@ -8,7 +8,7 @@ from typing_extensions import Self
 from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
-from bores.typing import Number, UnitConversionTable, UnitSystem
+from bores.types import Number, UnitConversionTable, UnitSystem
 from bores.utils import scale
 from bores.wells.base import AnyPerforation
 from bores.wells.controls import Limit, WellControl

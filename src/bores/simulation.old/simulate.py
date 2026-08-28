@@ -52,7 +52,7 @@ from bores.solvers.base import normalize_saturations
 from bores.solvers.rates import WellRates, compute_well_rates
 from bores.states import ModelState, RatesInfo
 from bores.transmissibility import FaceTransmissibilities
-from bores.typing import MiscibilityModel, NDimension, NDimensionalGrid, ThreeDimensions
+from bores.types import MiscibilityModel, NDimension, NDimensionalGrid, ThreeDimensions
 from bores.updates import update_fluid_properties, update_residual_saturation_grids
 from bores.validation import ValidationReport, validate
 from bores.wells.base import Wells

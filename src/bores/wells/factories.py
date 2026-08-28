@@ -3,7 +3,7 @@
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import FluidPhase, Number, Orientation, UnitSystem
+from bores.types import FluidPhase, Number, Orientation, UnitSystem
 from bores.wells.base import (
     AnyPerforation,
     Perforation,

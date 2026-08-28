@@ -9,7 +9,8 @@ from typing_extensions import Self
 
 from bores.constants import c, get_conversion_factors
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
+    FrictionMethod,
     Number,
     NumberArray,
     OneDimension,
@@ -33,16 +34,16 @@ from bores.wells.hydraulics.base import (
 from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = [
-    "MechanisticModel",
+    "HomogeneousModel",
     "compute_perforation_pressures",
     "compute_segment_drop",
     "compute_tubing_head_pressure",
-    "mechanistic_model",
+    "homogeneous_model",
 ]
 
 
-class MechanisticModel(typing.NamedTuple):
-    """Configuration for the mechanistic (no-slip mixture) wellbore hydraulics model."""
+class HomogeneousModel(typing.NamedTuple):
+    """Configuration for the homogeneous (no-slip) wellbore hydraulics model."""
 
     tubing_inner_diameter: Number
     """Tubing inner diameter."""
@@ -100,22 +101,18 @@ class MechanisticModel(typing.NamedTuple):
             gravitational_acceleration=self.gravitational_acceleration * length_factor,
             hydrostatic_scale=1.0
             / (
-                get_unit_system_constant(
-                    prefix="GRAVITATIONAL_FACTOR", unit_system=target
-                )
-                * get_unit_system_constant(
-                    prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target
-                )
+                get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=target)
+                * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=target)
             ),
             unit_system=target,
         )
 
 
-def mechanistic_model(
+def homogeneous_model(
     *,
     tubing_inner_diameter: Number,
     tubing_roughness: Number | None = None,
-    friction_method: typing.Literal["simplified", "colebrook"] = "simplified",
+    friction_method: FrictionMethod = "simplified",
     unit_system: UnitSystem = UnitSystem.FIELD,
     gravitational_acceleration: Number | None = None,
     laminar_reynolds_limit: Number | None = None,
@@ -124,7 +121,15 @@ def mechanistic_model(
     friction_tolerance: Number | None = None,
 ) -> WellBoreModel:
     """
-    Builds a `WellBoreModel` wrapping a fully configured `MechanisticModel`.
+    Builds a `WellBoreModel` wrapping a fully configured `HomogeneousModel`.
+
+    This is a no-slip model. It treats oil, water, and gas as one mixed
+    fluid moving at a single shared velocity, with no allowance for gas
+    slipping past liquid. It doesn't identify flow regimes or use holdup
+    correlations the way Beggs & Brill or Hagedorn & Brown do. It's the
+    simplest of the three correlations here, and works reasonably well at
+    high flow rates where the phases are well mixed, but is less reliable
+    at low rates where slip matters more.
 
     :param tubing_inner_diameter: Tubing inner diameter.
     :param tubing_roughness: Absolute pipe roughness. `None` for a smooth pipe.
@@ -141,7 +146,7 @@ def mechanistic_model(
         `c.COLEBROOK_MAX_ITERATIONS` if not given.
     :param friction_tolerance: Colebrook convergence tolerance.
         `c.COLEBROOK_TOLERANCE` if not given.
-    :returns: `WellBoreModel(name="mechanistic", options=<MechanisticModel>)`.
+    :returns: `WellBoreModel(name="homogeneous", options=<HomogeneousModel>)`.
     """
     if gravitational_acceleration is None:
         gravitational_acceleration = typing.cast(
@@ -151,11 +156,9 @@ def mechanistic_model(
             factors = get_conversion_factors(UnitSystem.FIELD, unit_system)
             gravitational_acceleration = gravitational_acceleration * factors["length"]
 
-    options = MechanisticModel(
+    options = HomogeneousModel(
         tubing_inner_diameter=tubing_inner_diameter,
-        tubing_roughness=tubing_roughness
-        if tubing_roughness is not None
-        else float("nan"),
+        tubing_roughness=tubing_roughness if tubing_roughness is not None else float("nan"),
         friction_method=1 if friction_method == "colebrook" else 0,
         gravitational_acceleration=typing.cast(Number, gravitational_acceleration),
         laminar_reynolds_limit=(
@@ -174,27 +177,21 @@ def mechanistic_model(
             else c.COLEBROOK_MAX_ITERATIONS
         ),
         friction_tolerance=(
-            friction_tolerance
-            if friction_tolerance is not None
-            else c.COLEBROOK_TOLERANCE
+            friction_tolerance if friction_tolerance is not None else c.COLEBROOK_TOLERANCE
         ),
         hydrostatic_scale=1.0
         / (
-            get_unit_system_constant(
-                prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system
-            )
-            * get_unit_system_constant(
-                prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system
-            )
+            get_unit_system_constant(prefix="GRAVITATIONAL_FACTOR", unit_system=unit_system)
+            * get_unit_system_constant(prefix="HYDROSTATIC_AREA_FACTOR", unit_system=unit_system)
         ),
         unit_system=unit_system,
     )
-    return WellBoreModel(name="mechanistic", options=options)
+    return WellBoreModel(name="homogeneous", options=options)
 
 
 @numba.njit(cache=True)
 def compute_segment_drop(
-    model: MechanisticModel,
+    model: HomogeneousModel,
     length: Number,
     inclination_from_vertical: Number,
     mixture_density: Number,
@@ -205,7 +202,7 @@ def compute_segment_drop(
     """
     Computes the pressure drop across one tubing segment.
 
-    :param model: This well's `MechanisticModel`.
+    :param model: This well's `HomogeneousModel`.
     :param length: Along-wellbore segment length.
     :param inclination_from_vertical: Segment inclination, in radians. `0` is vertical.
     :param mixture_density: No-slip mixture density for this segment.
@@ -234,7 +231,7 @@ def compute_segment_drop(
 
 
 def compute_perforation_pressures(
-    model: MechanisticModel,
+    model: HomogeneousModel,
     reference_depth: Number,
     reference_pressure: Number,
     connection_phase_rates: typing.Sequence[PhaseValues],
@@ -263,7 +260,7 @@ def compute_perforation_pressures(
     walk, since both describe a monotonically decreasing carried rate
     with distance from the reference.
 
-    :param model: This well's `MechanisticModel`.
+    :param model: This well's `HomogeneousModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
     :param connection_phase_rates: Each connection's own rate of each
@@ -283,9 +280,7 @@ def compute_perforation_pressures(
     """
     n = len(connection_samples)
     if out is not None and len(out) != n:
-        raise ValueError(
-            "If given, `out` must have the same length as `connection_samples`."
-        )
+        raise ValueError("If given, `out` must have the same length as `connection_samples`.")
     if not (
         len(representative_depths)
         == len(inclinations_from_vertical)
@@ -330,9 +325,7 @@ def compute_perforation_pressures(
             length = abs(representative_depths[i] - current_depth)
             geometric_sign = 1.0 if representative_depths[i] >= current_depth else -1.0
             sample = connection_samples[i]
-            remaining_total = (
-                remaining_rates.oil + remaining_rates.water + remaining_rates.gas
-            )
+            remaining_total = remaining_rates.oil + remaining_rates.water + remaining_rates.gas
 
             if remaining_total == 0:
                 drop = compute_static_hydrostatic_drop(
@@ -391,7 +384,7 @@ def compute_perforation_pressures(
 
 
 def compute_tubing_head_pressure(
-    model: MechanisticModel,
+    model: HomogeneousModel,
     reference_depth: Number,
     reference_pressure: Number,
     phase_rates: PhaseValues,
@@ -401,7 +394,7 @@ def compute_tubing_head_pressure(
     """
     Computes tubing head pressure at surface.
 
-    :param model: This well's `MechanisticModel`.
+    :param model: This well's `HomogeneousModel`.
     :param reference_depth: The well's BHP/THP reporting datum.
     :param reference_pressure: Pressure at `reference_depth`.
     :param phase_rates: Rate of each phase, at reservoir conditions.
@@ -444,7 +437,5 @@ def compute_tubing_head_pressure(
         mixture_velocity_out=velocity,
     )
     return (
-        reference_pressure
-        - (drop.hydrostatic + drop.acceleration)
-        - friction_sign * drop.friction
+        reference_pressure - (drop.hydrostatic + drop.acceleration) - friction_sign * drop.friction
     )

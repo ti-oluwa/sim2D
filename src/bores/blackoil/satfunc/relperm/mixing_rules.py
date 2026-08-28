@@ -32,7 +32,7 @@ import numpy as np
 from numba.extending import overload
 
 from bores.errors import ValidationError
-from bores.typing import (
+from bores.types import (
     MixingRuleDFunc,
     MixingRuleFunc,
     MixingRulePartialDerivatives,

@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 from bores.precision import get_dtype
-from bores.typing import Boolean, IntArray, Integer, Number, NumberArray, OneDimension
+from bores.types import Boolean, IntArray, Integer, Number, NumberArray, OneDimension
 from bores.wells.compile import UNSET_INT
 from bores.wells.resolution.spec import ControlResolverSpec
 from bores.wells.states import ConnectionSample, PhaseValues

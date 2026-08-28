@@ -109,7 +109,7 @@ OneDimensionalGrid = NDimensionalGrid[OneDimension]
 """1D grid type for simulation data, represented as a 1D NumPy array of floats"""
 
 
-TableQuery = typing.Union[NumberOrArray[NDimension], npt.ArrayLike]
+TableQuery = NumberOrArray[NDimension] | npt.ArrayLike
 TableResult = NumberOrArray[NDimension]
 InterpolationMethod = typing.Literal["linear", "cubic"]
 
@@ -147,14 +147,17 @@ class FluidPhase(enum.Enum):
         return cls(str(value).lower())
 
 
+FrictionMethod = typing.Literal["simplified", "colebrook"]
+
+
 class Side(enum.Enum):
     """
     One of the six axis-aligned flanks of a grid's bounding box/domain
     boundary, classified by dominant outward-normal axis and sign.
 
-    `WEST`/`EAST` - the X axis (negative / positive outward normal).
-    `SOUTH`/`NORTH` - the Y axis (negative / positive).
-    `TOP`/`BOTTOM` - the Z axis. Depth increases downward throughout BORES
+    `WEST`/`EAST`: the X axis (negative / positive outward normal).
+    `SOUTH`/`NORTH`: the Y axis (negative / positive).
+    `TOP`/`BOTTOM`: the Z axis. Depth increases downward throughout BORES
     (positive-down convention), so `TOP` is the shallowest (min-Z, negative
     outward normal) flank and `BOTTOM` is the deepest (max-Z, positive
     outward normal) flank.

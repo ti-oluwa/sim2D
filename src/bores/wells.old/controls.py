@@ -12,7 +12,7 @@ from bores.errors import ComputationError, ValidationError
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase
+from bores.types import FluidPhase
 from bores.wells.core import (
     WellFluid,
     compute_average_compressibility_factor,

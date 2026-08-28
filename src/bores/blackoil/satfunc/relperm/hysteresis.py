@@ -36,7 +36,7 @@ from bores.blackoil.satfunc.utils import (
 )
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.typing import (
+from bores.types import (
     BooleanArray,
     FluidPhase,
     NDimension,

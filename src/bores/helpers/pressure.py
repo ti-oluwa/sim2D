@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.typing import NDimension, NDimensionalGrid
+from bores.types import NDimension, NDimensionalGrid
 
 __all__ = ["build_pressure_grid"]
 

@@ -19,7 +19,7 @@ from bores.deck.keywords.base import (
     RepeatedRecordKeyword,
 )
 from bores.deck.operators import Operation
-from bores.typing import FloatArray, Integer, ThreeDimensions
+from bores.types import FloatArray, Integer, ThreeDimensions
 
 __all__ = [
     "ACTNUM",

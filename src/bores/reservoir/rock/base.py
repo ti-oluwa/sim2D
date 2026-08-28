@@ -18,7 +18,7 @@ from bores.reservoir.rock.compressibility import (
     RockCompressibilityTables,
 )
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     CellArray,
     IntCellArray,
     InterpolationMethod,

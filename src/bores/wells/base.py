@@ -12,7 +12,7 @@ from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     Number,
     Orientation,

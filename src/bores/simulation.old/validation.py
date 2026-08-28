@@ -10,7 +10,7 @@ from bores.config import Config
 from bores.errors import BORESError
 from bores.initialization import check_zero_flow_initialization
 from bores.reservoir import BlackOil, FluidProperties, RockProperties
-from bores.typing import ThreeDimensions
+from bores.types import ThreeDimensions
 
 logger = logging.getLogger(__name__)
 

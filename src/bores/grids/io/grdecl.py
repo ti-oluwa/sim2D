@@ -44,7 +44,7 @@ from bores.grids.factories.corner_point import (
     make_corner_point_grid,
     rederive_corner_point_arrays,
 )
-from bores.typing import (
+from bores.types import (
     IntArray,
     Integer,
     Number,

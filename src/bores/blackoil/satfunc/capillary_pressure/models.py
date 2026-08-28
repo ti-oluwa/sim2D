@@ -13,7 +13,7 @@ from bores.blackoil.satfunc.capillary_pressure.tables import (
 )
 from bores.constants import c, get_conversion_factors
 from bores.errors import ValidationError
-from bores.typing import (
+from bores.types import (
     CapillaryPressureDerivatives,
     CapillaryPressures,
     FluidPhase,

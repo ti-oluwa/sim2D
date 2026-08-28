@@ -3,7 +3,7 @@ import attrs
 from bores.constants import c
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import Integer, Number
+from bores.types import Integer, Number
 
 __all__ = ["ControlResolverSpec"]
 

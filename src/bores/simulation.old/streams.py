@@ -15,7 +15,7 @@ from typing_extensions import Self
 from bores.blackoil.state import ModelState, validate_state
 from bores.errors import StorageError, StreamError
 from bores.serde.stores import DataStore, EntryMeta
-from bores.typing import NDimension
+from bores.types import NDimension
 from bores.utils import _close_iter
 
 __all__ = ["StateStream", "StreamProgress"]

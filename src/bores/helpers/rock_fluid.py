@@ -18,7 +18,7 @@ from bores.grids.base import (
 )
 from bores.precision import get_dtype
 from bores.reservoir import HysteresisState
-from bores.typing import NDimension, NDimensionalGrid, ThreeDimensions
+from bores.types import NDimension, NDimensionalGrid, ThreeDimensions
 
 logger = logging.getLogger(__name__)
 

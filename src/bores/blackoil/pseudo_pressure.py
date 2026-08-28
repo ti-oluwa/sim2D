@@ -15,7 +15,7 @@ from bores.constants import UnitConversionTable, c, get_conversion_factors
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     FloatArray,
     NDimension,
     Number,

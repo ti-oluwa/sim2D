@@ -15,7 +15,7 @@ from bores.blackoil.caches.pvt import PVTCache
 from bores.constants import c, get_conversion_factors
 from bores.precision import get_dtype
 from bores.reservoir.model import Reservoir
-from bores.typing import CellArray, IntCellArray, UnitSystem
+from bores.types import CellArray, IntCellArray, UnitSystem
 
 __all__ = ["TransmissibilityCache", "compute_transmissibility_cache"]
 

@@ -10,7 +10,7 @@ from bores.errors import ValidationError
 from bores.reservoir.boundary.conditions import BoundaryConditions
 from bores.reservoir.model import Reservoir
 from bores.serde.stores import StoreSerializable
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 from bores.wells.model import WellSystem
 
 __all__ = ["BlackOilModel"]

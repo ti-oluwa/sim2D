@@ -8,7 +8,7 @@ import numpy.typing as npt
 from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.serde.base import Serializable
-from bores.typing import ArrayLike, NDimension, NDimensionalGrid, Orientation
+from bores.types import ArrayLike, NDimension, NDimensionalGrid, Orientation
 
 __all__ = [
     "CapillaryPressureGrids",

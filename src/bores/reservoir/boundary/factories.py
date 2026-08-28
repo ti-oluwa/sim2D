@@ -16,7 +16,7 @@ from bores.grids.base import Grid
 from bores.grids.utils import classify_boundary_faces, resolve_side
 from bores.reservoir.boundary.base import BoundaryCondition
 from bores.reservoir.boundary.conditions import BoundaryConditions, BoundaryRegion
-from bores.typing import IntArray, OneDimension, Side, UnitSystem
+from bores.types import IntArray, OneDimension, Side, UnitSystem
 
 logger = logging.getLogger(__name__)
 

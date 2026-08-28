@@ -4,7 +4,7 @@ from typing import TypeAlias
 import numpy as np
 
 from bores.errors import InvalidFaceConnectivityError
-from bores.typing import IntArray, Integer, NumberArray, OneDimension, TwoDimensions
+from bores.types import IntArray, Integer, NumberArray, OneDimension, TwoDimensions
 
 VertexCoordinates: TypeAlias = NumberArray[TwoDimensions]
 """Shape `(n_points, 3)` - 3-D (x, y, z) vertex coordinates."""

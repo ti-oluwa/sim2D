@@ -22,7 +22,7 @@ from bores.datastructures import FormationVolumeFactors, Rates, SparseTensor
 from bores.reservoir import BlackOil
 from bores.simulate import Run, StepCallback, StepResult, run
 from bores.states import ModelState
-from bores.typing import ThreeDimensions
+from bores.types import ThreeDimensions
 from bores.utils import _close_iter
 from bores.wells.base import InjectionWell, ProductionWell
 

@@ -11,7 +11,7 @@ from bores.constants import build_unit_conversion_table, get_conversion_factors
 from bores.grids.base import Grid
 from bores.precision import get_dtype
 from bores.reservoir.rock import Rock
-from bores.typing import (
+from bores.types import (
     IntArray,
     Number,
     NumberArray,

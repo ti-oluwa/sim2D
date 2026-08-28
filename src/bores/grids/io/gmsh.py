@@ -32,7 +32,7 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 
 __all__ = ["load_msh"]
 

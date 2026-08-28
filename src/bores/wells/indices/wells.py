@@ -25,7 +25,7 @@ from bores.constants import get_conversion_factors
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.base import Serializable
-from bores.typing import (
+from bores.types import (
     Integer,
     Number,
     NumberArray,

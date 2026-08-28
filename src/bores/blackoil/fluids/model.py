@@ -7,7 +7,7 @@ from bores.blackoil.satfunc.regions import SatFunc
 from bores.constants import UnitConversionTable, build_unit_conversion_table
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 
 __all__ = ["BlackOil"]
 

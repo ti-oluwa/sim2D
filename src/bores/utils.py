@@ -9,7 +9,7 @@ import orjson
 from numba.extending import overload  # type: ignore[import-untyped]
 
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
     NDimension,
     Number,
     NumberArray,

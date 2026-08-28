@@ -9,7 +9,7 @@ from bores.correlations.arrays.core import compute_fluid_density
 from bores.correlations.core import fahrenheit_to_kelvin, fahrenheit_to_rankine
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
     NDimension,
     NumberArray,
     NumberOrArray,

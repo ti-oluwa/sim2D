@@ -16,7 +16,7 @@ from bores.correlations.core import (
 )
 from bores.correlations.scalars import water as swater
 from bores.errors import ComputationError, ValidationError
-from bores.typing import (
+from bores.types import (
     NDimension,
     Number,
     NumberArray,

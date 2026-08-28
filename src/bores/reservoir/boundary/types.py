@@ -17,7 +17,7 @@ from bores.reservoir.boundary.base import (
 )
 from bores.reservoir.model import Reservoir
 from bores.reservoir.state import ReservoirState
-from bores.typing import (
+from bores.types import (
     IntArray,
     Number,
     NumberArray,

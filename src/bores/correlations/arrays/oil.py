@@ -8,7 +8,7 @@ from scipy.optimize import brentq  # type: ignore[import-untyped]
 from bores.constants import c
 from bores.correlations.scalars import oil as soil
 from bores.errors import ValidationError
-from bores.typing import (
+from bores.types import (
     NDimension,
     Number,
     NumberArray,

@@ -20,7 +20,7 @@ from bores.solvers.base import (
     _warn_production_rate,
     compute_mobility_grids,
 )
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     OneDimensionalGrid,
     ThreeDimensionalGrid,

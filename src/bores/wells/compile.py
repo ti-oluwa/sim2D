@@ -10,7 +10,7 @@ import numpy.typing as npt
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     IntArray,
     Integer,

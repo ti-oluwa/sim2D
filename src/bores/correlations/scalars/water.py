@@ -13,7 +13,7 @@ from bores.correlations.core import (
 )
 from bores.correlations.scalars.core import compute_fluid_density
 from bores.errors import ComputationError, ValidationError
-from bores.typing import Number
+from bores.types import Number
 
 logger = logging.getLogger(__name__)
 

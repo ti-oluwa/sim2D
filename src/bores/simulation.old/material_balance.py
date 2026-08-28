@@ -3,7 +3,7 @@ import numpy as np
 from typing_extensions import Self
 
 from bores.reservoir import FluidProperties
-from bores.typing import ThreeDimensions
+from bores.types import ThreeDimensions
 
 __all__ = ["MaterialBalanceErrors", "compute_material_balance_errors"]
 

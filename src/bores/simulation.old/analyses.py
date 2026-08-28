@@ -13,7 +13,7 @@ from bores.correlations.arrays import compute_hydrocarbon_in_place
 from bores.errors import ValidationError
 from bores.grids.base import uniform_grid
 from bores.states import ModelState
-from bores.typing import NDimension
+from bores.types import NDimension
 from bores.utils import clip
 from bores.wells.base import _expand_intervals
 

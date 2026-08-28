@@ -7,7 +7,7 @@ import numba
 from typing_extensions import Self
 
 from bores.constants import c
-from bores.typing import Number, UnitConversionTable, UnitSystem
+from bores.types import Number, UnitConversionTable, UnitSystem
 from bores.wells.states import PhaseValues
 
 __all__ = [
@@ -26,12 +26,13 @@ __all__ = [
     "compute_surface_mixture_density",
     "compute_surface_mixture_viscosity",
     "get_unit_system_constant",
+    "split_liquid_gas",
 ]
 
 WellBoreModelOptions = typing.TypeVar("WellBoreModelOptions")
 """
-A correlation's own config type. `MechanisticModel`, `BeggsAndBrillModel`,
-or any other correlation's own `NamedTuple`.
+A correlation's own config type. `HomogeneousModel`, `BeggsAndBrillModel`,
+`HagedornBrownModel`, or any other correlation's own `NamedTuple`.
 """
 
 
@@ -85,12 +86,12 @@ class WellBoreModel(typing.NamedTuple):
     """
 
     name: str
-    """Which correlation this is: `"mechanistic"` or `"beggs_brill"`."""
+    """Which correlation this is: `"homogeneous"`, `"beggs_and_brill"`, or `"hagedorn_brown"`."""
 
     options: typing.Any
     """
-    This correlation's own configuration. `MechanisticModel`,
-    `BeggsAndBrillModel`, or any other correlation's own `NamedTuple`.
+    This correlation's own configuration. `HomogeneousModel`,
+    `BeggsAndBrillModel`, `HagedornBrownModel`, or any other correlation's own `NamedTuple`.
     """
 
     def convert(
@@ -391,6 +392,43 @@ def compute_segment_pressure_drop(
         hydrostatic=hydrostatic_drop,
         friction=friction_drop,
         acceleration=acceleration_drop,
+    )
+
+
+def split_liquid_gas(
+    phase_rates: PhaseValues,
+    phase_densities: PhaseValues,
+    phase_viscosities: PhaseValues,
+) -> tuple[Number, Number, Number, Number, Number, Number]:
+    """
+    Pools oil and water into a combined liquid phase, for a two-phase
+    correlation such as Beggs & Brill or Hagedorn & Brown that treats
+    liquid and gas as the only two phases and doesn't distinguish oil from water.
+
+    :param phase_rates: Rate of each phase.
+    :param phase_densities: Density of each phase, at the same condition as `phase_rates`.
+    :param phase_viscosities: Viscosity of each phase, at the same condition as `phase_rates`.
+    :returns: `(liquid_rate, gas_rate, liquid_density, gas_density, liquid_viscosity, gas_viscosity)`.
+    """
+    liquid_rate = phase_rates.oil + phase_rates.water
+    gas_rate = phase_rates.gas
+    if liquid_rate > 0.0:
+        liquid_density = (
+            phase_rates.oil * phase_densities.oil + phase_rates.water * phase_densities.water
+        ) / liquid_rate
+        liquid_viscosity = (
+            phase_rates.oil * phase_viscosities.oil + phase_rates.water * phase_viscosities.water
+        ) / liquid_rate
+    else:
+        liquid_density = phase_densities.oil
+        liquid_viscosity = phase_viscosities.oil
+    return (
+        liquid_rate,
+        gas_rate,
+        liquid_density,
+        phase_densities.gas,
+        liquid_viscosity,
+        phase_viscosities.gas,
     )
 
 

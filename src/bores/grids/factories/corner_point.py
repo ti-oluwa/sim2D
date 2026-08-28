@@ -31,7 +31,7 @@ from bores.grids.factories.base import (
     VertexCoordinates,
     _FaceRecord,
 )
-from bores.typing import (
+from bores.types import (
     Boolean,
     IntArray,
     Integer,

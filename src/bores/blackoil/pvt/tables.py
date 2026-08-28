@@ -22,7 +22,7 @@ from bores.errors import ValidationError
 from bores.precision import get_dtype
 from bores.reservoir.temperature import Temperature
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     Boolean,
     BooleanArray,
     FluidPhase,

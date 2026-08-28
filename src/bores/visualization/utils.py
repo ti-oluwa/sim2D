@@ -20,7 +20,7 @@ from bores.grids.utils import coarsen_grid
 from bores.precision import get_dtype
 from bores.reservoir import BlackOil
 from bores.states import ModelState
-from bores.typing import (
+from bores.types import (
     NDimension,
     NDimensionalGrid,
     OneDimensionalGrid,

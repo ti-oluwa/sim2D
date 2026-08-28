@@ -26,7 +26,7 @@ from bores.blackoil.satfunc.relperm.tables import (
 from bores.constants import c
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     NDimension,
     Number,

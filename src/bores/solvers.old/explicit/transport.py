@@ -12,7 +12,7 @@ from bores.reservoir import FluidProperties
 from bores.solvers.base import Solution
 from bores.solvers.rates import WellRates
 from bores.transmissibility import FaceTransmissibilities
-from bores.typing import OneDimensionalGrid, ThreeDimensionalGrid, ThreeDimensions
+from bores.types import OneDimensionalGrid, ThreeDimensionalGrid, ThreeDimensions
 
 __all__ = ["solve_transport"]
 

@@ -28,7 +28,7 @@ from bores.grids.pvt import (
 )
 from bores.grids.rock_fluid import build_effective_residual_saturation_grids
 from bores.reservoir import FluidProperties, HysteresisState, RockProperties
-from bores.typing import MiscibilityModel, NDimensionalGrid, ThreeDimensions
+from bores.types import MiscibilityModel, NDimensionalGrid, ThreeDimensions
 from bores.wells.base import Wells
 
 logger = logging.getLogger(__name__)

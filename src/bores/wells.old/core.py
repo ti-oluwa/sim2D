@@ -55,7 +55,7 @@ from bores.correlations.scalars import (
     fahrenheit_to_rankine,
 )
 from bores.errors import ComputationError, ValidationError
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     NumberOrArray,
     Orientation,

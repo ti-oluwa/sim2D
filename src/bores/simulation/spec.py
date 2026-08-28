@@ -10,7 +10,7 @@ from bores.boundary_conditions import BoundaryConditions
 from bores.constants import Constants
 from bores.serde.stores import StoreSerializable
 from bores.timing import Timer
-from bores.typing import (
+from bores.types import (
     EvolutionScheme,
     MiscibilityModel,
     PreconditionerStr,

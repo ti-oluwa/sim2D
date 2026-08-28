@@ -20,7 +20,7 @@ from bores.reservoir.transmissibility import (
     get_face_transmissibility_map,
 )
 from bores.serde.base import Serializable
-from bores.typing import CellArray, Number, UnitSystem
+from bores.types import CellArray, Number, UnitSystem
 
 __all__ = ["Reservoir"]
 

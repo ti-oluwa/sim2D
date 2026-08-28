@@ -12,7 +12,7 @@ from bores.grids.factories.base import (
     FaultRecord,
     VertexCoordinates,
 )
-from bores.typing import (
+from bores.types import (
     FloatArray,
     IntArray,
     Integer,

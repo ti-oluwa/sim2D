@@ -11,7 +11,7 @@ from bores.deck.core import DeckParseError
 from bores.deck.file import DeckFile
 from bores.errors import NotSupportedError, ValidationError
 from bores.grids.base import Grid
-from bores.typing import FluidPhase, Orientation, UnitSystem
+from bores.types import FluidPhase, Orientation, UnitSystem
 from bores.wells.base import CompletionStatus, Perforation, Well, Wells, WellStatus, WellType
 from bores.wells.controls import (
     BHPLimit,

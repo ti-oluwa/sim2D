@@ -11,7 +11,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
+from bores.types import FluidPhase, Number, UnitConversionTable, UnitSystem
 
 __all__ = [
     "FIELD_GROUP",

@@ -3,7 +3,7 @@ import pyvista as pv
 from bores.deck.file import DeckFile
 from bores.grids.io.grdecl import load_grdecl
 from bores.grids.utils import as_pyvista_grid
-from bores.typing import UnitSystem
+from bores.types import UnitSystem
 
 df = DeckFile("/home/tioluwa/Downloads/norne_with_props.grdecl", unit_system=UnitSystem.FIELD)
 grid = load_grdecl(source=df, encoding="utf-8")

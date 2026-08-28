@@ -3,7 +3,7 @@
 import typing
 
 from bores.errors import ValidationError
-from bores.typing import Integer, NumberArray, OneDimension
+from bores.types import Integer, NumberArray, OneDimension
 from bores.wells.compile import (
     CompiledWellSystem,
     InjectorControlModeTag,

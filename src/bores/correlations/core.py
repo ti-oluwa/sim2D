@@ -7,7 +7,7 @@ import numpy as np
 
 from bores.constants import c
 from bores.errors import ValidationError
-from bores.typing import NDimension, NumberOrArray
+from bores.types import NDimension, NumberOrArray
 
 logger = logging.getLogger(__name__)
 

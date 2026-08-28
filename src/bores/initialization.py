@@ -38,7 +38,7 @@ from bores.reservoir.temperature import (
     TemperatureGradient,
     TemperatureTable,
 )
-from bores.typing import (
+from bores.types import (
     CellArray,
     IntArray,
     IntCellArray,

@@ -20,7 +20,7 @@ import numpy.typing as npt
 
 from bores.blackoil.pvt.regions import PVT
 from bores.precision import get_dtype
-from bores.typing import BooleanCellArray, CellArray, IntCellArray
+from bores.types import BooleanCellArray, CellArray, IntCellArray
 
 __all__ = ["PVTCache", "compute_pvt_cache"]
 

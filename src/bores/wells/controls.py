@@ -13,7 +13,7 @@ from bores.errors import ValidationError
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores.base import StoreSerializable
-from bores.typing import FluidPhase, Number, UnitConversionTable, UnitSystem
+from bores.types import FluidPhase, Number, UnitConversionTable, UnitSystem
 from bores.utils import scale
 
 __all__ = [

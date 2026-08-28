@@ -13,7 +13,7 @@ from bores.constants import c
 from bores.correlations import arrays, scalars
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
     FluidPhase,
     NDimension,
     Number,

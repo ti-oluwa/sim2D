@@ -22,7 +22,7 @@ from bores.deck.core import (
     tokenize,
 )
 from bores.deck.operators import Operation, apply_operation, resolve_operations
-from bores.typing import FloatArray, Number, OneDimension
+from bores.types import FloatArray, Number, OneDimension
 
 __all__ = [
     "ArrayKeyword",

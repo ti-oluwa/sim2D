@@ -9,7 +9,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.serde.stores.base import StoreSerializable
-from bores.typing import UnitConversionTable, UnitSystem
+from bores.types import UnitConversionTable, UnitSystem
 from bores.wells.base import Wells
 from bores.wells.controls import WellControls
 from bores.wells.groups import GroupControls, WellGroups
@@ -33,8 +33,8 @@ class WellSystem(StoreSerializable):
     """Hydraulics model used by any well without an entry in `wellbore_overrides`."""
 
     wellbore_overrides: typing.Mapping[str, WellBoreModel] = attrs.field(factory=dict)
-    """Per-well hydraulics override - e.g. a gas well on Beggs-Brill while
-    every oil well uses the mechanistic no-slip model."""
+    """Per-well hydraulics override - e.g. a gas well on Beggs & Brill while
+    every oil well uses the homogeneous no-slip model."""
 
     groups: WellGroups | None = None
     """The well-group hierarchy, if the deck defined one."""
@@ -100,8 +100,9 @@ class WellSystem(StoreSerializable):
         :param deck_file: Parsed deck.
         :param grid: `Grid` built from the same deck.
         :param default_wellbore: Hydraulics model for every well - build
-            one via `wells.hydraulics.mechanistic.mechanistic_model()` or
-            `wells.hydraulics.beggs_brill.beggs_and_brill()`.
+            one via `wells.hydraulics.homogeneous.homogeneous_model()`,
+            `wells.hydraulics.beggs_and_brill.beggs_and_brill()`, or
+            `wells.hydraulics.hagedorn_brown.hagedorn_brown()`.
         :returns: `WellSystem` built from every well/control/group keyword
             in the deck. `groups`/`group_controls` are `None` if the deck
             has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.

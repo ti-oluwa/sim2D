@@ -10,7 +10,7 @@ import numpy.typing as npt
 
 from bores.blackoil.satfunc.regions import SatFunc
 from bores.precision import get_dtype
-from bores.typing import CellArray, IntCellArray
+from bores.types import CellArray, IntCellArray
 
 __all__ = ["SatFuncCache", "compute_satfunc_cache"]
 

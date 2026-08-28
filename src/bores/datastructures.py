@@ -7,7 +7,7 @@ import numpy as np
 from typing_extensions import NamedTuple, Self
 
 from bores.constants import get_conversion_factors
-from bores.typing import (
+from bores.types import (
     Integer,
     NumberArray,
     OneDimension,

@@ -8,7 +8,7 @@ from typing_extensions import Self
 from bores.constants import UnitConversionTable, get_conversion_factors
 from bores.precision import get_dtype
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     BooleanCellArray,
     CellArray,
     UnitSystem,

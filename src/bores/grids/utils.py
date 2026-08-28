@@ -8,7 +8,7 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.grids.base import Grid
-from bores.typing import CellArray, IntArray, OneDimension, Side
+from bores.types import CellArray, IntArray, OneDimension, Side
 
 __all__ = ["as_pyvista_grid"]
 

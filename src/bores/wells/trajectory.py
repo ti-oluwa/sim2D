@@ -13,7 +13,7 @@ import attrs
 
 from bores.errors import ValidationError
 from bores.serde.base import Serializable
-from bores.typing import Number
+from bores.types import Number
 
 __all__ = ["TrajectoryStation", "WellTrajectory"]
 

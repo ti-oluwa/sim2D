@@ -13,7 +13,7 @@ from bores.reservoir.state import ReservoirState
 from bores.serde.base import Serializable
 from bores.serde.registry import make_serializable_type_registrar
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     IntArray,
     Number,
     NumberArray,

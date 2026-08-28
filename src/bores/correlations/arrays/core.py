@@ -12,7 +12,7 @@ from bores.correlations.core import (
     fahrenheit_to_kelvin,
 )
 from bores.errors import ValidationError
-from bores.typing import NDimension, Number, NumberArray, NumberOrArray
+from bores.types import NDimension, Number, NumberArray, NumberOrArray
 from bores.utils import max_, min_
 
 logger = logging.getLogger(__name__)

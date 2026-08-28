@@ -6,7 +6,7 @@ from bores.correlations import scalars
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
-from bores.typing import Number, UnitSystem
+from bores.types import Number, UnitSystem
 from bores.utils import scale
 
 __all__ = ["StaticPVT"]

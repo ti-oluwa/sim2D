@@ -7,7 +7,7 @@ from typing_extensions import Self
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
-from bores.typing import IntCellArray
+from bores.types import IntCellArray
 
 __all__ = ["Regions"]
 

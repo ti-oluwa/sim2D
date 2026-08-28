@@ -9,7 +9,7 @@ import numpy.typing as npt
 
 from bores.errors import ValidationError
 from bores.precision import get_dtype
-from bores.typing import (
+from bores.types import (
     NDimension,
     NDimensionalGrid,
     Orientation,

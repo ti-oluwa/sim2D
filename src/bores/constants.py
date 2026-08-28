@@ -12,7 +12,7 @@ from bores.errors import ValidationError
 from bores.precision import get_floating_point_info
 from bores.serde.base import Serializable
 from bores.serde.stores import StoreSerializable
-from bores.typing import UnitConversionFactors, UnitConversionTable, UnitSystem
+from bores.types import UnitConversionFactors, UnitConversionTable, UnitSystem
 
 __all__ = [
     "UNIT_CONVERSION_TABLE",
@@ -885,6 +885,15 @@ DEFAULT_CONSTANTS: dict[str, typing.Any | Constant | ConstantFactory] = {
             "Colebrook-White fixed-point iteration."
         ),
         unit="dimensionless",
+    ),
+    "GRIFFITH_BUBBLE_SLIP_VELOCITY_FEET_PER_SECOND": Constant(
+        value=0.8,
+        description=(
+            "Bubble rise (slip) velocity used by the Griffith correlation "
+            "for bubble-flow liquid holdup, as adopted in the Hagedorn & "
+            "Brown wellbore hydraulics model."
+        ),
+        unit="ft/s",
     ),
     # Well Control Resolution
     "CONTROL_MAX_FIXED_POINT_ITERATIONS": Constant(

@@ -22,7 +22,7 @@ from bores.errors import (
     ValidationError,
 )
 from bores.serde.base import Serializable
-from bores.typing import (
+from bores.types import (
     Float,
     IntArray,
     Integer,

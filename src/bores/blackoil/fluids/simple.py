@@ -15,7 +15,7 @@ from bores.blackoil.pvt.tables import PVTTable, PVTTables
 from bores.correlations import arrays
 from bores.errors import ValidationError
 from bores.serde.stores import StoreSerializable
-from bores.typing import FluidPhase, Number, UnitSystem
+from bores.types import FluidPhase, Number, UnitSystem
 
 logger = logging.getLogger(__name__)
 

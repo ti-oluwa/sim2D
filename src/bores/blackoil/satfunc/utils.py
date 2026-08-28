@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import PchipInterpolator
 
-from bores.typing import NDimension, Number, NumberArray, NumberOrArray, Spacing
+from bores.types import NDimension, Number, NumberArray, NumberOrArray, Spacing
 from bores.utils import atleast_1d
 
 

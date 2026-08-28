@@ -7,7 +7,7 @@ from scipy.optimize import root_scalar  # type: ignore[import-untyped]
 
 from bores.constants import c
 from bores.errors import ComputationError, ValidationError
-from bores.typing import Number
+from bores.types import Number
 from bores.utils import clip
 
 logger = logging.getLogger(__name__)

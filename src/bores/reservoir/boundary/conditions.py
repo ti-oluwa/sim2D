@@ -14,7 +14,7 @@ from bores.reservoir.boundary.types import ConstantFluxBoundary
 from bores.reservoir.model import Reservoir
 from bores.reservoir.state import ReservoirState
 from bores.serde.stores import StoreSerializable
-from bores.typing import (
+from bores.types import (
     BooleanArray,
     IntArray,
     NDimension,
