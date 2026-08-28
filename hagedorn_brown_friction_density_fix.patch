@@ -1,0 +1,44 @@
+diff --git a/src/bores/wells/hydraulics/hagedorn_brown.py b/src/bores/wells/hydraulics/hagedorn_brown.py
+index 4948e53..913da00 100644
+--- a/src/bores/wells/hydraulics/hagedorn_brown.py
++++ b/src/bores/wells/hydraulics/hagedorn_brown.py
+@@ -407,12 +407,12 @@ def compute_segment_drop(
+     """
+     Computes the pressure drop across one tubing segment.
+ 
+-    Follows the original Hagedorn & Brown pressure gradient terms: the
+-    gravity and acceleration terms use the in-situ (slip) density, and the
+-    friction term uses no-slip density squared divided by slip density,
+-    which is how the correlation was originally calibrated. Some later
+-    commercial implementations simplify the friction term to no-slip
+-    density directly; results here will differ slightly from those.
++    Follows the original Hagedorn & Brown (1965) pressure gradient
++    equation exactly: the same in-situ (slip) mixture density is used for
++    the gravity, friction, and acceleration terms, and the Reynolds number
++    uses that same density with a holdup-weighted viscosity. Some later
++    software revisions use a different density for the friction term;
++    this follows the original paper's own derivation, not those revisions.
+ 
+     In the bubble-flow regime (per `is_griffith_bubble_flow`), holdup
+     switches to the Griffith correlation, and the friction and Reynolds
+@@ -437,7 +437,6 @@ def compute_segment_drop(
+     :returns: Pressure drop for this segment.
+     """
+     mixture_velocity = superficial_liquid_velocity + superficial_gas_velocity
+-    no_slip_holdup = superficial_liquid_velocity / mixture_velocity
+ 
+     bubble_flow = is_griffith_bubble_flow(
+         superficial_liquid_velocity=superficial_liquid_velocity,
+@@ -488,8 +487,10 @@ def compute_segment_drop(
+             / liquid_viscosity
+         )
+     else:
+-        no_slip_density = liquid_density * no_slip_holdup + gas_density * (1.0 - no_slip_holdup)
+-        friction_density = no_slip_density**2 / in_situ_density
++        # The original paper's own friction term: the same in-situ
++        # mixture density used above for gravity, not a separate
++        # no-slip value.
++        friction_density = in_situ_density
+         friction_velocity = mixture_velocity
+         holdup_weighted_viscosity = liquid_viscosity**in_situ_holdup * gas_viscosity ** (
+             1.0 - in_situ_holdup
