@@ -688,7 +688,7 @@ class PseudoPressureTable(
         max_pressure = self._p_interp.x[-1]
         dtype = self.dtype
 
-        def _invert(pseudo_pressure: Number) -> Number:
+        def invert(pseudo_pressure: Number) -> Number:
             clamped_pseudo_pressure = np.clip(
                 pseudo_pressure, min_pseudo_pressure, max_pseudo_pressure, dtype=dtype
             )
@@ -706,7 +706,7 @@ class PseudoPressureTable(
 
         is_scalar = np.isscalar(pseudo_pressure)
         pseudo_pressure_arr = np.atleast_1d(pseudo_pressure)
-        result = np.vectorize(_invert)(pseudo_pressure_arr)
+        result = np.vectorize(invert)(pseudo_pressure_arr)
 
         if is_scalar:
             return typing.cast(Number, dtype.type(result.item()))
@@ -785,7 +785,7 @@ class PseudoPressureTable(
         )
 
 
-_PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(
+PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(
     maxsize=100
 )
 """Global cache for pseudo-pressure tables"""
@@ -867,10 +867,10 @@ def build_pseudo_pressure_table(
     # Check cache if key provided
     if cache_key is not None:
         with _pseudo_pressure_cache_lock:
-            if cache_key in _PSEUDO_PRESSURE_TABLE_CACHE:
+            if cache_key in PSEUDO_PRESSURE_TABLE_CACHE:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("Using cached pseudo-pressure table for key: %s", cache_key)
-                return _PSEUDO_PRESSURE_TABLE_CACHE[cache_key]
+                return PSEUDO_PRESSURE_TABLE_CACHE[cache_key]
 
     # Build new table outside lock to avoid blocking other threads
     if logger.isEnabledFor(logging.DEBUG):
@@ -892,23 +892,23 @@ def build_pseudo_pressure_table(
     if cache_key is not None:
         with _pseudo_pressure_cache_lock:
             # Double-check in case another thread built it while we were working
-            if cache_key not in _PSEUDO_PRESSURE_TABLE_CACHE:
-                _PSEUDO_PRESSURE_TABLE_CACHE[cache_key] = table
+            if cache_key not in PSEUDO_PRESSURE_TABLE_CACHE:
+                PSEUDO_PRESSURE_TABLE_CACHE[cache_key] = table
                 logger.debug(
-                    f"Cached pseudo-pressure table. Cache size: {len(_PSEUDO_PRESSURE_TABLE_CACHE)}"
+                    f"Cached pseudo-pressure table. Cache size: {len(PSEUDO_PRESSURE_TABLE_CACHE)}"
                 )
             else:
                 # Another thread cached it first, use that one
-                table = _PSEUDO_PRESSURE_TABLE_CACHE[cache_key]
+                table = PSEUDO_PRESSURE_TABLE_CACHE[cache_key]
     return table
 
 
 def clear_pseudo_pressure_table_cache() -> None:
     """Clear the global pseudo-pressure table cache to free memory."""
-    global _PSEUDO_PRESSURE_TABLE_CACHE
+    global PSEUDO_PRESSURE_TABLE_CACHE
     with _pseudo_pressure_cache_lock:
-        cache_size = len(_PSEUDO_PRESSURE_TABLE_CACHE)
-        _PSEUDO_PRESSURE_TABLE_CACHE.clear()
+        cache_size = len(PSEUDO_PRESSURE_TABLE_CACHE)
+        PSEUDO_PRESSURE_TABLE_CACHE.clear()
     logger.info("Cleared %d cached pseudo-pressure tables", cache_size)
 
 
@@ -916,6 +916,6 @@ def get_pseudo_pressure_table_cache_info() -> dict[str, typing.Any]:
     """Get information about the current cache state."""
     with _pseudo_pressure_cache_lock:
         return {
-            "cache_size": len(_PSEUDO_PRESSURE_TABLE_CACHE),
-            "cached_keys": list(_PSEUDO_PRESSURE_TABLE_CACHE.keys()),
+            "cache_size": len(PSEUDO_PRESSURE_TABLE_CACHE),
+            "cached_keys": list(PSEUDO_PRESSURE_TABLE_CACHE.keys()),
         }

@@ -1284,7 +1284,7 @@ class TwoPhaseRelPermTable(
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         region_index = max(satnum - 1, 0)
 
-        def _rows(keyword: str) -> list[dict[str, typing.Any]]:
+        def get_rows(keyword: str) -> list[dict[str, typing.Any]]:
             """Extract rows for `region_index` from a deck keyword, or return []."""
             all_regions = deck_file.get(keyword)
             if all_regions is None:
@@ -1293,19 +1293,19 @@ class TwoPhaseRelPermTable(
                 return []
             return all_regions[region_index]
 
-        def _require(keyword: str) -> list[dict[str, typing.Any]]:
-            rows = _rows(keyword)
+        def require(keyword: str) -> list[dict[str, typing.Any]]:
+            rows = get_rows(keyword)
             if not rows:
                 raise ValidationError(
                     f"Keyword `{keyword}` not found or region index {region_index} "
-                    f"is out of range in the provided DeckFile."
+                    f"is out of range in the provided `DeckFile`."
                 )
             return rows
 
         if system == "oil_water":
             if keyword_family == "first":
                 # SWOF: (sw, krw, krow, pcow) - take sw, krw, krow
-                rows = _require("SWOF")
+                rows = require("SWOF")
                 sw = np.array([row["sw"] for row in rows], dtype=dtype)
                 krw = np.array([row["krw"] for row in rows], dtype=dtype)
                 krow = np.array([row["krow"] for row in rows], dtype=dtype)
@@ -1325,12 +1325,12 @@ class TwoPhaseRelPermTable(
                 )
             else:
                 # Second family: SWFN for krw, SOF3 (preferred) or SOF2 for krow
-                swfn_rows = _require("SWFN")
+                swfn_rows = require("SWFN")
                 sw = np.array([row["sw"] for row in swfn_rows], dtype=dtype)
                 krw = np.array([row["krw"] for row in swfn_rows], dtype=dtype)
 
-                sof3_rows = _rows("SOF3")
-                sof2_rows = _rows("SOF2")
+                sof3_rows = get_rows("SOF3")
+                sof2_rows = get_rows("SOF2")
 
                 if sof3_rows:
                     # SOF3: (so, krow, krog) - take krow column, invert So -> Sw
@@ -1341,9 +1341,9 @@ class TwoPhaseRelPermTable(
                     krow = np.array([row["kro"] for row in sof2_rows], dtype=dtype)
                 else:
                     raise ValidationError(
-                        "Second saturation-function family requires SOF2 or SOF3 for "
+                        "Second saturation-function family requires `SOF2` or `SOF3` for "
                         "the oil relative permeability column (krow). "
-                        "Neither was found in the DeckFile."
+                        "Neither was found in the `DeckFile`."
                     )
 
                 # Invert So -> Sw: Sw = 1 - So, then reverse arrays so Sw is ascending
@@ -1370,7 +1370,7 @@ class TwoPhaseRelPermTable(
         elif system == "gas_oil":
             if keyword_family == "first":
                 # SGOF: (sg, krg, krog, pcog) - take sg, krg, krog
-                rows = _require("SGOF")
+                rows = require("SGOF")
                 sg = np.array([row["sg"] for row in rows], dtype=dtype)
                 krg = np.array([row["krg"] for row in rows], dtype=dtype)
                 krog = np.array([row["krog"] for row in rows], dtype=dtype)
@@ -1392,19 +1392,19 @@ class TwoPhaseRelPermTable(
                 )
             else:
                 # Second family: SGFN for krg, SOF3 (preferred) or SOF2 for krog
-                sgfn_rows = _require("SGFN")
+                sgfn_rows = require("SGFN")
                 sg = np.array([row["sg"] for row in sgfn_rows], dtype=dtype)
                 krg = np.array([row["krg"] for row in sgfn_rows], dtype=dtype)
 
-                sof3_rows = _rows("SOF3")
-                sof2_rows = _rows("SOF2")
+                sof3_rows = get_rows("SOF3")
+                sof2_rows = get_rows("SOF2")
 
                 if sof3_rows:
                     so = np.array([row["so"] for row in sof3_rows], dtype=dtype)
                     krog = np.array([row["krog"] for row in sof3_rows], dtype=dtype)
                 elif sof2_rows:
                     warnings.warn(
-                        "SOF3 not found; using SOF2 `kro` column for `krog` in gas-oil "
+                        "`SOF3` not found; using `SOF2` `kro` column for `krog` in gas-oil "
                         "table. This is only appropriate for two-phase (gas-oil) runs.",
                         UserWarning,
                         stacklevel=2,
@@ -1413,8 +1413,8 @@ class TwoPhaseRelPermTable(
                     krog = np.array([row["kro"] for row in sof2_rows], dtype=dtype)
                 else:
                     raise ValidationError(
-                        "Second saturation-function family requires SOF3 for the gas-oil "
-                        "krog column. SOF3 (and fallback SOF2) not found in the DeckFile."
+                        "Second saturation-function family requires `SOF3` for the gas-oil "
+                        "krog column. `SOF3` (and fallback `SOF2`) not found in the `DeckFile`."
                     )
 
                 # Invert So -> Sg: Sg = 1 - swc - So
@@ -1469,7 +1469,7 @@ class ThreePhaseRelPermTable(
     derivatives) are cast to that shared dtype. The mixing rule result is
     also cast to the shared dtype before being returned.
 
-    Minimum relperm min_values on the two-phase tables propagate automatically
+    Minimum relperm `min_values` on the two-phase tables propagate automatically
     into this three-phase table since the two-phase table methods apply the
     min_value before returning. For the mixing-rule chain rule the min_value
     derivative (zeroed in the flat region) is also used consistently, so the
@@ -1594,7 +1594,7 @@ class ThreePhaseRelPermTable(
         - `reference_phase="wetting"` - the wetting phase saturation is passed.
         - `reference_phase="non_wetting"` - the non-wetting phase saturation is passed.
 
-        Minimum relperm min_values declared on the two-phase tables are applied
+        Minimum relperm `min_values` declared on the two-phase tables are applied
         automatically inside the table query methods and propagate into the
         mixing-rule inputs transparently. All returned values are cast to the
         shared `self.dtype`.
@@ -2022,7 +2022,7 @@ class ThreePhaseRelPermTable(
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         region_index = max(satnum - 1, 0)
 
-        def _has(keyword: str) -> bool:
+        def has(keyword: str) -> bool:
             if not deck_file.has(keyword):
                 return False
 
@@ -2043,29 +2043,29 @@ class ThreePhaseRelPermTable(
         # Resolve keyword family
         family: typing.Literal["first", "second"]
         if keyword_family == "auto":
-            if _has("SWOF") or _has("SGOF"):
+            if has("SWOF") or has("SGOF"):
                 family = "first"
-            elif _has("SWFN") or _has("SGFN"):
+            elif has("SWFN") or has("SGFN"):
                 family = "second"
             else:
                 raise ValidationError(
                     "No recognised saturation-function keywords found in the DeckFile "
-                    f"for SATNUM {satnum}. Expected one of: "
-                    "SWOF, SGOF (first family) or SWFN, SGFN (second family)."
+                    f"for `SATNUM` {satnum}. Expected one of: "
+                    "`SWOF`, `SGOF` (first family) or `SWFN`, `SGFN` (second family)."
                 )
         else:
             family = keyword_family  # type: ignore[assignment]
 
         # Check availability of both systems and warn clearly when one is missing
         if family == "first":
-            has_oil_water_table = _has("SWOF")
-            has_gas_oil_table = _has("SGOF")
+            has_oil_water_table = has("SWOF")
+            has_gas_oil_table = has("SGOF")
         else:
-            has_oil_water_table = _has("SWFN") and (_has("SOF3") or _has("SOF2"))
-            has_gas_oil_table = _has("SGFN") and _has("SOF3")
+            has_oil_water_table = has("SWFN") and (has("SOF3") or has("SOF2"))
+            has_gas_oil_table = has("SGFN") and has("SOF3")
 
         if not has_oil_water_table:
-            oil_water_keyword = "SWOF" if family == "first" else "SWFN + SOF3/SOF2"
+            oil_water_keyword = "`SWOF`" if family == "first" else "`SWFN` + `SOF3`/`SOF2`"
             warnings.warn(
                 f"Oil-water keyword(s) `{oil_water_keyword}` not found for SATNUM "
                 f"{satnum}. Cannot build a three-phase table. "
@@ -2080,9 +2080,9 @@ class ThreePhaseRelPermTable(
             )
 
         if not has_gas_oil_table:
-            gas_oil_keyword = "SGOF" if family == "first" else "SGFN + SOF3"
+            gas_oil_keyword = "`SGOF`" if family == "first" else "`SGFN` + `SOF3`"
             warnings.warn(
-                f"Gas-oil keyword(s) `{gas_oil_keyword}` not found for SATNUM "
+                f"Gas-oil keyword(s) `{gas_oil_keyword}` not found for `SATNUM` "
                 f"{satnum}. Cannot build a three-phase table. "
                 "Use `TwoPhaseRelPermTable.from_deck(..., system='oil_water')` "
                 "to build an oil-water only table.",
@@ -2091,7 +2091,7 @@ class ThreePhaseRelPermTable(
             )
             raise ValidationError(
                 f"Gas-oil keyword(s) `{gas_oil_keyword}` required for {cls.__name__} "
-                f"not found at SATNUM {satnum}."
+                f"not found at `SATNUM` {satnum}."
             )
 
         oil_water_table = TwoPhaseRelPermTable.from_deck(

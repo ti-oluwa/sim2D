@@ -764,12 +764,12 @@ class TwoPhaseCapillaryPressureTable(
         region_index = max(satnum - 1, 0)
         unit_system = deck_file.unit_system
 
-        def _require(keyword: str) -> list[dict[str, typing.Any]]:
+        def require(keyword: str) -> list[dict[str, typing.Any]]:
             all_regions = deck_file.get(keyword)
             if all_regions is None or region_index >= len(all_regions):
                 raise ValidationError(
                     f"Keyword `{keyword}` not found or region index {region_index} "
-                    f"is out of range in the provided DeckFile."
+                    f"is out of range in the provided `DeckFile`."
                 )
 
             rows = all_regions[region_index]
@@ -781,7 +781,7 @@ class TwoPhaseCapillaryPressureTable(
 
         if system == "oil_water":
             keyword = "SWOF" if keyword_family == "first" else "SWFN"
-            rows = _require(keyword)
+            rows = require(keyword)
             sw = np.array([row["sw"] for row in rows], dtype=dtype)
             pcow = np.array([row["pcow"] for row in rows], dtype=dtype)
             return cls(
@@ -799,7 +799,7 @@ class TwoPhaseCapillaryPressureTable(
 
         elif system == "gas_oil":
             keyword = "SGOF" if keyword_family == "first" else "SGFN"
-            rows = _require(keyword)
+            rows = require(keyword)
             sg = np.array([row["sg"] for row in rows], dtype=dtype)
             pcog = np.array([row["pcog"] for row in rows], dtype=dtype)
             return cls(
@@ -1178,7 +1178,7 @@ class ThreePhaseCapillaryPressureTable(
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
         region_index = max(satnum - 1, 0)
 
-        def _has(keyword: str) -> bool:
+        def has(keyword: str) -> bool:
             all_regions = deck_file.get(keyword)
             if all_regions is None:
                 return False
@@ -1194,27 +1194,27 @@ class ThreePhaseCapillaryPressureTable(
 
         family: typing.Literal["first", "second"]
         if keyword_family == "auto":
-            if _has("SWOF") or _has("SGOF"):
+            if has("SWOF") or has("SGOF"):
                 family = "first"
-            elif _has("SWFN") or _has("SGFN"):
+            elif has("SWFN") or has("SGFN"):
                 family = "second"
             else:
                 raise ValidationError(
                     "No recognised saturation-function keywords found in the DeckFile "
-                    f"for SATNUM {satnum}. Expected one of: "
-                    "SWOF, SGOF (first family) or SWFN, SGFN (second family)."
+                    f"for `SATNUM` {satnum}. Expected one of: "
+                    "`SWOF`, `SGOF` (first family) or `SWFN`, `SGFN` (second family)."
                 )
         else:
             family = keyword_family  # type: ignore[assignment]
 
         oil_water_keyword = "SWOF" if family == "first" else "SWFN"
         gas_oil_keyword = "SGOF" if family == "first" else "SGFN"
-        has_oil_water_table = _has(oil_water_keyword)
-        has_gas_oil_table = _has(gas_oil_keyword)
+        has_oil_water_table = has(oil_water_keyword)
+        has_gas_oil_table = has(gas_oil_keyword)
 
         if not has_oil_water_table:
             warnings.warn(
-                f"Oil-water keyword `{oil_water_keyword}` not found for SATNUM "
+                f"Oil-water keyword `{oil_water_keyword}` not found for `SATNUM` "
                 f"{satnum}. Cannot build a three-phase capillary pressure table. "
                 "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='gas_oil')` "
                 "to build a gas-oil only table.",
@@ -1223,12 +1223,12 @@ class ThreePhaseCapillaryPressureTable(
             )
             raise ValidationError(
                 f"Oil-water keyword `{oil_water_keyword}` required for "
-                f"ThreePhaseCapillaryPressureTable not found at SATNUM {satnum}."
+                f"`ThreePhaseCapillaryPressureTable` not found at `SATNUM` {satnum}."
             )
 
         if not has_gas_oil_table:
             warnings.warn(
-                f"Gas-oil keyword `{gas_oil_keyword}` not found for SATNUM "
+                f"Gas-oil keyword `{gas_oil_keyword}` not found for `SATNUM` "
                 f"{satnum}. Cannot build a three-phase capillary pressure table. "
                 "Use `TwoPhaseCapillaryPressureTable.from_deck(..., system='oil_water')` "
                 "to build an oil-water only table.",
@@ -1237,7 +1237,7 @@ class ThreePhaseCapillaryPressureTable(
             )
             raise ValidationError(
                 f"Gas-oil keyword `{gas_oil_keyword}` required for "
-                f"ThreePhaseCapillaryPressureTable not found at SATNUM {satnum}."
+                f"`ThreePhaseCapillaryPressureTable` not found at `SATNUM` {satnum}."
             )
 
         oil_water_table = TwoPhaseCapillaryPressureTable.from_deck(

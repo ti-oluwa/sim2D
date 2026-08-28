@@ -15,11 +15,7 @@ from bores.types import UnitSystem
 from bores.wells.hydraulics.homogeneous import homogeneous_model
 from bores.wells.model import WellSystem
 
-df = DeckFile(
-    "/home/tioluwa/Projects/nagscu/Phase One/Data/NigerDelta UGH1 Composite Field.DATA",
-    encoding="utf-8",
-    unit_system=UnitSystem.METRIC,
-)
+df = DeckFile("./data/norne_pvt.data", encoding="utf-8", unit_system=UnitSystem.METRIC)
 
 # Load reservoir model
 grid = Grid.from_deck(df)

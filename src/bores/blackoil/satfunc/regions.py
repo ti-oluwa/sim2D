@@ -184,19 +184,19 @@ class SatFunc(StoreSerializable):
         """
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-        def _region_count(keyword: str) -> int:
+        def get_region_count(keyword: str) -> int:
             all_regions = deck_file.get(keyword)
             return len(all_regions) if all_regions is not None else 0
 
         n_regions = max(
-            _region_count("SWOF"),
-            _region_count("SGOF"),
-            _region_count("SWFN"),
-            _region_count("SGFN"),
+            get_region_count("SWOF"),
+            get_region_count("SGOF"),
+            get_region_count("SWFN"),
+            get_region_count("SGFN"),
         )
         if n_regions == 0:
             raise ValidationError(
-                "No recognised saturation-function keywords found in the DeckFile. "
+                "No recognised saturation-function keywords found in the `DeckFile`. "
                 "Expected one of: `SWOF`, `SGOF` (first family) or `SWFN`, `SGFN` "
                 "(second family)."
             )
@@ -232,7 +232,7 @@ class SatFunc(StoreSerializable):
 
             tables[satnum] = SatFuncTables(
                 relative_permeability=relative_permeability,
-                capillary_pressure=capillary_pressure,
+                capillary_pressure=capillary_pressure
             )
             logger.debug(
                 "Built rock-fluid tables for `SATNUM` region %d (capillary_pressure=%s)",

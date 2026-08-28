@@ -144,7 +144,7 @@ from bores.deck.keywords.summary import (
 from bores.deck.operators import Operation, resolve_operations
 from bores.types import UnitSystem
 
-__all__ = ["DeckFile"]
+__all__ = ["DataFile", "DeckFile"]
 
 T = TypeVar("T")
 
@@ -538,3 +538,6 @@ class DeckFile:
         return {
             k.name if isinstance(k, Keyword) else k: self.get(k, use_cache=use_cache) for k in ks
         }
+
+
+DataFile = DeckFile  # Alias
