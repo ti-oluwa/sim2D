@@ -39,7 +39,7 @@ __all__ = [
     "compute_perforation_pressures",
     "compute_segment_drop",
     "compute_tubing_head_pressure",
-    "hagedorn_brown",
+    "hagedorn_brown_model",
     "is_griffith_bubble_flow",
 ]
 
@@ -63,8 +63,10 @@ class HagedornBrownModel(typing.NamedTuple):
     """Acceleration due to gravity, in this model's unit system."""
 
     griffith_slip_velocity: Number
-    """Bubble rise velocity used by the Griffith correlation, for the
-    bubble-flow regime. In this model's unit system."""
+    """
+    Bubble rise velocity used by the Griffith correlation, for the
+    bubble-flow regime. In this model's unit system.
+    """
 
     laminar_reynolds_limit: Number
     """Reynolds number below which flow is treated as laminar."""
@@ -117,7 +119,7 @@ class HagedornBrownModel(typing.NamedTuple):
         )
 
 
-def hagedorn_brown(
+def hagedorn_brown_model(
     *,
     tubing_inner_diameter: Number,
     tubing_roughness: Number | None = None,

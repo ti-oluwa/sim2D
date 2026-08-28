@@ -32,7 +32,7 @@ from bores.wells.states import ConnectionSample, PhaseValues
 
 __all__ = [
     "BeggsAndBrillModel",
-    "beggs_and_brill",
+    "beggs_and_brill_model",
     "compute_beggs_brill_holdup",
     "compute_perforation_pressures",
     "compute_segment_drop",
@@ -112,7 +112,7 @@ class BeggsAndBrillModel(typing.NamedTuple):
         )
 
 
-def beggs_and_brill(
+def beggs_and_brill_model(
     *,
     tubing_inner_diameter: Number,
     tubing_roughness: Number | None = None,

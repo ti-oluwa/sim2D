@@ -101,8 +101,8 @@ class WellSystem(StoreSerializable):
         :param grid: `Grid` built from the same deck.
         :param default_wellbore: Hydraulics model for every well - build
             one via `wells.hydraulics.homogeneous.homogeneous_model()`,
-            `wells.hydraulics.beggs_and_brill.beggs_and_brill()`, or
-            `wells.hydraulics.hagedorn_brown.hagedorn_brown()`.
+            `wells.hydraulics.beggs_and_brill.beggs_and_brill_model()`, or
+            `wells.hydraulics.hagedorn_brown.hagedorn_brown_model()`.
         :returns: `WellSystem` built from every well/control/group keyword
             in the deck. `groups`/`group_controls` are `None` if the deck
             has no `GRUPTREE`/`GCONPROD`/`GCONINJE`.
