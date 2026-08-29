@@ -231,8 +231,7 @@ class SatFunc(StoreSerializable):
                 )
 
             tables[satnum] = SatFuncTables(
-                relative_permeability=relative_permeability,
-                capillary_pressure=capillary_pressure
+                relative_permeability=relative_permeability, capillary_pressure=capillary_pressure
             )
             logger.debug(
                 "Built rock-fluid tables for `SATNUM` region %d (capillary_pressure=%s)",

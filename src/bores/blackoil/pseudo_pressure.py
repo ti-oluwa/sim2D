@@ -785,9 +785,7 @@ class PseudoPressureTable(
         )
 
 
-PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(
-    maxsize=100
-)
+PSEUDO_PRESSURE_TABLE_CACHE: LFUCache[typing.Hashable, PseudoPressureTable] = LFUCache(maxsize=100)
 """Global cache for pseudo-pressure tables"""
 
 _pseudo_pressure_cache_lock = threading.Lock()

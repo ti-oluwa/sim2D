@@ -41,6 +41,7 @@ from bores.wells.controls import (
     RateQuantity,
     THPLimit,
     WellControls,
+    WorkoverAction,
 )
 from bores.wells.groups import (
     GroupControls,
@@ -149,7 +150,7 @@ class GroupInjectorControlModeTag(enum.IntEnum):
 
 
 class RateQuantityTag(enum.IntEnum):
-    """Tag value for `CompiledLimits.quantity_tags` on a `RATE` row."""
+    """Tag value for `CompiledLimits.quantities` on a `RATE` row."""
 
     OIL = 0
     WATER = 1
@@ -159,11 +160,22 @@ class RateQuantityTag(enum.IntEnum):
 
 
 class EconomicQuantityTag(enum.IntEnum):
-    """Tag value for `CompiledLimits.quantity_tags` on an `ECONOMIC` row."""
+    """Tag value for `CompiledLimits.quantities` on an `ECONOMIC` row."""
 
     WATER_CUT = 0
     GOR = 1
     WATER_GAS_RATIO = 2
+    OIL_RATE = 3
+    GAS_RATE = 4
+
+
+class WorkoverActionTag(enum.IntEnum):
+    """Tag value for `CompiledLimits.workover_actions` on an `ECONOMIC` row."""
+
+    WELL = 0
+    PLUG = 1
+    CON = 2
+    PLUS_CON = 3
 
 
 class FluidPhaseTag(enum.IntEnum):
@@ -243,6 +255,14 @@ ECONOMIC_QUANTITY_TAG = {
     EconomicQuantity.WATER_CUT: EconomicQuantityTag.WATER_CUT,
     EconomicQuantity.GOR: EconomicQuantityTag.GOR,
     EconomicQuantity.WATER_GAS_RATIO: EconomicQuantityTag.WATER_GAS_RATIO,
+    EconomicQuantity.OIL_RATE: EconomicQuantityTag.OIL_RATE,
+    EconomicQuantity.GAS_RATE: EconomicQuantityTag.GAS_RATE,
+}
+WORKOVER_ACTION_TAG = {
+    WorkoverAction.WELL: WorkoverActionTag.WELL,
+    WorkoverAction.PLUG: WorkoverActionTag.PLUG,
+    WorkoverAction.CON: WorkoverActionTag.CON,
+    WorkoverAction.PLUS_CON: WorkoverActionTag.PLUS_CON,
 }
 FLUID_PHASE_TAG = {
     FluidPhase.OIL: FluidPhaseTag.OIL,
@@ -310,7 +330,7 @@ class CompiledLimits(typing.NamedTuple):
     kinds: IntArray[OneDimension]
     """Shape `(n_rows,)`."""
 
-    quantity_tags: IntArray[OneDimension]
+    quantities: IntArray[OneDimension]
     """
     Shape `(n_rows,)`. A `RateQuantityTag` on a `RATE` row, an
     `EconomicQuantityTag` on an `ECONOMIC` row, `UNSET_INT` otherwise.
@@ -321,6 +341,14 @@ class CompiledLimits(typing.NamedTuple):
 
     max_values: NumberArray[OneDimension]
     """Shape `(n_rows,)`. `NaN` where this limit has no ceiling."""
+
+    workover_actions: IntArray[OneDimension]
+    """Shape `(n_rows,)`. A `WorkoverActionTag` on an `ECONOMIC` row,
+    `UNSET_INT` otherwise - what to do once that row is breached."""
+
+    end_run_flags: IntArray[OneDimension]
+    """Shape `(n_rows,)`. `1` on an `ECONOMIC` row that should stop the
+    whole run once breached, `0` otherwise."""
 
 
 class CompiledWellControls(typing.NamedTuple):
@@ -607,44 +635,55 @@ def compile_perforations(
 
 def _compile_limits(
     limits: typing.Sequence[Limit],
-) -> tuple[list[Integer], list[Integer], list[Number], list[Number]]:
+) -> tuple[list[Integer], list[Integer], list[Number], list[Number], list[Integer], list[Integer]]:
     """
     Flattens one well's or group's limits into parallel arrays.
 
     :param limits: Limits to flatten.
-    :returns: `(kinds, quantity_tags, min_values, max_values)`, all the same length as `limits`.
+    :returns: `(kinds, quantities, min_values, max_values,
+        workover_actions, end_run_flags)`, all the same length as `limits`.
     :raises ValidationError: If `limits` contains an unrecognized `Limit` subtype.
     """
     kinds: list[Integer] = []
-    quantity_tags: list[Integer] = []
+    quantities: list[Integer] = []
     min_values: list[Number] = []
     max_values: list[Number] = []
+    workover_actions: list[Integer] = []
+    end_run_flags: list[Integer] = []
 
     for limit in limits:
         if isinstance(limit, BHPLimit):
             kinds.append(LimitKind.BHP)
-            quantity_tags.append(UNSET_INT)
+            quantities.append(UNSET_INT)
             min_values.append(limit.min_value if limit.min_value is not None else np.nan)
             max_values.append(limit.max_value if limit.max_value is not None else np.nan)
+            workover_actions.append(UNSET_INT)
+            end_run_flags.append(0)
         elif isinstance(limit, THPLimit):
             kinds.append(LimitKind.THP)
-            quantity_tags.append(UNSET_INT)
+            quantities.append(UNSET_INT)
             min_values.append(limit.min_value if limit.min_value is not None else np.nan)
             max_values.append(limit.max_value if limit.max_value is not None else np.nan)
+            workover_actions.append(UNSET_INT)
+            end_run_flags.append(0)
         elif isinstance(limit, RateLimit):
             kinds.append(LimitKind.RATE)
-            quantity_tags.append(RATE_QUANTITY_TAG[limit.quantity])
+            quantities.append(RATE_QUANTITY_TAG[limit.quantity])
             min_values.append(np.nan)
             max_values.append(limit.max_value)
+            workover_actions.append(UNSET_INT)
+            end_run_flags.append(0)
         elif isinstance(limit, EconomicLimit):
             kinds.append(LimitKind.ECONOMIC)
-            quantity_tags.append(ECONOMIC_QUANTITY_TAG[limit.quantity])
-            min_values.append(np.nan)
-            max_values.append(limit.max_value)
+            quantities.append(ECONOMIC_QUANTITY_TAG[limit.quantity])
+            min_values.append(limit.min_value if limit.min_value is not None else np.nan)
+            max_values.append(limit.max_value if limit.max_value is not None else np.nan)
+            workover_actions.append(WORKOVER_ACTION_TAG[limit.workover_action])
+            end_run_flags.append(1 if limit.end_run else 0)
         else:
             raise ValidationError(f"Unknown Limit type: {type(limit)!r}.")
 
-    return kinds, quantity_tags, min_values, max_values
+    return kinds, quantities, min_values, max_values, workover_actions, end_run_flags
 
 
 def compile_well_controls(
@@ -683,9 +722,11 @@ def compile_well_controls(
 
     limits_well_offsets = [0]
     limits_kinds: list[Integer] = []
-    limits_quantity_tags: list[Integer] = []
+    limits_quantities: list[Integer] = []
     limits_min_values: list[Number] = []
     limits_max_values: list[Number] = []
+    limits_workover_actions: list[Integer] = []
+    limits_end_run_flags: list[Integer] = []
 
     for name in names:
         well = wells[name]
@@ -730,11 +771,15 @@ def compile_well_controls(
         else:
             raise ValidationError(f"Unknown WellControl type: {type(control)!r}.")
 
-        kinds, quantity_tags, min_values, max_values = _compile_limits(limits=control_limits)
+        kinds, quantities, min_values, max_values, workover_actions, end_run_flags = (
+            _compile_limits(limits=control_limits)
+        )
         limits_kinds.extend(kinds)
-        limits_quantity_tags.extend(quantity_tags)
+        limits_quantities.extend(quantities)
         limits_min_values.extend(min_values)
         limits_max_values.extend(max_values)
+        limits_workover_actions.extend(workover_actions)
+        limits_end_run_flags.extend(end_run_flags)
         limits_well_offsets.append(len(limits_kinds))
 
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
@@ -743,14 +788,20 @@ def compile_well_controls(
             IntArray[OneDimension], np.asarray(limits_well_offsets, dtype=np.int64)
         ),
         kinds=typing.cast(IntArray[OneDimension], np.asarray(limits_kinds, dtype=np.int32)),
-        quantity_tags=typing.cast(
-            IntArray[OneDimension], np.asarray(limits_quantity_tags, dtype=np.int32)
+        quantities=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_quantities, dtype=np.int32)
         ),
         min_values=typing.cast(
             NumberArray[OneDimension], np.asarray(limits_min_values, dtype=dtype)
         ),
         max_values=typing.cast(
             NumberArray[OneDimension], np.asarray(limits_max_values, dtype=dtype)
+        ),
+        workover_actions=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_workover_actions, dtype=np.int32)
+        ),
+        end_run_flags=typing.cast(
+            IntArray[OneDimension], np.asarray(limits_end_run_flags, dtype=np.int32)
         ),
     )
     return CompiledWellControls(

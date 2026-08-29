@@ -52,7 +52,7 @@ def get_bhp_bound(
 
 def get_rate_bound(
     *,
-    quantity_tag: Integer,
+    quantity: Integer,
     max_value: Number,
     bhp: Number,
     wellbore: WellBoreModel,
@@ -76,7 +76,7 @@ def get_rate_bound(
     a `RateLimit` on a surface quantity needs the surface-condition total to
     check correctly.
 
-    :param quantity_tag: `RateQuantityTag` value.
+    :param quantity: `RateQuantityTag` value.
     :param max_value: The limit row's `max_value`.
     :param bhp: The nominal resolution's BHP.
     :param wellbore: Hydraulics correlation for this well.
@@ -89,9 +89,9 @@ def get_rate_bound(
     :param resolver_spec: Solver tunables.
     :returns: Bounding BHP, or `None` if not violated.
     """
-    quantity_phases = RATE_QUANTITY_PHASES[quantity_tag]
+    quantity_phases = RATE_QUANTITY_PHASES[quantity]
     target_rate_condition: typing.Literal["surface", "reservoir"] = (
-        "reservoir" if quantity_tag == RateQuantityTag.RESERVOIR else "surface"
+        "reservoir" if quantity == RateQuantityTag.RESERVOIR else "surface"
     )
 
     _, reservoir_condition_rates, surface_condition_rates = solve_connection_pressures_and_rates(
@@ -213,12 +213,17 @@ def check_economic_violation(
 ) -> Integer:
     """
     Finds the first `ECONOMIC` limit row in `[limits_start, limits_end)`
-    whose ratio is exceeded.
+    that's currently violated.
+
+    `WATER_CUT`, `GOR`, and `WATER_GAS_RATIO` are violated once their
+    ratio rises above `max_values[row]`. `OIL_RATE` and `GAS_RATE` are
+    violated once that rate falls below `min_values[row]`, since they
+    represent a minimum economic rate rather than a ceiling.
 
     :param limits: The full system's `CompiledLimits`.
     :param limits_start: First row of this well's limit range.
     :param limits_end: One past the last row of this well's limit range.
-    :param phase_rates: Well-total phase rates to compute ratios from.
+    :param phase_rates: Well-total phase rates to check.
     :returns: The violated row's index, or `UNSET_INT` if none is violated.
     """
     oil, water, gas = phase_rates.oil, phase_rates.water, phase_rates.gas
@@ -226,10 +231,18 @@ def check_economic_violation(
     for row in range(limits_start, limits_end):
         if limits.kinds[row] != LimitKind.ECONOMIC:
             continue
-        quantity_tag = limits.quantity_tags[row]
-        if quantity_tag == EconomicQuantityTag.WATER_CUT:
+        quantity = limits.quantities[row]
+        if quantity == EconomicQuantityTag.OIL_RATE:
+            if oil < limits.min_values[row]:
+                return row
+            continue
+        if quantity == EconomicQuantityTag.GAS_RATE:
+            if gas < limits.min_values[row]:
+                return row
+            continue
+        if quantity == EconomicQuantityTag.WATER_CUT:
             ratio = water / (oil + water) if (oil + water) > 0 else 0.0
-        elif quantity_tag == EconomicQuantityTag.GOR:
+        elif quantity == EconomicQuantityTag.GOR:
             ratio = (gas / oil) if oil > 0 else (math.inf if gas > 0 else 0.0)
         else:
             ratio = (water / gas) if gas > 0 else (math.inf if water > 0 else 0.0)
@@ -313,7 +326,7 @@ def apply_limits(
             )
         elif kind == LimitKind.RATE:
             bound = get_rate_bound(
-                quantity_tag=limits.quantity_tags[row],
+                quantity=limits.quantities[row],
                 max_value=limits.max_values[row],
                 bhp=bhp,
                 wellbore=wellbore,
@@ -355,27 +368,32 @@ def apply_limits(
             candidates.append((bound, row))
 
     if not candidates:
-        return bhp, phase_rates, UNSET_INT, False
+        governing_bhp, governing_row = bhp, UNSET_INT
+        governing_phase_rates = phase_rates
+    else:
+        # Most restrictive: highest bounding BHP for a producer (lowest
+        # resulting rate), lowest bounding BHP for an injector (lowest
+        # resulting injection rate).
+        governing_bhp, governing_row = (
+            min(candidates, key=lambda pair: pair[0])
+            if is_injector
+            else max(candidates, key=lambda pair: pair[0])
+        )
+        governing_phase_rates = compute_phase_rates(
+            wellbore=wellbore,
+            reference_depth=reference_depth,
+            workspace=workspace,
+            connection_samples=connection_samples,
+            reference_pressure=governing_bhp,
+            relevant_phases=relevant_phases,
+            is_injector=is_injector,
+            resolver_spec=resolver_spec,
+        )
 
-    # Most restrictive: highest bounding BHP for a producer (lowest
-    # resulting rate), lowest bounding BHP for an injector (lowest
-    # resulting injection rate).
-    governing_bhp, governing_row = (
-        min(candidates, key=lambda pair: pair[0])
-        if is_injector
-        else max(candidates, key=lambda pair: pair[0])
-    )
-
-    governing_phase_rates = compute_phase_rates(
-        wellbore=wellbore,
-        reference_depth=reference_depth,
-        workspace=workspace,
-        connection_samples=connection_samples,
-        reference_pressure=governing_bhp,
-        relevant_phases=relevant_phases,
-        is_injector=is_injector,
-        resolver_spec=resolver_spec,
-    )
+    # Always checked, even when nothing else in range produced a
+    # candidate bound. Beacuase a well can be perfectly on target for BHP/rate/THP
+    # and still be economically unviable, so this isn't conditional on
+    # another limit having been the one to settle governing_bhp.
     violated_row = check_economic_violation(
         limits=limits,
         limits_start=limits_start,

@@ -512,7 +512,7 @@ def compute_segment_drop(
         friction_factor = compute_friction_factor(
             reynolds_number=reynolds_number,
             relative_roughness=relative_roughness,
-            method_tag=model.friction_method,
+            method=model.friction_method,
             laminar_reynolds_limit=model.laminar_reynolds_limit,
             turbulent_reynolds_limit=model.turbulent_reynolds_limit,
             friction_max_iterations=model.friction_max_iterations,

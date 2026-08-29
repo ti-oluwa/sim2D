@@ -223,7 +223,7 @@ def compute_surface_mixture_viscosity(
 def compute_friction_factor(
     reynolds_number: Number,
     relative_roughness: Number,
-    method_tag: int,
+    method: int,
     laminar_reynolds_limit: Number,
     turbulent_reynolds_limit: Number,
     friction_max_iterations: int,
@@ -235,7 +235,7 @@ def compute_friction_factor(
     :param reynolds_number: Reynolds number of the flow. Must be positive.
     :param relative_roughness: Tubing roughness divided by tubing inner
         diameter. `0.0` for a smooth pipe.
-    :param method_tag: `0` for the simplified correlation, `1` for
+    :param method: `0` for the simplified correlation, `1` for
         Colebrook iteration.
     :param laminar_reynolds_limit: Reynolds number below which flow is
         treated as laminar. Only used by the simplified correlation.
@@ -249,7 +249,7 @@ def compute_friction_factor(
     if reynolds_number <= 0.0:
         raise ValueError("`reynolds_number` must be positive")
 
-    if method_tag == 0:
+    if method == 0:
         if reynolds_number < laminar_reynolds_limit:
             return 64.0 / reynolds_number
         if reynolds_number < turbulent_reynolds_limit:
@@ -328,7 +328,7 @@ def compute_segment_pressure_drop(
     mixture_velocity_out: Number,
     gravitational_acceleration: Number,
     hydrostatic_scale: Number,
-    method_tag: int,
+    method: int,
     laminar_reynolds_limit: Number,
     turbulent_reynolds_limit: Number,
     friction_max_iterations: int,
@@ -350,7 +350,7 @@ def compute_segment_pressure_drop(
     :param hydrostatic_scale: Unit-conversion factor for the hydrostatic
         term - `1 / (gravitational_factor * hydrostatic_area_factor)` for
         the caller's unit system.
-    :param method_tag: Forwarded to `compute_friction_factor`.
+    :param method: Forwarded to `compute_friction_factor`.
     :param laminar_reynolds_limit: Forwarded to `compute_friction_factor`.
     :param turbulent_reynolds_limit: Forwarded to `compute_friction_factor`.
     :param friction_max_iterations: Forwarded to `compute_friction_factor`.
@@ -375,7 +375,7 @@ def compute_segment_pressure_drop(
         friction_factor = compute_friction_factor(
             reynolds_number=reynolds_number,
             relative_roughness=relative_roughness,
-            method_tag=method_tag,
+            method=method,
             laminar_reynolds_limit=laminar_reynolds_limit,
             turbulent_reynolds_limit=turbulent_reynolds_limit,
             friction_max_iterations=friction_max_iterations,

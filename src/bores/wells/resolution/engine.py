@@ -2,7 +2,7 @@
 
 import typing
 
-from bores.errors import ValidationError
+from bores.errors import StopSimulation, ValidationError
 from bores.types import Integer, NumberArray, OneDimension
 from bores.wells.compile import (
     CompiledWellSystem,
@@ -276,6 +276,12 @@ def resolve_control(
     resolution.gas_rates[well_row] = phase_rates.gas
     resolution.active_limit_rows[well_row] = active_limit_row
     resolution.economic_shutins[well_row] = 1 if economic_shutin else 0
+
+    if economic_shutin and limits.end_run_flags[active_limit_row]:
+        raise StopSimulation(
+            f"Well {compiled_system.names[well_row]!r} breached an economic limit "
+            "flagged to end the run."
+        )
 
     if surface_fluid_properties is not None:
         resolution.thps[well_row] = compute_tubing_head_pressure(

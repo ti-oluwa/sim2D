@@ -24,6 +24,7 @@ from bores.wells.controls import (
     ProducerControlMode,
     WellControl,
     WellControls,
+    WorkoverAction,
 )
 from bores.wells.groups import (
     GroupControl,
@@ -351,23 +352,42 @@ ECONOMIC_QUANTITY_FIELDS = {
     EconomicQuantity.GOR: "max_gor",
     EconomicQuantity.WATER_GAS_RATIO: "max_wgr",
 }
+ECONOMIC_MIN_RATE_QUANTITY_FIELDS = {
+    EconomicQuantity.OIL_RATE: "min_orat",
+}
 
 
 def load_economic_limits_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> tuple[EconomicLimit, ...]:
     """
-    Load `EconomicLimit`s from `WECON` records.
+    Loads a well's economic limits from one WECON record.
 
-    :param record: One parsed `WECON` record.
+    :param record: One parsed WECON record.
     :param unit_system: The deck's unit system.
-    :returns: One `EconomicLimit` per non-`None` ratio item present on the
-        record (water cut, GOR, water-gas ratio). Min-rate items
-        (min_oil_rate/min_gas_rate) aren't covered by `EconomicLimit`'s
-        current shape - not converted here, flagged rather than dropped
-        silently.
+    :returns: One economic limit per non-zero threshold present on the
+        record (minimum oil rate, water cut, GOR, water-gas ratio). A
+        minimum oil rate of exactly zero is treated as "no limit", matching
+        the deck's own default.
     """
+    workover_action = WorkoverAction(record.get("workover_action", "WELL"))
+    end_run = bool(record.get("end_run_flag", False))
+
     limits = []
+    for quantity, field_name in ECONOMIC_MIN_RATE_QUANTITY_FIELDS.items():
+        value = record.get(field_name)
+        if not value:
+            continue
+        limits.append(
+            EconomicLimit(
+                quantity=quantity,
+                min_value=value,
+                workover_action=workover_action,
+                end_run=end_run,
+                unit_system=unit_system,
+            )
+        )
+
     for quantity, field_name in ECONOMIC_QUANTITY_FIELDS.items():
         value = record.get(field_name)
         if value is None:
@@ -381,7 +401,13 @@ def load_economic_limits_from_record(
         elif quantity is EconomicQuantity.WATER_GAS_RATIO and unit_system is UnitSystem.FIELD:
             value /= c.MSCF_TO_SCF
         limits.append(
-            EconomicLimit(quantity=quantity, max_value=value, unit_system=unit_system)  # type: ignore
+            EconomicLimit(
+                quantity=quantity,
+                max_value=value,
+                workover_action=workover_action,
+                end_run=end_run,
+                unit_system=unit_system,
+            )
         )
     return tuple(limits)
 

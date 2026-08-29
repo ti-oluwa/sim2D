@@ -30,6 +30,7 @@ __all__ = [
     "THPLimit",
     "WellControl",
     "WellControls",
+    "WorkoverAction",
 ]
 
 
@@ -51,9 +52,40 @@ class RateQuantity(enum.Enum):
 
 
 class EconomicQuantity(enum.Enum):
+    """What an `EconomicLimit` measures."""
+
     WATER_CUT = "water_cut"
     GOR = "gor"
     WATER_GAS_RATIO = "wgr"
+    OIL_RATE = "oil_rate"
+    GAS_RATE = "gas_rate"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def _missing_(cls, value: object) -> Self:
+        return cls(str(value).lower())
+
+
+class WorkoverAction(enum.Enum):
+    """What to do once an `EconomicLimit` is breached (deck `WECON`/`GECON` item 6)."""
+
+    WELL = "well"
+    """Shut in the whole well."""
+
+    PLUG = "plug"
+    """Shut in the whole well and plug it back. Whether the well can
+    later be reopened is decided outside a single control resolution, by
+    whatever is driving the schedule over time."""
+
+    CON = "con"
+    """Shut in the connection responsible for the breach, leaving the
+    rest of the well open."""
+
+    PLUS_CON = "+con"
+    """Shut in the worst connection, then check the well's limits again;
+    repeat until the well satisfies them or has no connections left open."""
 
     def __str__(self) -> str:
         return self.value
@@ -305,20 +337,39 @@ class THPLimit(Limit):
 @attrs.frozen(kw_only=True, slots=True)
 class EconomicLimit(Limit):
     """
-    A fractional-flow economic limit (deck `WECON`).
+    An economic limit on well performance (deck `WECON`).
 
-    Shuts the well in when the given ratio of produced phases exceeds `max_value`.
+    For `WATER_CUT`, `GOR`, and `WATER_GAS_RATIO`, the well is shut in
+    once that ratio rises above `max_value`. For `OIL_RATE` and
+    `GAS_RATE`, the well is shut in once that rate falls below
+    `min_value`, since these represent a minimum economic rate rather
+    than an operational cap.
     """
 
     __type__ = "economic"
 
     quantity: EconomicQuantity
-    max_value: Number
+    min_value: Number | None = None
+    max_value: Number | None = None
+    workover_action: WorkoverAction = WorkoverAction.WELL
+    end_run: bool = False
     unit_system: UnitSystem = UnitSystem.FIELD
 
     def __attrs_post_init__(self) -> None:
-        if self.max_value <= 0:
-            raise ValidationError(f"`max_value` must be positive; got {self.max_value}.")
+        if self.quantity in (EconomicQuantity.OIL_RATE, EconomicQuantity.GAS_RATE):
+            if self.min_value is None:
+                raise ValidationError(f"`{self.quantity}` requires `min_value`.")
+            if self.max_value is not None:
+                raise ValidationError(f"`{self.quantity}` doesn't take a `max_value`.")
+            if self.min_value <= 0:
+                raise ValidationError(f"`min_value` must be positive; got {self.min_value}.")
+        else:
+            if self.max_value is None:
+                raise ValidationError(f"`{self.quantity}` requires `max_value`.")
+            if self.min_value is not None:
+                raise ValidationError(f"`{self.quantity}` doesn't take a `min_value`.")
+            if self.max_value <= 0:
+                raise ValidationError(f"`max_value` must be positive; got {self.max_value}.")
 
     def convert(
         self,
@@ -332,19 +383,30 @@ class EconomicLimit(Limit):
 
         :param target: Target unit system.
         :param table: Optional custom conversion table.
-        :returns: New EconomicLimit with max_value converted to target
-            (unchanged for WATER_CUT, which is dimensionless).
+        :returns: New `EconomicLimit` with its threshold converted to
+            target (unchanged for the ratio quantities, which are dimensionless).
         """
-        if target == self.unit_system or self.quantity is EconomicQuantity.WATER_CUT:
+        if target == self.unit_system:
+            return attrs.evolve(self, unit_system=target)
+        if self.quantity is EconomicQuantity.WATER_CUT:
             return attrs.evolve(self, unit_system=target)
 
         factors = get_conversion_factors(self.unit_system, target, table=table)
-        factor = (
-            factors["gas_oil_ratio"]
-            if self.quantity is EconomicQuantity.GOR
-            else factors["oil_gas_ratio"]  # `WATER_GAS_RATIO`: water is dimensionally
-        )  # identical to oil (liquid_surface_volume)
-        return attrs.evolve(self, max_value=scale(self.max_value, factor), unit_system=target)
+        if self.quantity is EconomicQuantity.GOR:
+            factor = factors["gas_oil_ratio"]
+        elif self.quantity is EconomicQuantity.WATER_GAS_RATIO:
+            factor = factors["oil_gas_ratio"]  # water is dimensionally identical to oil here
+        elif self.quantity is EconomicQuantity.OIL_RATE:
+            factor = factors["liquid_surface_rate"]
+        else:
+            factor = factors["gas_surface_rate"]
+
+        return attrs.evolve(
+            self,
+            min_value=scale(self.min_value, factor) if self.min_value is not None else None,
+            max_value=scale(self.max_value, factor) if self.max_value is not None else None,
+            unit_system=target,
+        )
 
 
 class WellControl(Serializable):

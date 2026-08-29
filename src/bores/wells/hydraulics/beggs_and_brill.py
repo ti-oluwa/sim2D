@@ -327,7 +327,7 @@ def compute_two_phase_friction_factor(
     in_situ_holdup: Number,
     no_slip_reynolds_number: Number,
     relative_roughness: Number,
-    method_tag: int,
+    method: int,
     laminar_reynolds_limit: Number,
     turbulent_reynolds_limit: Number,
     friction_max_iterations: int,
@@ -341,7 +341,7 @@ def compute_two_phase_friction_factor(
     :param in_situ_holdup: In-situ liquid holdup, from `compute_beggs_brill_holdup`.
     :param no_slip_reynolds_number: No-slip Reynolds number of the mixture.
     :param relative_roughness: Tubing roughness divided by tubing inner diameter.
-    :param method_tag: `0` for the simplified correlation, `1` for Colebrook.
+    :param method: `0` for the simplified correlation, `1` for Colebrook.
     :param laminar_reynolds_limit: Reynolds number below which flow is
         treated as laminar. Only used by the simplified correlation.
     :param turbulent_reynolds_limit: Reynolds number above which flow is
@@ -350,7 +350,7 @@ def compute_two_phase_friction_factor(
     :param friction_tolerance: Convergence tolerance. Only used by Colebrook.
     :returns: Two-phase Darcy friction factor.
     """
-    if method_tag == 0:
+    if method == 0:
         if no_slip_reynolds_number < laminar_reynolds_limit:
             no_slip_friction_factor = 64.0 / no_slip_reynolds_number
         elif no_slip_reynolds_number < turbulent_reynolds_limit:
@@ -448,7 +448,7 @@ def compute_segment_drop(
         in_situ_holdup=in_situ_holdup,
         no_slip_reynolds_number=no_slip_reynolds_number,
         relative_roughness=relative_roughness,
-        method_tag=model.friction_method,
+        method=model.friction_method,
         laminar_reynolds_limit=model.laminar_reynolds_limit,
         turbulent_reynolds_limit=model.turbulent_reynolds_limit,
         friction_max_iterations=model.friction_max_iterations,

@@ -222,7 +222,7 @@ def compute_segment_drop(
         mixture_velocity_out=mixture_velocity_out,
         gravitational_acceleration=model.gravitational_acceleration,
         hydrostatic_scale=model.hydrostatic_scale,
-        method_tag=model.friction_method,
+        method=model.friction_method,
         laminar_reynolds_limit=model.laminar_reynolds_limit,
         turbulent_reynolds_limit=model.turbulent_reynolds_limit,
         friction_max_iterations=model.friction_max_iterations,
