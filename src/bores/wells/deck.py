@@ -36,6 +36,20 @@ from bores.wells.groups import (
 )
 
 DIRECTION_MAP = {"X": Orientation.X, "Y": Orientation.Y, "Z": Orientation.Z}
+WELOPEN_STATUS_MAP = {
+    "OPEN": CompletionStatus.OPEN,
+    "AUTO": CompletionStatus.OPEN,
+    "SHUT": CompletionStatus.SHUT,
+    "STOP": CompletionStatus.SHUT,
+}
+"""
+`CompletionStatus` only distinguishes open from shut, so `WELOPEN`'s
+`STOP` (stop flow, but not the same as a deck author marking a completion
+as never meant to flow) is treated the same as `SHUT` here, and `AUTO`
+(resume normal operation) the same as `OPEN`. A real distinction between
+"shut" and "temporarily stopped" would need `CompletionStatus` itself
+extended, not something patched in at the deck-loading layer.
+"""
 
 
 def load_well_from_records(
@@ -44,6 +58,7 @@ def load_well_from_records(
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     *,
     wpimult_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
+    welopen_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     well_type: WellType = WellType.PRODUCER,
     current_time: float = 0.0,
@@ -59,10 +74,17 @@ def load_well_from_records(
     rather than being added on the fly. The well itself is marked the same
     way, based on when its `WELSPECS` record takes effect.
 
+    Any `WELOPEN` record for the well, up to `current_time`, is replayed
+    in schedule order afterwards, so a completion (or the whole well)
+    opened or shut later in the schedule without a fresh `COMPDAT` still
+    ends up with the right status.
+
     :param grid: Grid the well's completions are resolved against.
     :param welspecs_record: The well's `WELSPECS` record.
     :param compdat_records: Every `COMPDAT` record for this well, from any
         point in the schedule.
+    :param wpimult_records: Every `WPIMULT` record for this well, if any.
+    :param welopen_records: Every `WELOPEN` record for this well, if any.
     :param unit_system: The deck's unit system.
     :param well_type: Whether this well is a producer or an injector. Not
         derivable from `WELSPECS`/`COMPDAT` alone.
@@ -76,7 +98,7 @@ def load_well_from_records(
     if not compdat_records:
         raise ValidationError(f"No `COMPDAT` records for well {welspecs_record['well']!r}.")
 
-    perforations = []
+    perforation_specs = []
     dims = grid.dimensions
     if dims is None:
         raise ValidationError(
@@ -127,22 +149,60 @@ def load_well_from_records(
             if record.get("schedule_time", 0.0) <= current_time
             else WellStatus.PENDING
         )
-        perforations.append(
-            Perforation(
-                top_depth=top_depth,
-                bottom_depth=bottom_depth,
-                skin=skin,
-                wellbore_radius=radius,
-                status=status,
-                saturation_region=saturation_region,
-                connection_factor_override=record.get("connection_factor"),
-                connection_factor_multiplier=multiplier_by_ijk.get(
-                    multiplier_key, whole_well_multiplier
-                ),
-                direction=DIRECTION_MAP.get(direction) if direction else None,
-                schedule_status=schedule_status,
-            )
+        perforation_specs.append({
+            "i": i,
+            "j": j,
+            "k1": k1,
+            "k2": k2,
+            "top_depth": top_depth,
+            "bottom_depth": bottom_depth,
+            "skin": skin,
+            "wellbore_radius": radius,
+            "status": status,
+            "saturation_region": saturation_region,
+            "connection_factor_override": record.get("connection_factor"),
+            "connection_factor_multiplier": multiplier_by_ijk.get(
+                multiplier_key, whole_well_multiplier
+            ),
+            "direction": DIRECTION_MAP.get(direction) if direction else None,
+            "schedule_status": schedule_status,
+        })
+
+    if welopen_records:
+        # Whole-well or per-connection open/shut events, replayed in
+        # schedule order up to current_time. A whole-well event
+        # (i=j=k1=k2=0) touches every completion; a targeted one only
+        # touches completions whose own (i, j) column and k-layer range
+        # overlap the event's k1-k2 range.
+        for record in sorted(
+            (r for r in welopen_records if r.get("schedule_time", 0.0) <= current_time),
+            key=lambda r: r.get("schedule_time", 0.0),
+        ):
+            new_status = WELOPEN_STATUS_MAP[record["status"]]
+            i, j = record.get("i", 0), record.get("j", 0)
+            k1, k2 = record.get("k1", 0), record.get("k2", 0)
+            whole_well = i == 0 and j == 0 and k1 == 0 and k2 == 0
+            for spec in perforation_specs:
+                if whole_well or (
+                    spec["i"] == i and spec["j"] == j and spec["k1"] <= k2 and spec["k2"] >= k1
+                ):
+                    spec["status"] = new_status
+
+    perforations = [
+        Perforation(
+            top_depth=spec["top_depth"],
+            bottom_depth=spec["bottom_depth"],
+            skin=spec["skin"],
+            wellbore_radius=spec["wellbore_radius"],
+            status=spec["status"],
+            saturation_region=spec["saturation_region"],
+            connection_factor_override=spec["connection_factor_override"],
+            connection_factor_multiplier=spec["connection_factor_multiplier"],
+            direction=spec["direction"],
+            schedule_status=spec["schedule_status"],
         )
+        for spec in perforation_specs
+    ]
 
     reference_depth = welspecs_record.get("ref_depth")
     deepest_bottom_depth = max(perforation.bottom_depth for perforation in perforations)
@@ -180,6 +240,7 @@ def load_wells_from_records(
     compdat_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     *,
     wpimult_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
+    welopen_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
     unit_system: UnitSystem = UnitSystem.FIELD,
     injector_names: typing.Container[str] = (),
     current_time: float = 0.0,
@@ -198,6 +259,8 @@ def load_wells_from_records(
     :param grid: Grid the wells' completions are resolved against.
     :param welspecs_records: Every `WELSPECS` record in the deck.
     :param compdat_records: Every `COMPDAT` record in the deck.
+    :param wpimult_records: Every `WPIMULT` record in the deck, if any.
+    :param welopen_records: Every `WELOPEN` record in the deck, if any.
     :param unit_system: The deck's unit system.
     :param injector_names: Names of wells that appear in `WCONINJE`. Every
         other well is built as a producer, since `WELSPECS` and `COMPDAT`
@@ -210,6 +273,7 @@ def load_wells_from_records(
     """
     compdat_by_well: dict[str, list[typing.Mapping[str, typing.Any]]] = {}
     wpimult_by_well: dict[str, list[typing.Mapping[str, typing.Any]]] = {}
+    welopen_by_well: dict[str, list[typing.Mapping[str, typing.Any]]] = {}
     for record in compdat_records:
         compdat_by_well.setdefault(record["well"], []).append(record)
 
@@ -217,12 +281,17 @@ def load_wells_from_records(
         for record in wpimult_records:
             wpimult_by_well.setdefault(record["well"], []).append(record)
 
+    if welopen_records:
+        for record in welopen_records:
+            welopen_by_well.setdefault(record["well"], []).append(record)
+
     wells = {
         record["well"]: load_well_from_records(
             grid,
             welspecs_record=record,
             compdat_records=compdat_by_well.get(record["well"], []),
             wpimult_records=wpimult_by_well.get(record["well"]),
+            welopen_records=welopen_by_well.get(record["well"]),
             well_type=(
                 WellType.INJECTOR if record["well"] in injector_names else WellType.PRODUCER
             ),
@@ -361,9 +430,9 @@ def load_economic_limits_from_record(
     record: typing.Mapping[str, typing.Any], unit_system: UnitSystem
 ) -> tuple[EconomicLimit, ...]:
     """
-    Loads a well's economic limits from one WECON record.
+    Loads a well's economic limits from one `WECON` record.
 
-    :param record: One parsed WECON record.
+    :param record: One parsed `WECON` record.
     :param unit_system: The deck's unit system.
     :returns: One economic limit per non-zero threshold present on the
         record (minimum oil rate, water cut, GOR, water-gas ratio). A
@@ -450,55 +519,132 @@ def apply_economic_limits(
         controls.set(well_name, attrs.evolve(current_control, limits=kept_limits + new_limits))
 
 
+WELTARG_TARGET_FIELD = {
+    "ORAT": "target_rate",
+    "WRAT": "target_rate",
+    "GRAT": "target_rate",
+    "LRAT": "target_rate",
+    "RESV": "target_rate",
+    "RATE": "target_rate",
+    "BHP": "target_bhp",
+    "THP": "target_thp",
+    "GRUP": None,
+}
+"""
+Which `ProducerControl`/`InjectorControl` field a `WELTARG` record's
+`control_mode` writes to. `GRUP` takes no value, just switches the mode.
+"""
+
+
+def _apply_weltarg(control: WellControl, record: typing.Mapping[str, typing.Any]) -> WellControl:
+    """
+    Applies one `WELTARG` record to an already-resolved control, changing
+    only its mode and the one target value the record names, leaving
+    everything else (limits, efficiency factor, guide rate) as it was.
+
+    :param control: The well's control just before this `WELTARG`.
+    :param record: One parsed `WELTARG` record.
+    :returns: `control` with its mode and matching target field updated.
+    :raises ValidationError: If the record's `control_mode` doesn't apply
+        to `control`'s kind (e.g. an oil-rate target on an injector).
+    """
+    control_mode = record["control_mode"]
+    try:
+        new_mode = (
+            ProducerControlMode(control_mode)
+            if isinstance(control, ProducerControl)
+            else InjectorControlMode(control_mode)
+        )
+    except ValueError:
+        raise ValidationError(
+            f"`WELTARG` control mode {control_mode!r} doesn't apply to a "
+            f"{'producer' if isinstance(control, ProducerControl) else 'injector'}."
+        ) from None
+
+    target_field = WELTARG_TARGET_FIELD[control_mode]
+    if target_field is None:
+        return attrs.evolve(control, mode=new_mode)
+    return attrs.evolve(control, mode=new_mode, **{target_field: record["value"]})
+
+
 def load_controls_from_records(
     wconprod_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     wconinje_records: typing.Sequence[typing.Mapping[str, typing.Any]],
     unit_system: UnitSystem,
+    weltarg_records: typing.Sequence[typing.Mapping[str, typing.Any]] | None = None,
     current_time: float = 0.0,
 ) -> WellControls:
     """
-    Builds well controls from every `WCONPROD` and `WCONINJE` record in a
-    deck, resolved to whichever control is actually in effect for each
-    well at a given point in the schedule.
+    Builds well controls from every `WCONPROD`, `WCONINJE`, and `WELTARG`
+    record in a deck, replayed in schedule order up to a given point in time.
 
     A well with more than one control record over the course of the
     schedule is changing control mode partway through the run, or in some
-    cases converting between producer and injector. Only the most recent
-    record that has already taken effect is used, comparing `WCONPROD` and
-    `WCONINJE` records for the same well against each other by their actual
-    time in the schedule rather than assuming one keyword always wins.
+    cases converting between producer and injector. A `WCONPROD`/
+    `WCONINJE` record replaces the well's control outright; a `WELTARG`
+    record only changes the one target value (and mode) it names, leaving
+    everything else about the well's current control as it was.
 
     :param wconprod_records: Every `WCONPROD` record in the deck.
     :param wconinje_records: Every `WCONINJE` record in the deck.
     :param unit_system: The deck's unit system.
+    :param weltarg_records: Every `WELTARG` record in the deck, if any.
     :param current_time: The point on the schedule clock to resolve
         controls for, in the deck's time unit. Defaults to zero, the start
         of the run.
     :returns: Well controls keyed by well name, one per well that has a
         control in effect by this time.
+    :raises ValidationError: If a `WELTARG` record's well has no
+        `WCONPROD`/`WCONINJE` control yet at the point it takes effect.
     """
-    candidates: list[tuple[typing.Mapping[str, typing.Any], bool]] = [
-        (record, False) for record in wconprod_records
-    ] + [(record, True) for record in wconinje_records]
-
-    current: dict[str, tuple[typing.Mapping[str, typing.Any], bool]] = {}
-    current_times: dict[str, float] = {}
-    for record, is_injection in candidates:
-        schedule_time = record.get("schedule_time", 0.0)
-        if schedule_time > current_time:
-            continue
-        well_name = record["well"]
-        if well_name not in current or schedule_time >= current_times[well_name]:
-            current[well_name] = (record, is_injection)
-            current_times[well_name] = schedule_time
+    # (schedule_time, priority, kind, record). priority orders a same-time
+    # `WCONPROD`/`WCONINJE` before a `WELTARG`, so a full control restatement
+    # establishes the baseline a same-timestep `WELTARG` then fine-tunes,
+    # rather than the two racing in file order.
+    events_by_well: dict[str, list[tuple[float, int, str, typing.Mapping[str, typing.Any]]]] = {}
+    for record in wconprod_records:
+        events_by_well.setdefault(record["well"], []).append((
+            record.get("schedule_time", 0.0),
+            0,
+            "producer",
+            record,
+        ))
+    for record in wconinje_records:
+        events_by_well.setdefault(record["well"], []).append((
+            record.get("schedule_time", 0.0),
+            0,
+            "injector",
+            record,
+        ))
+    if weltarg_records:
+        for record in weltarg_records:
+            events_by_well.setdefault(record["well"], []).append((
+                record.get("schedule_time", 0.0),
+                1,
+                "target",
+                record,
+            ))
 
     controls: dict[str, WellControl] = {}
-    for well_name, (record, is_injection) in current.items():
-        controls[well_name] = (
-            load_injector_control_from_record(record, unit_system=unit_system)
-            if is_injection
-            else load_producer_control_from_record(record, unit_system=unit_system)
-        )
+    for well_name, events in events_by_well.items():
+        events.sort(key=lambda event: (event[0], event[1]))
+        current: WellControl | None = None
+        for schedule_time, _, kind, record in events:
+            if schedule_time > current_time:
+                continue
+            if kind == "producer":
+                current = load_producer_control_from_record(record, unit_system=unit_system)
+            elif kind == "injector":
+                current = load_injector_control_from_record(record, unit_system=unit_system)
+            else:
+                if current is None:
+                    raise ValidationError(
+                        f"`WELTARG` references well {well_name!r} before it has any "
+                        "`WCONPROD`/`WCONINJE` control to modify."
+                    )
+                current = _apply_weltarg(current, record)
+        if current is not None:
+            controls[well_name] = current
     return WellControls(controls=controls)
 
 
@@ -655,12 +801,14 @@ def load_wells_from_deck(deck_file: DeckFile, grid: Grid, current_time: float = 
     compdat = deck_file.get("COMPDAT") or []
     wconinje = deck_file.get("WCONINJE") or []
     wpimult = deck_file.get("WPIMULT")
+    welopen = deck_file.get("WELOPEN")
     injector_names = {record["well"] for record in wconinje}
     return load_wells_from_records(
         grid=grid,
         welspecs_records=welspecs,
         compdat_records=compdat,
         wpimult_records=wpimult,
+        welopen_records=welopen,
         unit_system=deck_file.unit_system,
         injector_names=injector_names,
         current_time=current_time,
@@ -672,7 +820,8 @@ def load_well_controls_from_deck(deck_file: DeckFile, current_time: float = 0.0)
     Builds well controls from a parsed deck, resolved to whatever is
     actually in effect for each well at a given point in the schedule.
 
-    :param deck_file: Parsed deck containing `WCONPROD`, `WCONINJE`, `WECON`, and `WGRUPCON`.
+    :param deck_file: Parsed deck containing `WCONPROD`, `WCONINJE`,
+        `WELTARG`, `WECON`, and `WGRUPCON`.
     :param current_time: The point on the schedule clock to resolve
         controls for, in the deck's time unit. Defaults to zero, the start
         of the run.
@@ -681,6 +830,7 @@ def load_well_controls_from_deck(deck_file: DeckFile, current_time: float = 0.0)
     controls = load_controls_from_records(
         wconprod_records=deck_file.get("WCONPROD") or [],
         wconinje_records=deck_file.get("WCONINJE") or [],
+        weltarg_records=deck_file.get("WELTARG"),
         unit_system=deck_file.unit_system,
         current_time=current_time,
     )
