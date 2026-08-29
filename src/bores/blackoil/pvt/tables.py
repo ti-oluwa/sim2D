@@ -1092,7 +1092,7 @@ class PVTTable(StoreSerializable):
 
         - Saturated (P ≤ bubble_point_arr): interpolated directly from the Bo table.
         - Undersaturated (P > bubble_point_arr): applies the McCain exponential correction
-          `Bo = Bob · exp(-co · (P - bubble_point_arr))`, where `co` comes from the
+          `Bo = Bob · exp(-co · (P - bubble_point_arr))`, where `compressibility` comes from the
           compressibility table. Falls back to `Bob` if unavailable.
 
         **Gas and water** - direct table interpolation; no saturation switching.
@@ -2058,7 +2058,7 @@ class PVTTable(StoreSerializable):
         dew_point_pressure: TableQuery[NDimension] | None = None,
     ) -> TableResult[NDimension] | None:
         """
-        Get vaporised oil ratio `Rv` (unit_system-dependent - STB/scf in FIELD).
+        Get vaporized oil ratio `Rv` (unit_system-dependent - STB/scf in FIELD).
         Gas / condensate phase only.
 
         Rv is capped at Rv_sat (the value at dew-point pressure) above the dew

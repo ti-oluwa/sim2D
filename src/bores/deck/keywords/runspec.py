@@ -72,7 +72,7 @@ must be supplied via `PVTO` (or `PVCO`) in the PROPS section.
 
 VAPOIL = FlagKeyword("VAPOIL")
 """
-`VAPOIL` - enable vaporised-oil-in-gas modelling (wet gas / condensate).
+`VAPOIL` - enable vaporized-oil-in-gas modelling (wet gas / condensate).
 
 Requires `OIL` and `GAS` to also be active.  Wet-gas PVT data
 must be supplied via `PVTG` in the PROPS section.

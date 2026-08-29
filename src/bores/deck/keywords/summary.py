@@ -68,7 +68,7 @@ class SummaryVectorKeyword(Keyword[list[str]]):
     `parse` returns the requested object list (each entry as a string,
     since well names are strings and region numbers come through as
     their original token text), or an empty list `[]` meaning "all
-    objects" - never `None` when the keyword is merely unrestricted,
+    objects". It is never `None` when the keyword is merely unrestricted,
     since the keyword *is* present and the requested vector should still
     be activated. `None` is reserved for "keyword absent from the deck".
     """

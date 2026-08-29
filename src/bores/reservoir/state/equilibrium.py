@@ -32,7 +32,7 @@ class DepthTable(StoreSerializable):
     """
     A generic depth-indexed lookup table for a single equilibration region,
     corresponding to one table from `RSVD` (solution GOR vs. depth) or
-    `RVVD` (vaporised oil-gas ratio vs. depth).
+    `RVVD` (vaporized oil-gas ratio vs. depth).
 
     Values are linearly interpolated at a query depth; values outside the
     table range are clamped to the endpoint (no extrapolation), matching
@@ -129,7 +129,7 @@ def _load_depth_tables(
 
     :param deck_file: Parsed `DeckFile`.
     :param keyword: `"RSVD"` or `"RVVD"`.
-    :param value_column: `"rs"` or `"rv"` - the column name to extract.
+    :param value_column: `"solution_gor"` or `"vaporized_ogr"` - the column name to extract.
     :returns: `{1-based table number: DepthTable}`, or `None` if the
         keyword is absent from the deck.
     :raises ValidationError: If the keyword is present but a table has
@@ -211,7 +211,7 @@ class EquilibriumRegion(StoreSerializable):
 
     rvvd_table: int = 0
     """
-    `RVVD`-table number for depth-dependent vaporised-oil ratio above
+    `RVVD`-table number for depth-dependent vaporized-oil ratio above
     the dew point. `0` = use the PVT table's saturated (dew-point) Rv
     instead, i.e. assume saturated gas throughout the region.
     """
@@ -578,8 +578,12 @@ class Equilibrium(StoreSerializable):
         uses_field_units = unit_system == UnitSystem.FIELD
         scf_to_mscf = c.SCF_TO_MSCF if uses_field_units else 1.0
         mscf_to_scf = c.MSCF_TO_SCF if uses_field_units else 1.0
-        rsvd_tables = _load_depth_tables(deck_file, "RSVD", "rs", value_multiplier=mscf_to_scf)
-        rvvd_tables = _load_depth_tables(deck_file, "RVVD", "rv", value_multiplier=scf_to_mscf)
+        rsvd_tables = _load_depth_tables(
+            deck_file, "RSVD", "solution_gor", value_multiplier=mscf_to_scf
+        )
+        rvvd_tables = _load_depth_tables(
+            deck_file, "RVVD", "vaporized_ogr", value_multiplier=scf_to_mscf
+        )
         return cls(
             regions=regions,
             rsvd_tables=rsvd_tables,

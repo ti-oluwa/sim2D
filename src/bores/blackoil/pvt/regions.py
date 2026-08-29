@@ -417,7 +417,7 @@ def _build_oil_data_from_pvto(
     5. Derives compressibility from `co = -(1/Bo)·(∂Bo/∂P)`.
 
     :param pvto_records: List of row dicts from the parsed `PVTO` keyword.
-        Each dict has keys `"rs"`, `"pressure"`, `"bo"`, `"viscosity"`.
+        Each dict has keys `"solution_gor"`, `"pressure"`, `"fvf"`, `"viscosity"`.
     :param density_record: `DENSITY` record dict with `"oil"` and `"gas"` keys
         (lbm/ft³ at standard conditions).
     :param temperature: Reservoir temperature.
@@ -443,8 +443,8 @@ def _build_oil_data_from_pvto(
     # Group records by Rs value
     solution_gor_to_rows: dict[float, list[dict]] = {}
     for row in pvto_records:
-        row["rs"] *= mscf_to_scf
-        solution_gor = row["rs"]
+        row["solution_gor"] *= mscf_to_scf
+        solution_gor = row["solution_gor"]
         solution_gor_to_rows.setdefault(solution_gor, []).append(row)
 
     if len(solution_gor_to_rows) < 2:
@@ -465,7 +465,7 @@ def _build_oil_data_from_pvto(
         rows = sorted(solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"])
         saturated_row = rows[0]
         bubble_point_pressure_values[i] = saturated_row["pressure"]
-        saturated_oil_fvf[i] = saturated_row["bo"]
+        saturated_oil_fvf[i] = saturated_row["fvf"]
         saturated_oil_viscosity[i] = saturated_row["viscosity"]
 
     # Pressure grid: bubble-point pressures + extension to max undersaturated pressure.
@@ -505,7 +505,7 @@ def _build_oil_data_from_pvto(
         )
 
     reference_pressure_arr = np.array([row["pressure"] for row in reference_rows], dtype=dtype)
-    reference_oil_fvf_arr = np.array([row["bo"] for row in reference_rows], dtype=dtype)
+    reference_oil_fvf_arr = np.array([row["fvf"] for row in reference_rows], dtype=dtype)
     reference_viscosity_arr = np.array([row["viscosity"] for row in reference_rows], dtype=dtype)
     reference_delta_pressure = reference_pressure_arr - reference_pressure_arr[0]
     reference_delta_oil_fvf = reference_oil_fvf_arr - reference_oil_fvf_arr[0]
@@ -536,7 +536,7 @@ def _build_oil_data_from_pvto(
     for solution_gor_key in solution_gor_keys:
         rows = sorted(solution_gor_to_rows[solution_gor_key], key=lambda row: row["pressure"])
         pressure_arr = np.array([row["pressure"] for row in rows], dtype=dtype)
-        oil_fvf_arr = np.array([row["bo"] for row in rows], dtype=dtype)
+        oil_fvf_arr = np.array([row["fvf"] for row in rows], dtype=dtype)
         oil_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
         if len(rows) < 2:
@@ -680,7 +680,7 @@ def _build_oil_data_from_pvdo(
     dead oil (Rs = 0 everywhere). No bubble-point switching is required
     since dead oil has no dissolved gas.
 
-    :param pvdo_records: List of row dicts with keys `"pressure"`, `"bo"`,
+    :param pvdo_records: List of row dicts with keys `"pressure"`, `"fvf"`,
         `"viscosity"`.
     :param density_record: `DENSITY` record; `"oil"` key used for ρo,SC.
     :param temperature: Reservoir temperature.
@@ -701,7 +701,7 @@ def _build_oil_data_from_pvdo(
         raise ValidationError(f"`PVDO` table requires at least 2 rows; got {len(rows)}.")
 
     pressures = np.array([row["pressure"] for row in rows], dtype=dtype)
-    oil_fvf_1d = np.array([row["bo"] for row in rows], dtype=dtype)
+    oil_fvf_1d = np.array([row["fvf"] for row in rows], dtype=dtype)
     oil_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
     n_p = len(pressures)
 
@@ -767,7 +767,7 @@ def _build_gas_data_from_pvdg(
     Eclipse stores Bg in rb/Mscf; this builder converts to ft³/SCF:
     `Bg_ft3_scf = Bg_rb_Mscf x 5.615 / 1000`.
 
-    :param pvdg_records: List of row dicts with keys `"pressure"`, `"bg"`,
+    :param pvdg_records: List of row dicts with keys `"pressure"`, `"fvf"`,
         `"viscosity"`.
     :param density_record: `DENSITY` record; `"gas"` key used for ρg,SC.
     :param temperature: Reservoir temperature.
@@ -793,7 +793,7 @@ def _build_gas_data_from_pvdg(
     # convention, so the rescale only applies to FIELD.
     bbl_to_ft3 = c.BARRELS_TO_CUBIC_FEET if unit_system == UnitSystem.FIELD else 1.0
     mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
-    gas_fvf_1d = np.array([row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype)
+    gas_fvf_1d = np.array([row["fvf"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype)
     gas_viscosity_1d = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
     if not np.all(np.diff(pressures) > 0):
@@ -859,8 +859,8 @@ def _build_gas_data_from_pvtg(
     missing values at a given pressure are linearly interpolated from the
     group's own rows.
 
-    :param pvtg_records: List of row dicts with keys `"pressure"`, `"rv"`,
-        `"bg"`, `"viscosity"`.
+    :param pvtg_records: List of row dicts with keys `"pressure"`, `"vaporized_ogr"`,
+        `"fvf"`, `"viscosity"`.
     :param density_record: `DENSITY` record; `"gas"` and `"oil"` keys used.
     :param dtype: Array dtype; defaults to `get_dtype()`.
     :returns: `PVTData` for the gas phase with Rv as the second (temperature) axis.
@@ -876,7 +876,7 @@ def _build_gas_data_from_pvtg(
     pressure_to_rows: dict[float, list[dict]] = {}
     for row in pvtg_records:
         # Apply the factor once here
-        row["rv"] *= scf_to_mscf
+        row["vaporized_ogr"] *= scf_to_mscf
         pressure_to_rows.setdefault(row["pressure"], []).append(row)
 
     if len(pressure_to_rows) < 2:
@@ -892,7 +892,7 @@ def _build_gas_data_from_pvtg(
         raise ValidationError("`PVTG` pressures must be strictly increasing.")
 
     # Union of all Rv values across all pressure groups -> common Rv grid
-    all_rv = sorted({row["rv"] for rows in pressure_to_rows.values() for row in rows})
+    all_rv = sorted({row["vaporized_ogr"] for rows in pressure_to_rows.values() for row in rows})
     if len(all_rv) < 1:
         raise ValidationError("`PVTG` table contains no Rv values.")
 
@@ -908,9 +908,11 @@ def _build_gas_data_from_pvtg(
     gas_viscosity_2d = np.empty((n_p, n_rv), dtype=dtype)
 
     for i, pressure_key in enumerate(pressure_keys):
-        rows = sorted(pressure_to_rows[pressure_key], key=lambda row: row["rv"])
-        rv_arr = np.array([row["rv"] for row in rows], dtype=dtype)
-        gas_fvf_arr = np.array([row["bg"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype)
+        rows = sorted(pressure_to_rows[pressure_key], key=lambda row: row["vaporized_ogr"])
+        rv_arr = np.array([row["vaporized_ogr"] for row in rows], dtype=dtype)
+        gas_fvf_arr = np.array(
+            [row["fvf"] * bbl_to_ft3 / mscf_to_scf for row in rows], dtype=dtype
+        )
         gas_viscosity_arr = np.array([row["viscosity"] for row in rows], dtype=dtype)
 
         if np.any(gas_fvf_arr <= 0):
@@ -947,7 +949,7 @@ def _build_gas_data_from_pvtg(
     # out the dew-point curve, the gas-side analogue of Pb(Rs) for oil.
     rv_max_per_pressure = np.array(
         [
-            max(row["rv"] for row in pressure_to_rows[pressure_key])
+            max(row["vaporized_ogr"] for row in pressure_to_rows[pressure_key])
             for pressure_key in pressure_keys
         ],
         dtype=dtype,
@@ -1060,8 +1062,8 @@ def _build_water_data_from_pvtw(
     The pressure grid spans `[max(14.696, P_ref/10), P_ref x 10]` so that
     the reference pressure always sits comfortably within the table bounds.
 
-    :param pvtw_record: Dict with keys `"p_ref"`, `"bw"`, `"cw"`,
-        `"viscosity"`, and optionally `"cv"` (default 0).
+    :param pvtw_record: Dict with keys `"reference_pressure"`, `"fvf"`, `"compressibility"`,
+        `"viscosity"`, and optionally `"viscosibility"` (default 0).
     :param density_record: `DENSITY` record; `"water"` key used for ρw,SC.
     :param temperature: Reservoir temperature.
     :param salinity: Water salinity (ppm NaCl).
@@ -1079,11 +1081,11 @@ def _build_water_data_from_pvtw(
     n_t = len(temperatures)
     salinities = np.array([salinity], dtype=dtype)
 
-    reference_pressure = pvtw_record["p_ref"]
-    reference_water_fvf = pvtw_record["bw"]
-    water_compressibility = pvtw_record["cw"]
+    reference_pressure = pvtw_record["reference_pressure"]
+    reference_water_fvf = pvtw_record["fvf"]
+    water_compressibility = pvtw_record["compressibility"]
     reference_water_viscosity = pvtw_record["viscosity"]
-    water_viscosibility = pvtw_record.get("cv", 0.0)
+    water_viscosibility = pvtw_record.get("viscosibility", 0.0)
 
     if reference_water_fvf <= 0:
         raise ValidationError("`PVTW` Bw must be positive.")
@@ -1255,9 +1257,9 @@ def load_pvt_regions(
             pvco_record = pvco_all[region_idx]
             if pvco_record:
                 record = pvco_record[0]
-                reference_pressure = record["p_ref"]
-                reference_oil_fvf = record["bo"]
-                oil_compressibility = record["co"]
+                reference_pressure = record["reference_pressure"]
+                reference_oil_fvf = record["fvf"]
+                oil_compressibility = record["compressibility"]
                 reference_viscosity = record["viscosity"]
                 # Build a small synthetic pressure grid around the reference
                 min_pressure = max(0.0, reference_pressure / 5.0)
@@ -1267,7 +1269,7 @@ def load_pvt_regions(
                 oil_fvf = reference_oil_fvf * np.exp(-oil_compressibility * delta_p)
                 oil_viscosity = np.full_like(pvco_pressures, reference_viscosity)
                 synthetic_rows = [
-                    {"pressure": pressure, "bo": fvf, "viscosity": viscosity}
+                    {"pressure": pressure, "fvf": fvf, "viscosity": viscosity}
                     for pressure, fvf, viscosity in zip(
                         pvco_pressures, oil_fvf, oil_viscosity, strict=False
                     )
@@ -1332,11 +1334,11 @@ def load_pvt_regions(
             pvtw_rows = pvtw_all[region_idx]
             if pvtw_rows:
                 pvtw_record = pvtw_rows[0]
-                water_reference_pressure = pvtw_record["p_ref"]
-                water_reference_fvf = pvtw_record["bw"]
-                water_reference_compressibility = pvtw_record["cw"]
+                water_reference_pressure = pvtw_record["reference_pressure"]
+                water_reference_fvf = pvtw_record["fvf"]
+                water_reference_compressibility = pvtw_record["compressibility"]
                 water_reference_viscosity = pvtw_record["viscosity"]
-                water_viscosibility = pvtw_record.get("cv", 0.0)
+                water_viscosibility = pvtw_record.get("viscosibility", 0.0)
 
         static = StaticPVT(
             stock_tank_oil_density=stock_tank_oil_density,

@@ -43,8 +43,12 @@ class WellType(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class CompletionStatus(enum.Enum):
@@ -69,8 +73,12 @@ class CompletionStatus(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class WellStatus(enum.Enum):
@@ -104,8 +112,12 @@ class WellStatus(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 @attrs.frozen(kw_only=True, slots=True)

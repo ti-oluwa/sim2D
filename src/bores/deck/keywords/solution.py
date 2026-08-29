@@ -15,7 +15,7 @@ float64 arrays):
 - `SOIL` / `SO` - initial oil saturation.
 - `SGAS` / `SG` - initial gas saturation.
 - `RS` - initial solution gas-oil ratio.
-- `RV` - initial vaporised oil-gas ratio.
+- `RV` - initial vaporized oil-gas ratio.
 
 **Equilibration keyword**:
 
@@ -79,7 +79,7 @@ RS = ArrayKeyword("RS", dtype=np.float64, default_value=0.0)
 """`RS` - initial solution gas-oil ratio (scf/stb in FIELD)."""
 
 RV = ArrayKeyword("RV", dtype=np.float64, default_value=0.0)
-"""`RV` - initial vaporised oil-gas ratio (stb/scf in FIELD)."""
+"""`RV` - initial vaporized oil-gas ratio (stb/scf in FIELD)."""
 
 EQUIL = RepeatedRecordKeyword[float](
     "EQUIL",
@@ -121,7 +121,7 @@ Fields:
   GOR below the bubble point (`0` = use the `PVTO` bubble-point Rs
   instead, i.e. assume saturated oil).
 - `rvvd_table`      - `RVVD`-table number for depth-dependent
-  vaporised-oil ratio above the dew point (`0` = use the `PVTG`
+  vaporized-oil ratio above the dew point (`0` = use the `PVTG`
   dew-point Rv instead, i.e. assume saturated gas).
 - `accuracy_flag`   - initialization accuracy/option switch (e.g.
   selecting compositional-vs-black-oil equilibration nuances); `0` is
@@ -208,7 +208,7 @@ RSVD = TableKeyword(
     "RSVD",
     columns=[
         Field("depth", np.float64),
-        Field("rs", np.float64),
+        Field("solution_gor", np.float64),
     ],
 )
 """
@@ -224,18 +224,18 @@ directly. Values outside the table range are clamped to the endpoint
 Columns:
 
 - `depth` - true vertical depth (ft in FIELD, m in METRIC).
-- `rs`    - solution gas-oil ratio at that depth (scf/stb in FIELD).
+- `solution_gor`    - solution gas-oil ratio at that depth (scf/stb in FIELD).
 """
 
 RVVD = TableKeyword(
     "RVVD",
     columns=[
         Field("depth", np.float64),
-        Field("rv", np.float64),
+        Field("vaporized_ogr", np.float64),
     ],
 )
 """
-`RVVD` - vaporised oil-gas ratio versus depth table.
+`RVVD` - vaporized oil-gas ratio versus depth table.
 
 Same convention as `RSVD` but for Rv above the dew point in
 gas-condensate columns.
@@ -243,7 +243,7 @@ gas-condensate columns.
 Columns:
 
 - `depth` - true vertical depth (ft in FIELD, m in METRIC).
-- `rv`    - vaporised oil-gas ratio at that depth (stb/scf in FIELD).
+- `vaporized_ogr`    - vaporized oil-gas ratio at that depth (stb/scf in FIELD).
 """
 
 

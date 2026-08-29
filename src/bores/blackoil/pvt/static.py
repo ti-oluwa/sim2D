@@ -227,11 +227,11 @@ class StaticPVT(StoreSerializable):
             stock_tank_gas_density = density_record.get("gas")
 
         # Extract water reference properties from PVTW record
-        water_reference_pressure = pvtw_record.get("p_ref")
-        water_reference_fvf = pvtw_record.get("bw")
+        water_reference_pressure = pvtw_record.get("reference_pressure")
+        water_reference_fvf = pvtw_record.get("fvf")
         water_reference_viscosity = pvtw_record.get("viscosity")
-        water_reference_compressibility = pvtw_record.get("cw")
-        water_viscosibility = pvtw_record.get("cv", 0.0)
+        water_reference_compressibility = pvtw_record.get("compressibility")
+        water_viscosibility = pvtw_record.get("viscosibility", 0.0)
         return cls(
             stock_tank_oil_density=stock_tank_oil_density,
             water_reference_pressure=water_reference_pressure,

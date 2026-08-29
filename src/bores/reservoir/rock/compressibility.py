@@ -430,7 +430,7 @@ class RockCompressibilityTable(StoreSerializable):
         `cr_eff(P) = (1 / PV_mult(P)) · ∂(PV_mult)/∂P`
 
         This is the instantaneous compressibility implied by the table -
-        equivalent to the `ROCK` scalar `cr` but pressure-dependent.
+        equivalent to the `ROCK` scalar `compressibility` but pressure-dependent.
 
         :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match `self.unit_system`.
@@ -693,8 +693,8 @@ class RockCompressibilityTable(StoreSerializable):
             if region_rows:
                 record = region_rows[0]
                 return cls.from_rock_record(
-                    reference_pressure=record["p_ref"],
-                    rock_compressibility=record["cr"],
+                    reference_pressure=record["reference_pressure"],
+                    rock_compressibility=record["compressibility"],
                     n_pressure_points=n_pressure_points,
                     pressure_range_factor=pressure_range_factor,
                     interpolation_method=interpolation_method,
@@ -1000,8 +1000,8 @@ def load_rock_compressibility_tables(
             if region_rows:
                 record = region_rows[0]
                 tables[rocknum] = RockCompressibilityTable.from_rock_record(
-                    reference_pressure=float(record["p_ref"]),
-                    rock_compressibility=float(record["cr"]),
+                    reference_pressure=float(record["reference_pressure"]),
+                    rock_compressibility=float(record["compressibility"]),
                     interpolation_method=interpolation_method,
                     unit_system=unit_system,
                     dtype=dtype,
@@ -1009,8 +1009,8 @@ def load_rock_compressibility_tables(
                 logger.debug(
                     "Rock region %d: built from `ROCK` (p_ref=%.2f, cr=%.3e, %s)",
                     rocknum,
-                    float(record["p_ref"]),
-                    float(record["cr"]),
+                    float(record["reference_pressure"]),
+                    float(record["compressibility"]),
                     unit_system.value,
                 )
                 continue

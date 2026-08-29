@@ -39,8 +39,8 @@ ELEMENT_FACES: dict[str, ElementFaces] = {
     ],
     # #####################################################################
     # Hexahedron / brick (8 vertices, VTK ordering)
-    # Bottom face: v0 v1 v2 v3 (z = z_bot); top face: v4 v5 v6 v7 (z = z_top)
-    # v0=(x0,y0,z_bot) v1=(x1,y0,z_bot) v2=(x1,y1,z_bot) v3=(x0,y1,z_bot)
+    # Bottom face: v0 v1 v2 v3 (z = z_bottom); top face: v4 v5 v6 v7 (z = z_top)
+    # v0=(x0,y0,z_bottom) v1=(x1,y0,z_bottom) v2=(x1,y1,z_bottom) v3=(x0,y1,z_bottom)
     # v4=(x0,y0,z_top) v5=(x1,y0,z_top) v6=(x1,y1,z_top) v7=(x0,y1,z_top)
     # #####################################################################
     "hexahedron": [

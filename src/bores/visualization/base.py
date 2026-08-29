@@ -289,7 +289,7 @@ class PropertyRegistry:
             display_name="Water FVF",
             unit="bbl/STB",
             color_scheme=ColorScheme.PLASMA,
-            aliases=["water_fvf"],
+            aliases=["fvf"],
         ),
         water_bubble_point_pressure=PropertyMeta(
             name="model.fluid_properties.water_bubble_point_pressure_grid",

@@ -151,7 +151,7 @@ WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
         Field("group", str),
         Field("i", int),
         Field("j", int),
-        Field("ref_depth", np.float64, required=False, default=None),
+        Field("reference_depth", np.float64, required=False, default=None),
         Field(
             "phase",
             lambda v: str(v).upper(),
@@ -161,7 +161,7 @@ WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
         ),
         Field("drainage_radius", np.float64, required=False, default=0.0),
         Field(
-            "inflow_eq",
+            "inflow_equation",
             lambda v: str(v).upper(),
             required=False,
             default="STD",
@@ -174,10 +174,10 @@ WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
             default="SHUT",
             options={"SHUT", "STOP"},
         ),
-        Field("crossflow", lambda v: str(v).upper(), required=False, default="YES"),
+        Field("enable_crossflow", lambda v: str(v).upper(), required=False, default="YES"),
         Field("pvt_table", int, required=False, default=0),
         Field(
-            "density_calc",
+            "density_calculation_method",
             lambda v: str(v).upper(),
             required=False,
             default="SEG",
@@ -198,15 +198,15 @@ Fields:
 - `well`            - well name.
 - `group`           - parent group name.
 - `i` / `j`         - 1-based structured grid location of the wellhead.
-- `ref_depth`       - BHP reference depth; defaults to the first
+- `reference_depth`       - BHP reference depth; defaults to the first
   completion's mid-perforation depth when absent (`None` here).
 - `phase`           - preferred phase (`OIL`, `WATER`, `GAS`).
 - `drainage_radius` - well drainage radius for PI calculations.
-- `inflow_eq`       - inflow equation type (`STD` or `NO`).
+- `inflow_equation`       - inflow equation type (`STD` or `NO`).
 - `auto_shut`       - automatic shut-in behaviour (`SHUT` or `STOP`).
-- `crossflow`       - whether crossflow between completions is allowed.
+- `enable_crossflow`       - whether crossflow between completions is allowed.
 - `pvt_table`       - PVT region override (`0` = use cell's `PVTNUM`).
-- `density_calc`    - wellbore density calculation method (`SEG` or `AVG`).
+- `density_calculation_method`    - wellbore density calculation method (`SEG` or `AVG`).
 """
 
 COMPDAT = ScheduledRecordKeyword[typing.Union[str, float]](
@@ -224,7 +224,7 @@ COMPDAT = ScheduledRecordKeyword[typing.Union[str, float]](
             default="OPEN",
             options={"OPEN", "SHUT", "STOP", "AUTO"},
         ),
-        Field("sat_table", int, required=False, default=0),
+        Field("saturation_table", int, required=False, default=0),
         Field("connection_factor", np.float64, required=False, default=None),
         Field("diameter", np.float64, required=False, default=0.0),
         Field("kh", np.float64, required=False, default=None),
@@ -237,7 +237,7 @@ COMPDAT = ScheduledRecordKeyword[typing.Union[str, float]](
             default="Z",
             options={"X", "Y", "Z"},
         ),
-        Field("perm_thickness_mult", np.float64, required=False, default=1.0),
+        Field("permeability_thickness_multiplier", np.float64, required=False, default=1.0),
     ],
 )
 """
@@ -256,7 +256,7 @@ Fields:
 - `k1` / `k2`           - 1-based top/bottom layer of the connection
   interval (a single-layer connection has `k1 == k2`).
 - `status`              - `OPEN` or `SHUT`.
-- `sat_table`           - saturation table number override (`0` = use
+- `saturation_table`           - saturation table number override (`0` = use
   the cell's `SATNUM`).
 - `connection_factor`   - explicit transmissibility/connection factor;
   `None` means Eclipse computes it from geometry and `PERMX`/`PERMY`.
@@ -266,7 +266,7 @@ Fields:
 - `skin`                - mechanical skin factor.
 - `d_factor`            - non-Darcy (rate-dependent) skin factor.
 - `direction`           - completion direction (`X`, `Y`, or `Z`).
-- `perm_thickness_mult` - additional permeability-thickness multiplier.
+- `permeability_thickness_multiplier` - additional permeability-thickness multiplier.
 """
 
 WCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
@@ -296,11 +296,11 @@ WCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
                 "GRUP",
             },
         ),
-        Field("orat", np.float64, required=False, default=0.0),
-        Field("wrat", np.float64, required=False, default=0.0),
-        Field("grat", np.float64, required=False, default=0.0),
-        Field("lrat", np.float64, required=False, default=0.0),
-        Field("resv", np.float64, required=False, default=0.0),
+        Field("oil_rate", np.float64, required=False, default=0.0),
+        Field("water_rate", np.float64, required=False, default=0.0),
+        Field("gas_rate", np.float64, required=False, default=0.0),
+        Field("liquid_rate", np.float64, required=False, default=0.0),
+        Field("reservoir_volume_rate", np.float64, required=False, default=0.0),
         Field("bhp", np.float64, required=False, default=None),
         Field("thp", np.float64, required=False, default=None),
         Field("vfp_table", int, required=False, default=0),
@@ -317,9 +317,9 @@ Fields:
 - `control_mode` - the constraint Eclipse actively controls the well
   by (e.g. `ORAT`, `WRAT`, `GRAT`, `LRAT`, `RESV`, `BHP`, `THP`,
   `GRUP`); `None` is only valid if the well is shut/stopped.
-- `orat` / `wrat` / `grat` / `lrat` - oil/water/gas/liquid rate
+- `oil_rate` / `water_rate` / `gas_rate` / `liquid_rate` - oil/water/gas/liquid rate
   upper-limit targets.
-- `resv`         - reservoir-volume rate upper-limit target.
+- `reservoir_volume_rate`         - reservoir-volume rate upper-limit target.
 - `bhp` / `thp`  - bottom-hole / tubing-head pressure limits;
   `None` means no limit.
 - `vfp_table`    - VFP (vertical flow performance) table number for
@@ -356,7 +356,7 @@ WCONINJE = ScheduledRecordKeyword[typing.Union[str, float]](
             },
         ),
         Field("rate", np.float64, required=False, default=0.0),
-        Field("resv", np.float64, required=False, default=0.0),
+        Field("reservoir_volume_rate", np.float64, required=False, default=0.0),
         Field("bhp", np.float64, required=False, default=None),
         Field("thp", np.float64, required=False, default=None),
         Field("vfp_table", int, required=False, default=0),
@@ -375,7 +375,7 @@ Fields:
 - `control_mode`  - the constraint Eclipse actively controls the well
   by (`RATE`, `RESV`, `BHP`, `THP`, or `GRUP`).
 - `rate`          - surface injection rate upper-limit target.
-- `resv`          - reservoir-volume injection rate upper-limit target.
+- `reservoir_volume_rate`          - reservoir-volume injection rate upper-limit target.
 - `bhp` / `thp`   - bottom-hole / tubing-head pressure limits;
   `None` means no limit.
 - `vfp_table`     - VFP table number for THP-to-BHP conversion
@@ -510,10 +510,10 @@ GCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
                 "NONE",
             },
         ),
-        Field("orat", np.float64, required=False, default=0.0),
-        Field("wrat", np.float64, required=False, default=0.0),
-        Field("grat", np.float64, required=False, default=0.0),
-        Field("lrat", np.float64, required=False, default=0.0),
+        Field("oil_rate", np.float64, required=False, default=0.0),
+        Field("water_rate", np.float64, required=False, default=0.0),
+        Field("gas_rate", np.float64, required=False, default=0.0),
+        Field("liquid_rate", np.float64, required=False, default=0.0),
         Field(
             "exceed_action",
             lambda v: str(v).upper(),
@@ -532,7 +532,7 @@ Fields:
 - `group`         - group name.
 - `control_mode`  - constraint the group is controlled by (`ORAT`,
   `WRAT`, `GRAT`, `LRAT`, `RESV`, `FLD`, or `NONE`).
-- `orat` / `wrat` / `grat` / `lrat` - oil/water/gas/liquid rate
+- `oil_rate` / `water_rate` / `gas_rate` / `liquid_rate` - oil/water/gas/liquid rate
   upper-limit targets for the group.
 - `exceed_action` - action when an individual well in the group would
   exceed its share of the group target (`NONE`, `RATE`, `CON`, ...).
@@ -560,7 +560,7 @@ GCONINJE = ScheduledRecordKeyword[typing.Union[str, float]](
             },
         ),
         Field("rate", np.float64, required=False, default=0.0),
-        Field("resv", np.float64, required=False, default=0.0),
+        Field("reservoir_volume_rate", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -575,7 +575,7 @@ Fields:
   `RESV`, `VREP`, `REIN`, or `FLD`).
 - `rate`          - surface injection rate upper-limit target for the
   group.
-- `resv`          - reservoir-volume injection rate upper-limit target
+- `reservoir_volume_rate`          - reservoir-volume injection rate upper-limit target
   for the group.
 """
 
@@ -583,8 +583,8 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
     "WECON",
     fields=[
         Field("well", str),
-        Field("min_orat", np.float64, required=False, default=0.0),
-        Field("max_wcut", np.float64, required=False, default=None),
+        Field("min_oil_rate", np.float64, required=False, default=0.0),
+        Field("min_water_cut", np.float64, required=False, default=None),
         Field("max_gor", np.float64, required=False, default=None),
         Field("max_wgr", np.float64, required=False, default=None),
         Field(
@@ -595,7 +595,7 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
             options={"CON", "+CON", "WELL", "PLUG"},
         ),
         Field(
-            "end_run_flag",
+            "end_run",
             lambda v: str(v).upper() == "YES",
             required=False,
             default=False,
@@ -609,7 +609,7 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
 Fields:
 
 - `well`            - well name.
-- `min_orat`        - minimum economic oil production rate; the well is
+- `min_oil_rate`        - minimum economic oil production rate; the well is
   shut in (per `workover_action`) once production falls below this.
 - `max_wcut`        - maximum water cut before workover/shut-in;
   `None` means no limit.
@@ -619,7 +619,7 @@ Fields:
   `None` means no limit.
 - `workover_action` - action taken when a limit is breached (`NONE`,
   `CON`, `+CON`, `WELL`, `PLUG`).
-- `end_run_flag`    - whether breaching this limit should end the
+- `end_run`    - whether breaching this limit should end the
   simulation run (`YES` or `NO`).
 """
 
@@ -696,7 +696,7 @@ GECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
         Field(name="min_gas_rate", type=np.float64, required=False, default=None),
         Field(name="max_water_cut", type=np.float64, required=False, default=None),
         Field(name="max_gor", type=np.float64, required=False, default=None),
-        Field(name="max_water_gas_ratio", type=np.float64, required=False, default=None),
+        Field(name="max_wgr", type=np.float64, required=False, default=None),
         Field(
             name="workover_procedure",
             type=lambda v: str(v).upper(),
@@ -713,7 +713,7 @@ GECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
     ],
 )
 """
-`GECON 'GROUP' [min_oil_rate] [min_gas_rate] [max_water_cut] [max_gor] [max_water_gas_ratio] [workover_procedure] [end_run] / ... /`
+`GECON 'GROUP' [min_oil_rate] [min_gas_rate] [max_water_cut] [max_gor] [max_wgr] [workover_procedure] [end_run] / ... /`
 - define economic operating limits for an entire production group.
 
 When one of the specified limits is exceeded, Eclipse performs the selected
@@ -727,7 +727,7 @@ Fields:
 - `min_gas_rate`           - minimum economic gas production rate.
 - `max_water_cut`          - maximum allowable water cut.
 - `max_gor`                - maximum allowable gas-oil ratio.
-- `max_water_gas_ratio`    - maximum allowable water-gas ratio.
+- `max_wgr`    - maximum allowable water-gas ratio.
 - `workover_procedure`     - action taken when a limit is exceeded
   (`NONE`, `CON`, `+CON`, `WELL`, `PLUG`, or `RATE`).
 - `end_run`                - whether exceeding the limit terminates the
@@ -817,9 +817,9 @@ WCONHIST = ScheduledRecordKeyword[typing.Union[str, float]](
             default="RESV",
             options={"ORAT", "WRAT", "GRAT", "RESV", "BHP"},
         ),
-        Field(name="orat", type=np.float64, required=False, default=0.0),
-        Field(name="wrat", type=np.float64, required=False, default=0.0),
-        Field(name="grat", type=np.float64, required=False, default=0.0),
+        Field(name="oil_rate", type=np.float64, required=False, default=0.0),
+        Field(name="water_rate", type=np.float64, required=False, default=0.0),
+        Field(name="gas_rate", type=np.float64, required=False, default=0.0),
         Field(name="vfp_table", type=int, required=False, default=None),
         Field(name="alq", type=np.float64, required=False, default=None),
         Field(name="thp", type=np.float64, required=False, default=None),
@@ -840,9 +840,9 @@ Fields:
 - `status`       - well status (`OPEN` or `SHUT`).
 - `control_mode` - historical control mode (`ORAT`, `WRAT`, `GRAT`,
   `RESV`, or `BHP`).
-- `orat`         - observed oil production rate.
-- `wrat`         - observed water production rate.
-- `grat`         - observed gas production rate.
+- `oil_rate`         - observed oil production rate.
+- `water_rate`         - observed water production rate.
+- `gas_rate`         - observed gas production rate.
 - `vfp_table`    - VFP table used for THP/BHP calculations.
 - `alq`          - artificial lift quantity.
 - `thp`          - observed tubing-head pressure.

@@ -86,7 +86,7 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
 
     :returns: Shape `(ny+1, nx+1, 6)` float64 array in Eclipse pillar order
         (j outermost, i innermost). Each pillar stores
-        `[x_top, y_top, z_top, x_bot, y_bot, z_bot]`.
+        `[x_top, y_top, z_top, x_bottom, y_bottom, z_bottom]`.
         Access pattern: `coord[j, i, :]` for cell `(i, j, :)`.
     """
 
@@ -102,7 +102,7 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
         schedule_times: dict[int, float] | None = None,
     ) -> FloatArray[ThreeDimensions] | None:
         if dims is None:
-            raise DeckParseError("`COORD` requires grid dimensions (SPECGRID/DIMENS).")
+            raise DeckParseError("`COORD` requires grid dimensions (`SPECGRID`/`DIMENS`).")
 
         record = deck.first_record_for(self.name)
         if record is None:
@@ -122,7 +122,7 @@ class CoordKeyword(Keyword[FloatArray[ThreeDimensions]]):
 
         # Eclipse writes the coord array (pillars) with coord6 varying fastest
         # then i, and j (slowest), hence the corresponding C-order shape is (ny + 1, nx +1, 6)
-        # Access: coord[j, i, :] == [x_top, y_top, z_top, x_bot, y_bot, z_bot]
+        # Access: coord[j, i, :] == [x_top, y_top, z_top, x_bottom, y_bottom, z_bottom]
         return np.array(tokens, dtype=np.float64).reshape(dims.ny + 1, dims.nx + 1, 6)
 
 
@@ -227,7 +227,7 @@ PINCH = RecordKeyword[typing.Union[str, float]](
         Field("gap_mode", str, required=False, default="GAP"),
         Field("pinchout_option", str, required=False, default="TOPBOT"),
         Field("multz_option", str, required=False, default="TOP"),
-        Field("comp_option", str, required=False, default="COMPZ"),
+        Field("composition_option", str, required=False, default="COMPZ"),
     ],
 )
 """
@@ -355,7 +355,7 @@ Default is `1` (all cells active) when the keyword is absent.
 Note:
     A missing `ACTNUM` keyword means all cells are active in Eclipse,
     so `.ArrayKeyword.parse` returns `None` (keyword
-    absent) rather than an all-ones array.  Callers should treat
+    absent) rather than an all-ones array. Callers should treat
     `None` as "all active".
 """
 
@@ -415,8 +415,7 @@ PERMZ = ArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 
 class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
     """
-    `MULTFLT 'NAME' MULTIPLIER / ... /`
-    - per-fault transmissibility multiplier.
+    `MULTFLT 'NAME' MULTIPLIER / ... /` - per-fault transmissibility multiplier.
 
     Eclipse semantics: when a fault name appears in multiple records
     across one or more `MULTFLT` blocks, the *last* value wins.

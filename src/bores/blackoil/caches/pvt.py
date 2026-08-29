@@ -89,7 +89,7 @@ class PVTCache(typing.NamedTuple):
     gas_compressibility: CellArray
     """Gas compressibility, $c_g$."""
 
-    # Dissolved/vaporised composition
+    # Dissolved/vaporized composition
     solution_gas_oil_ratio: CellArray
     """
     `Rs`. For saturated cells (`is_saturated[i] == True`), this is the

@@ -105,8 +105,8 @@ def load_well_from_records(
             "Cannot ascertain grid dimensions. Ensure that the provided `Grid` has `dimensions`."
         )
 
-    if welspecs_record["inflow_eq"] != "STD":
-        raise NotSupportedError("Only the standard inflow equation (STD) is currently supported.")
+    if welspecs_record["inflow_equation"] != "STD":
+        raise NotSupportedError("Only the standard inflow equation ('STD') is currently supported.")
 
     whole_well_multiplier: float | None = None
     multiplier_by_ijk: dict[tuple[int, int, int, int], float] = {}
@@ -115,13 +115,13 @@ def load_well_from_records(
             i, j = record.get("i", 0), record.get("j", 0)
             k1, k2 = record.get("k1", 0), record.get("k2", 0)
             if i == 0 and j == 0 and k1 == 0 and k2 == 0:
-                # WPIMULT's own schema defaults I/J/K1/K2 to 0, meaning
-                # "every connection on this well" - that key would never
+                # `WPIMULT`'s own schema defaults I/J/K1/K2 to 0, meaning
+                # "every connection on this well", that key would never
                 # match any COMPDAT's real (nonzero) indices below, so a
                 # whole-well multiplier (the common case) needs its own
                 # fallback slot rather than living in multiplier_by_ijk.
-                # Later WPIMULT reissues overwrite earlier ones, matching
-                # this file's other reissue semantics (WCONPROD/WCONINJE).
+                # Later `WPIMULT` reissues overwrite earlier ones, matching
+                # this file's other reissue semantics (`WCONPROD`/`WCONINJE`).
                 whole_well_multiplier = record["multiplier"]
             else:
                 multiplier_by_ijk[i, j, k1, k2] = record["multiplier"]
@@ -136,7 +136,7 @@ def load_well_from_records(
         bottom_depth = grid.cell_max_xyz[bottom_cell, 2]
         multiplier_key = (i, j, k1, k2)
         direction = record.get("direction")
-        saturation_region = record.get("sat_table") or None  # 0 should map to None too
+        saturation_region = record.get("saturation_table") or None  # 0 should map to None too
         radius = (record.get("diameter") or 0) * 0.5
         skin = record.get("skin", 0.0) or 0.0
         status = (
@@ -204,7 +204,7 @@ def load_well_from_records(
         for spec in perforation_specs
     ]
 
-    reference_depth = welspecs_record.get("ref_depth")
+    reference_depth = welspecs_record.get("reference_depth")
     deepest_bottom_depth = max(perforation.bottom_depth for perforation in perforations)
     surface_location = grid.get_cell_center_at(
         welspecs_record["i"] - 1,
@@ -370,11 +370,11 @@ def load_producer_control_from_record(
     return ProducerControl(
         mode=mode,
         target_rate={
-            ProducerControlMode.ORAT: record.get("orat"),
-            ProducerControlMode.WRAT: record.get("wrat"),
-            ProducerControlMode.GRAT: from_deck_gas_rate(record.get("grat"), unit_system),
-            ProducerControlMode.LRAT: record.get("lrat"),
-            ProducerControlMode.RESV: record.get("resv"),
+            ProducerControlMode.ORAT: record.get("oil_rate"),
+            ProducerControlMode.WRAT: record.get("water_rate"),
+            ProducerControlMode.GRAT: from_deck_gas_rate(record.get("gas_rate"), unit_system),
+            ProducerControlMode.LRAT: record.get("liquid_rate"),
+            ProducerControlMode.RESV: record.get("reservoir_volume_rate"),
         }.get(mode),
         target_bhp=bhp,
         target_thp=record.get("thp"),
@@ -417,13 +417,11 @@ def load_injector_control_from_record(
 
 
 ECONOMIC_QUANTITY_FIELDS = {
-    EconomicQuantity.WATER_CUT: "max_wcut",
+    EconomicQuantity.WATER_CUT: "min_water_cut",
     EconomicQuantity.GOR: "max_gor",
     EconomicQuantity.WATER_GAS_RATIO: "max_wgr",
 }
-ECONOMIC_MIN_RATE_QUANTITY_FIELDS = {
-    EconomicQuantity.OIL_RATE: "min_orat",
-}
+ECONOMIC_MIN_RATE_QUANTITY_FIELDS = {EconomicQuantity.OIL_RATE: "min_oil_rate"}
 
 
 def load_economic_limits_from_record(
@@ -440,7 +438,7 @@ def load_economic_limits_from_record(
         the deck's own default.
     """
     workover_action = WorkoverAction(record.get("workover_action", "WELL"))
-    end_run = bool(record.get("end_run_flag", False))
+    end_run = bool(record.get("end_run", False))
 
     limits = []
     for quantity, field_name in ECONOMIC_MIN_RATE_QUANTITY_FIELDS.items():
@@ -692,11 +690,11 @@ def load_group_control_from_record(
     return GroupControl(
         mode=GroupProducerControlMode(record["control_mode"]),
         target_rate={
-            "ORAT": record.get("orat"),
-            "WRAT": record.get("wrat"),
-            "GRAT": record.get("grat"),
-            "LRAT": record.get("lrat"),
-            "RESV": record.get("resv"),
+            "ORAT": record.get("oil_rate"),
+            "WRAT": record.get("water_rate"),
+            "GRAT": record.get("gas_rate"),
+            "LRAT": record.get("liquid_rate"),
+            "RESV": record.get("reservoir_volume_rate"),
         }.get(record["control_mode"]),
         unit_system=unit_system,
     )

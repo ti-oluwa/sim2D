@@ -63,8 +63,12 @@ class UnitSystem(enum.Enum):
     SI = "si"
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 NDimension = typing.TypeVar("NDimension", bound=tuple[int, ...])
@@ -128,8 +132,12 @@ class Orientation(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class FluidPhase(enum.Enum):
@@ -143,8 +151,12 @@ class FluidPhase(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 FrictionMethod = typing.Literal["simplified", "colebrook"]
@@ -174,8 +186,12 @@ class Side(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 WellFluidType = typing.Literal["water", "oil", "gas"]

@@ -375,7 +375,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         if dims is None:
             raise DeckParseError(
                 f"Cannot parse grid array keyword {self.name!r} without "
-                "resolved grid dimensions (SPECGRID/DIMENS not found)."
+                "resolved grid dimensions (`SPECGRID`/`DIMENS` not found)."
             )
         return self._resolve(deck, dims, operations=operations, stop_before_order=None)
 
@@ -394,7 +394,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         This is what makes e.g. `MULTX` set via `EQUALS` and later
         overwritten by an explicit `MULTX ... /` block (or vice versa)
-        behave like Eclipse: whichever event is last in the file wins for
+        behave like Eclipse, that is, whichever event is last in the file wins for
         the cells it touches.
 
         :param deck: Scanned deck.
@@ -795,12 +795,12 @@ class TableKeyword(Keyword[list[PVTTable[Number]]]):
 
     This covers two sub-patterns:
 
-    **Simple (immiscible) tables** - every `/`-terminated segment is one
+    **Simple (immiscible) tables**: every `/`-terminated segment is one
     complete row; all rows in a block share the same column layout.
     Examples: `SWOF`, `SGOF`, `PVDG`, `PVDO`, `SWFN`, `SGFN`,
     `SOF2`, `SOF3`, `ROCK`, `DENSITY`, `PVTW`.
 
-    **Miscible (saturated/under-saturated) tables** - a single primary-key
+    **Miscible (saturated/under-saturated) tables**: a single primary-key
     value on its own `/`-separated segment introduces a new "inner table",
     and subsequent segments are rows belonging to that inner table until the
     next primary-key segment or a double `//` terminates the table.
@@ -813,10 +813,10 @@ class TableKeyword(Keyword[list[PVTTable[Number]]]):
         `PVTO` / `PVTG`. When `None`, the table is flat (immiscible
         / simple-tabular).
     :param table_terminator: The string that separates tables within one
-        keyword block (default `"/"` - i.e. every block is one table).
+        keyword block (default `"/"`, i.e. every block is one table).
         Pass `"//"` for the double-slash convention used by some keywords.
 
-    The parsed value is `List[List[Dict]]` - a list of tables (one per
+    The parsed value is `List[List[Dict]]`; a list of tables (one per
     keyword occurrence / PVT region), each table being a list of row dicts.
     For miscible tables the `primary_key` field is duplicated into every
     inner-table row for convenience.

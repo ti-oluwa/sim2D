@@ -257,11 +257,11 @@ class WellGroups(
 class GroupProducerControlMode(enum.Enum):
     """Deck `GCONPROD` item 2 - which target field is active for a production group."""
 
-    ORAT = "orat"
-    WRAT = "wrat"
-    GRAT = "grat"
-    LRAT = "lrat"
-    RESV = "resv"
+    ORAT = "oil_rate"
+    WRAT = "water_rate"
+    GRAT = "gas_rate"
+    LRAT = "liquid_rate"
+    RESV = "reservoir_volume_rate"
     FLD = "fld"
     """Controlled by its parent group's allocation instead of its own target."""
     NONE = "none"
@@ -270,15 +270,19 @@ class GroupProducerControlMode(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class GroupInjectorControlMode(enum.Enum):
     """Deck `GCONINJE` item 3 - which target field is active for an injection group."""
 
     RATE = "rate"
-    RESV = "resv"
+    RESV = "reservoir_volume_rate"
     VREP = "vrep"
     REIN = "rein"
     FLD = "fld"
@@ -287,8 +291,12 @@ class GroupInjectorControlMode(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 @attrs.frozen(kw_only=True, slots=True)

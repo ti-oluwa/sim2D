@@ -47,8 +47,12 @@ class RateQuantity(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class EconomicQuantity(enum.Enum):
@@ -64,8 +68,12 @@ class EconomicQuantity(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class WorkoverAction(enum.Enum):
@@ -91,8 +99,12 @@ class WorkoverAction(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class ProducerControlMode(enum.Enum):
@@ -101,11 +113,11 @@ class ProducerControlMode(enum.Enum):
     is the active one for this well
     """
 
-    ORAT = "orat"
-    WRAT = "wrat"
-    GRAT = "grat"
-    LRAT = "lrat"
-    RESV = "resv"
+    ORAT = "oil_rate"
+    WRAT = "water_rate"
+    GRAT = "gas_rate"
+    LRAT = "liquid_rate"
+    RESV = "reservoir_volume_rate"
     BHP = "bhp"
     THP = "thp"
     GRUP = "grup"
@@ -115,8 +127,12 @@ class ProducerControlMode(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class InjectorControlMode(enum.Enum):
@@ -126,7 +142,7 @@ class InjectorControlMode(enum.Enum):
     """
 
     RATE = "rate"
-    RESV = "resv"
+    RESV = "reservoir_volume_rate"
     BHP = "bhp"
     THP = "thp"
     GRUP = "grup"
@@ -136,8 +152,12 @@ class InjectorControlMode(enum.Enum):
         return self.value
 
     @classmethod
-    def _missing_(cls, value: object) -> Self:
-        return cls(str(value).lower())
+    def _missing_(cls, value: object) -> Self | None:
+        lowered = str(value).lower()
+        for member in cls:
+            if member.value == lowered:
+                return member
+        return None
 
 
 class Limit(Serializable):

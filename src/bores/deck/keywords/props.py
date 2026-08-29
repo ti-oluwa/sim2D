@@ -81,11 +81,11 @@ contains a single-row table (one density record per PVT region).
 PVTW = TableKeyword(
     "PVTW",
     columns=[
-        Field("p_ref", np.float64),
-        Field("bw", np.float64),
-        Field("cw", np.float64),
+        Field("reference_pressure", np.float64),
+        Field("fvf", np.float64),
+        Field("compressibility", np.float64),
         Field("viscosity", np.float64),
-        Field("cv", np.float64, required=False, default=0.0),
+        Field("viscosibility", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -93,11 +93,11 @@ PVTW = TableKeyword(
 
 Columns:
 
-- `p_ref`        - reference pressure (psi / bar).
-- `bw`           - water formation volume factor at `p_ref` (rb/stb / rm³/sm³).
-- `cw`           - water compressibility (1/psi / 1/bar).
-- `viscosity`    - water viscosity at `p_ref` (cP).
-- `cv`           - water viscosibility (1/psi / 1/bar), optional (default 0).
+- `reference_pressure`        - reference pressure (psi / bar).
+- `fvf`           - water formation volume factor at `reference_pressure` (rb/stb / rm³/sm³).
+- `compressibility`           - water compressibility (1/psi / 1/bar).
+- `viscosity`    - water viscosity at `reference_pressure` (cP).
+- `viscosibility`           - water viscosibility (1/psi / 1/bar), optional (default 0).
 """
 
 
@@ -105,7 +105,7 @@ PVDO = TableKeyword(
     "PVDO",
     columns=[
         Field("pressure", np.float64),
-        Field("bo", np.float64),
+        Field("fvf", np.float64),
         Field("viscosity", np.float64),
     ],
 )
@@ -116,7 +116,7 @@ Each table (one per PVT region) is a sequence of rows terminated
 by `/`, with columns:
 
 - `pressure`  - oil pressure (psi / bar).
-- `bo`        - oil formation volume factor (rb/stb / rm³/sm³).
+- `fvf`        - oil formation volume factor (rb/stb / rm³/sm³).
 - `viscosity` - oil viscosity (cP).
 
 Rows must be in ascending pressure order.
@@ -126,10 +126,10 @@ PVTO = TableKeyword(
     "PVTO",
     columns=[
         Field("pressure", np.float64),
-        Field("bo", np.float64),
+        Field("fvf", np.float64),
         Field("viscosity", np.float64),
     ],
-    primary_key="rs",
+    primary_key="solution_gor",
 )
 """
 `PVTO` - live-oil (dissolved-gas, Rs-bracketed) PVT table.
@@ -138,12 +138,12 @@ The Eclipse format uses a primary Rs value on a line by itself,
 followed by rows of `(pressure, Bo, viscosity)` at that Rs.
 Each Rs group is terminated by `/`; the table block ends with `/`.
 
-Columns in each data row (the `rs` field is injected from the
+Columns in each data row (the `solution_gor` field is injected from the
 bracketing primary-key line):
 
-- `rs`        - solution gas-oil ratio (scf/stb / sm³/sm³).
+- `solution_gor`        - solution gas-oil ratio (scf/stb / sm³/sm³).
 - `pressure`  - oil pressure (psi / bar).
-- `bo`        - oil FVF (rb/stb / rm³/sm³).
+- `fvf`        - oil FVF (rb/stb / rm³/sm³).
 - `viscosity` - oil viscosity (cP).
 """
 
@@ -151,11 +151,11 @@ bracketing primary-key line):
 PVCO = TableKeyword(
     "PVCO",
     columns=[
-        Field("p_ref", np.float64),
-        Field("bo", np.float64),
-        Field("co", np.float64),
+        Field("reference_pressure", np.float64),
+        Field("fvf", np.float64),
+        Field("compressibility", np.float64),
         Field("viscosity", np.float64),
-        Field("cv", np.float64, required=False, default=0.0),
+        Field("viscosibility", np.float64, required=False, default=0.0),
     ],
 )
 """
@@ -166,11 +166,11 @@ PVT region.
 
 Columns:
 
-- `p_ref`       - reference (bubble-point) pressure.
-- `bo`          - FVF at `p_ref`.
-- `co`          - oil compressibility (1/psi / 1/bar).
-- `viscosity`   - oil viscosity at `p_ref`.
-- `cv`          - viscosibility (optional, default 0).
+- `reference_pressure`       - reference (bubble-point) pressure.
+- `fvf`          - FVF at `reference_pressure`.
+- `compressibility`          - oil compressibility (1/psi / 1/bar).
+- `viscosity`   - oil viscosity at `reference_pressure`.
+- `viscosibility`          - viscosibility (optional, default 0).
 """
 
 
@@ -178,17 +178,17 @@ PVDG = TableKeyword(
     "PVDG",
     columns=[
         Field("pressure", np.float64),
-        Field("bg", np.float64),
+        Field("fvf", np.float64),
         Field("viscosity", np.float64),
     ],
 )
 """
-`PVDG` - dry-gas (no vaporised oil) PVT table.
+`PVDG` - dry-gas (no vaporized oil) PVT table.
 
 Each table (one per PVT region) contains rows:
 
 - `pressure`  - gas pressure (psi / bar).
-- `bg`        - gas FVF (rb/Mscf / rm³/sm³).
+- `fvf`        - gas FVF (rb/Mscf / rm³/sm³).
 - `viscosity` - gas viscosity (cP).
 
 Rows must be in ascending pressure order.
@@ -198,14 +198,14 @@ Rows must be in ascending pressure order.
 PVTG = TableKeyword(
     "PVTG",
     columns=[
-        Field("rv", np.float64),
-        Field("bg", np.float64),
+        Field("vaporized_ogr", np.float64),
+        Field("fvf", np.float64),
         Field("viscosity", np.float64),
     ],
     primary_key="pressure",
 )
 """
-`PVTG` - wet-gas (vaporised-oil, Rv-bracketed) PVT table.
+`PVTG` - wet-gas (vaporized-oil, Rv-bracketed) PVT table.
 
 Mirrors the structure of `PVTO` but with pressure as the outer
 (primary) key and Rv as the inner column.
@@ -214,15 +214,15 @@ Columns in each data row (the `pressure` field is injected from the
 primary-key line):
 
 - `pressure`  - gas pressure (psi / bar).
-- `rv`        - vaporised oil-gas ratio (stb/Mscf / sm³/sm³).
-- `bg`        - gas FVF (rb/Mscf / rm³/sm³).
+- `vaporized_ogr`        - vaporized oil-gas ratio (stb/Mscf / sm³/sm³).
+- `fvf`        - gas FVF (rb/Mscf / rm³/sm³).
 - `viscosity` - gas viscosity (cP).
 """
 
 
 ROCK = TableKeyword(
     "ROCK",
-    columns=[Field("p_ref", np.float64), Field("cr", np.float64)],
+    columns=[Field("reference_pressure", np.float64), Field("compressibility", np.float64)],
 )
 """
 `ROCK  P_REF  CR /`
@@ -230,17 +230,17 @@ ROCK = TableKeyword(
 
 Columns:
 
-- `p_ref` - reference pressure at which the pore volume equals the
+- `reference_pressure` - reference pressure at which the pore volume equals the
     geometrically calculated value (psi / bar).
-- `cr` - rock compressibility (1/psi / 1/bar).
+- `compressibility` - rock compressibility (1/psi / 1/bar).
 """
 
 ROCKTAB = TableKeyword(
     "ROCKTAB",
     columns=[
         Field("pressure", np.float64),
-        Field("pv_mult", np.float64),
-        Field("trans_mult", np.float64, required=False, default=1.0),
+        Field("pore_volume_multiplier", np.float64),
+        Field("transmissibility_multiplier", np.float64, required=False, default=1.0),
     ],
 )
 """
@@ -250,8 +250,8 @@ Used when rock compaction cannot be described by a single
 compressibility value. Each table (one per rock region) contains rows:
 
 - `pressure`  - pressure (psi / bar).
-- `pv_mult`   - pore-volume multiplier at that pressure (dimensionless).
-- `trans_mult` - transmissibility multiplier (optional, default 1.0).
+- `pore_volume_multiplier`   - pore-volume multiplier at that pressure (dimensionless).
+- `transmissibility_multiplier` - transmissibility multiplier (optional, default 1.0).
 """
 
 SWOF = TableKeyword(
