@@ -99,14 +99,14 @@ class GroupKind(enum.IntEnum):
 class ProducerControlModeTag(enum.IntEnum):
     """Tag value for `CompiledWellControls.control_modes` on a `WellKind.PRODUCER` row."""
 
-    ORAT = 0
-    WRAT = 1
-    GRAT = 2
-    LRAT = 3
-    RESV = 4
+    OIL_RATE = 0
+    WATER_RATE = 1
+    GAS_RATE = 2
+    LIQUID_RATE = 3
+    RESERVOIR_VOLUME_RATE = 4
     BHP = 5
     THP = 6
-    GRUP = 7
+    GROUP = 7
     UNSET = 8
 
 
@@ -120,22 +120,22 @@ class InjectorControlModeTag(enum.IntEnum):
     """
 
     RATE = 0
-    RESV = 1
+    RESERVOIR_VOLUME_RATE = 1
     BHP = 2
     THP = 3
-    GRUP = 4
+    GROUP = 4
     UNSET = 5
 
 
 class GroupProducerControlModeTag(enum.IntEnum):
     """Tag value for `CompiledGroupControls.control_modes` on a `GroupKind.PRODUCER` row."""
 
-    ORAT = 0
-    WRAT = 1
-    GRAT = 2
-    LRAT = 3
-    RESV = 4
-    FLD = 5
+    OIL_RATE = 0
+    WATER_RATE = 1
+    GAS_RATE = 2
+    LIQUID_RATE = 3
+    RESERVOIR_VOLUME_RATE = 4
+    FIELD = 5
     NONE = 6
 
 
@@ -143,10 +143,10 @@ class GroupInjectorControlModeTag(enum.IntEnum):
     """Tag value for `CompiledGroupControls.control_modes` on a `GroupKind.INJECTOR` row."""
 
     RATE = 0
-    RESV = 1
-    VREP = 2
-    REIN = 3
-    FLD = 4
+    RESERVOIR_VOLUME_RATE = 1
+    VOIDAGE_REPLACEMENT = 2
+    REINJECTION = 3
+    FIELD = 4
 
 
 class RateQuantityTag(enum.IntEnum):
@@ -187,61 +187,61 @@ class FluidPhaseTag(enum.IntEnum):
 
 
 PRODUCER_MODE_TAG = {
-    ProducerControlMode.ORAT: ProducerControlModeTag.ORAT,
-    ProducerControlMode.WRAT: ProducerControlModeTag.WRAT,
-    ProducerControlMode.GRAT: ProducerControlModeTag.GRAT,
-    ProducerControlMode.LRAT: ProducerControlModeTag.LRAT,
-    ProducerControlMode.RESV: ProducerControlModeTag.RESV,
+    ProducerControlMode.OIL_RATE: ProducerControlModeTag.OIL_RATE,
+    ProducerControlMode.WATER_RATE: ProducerControlModeTag.WATER_RATE,
+    ProducerControlMode.GAS_RATE: ProducerControlModeTag.GAS_RATE,
+    ProducerControlMode.LIQUID_RATE: ProducerControlModeTag.LIQUID_RATE,
+    ProducerControlMode.RESERVOIR_VOLUME_RATE: ProducerControlModeTag.RESERVOIR_VOLUME_RATE,
     ProducerControlMode.BHP: ProducerControlModeTag.BHP,
     ProducerControlMode.THP: ProducerControlModeTag.THP,
-    ProducerControlMode.GRUP: ProducerControlModeTag.GRUP,
+    ProducerControlMode.GROUP: ProducerControlModeTag.GROUP,
     ProducerControlMode.UNSET: ProducerControlModeTag.UNSET,
 }
 INJECTOR_MODE_TAG = {
     InjectorControlMode.RATE: InjectorControlModeTag.RATE,
-    InjectorControlMode.RESV: InjectorControlModeTag.RESV,
+    InjectorControlMode.RESERVOIR_VOLUME_RATE: InjectorControlModeTag.RESERVOIR_VOLUME_RATE,
     InjectorControlMode.BHP: InjectorControlModeTag.BHP,
     InjectorControlMode.THP: InjectorControlModeTag.THP,
-    InjectorControlMode.GRUP: InjectorControlModeTag.GRUP,
+    InjectorControlMode.GROUP: InjectorControlModeTag.GROUP,
     InjectorControlMode.UNSET: InjectorControlModeTag.UNSET,
 }
 GROUP_PRODUCER_MODE_TAG = {
-    GroupProducerControlMode.ORAT: GroupProducerControlModeTag.ORAT,
-    GroupProducerControlMode.WRAT: GroupProducerControlModeTag.WRAT,
-    GroupProducerControlMode.GRAT: GroupProducerControlModeTag.GRAT,
-    GroupProducerControlMode.LRAT: GroupProducerControlModeTag.LRAT,
-    GroupProducerControlMode.RESV: GroupProducerControlModeTag.RESV,
-    GroupProducerControlMode.FLD: GroupProducerControlModeTag.FLD,
+    GroupProducerControlMode.OIL_RATE: GroupProducerControlModeTag.OIL_RATE,
+    GroupProducerControlMode.WATER_RATE: GroupProducerControlModeTag.WATER_RATE,
+    GroupProducerControlMode.GAS_RATE: GroupProducerControlModeTag.GAS_RATE,
+    GroupProducerControlMode.LIQUID_RATE: GroupProducerControlModeTag.LIQUID_RATE,
+    GroupProducerControlMode.RESERVOIR_VOLUME_RATE: GroupProducerControlModeTag.RESERVOIR_VOLUME_RATE,
+    GroupProducerControlMode.FIELD: GroupProducerControlModeTag.FIELD,
     GroupProducerControlMode.NONE: GroupProducerControlModeTag.NONE,
 }
 GROUP_INJECTOR_MODE_TAG = {
     GroupInjectorControlMode.RATE: GroupInjectorControlModeTag.RATE,
-    GroupInjectorControlMode.RESV: GroupInjectorControlModeTag.RESV,
-    GroupInjectorControlMode.VREP: GroupInjectorControlModeTag.VREP,
-    GroupInjectorControlMode.REIN: GroupInjectorControlModeTag.REIN,
-    GroupInjectorControlMode.FLD: GroupInjectorControlModeTag.FLD,
+    GroupInjectorControlMode.RESERVOIR_VOLUME_RATE: GroupInjectorControlModeTag.RESERVOIR_VOLUME_RATE,
+    GroupInjectorControlMode.VOIDAGE_REPLACEMENT: GroupInjectorControlModeTag.VOIDAGE_REPLACEMENT,
+    GroupInjectorControlMode.REINJECTION: GroupInjectorControlModeTag.REINJECTION,
+    GroupInjectorControlMode.FIELD: GroupInjectorControlModeTag.FIELD,
 }
 GROUP_TO_PRODUCER_MODE_TAG = {
-    GroupProducerControlModeTag.ORAT: ProducerControlModeTag.ORAT,
-    GroupProducerControlModeTag.WRAT: ProducerControlModeTag.WRAT,
-    GroupProducerControlModeTag.GRAT: ProducerControlModeTag.GRAT,
-    GroupProducerControlModeTag.LRAT: ProducerControlModeTag.LRAT,
-    GroupProducerControlModeTag.RESV: ProducerControlModeTag.RESV,
+    GroupProducerControlModeTag.OIL_RATE: ProducerControlModeTag.OIL_RATE,
+    GroupProducerControlModeTag.WATER_RATE: ProducerControlModeTag.WATER_RATE,
+    GroupProducerControlModeTag.GAS_RATE: ProducerControlModeTag.GAS_RATE,
+    GroupProducerControlModeTag.LIQUID_RATE: ProducerControlModeTag.LIQUID_RATE,
+    GroupProducerControlModeTag.RESERVOIR_VOLUME_RATE: ProducerControlModeTag.RESERVOIR_VOLUME_RATE,
 }
 """
 Maps a `GroupProducerControlModeTag` to the concrete `ProducerControlModeTag`
 a `GRUP`-mode member well switches to once allocated a share of it.
 
-`FLD`/`NONE` are deliberately absent because neither has a directly allocatable per-well target.
+`FIELD`/`NONE` are deliberately absent because neither has a directly allocatable per-well target.
 """
 
 GROUP_TO_INJECTOR_MODE_TAG = {
     GroupInjectorControlModeTag.RATE: InjectorControlModeTag.RATE,
-    GroupInjectorControlModeTag.RESV: InjectorControlModeTag.RESV,
+    GroupInjectorControlModeTag.RESERVOIR_VOLUME_RATE: InjectorControlModeTag.RESERVOIR_VOLUME_RATE,
 }
 """
-Injector analogue of `GROUP_TO_PRODUCER_MODE_TAG`. `VREP`/`REIN`/`FLD`
-deliberately absent, same reasoning.
+Injector analogue of `GROUP_TO_PRODUCER_MODE_TAG`. `VOIDAGE_REPLACEMENT`/
+`REINJECTION`/`FIELD` deliberately absent, same reasoning.
 """
 
 RATE_QUANTITY_TAG = {

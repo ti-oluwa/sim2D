@@ -257,12 +257,12 @@ class WellGroups(
 class GroupProducerControlMode(enum.Enum):
     """Deck `GCONPROD` item 2 - which target field is active for a production group."""
 
-    ORAT = "oil_rate"
-    WRAT = "water_rate"
-    GRAT = "gas_rate"
-    LRAT = "liquid_rate"
-    RESV = "reservoir_volume_rate"
-    FLD = "fld"
+    OIL_RATE = "oil_rate"
+    WATER_RATE = "water_rate"
+    GAS_RATE = "gas_rate"
+    LIQUID_RATE = "liquid_rate"
+    RESERVOIR_VOLUME_RATE = "reservoir_volume_rate"
+    FIELD = "field"
     """Controlled by its parent group's allocation instead of its own target."""
     NONE = "none"
 
@@ -282,10 +282,10 @@ class GroupInjectorControlMode(enum.Enum):
     """Deck `GCONINJE` item 3 - which target field is active for an injection group."""
 
     RATE = "rate"
-    RESV = "reservoir_volume_rate"
-    VREP = "vrep"
-    REIN = "rein"
-    FLD = "fld"
+    RESERVOIR_VOLUME_RATE = "reservoir_volume_rate"
+    VOIDAGE_REPLACEMENT = "voidage_replacement"
+    REINJECTION = "reinjection"
+    FIELD = "field"
 
     def __str__(self) -> str:
         return self.value
@@ -337,7 +337,7 @@ class GroupControl(Serializable):
         if self.injected_phase is not None:
             factor = (
                 factors["reservoir_rate"]
-                if self.mode is GroupInjectorControlMode.RESV
+                if self.mode is GroupInjectorControlMode.RESERVOIR_VOLUME_RATE
                 else factors["gas_surface_rate"]
                 if self.injected_phase is FluidPhase.GAS
                 else factors["liquid_surface_rate"]
@@ -345,9 +345,9 @@ class GroupControl(Serializable):
         else:
             factor = (
                 factors["reservoir_rate"]
-                if self.mode is GroupProducerControlMode.RESV
+                if self.mode is GroupProducerControlMode.RESERVOIR_VOLUME_RATE
                 else factors["gas_surface_rate"]
-                if self.mode is GroupProducerControlMode.GRAT
+                if self.mode is GroupProducerControlMode.GAS_RATE
                 else factors["liquid_surface_rate"]
             )
         return attrs.evolve(self, target_rate=self.target_rate * factor, unit_system=target)

@@ -36,6 +36,48 @@ from bores.wells.groups import (
 )
 
 DIRECTION_MAP = {"X": Orientation.X, "Y": Orientation.Y, "Z": Orientation.Z}
+PRODUCER_CONTROL_MODE_MAP = {
+    "ORAT": ProducerControlMode.OIL_RATE,
+    "WRAT": ProducerControlMode.WATER_RATE,
+    "GRAT": ProducerControlMode.GAS_RATE,
+    "LRAT": ProducerControlMode.LIQUID_RATE,
+    "RESV": ProducerControlMode.RESERVOIR_VOLUME_RATE,
+    "BHP": ProducerControlMode.BHP,
+    "THP": ProducerControlMode.THP,
+    "GRUP": ProducerControlMode.GROUP,
+}
+"""
+Maps `WCONPROD`/`WELTARG` item 2's deck-literal control mode string to the
+internal `ProducerControlMode`. The deck keeps Eclipse's own abbreviated
+vocabulary (`ORAT`, `WRAT`, and so on); the internal enum spells things
+out. This is the one place that translation happens.
+"""
+INJECTOR_CONTROL_MODE_MAP = {
+    "RATE": InjectorControlMode.RATE,
+    "RESV": InjectorControlMode.RESERVOIR_VOLUME_RATE,
+    "BHP": InjectorControlMode.BHP,
+    "THP": InjectorControlMode.THP,
+    "GRUP": InjectorControlMode.GROUP,
+}
+"""Injector analogue of `PRODUCER_CONTROL_MODE_MAP`, for `WCONINJE`/`WELTARG`."""
+GROUP_PRODUCER_CONTROL_MODE_MAP = {
+    "ORAT": GroupProducerControlMode.OIL_RATE,
+    "WRAT": GroupProducerControlMode.WATER_RATE,
+    "GRAT": GroupProducerControlMode.GAS_RATE,
+    "LRAT": GroupProducerControlMode.LIQUID_RATE,
+    "RESV": GroupProducerControlMode.RESERVOIR_VOLUME_RATE,
+    "FLD": GroupProducerControlMode.FIELD,
+    "NONE": GroupProducerControlMode.NONE,
+}
+"""Group-control analogue of `PRODUCER_CONTROL_MODE_MAP`, for `GCONPROD`."""
+GROUP_INJECTOR_CONTROL_MODE_MAP = {
+    "RATE": GroupInjectorControlMode.RATE,
+    "RESV": GroupInjectorControlMode.RESERVOIR_VOLUME_RATE,
+    "VREP": GroupInjectorControlMode.VOIDAGE_REPLACEMENT,
+    "REIN": GroupInjectorControlMode.REINJECTION,
+    "FLD": GroupInjectorControlMode.FIELD,
+}
+"""Group-control analogue of `INJECTOR_CONTROL_MODE_MAP`, for `GCONINJE`."""
 WELOPEN_STATUS_MAP = {
     "OPEN": CompletionStatus.OPEN,
     "AUTO": CompletionStatus.OPEN,
@@ -363,7 +405,7 @@ def load_producer_control_from_record(
     :returns: Constructed `ProducerControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
     """
-    mode = ProducerControlMode[record["control_mode"]]
+    mode = PRODUCER_CONTROL_MODE_MAP[record["control_mode"]]
     limits: list[Limit] = []
     bhp = record.get("bhp")
     if bhp is not None and mode is not ProducerControlMode.BHP:
@@ -372,11 +414,11 @@ def load_producer_control_from_record(
     return ProducerControl(
         mode=mode,
         target_rate={
-            ProducerControlMode.ORAT: record.get("oil_rate"),
-            ProducerControlMode.WRAT: record.get("water_rate"),
-            ProducerControlMode.GRAT: from_deck_gas_rate(record.get("gas_rate"), unit_system),
-            ProducerControlMode.LRAT: record.get("liquid_rate"),
-            ProducerControlMode.RESV: record.get("reservoir_volume_rate"),
+            ProducerControlMode.OIL_RATE: record.get("oil_rate"),
+            ProducerControlMode.WATER_RATE: record.get("water_rate"),
+            ProducerControlMode.GAS_RATE: from_deck_gas_rate(record.get("gas_rate"), unit_system),
+            ProducerControlMode.LIQUID_RATE: record.get("liquid_rate"),
+            ProducerControlMode.RESERVOIR_VOLUME_RATE: record.get("reservoir_volume_rate"),
         }.get(mode),
         target_bhp=bhp,
         target_thp=record.get("thp"),
@@ -396,7 +438,7 @@ def load_injector_control_from_record(
     :returns: Constructed `InjectorControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(max_value=bhp)`.
     """
-    mode = InjectorControlMode[record["control_mode"]]
+    mode = INJECTOR_CONTROL_MODE_MAP[record["control_mode"]]
     phase = FluidPhase(record["injector_type"].lower())
     limits: list[Limit] = []
     bhp = record.get("bhp")
@@ -551,9 +593,9 @@ def _apply_weltarg(control: WellControl, record: typing.Mapping[str, typing.Any]
     control_mode = record["control_mode"]
     try:
         new_mode = (
-            ProducerControlMode[control_mode]
+            PRODUCER_CONTROL_MODE_MAP[control_mode]
             if isinstance(control, ProducerControl)
-            else InjectorControlMode[control_mode]
+            else INJECTOR_CONTROL_MODE_MAP[control_mode]
         )
     except KeyError:
         raise ValidationError(
@@ -680,7 +722,7 @@ def load_group_control_from_record(
     """
     if is_injection:
         return GroupControl(
-            mode=GroupInjectorControlMode[record["control_mode"]],
+            mode=GROUP_INJECTOR_CONTROL_MODE_MAP[record["control_mode"]],
             target_rate=record.get("rate"),
             injected_phase=(
                 FluidPhase(record["injector_type"].lower())
@@ -690,7 +732,7 @@ def load_group_control_from_record(
             unit_system=unit_system,
         )
     return GroupControl(
-        mode=GroupProducerControlMode[record["control_mode"]],
+        mode=GROUP_PRODUCER_CONTROL_MODE_MAP[record["control_mode"]],
         target_rate={
             "ORAT": record.get("oil_rate"),
             "WRAT": record.get("water_rate"),

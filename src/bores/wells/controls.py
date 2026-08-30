@@ -113,14 +113,14 @@ class ProducerControlMode(enum.Enum):
     is the active one for this well
     """
 
-    ORAT = "oil_rate"
-    WRAT = "water_rate"
-    GRAT = "gas_rate"
-    LRAT = "liquid_rate"
-    RESV = "reservoir_volume_rate"
+    OIL_RATE = "oil_rate"
+    WATER_RATE = "water_rate"
+    GAS_RATE = "gas_rate"
+    LIQUID_RATE = "liquid_rate"
+    RESERVOIR_VOLUME_RATE = "reservoir_volume_rate"
     BHP = "bhp"
     THP = "thp"
-    GRUP = "grup"
+    GROUP = "group"
     UNSET = "none"
 
     def __str__(self) -> str:
@@ -142,10 +142,10 @@ class InjectorControlMode(enum.Enum):
     """
 
     RATE = "rate"
-    RESV = "reservoir_volume_rate"
+    RESERVOIR_VOLUME_RATE = "reservoir_volume_rate"
     BHP = "bhp"
     THP = "thp"
-    GRUP = "grup"
+    GROUP = "group"
     UNSET = "none"
 
     def __str__(self) -> str:
@@ -465,13 +465,13 @@ control_type = make_serializable_type_registrar(
 
 
 PRODUCER_RATE_MODES = (
-    ProducerControlMode.ORAT,
-    ProducerControlMode.WRAT,
-    ProducerControlMode.GRAT,
-    ProducerControlMode.LRAT,
-    ProducerControlMode.RESV,
+    ProducerControlMode.OIL_RATE,
+    ProducerControlMode.WATER_RATE,
+    ProducerControlMode.GAS_RATE,
+    ProducerControlMode.LIQUID_RATE,
+    ProducerControlMode.RESERVOIR_VOLUME_RATE,
 )
-INJECTOR_RATE_MODES = (InjectorControlMode.RATE, InjectorControlMode.RESV)
+INJECTOR_RATE_MODES = (InjectorControlMode.RATE, InjectorControlMode.RESERVOIR_VOLUME_RATE)
 
 
 @control_type
@@ -548,11 +548,11 @@ class ProducerControl(WellControl):
             return self
         factors = get_conversion_factors(self.unit_system, target, table=table)
         rate_modes = {
-            ProducerControlMode.ORAT: "liquid_surface_rate",
-            ProducerControlMode.WRAT: "liquid_surface_rate",
-            ProducerControlMode.GRAT: "gas_surface_rate",
-            ProducerControlMode.LRAT: "liquid_surface_rate",
-            ProducerControlMode.RESV: "reservoir_rate",
+            ProducerControlMode.OIL_RATE: "liquid_surface_rate",
+            ProducerControlMode.WATER_RATE: "liquid_surface_rate",
+            ProducerControlMode.GAS_RATE: "gas_surface_rate",
+            ProducerControlMode.LIQUID_RATE: "liquid_surface_rate",
+            ProducerControlMode.RESERVOIR_VOLUME_RATE: "reservoir_rate",
         }
         rate_factor = factors[rate_modes[self.mode]] if self.mode in rate_modes else None
         return attrs.evolve(
@@ -641,9 +641,9 @@ class InjectorControl(WellControl):
             if self.injected_phase is FluidPhase.GAS
             else factors["liquid_surface_rate"]
         )
-        # Note: `InjectorControlMode.RESV` also exists and
+        # Note: `InjectorControlMode.RESERVOIR_VOLUME_RATE` also exists and
         # we should use factors["reservoir_rate"] instead
-        if self.mode is InjectorControlMode.RESV:
+        if self.mode is InjectorControlMode.RESERVOIR_VOLUME_RATE:
             rate_factor = factors["reservoir_rate"]
 
         return attrs.evolve(
