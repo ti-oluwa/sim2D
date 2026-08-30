@@ -411,15 +411,22 @@ def load_producer_control_from_record(
     if bhp is not None and mode is not ProducerControlMode.BHP:
         limits.append(BHPLimit(min_value=bhp, unit_system=unit_system))
 
+    if mode is ProducerControlMode.OIL_RATE:
+        target_rate = record.get("oil_rate")
+    elif mode is ProducerControlMode.WATER_RATE:
+        target_rate = record.get("water_rate")
+    elif mode is ProducerControlMode.GAS_RATE:
+        target_rate = from_deck_gas_rate(record.get("gas_rate"), unit_system)
+    elif mode is ProducerControlMode.LIQUID_RATE:
+        target_rate = record.get("liquid_rate")
+    elif mode is ProducerControlMode.RESERVOIR_VOLUME_RATE:
+        target_rate = record.get("reservoir_volume_rate")
+    else:
+        target_rate = None
+
     return ProducerControl(
         mode=mode,
-        target_rate={
-            ProducerControlMode.OIL_RATE: record.get("oil_rate"),
-            ProducerControlMode.WATER_RATE: record.get("water_rate"),
-            ProducerControlMode.GAS_RATE: from_deck_gas_rate(record.get("gas_rate"), unit_system),
-            ProducerControlMode.LIQUID_RATE: record.get("liquid_rate"),
-            ProducerControlMode.RESERVOIR_VOLUME_RATE: record.get("reservoir_volume_rate"),
-        }.get(mode),
+        target_rate=target_rate,
         target_bhp=bhp,
         target_thp=record.get("thp"),
         limits=tuple(limits),
@@ -731,15 +738,24 @@ def load_group_control_from_record(
             ),
             unit_system=unit_system,
         )
+
+    control_mode = record["control_mode"]
+    if control_mode == "ORAT":
+        target_rate = record.get("oil_rate")
+    elif control_mode == "WRAT":
+        target_rate = record.get("water_rate")
+    elif control_mode == "GRAT":
+        target_rate = record.get("gas_rate")
+    elif control_mode == "LRAT":
+        target_rate = record.get("liquid_rate")
+    elif control_mode == "RESV":
+        target_rate = record.get("reservoir_volume_rate")
+    else:
+        target_rate = None
+
     return GroupControl(
-        mode=GROUP_PRODUCER_CONTROL_MODE_MAP[record["control_mode"]],
-        target_rate={
-            "ORAT": record.get("oil_rate"),
-            "WRAT": record.get("water_rate"),
-            "GRAT": record.get("gas_rate"),
-            "LRAT": record.get("liquid_rate"),
-            "RESV": record.get("reservoir_volume_rate"),
-        }.get(record["control_mode"]),
+        mode=GROUP_PRODUCER_CONTROL_MODE_MAP[control_mode],
+        target_rate=target_rate,
         unit_system=unit_system,
     )
 
