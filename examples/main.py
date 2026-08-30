@@ -15,7 +15,7 @@ from bores.types import UnitSystem
 from bores.wells.hydraulics.homogeneous import homogeneous_model
 from bores.wells.model import WellSystem
 
-df = DeckFile("./data/norne_pvt.data", encoding="utf-8", unit_system=UnitSystem.METRIC)
+df = DeckFile("./data/SPE1CASE1.DATA", encoding="utf-8", unit_system=UnitSystem.METRIC)
 
 # Load reservoir model
 grid = Grid.from_deck(df)

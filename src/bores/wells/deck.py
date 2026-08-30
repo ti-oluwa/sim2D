@@ -106,7 +106,9 @@ def load_well_from_records(
         )
 
     if welspecs_record["inflow_equation"] != "STD":
-        raise NotSupportedError("Only the standard inflow equation ('STD') is currently supported.")
+        raise NotSupportedError(
+            "Only the standard inflow equation ('STD') is currently supported."
+        )
 
     whole_well_multiplier: float | None = None
     multiplier_by_ijk: dict[tuple[int, int, int, int], float] = {}

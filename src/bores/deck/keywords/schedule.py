@@ -51,6 +51,7 @@ from bores.deck.keywords.base import (
     ScheduledRecordKeyword,
 )
 from bores.deck.operators import Operation
+from bores.errors import ValidationError
 
 __all__ = [
     "COMPDAT",
@@ -144,6 +145,19 @@ TSTEP = TStepKeyword()
 step sizes (in the deck's declared time unit, days for FIELD/METRIC).
 """
 
+
+def parse_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    value = str(value).upper()
+    if value == "YES":
+        return True
+    if value == "NO":
+        return False
+    raise ValidationError(f"Expected 'YES' or 'NO', got {value!r}")
+
+
 WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
     "WELSPECS",
     fields=[
@@ -157,9 +171,9 @@ WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
             lambda v: str(v).upper(),
             required=False,
             default="OIL",
-            options={"OIL", "WATER", "GAS"},
+            options={"OIL", "WAT", "GAS", "LIO"},
         ),
-        Field("drainage_radius", np.float64, required=False, default=0.0),
+        Field("drainage_radius", np.float64, required=False, default=None),
         Field(
             "inflow_equation",
             lambda v: str(v).upper(),
@@ -237,7 +251,7 @@ COMPDAT = ScheduledRecordKeyword[typing.Union[str, float]](
             default="Z",
             options={"X", "Y", "Z"},
         ),
-        Field("permeability_thickness_multiplier", np.float64, required=False, default=1.0),
+        Field("kh_multiplier", np.float64, required=False, default=1.0),
     ],
 )
 """
@@ -266,7 +280,7 @@ Fields:
 - `skin`                - mechanical skin factor.
 - `d_factor`            - non-Darcy (rate-dependent) skin factor.
 - `direction`           - completion direction (`X`, `Y`, or `Z`).
-- `permeability_thickness_multiplier` - additional permeability-thickness multiplier.
+- `kh_multiplier` - additional permeability-thickness multiplier.
 """
 
 WCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
@@ -596,7 +610,7 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
         ),
         Field(
             "end_run",
-            lambda v: str(v).upper() == "YES",
+            type=parse_bool,
             required=False,
             default=False,
         ),
@@ -736,7 +750,10 @@ Fields:
 
 WELPI = ScheduledRecordKeyword[typing.Union[str, float]](
     "WELPI",
-    fields=[Field(name="well", type=str), Field(name="target_pi", type=np.float64)],
+    fields=[
+        Field(name="well", type=str),
+        Field(name="productivity_index", type=np.float64),
+    ],
 )
 """
 `WELPI 'WELL' TARGET_PI / ... /`
@@ -749,7 +766,7 @@ overrides that calculation with a user-specified target value.
 Fields:
 
 - `well`      - well name.
-- `target_pi` - explicit productivity index assigned to the well.
+- `productivity_index` - explicit productivity index assigned to the well.
 """
 
 WPAVE = RecordKeyword[typing.Union[str, float, bool]](
@@ -773,7 +790,7 @@ WPAVE = RecordKeyword[typing.Union[str, float, bool]](
         ),
         Field(
             name="open_connections_only",
-            type=lambda v: str(v).upper() == "YES",
+            type=parse_bool,
             required=False,
             default=True,
         ),
@@ -889,7 +906,7 @@ during history matching.
 Fields:
 
 - `well`         - well name.
-- `phase`        - injected fluid (`OIL`, `WAT`, or `GAS`).
+- `phase`        - injected fluid (`OIL`, `WAT`, `GAS`, or `DISGAS`).
 - `status`       - injector status (`OPEN` or `SHUT`).
 - `rate`         - observed surface injection rate.
 - `bhp`          - observed bottom-hole pressure.

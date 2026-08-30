@@ -146,6 +146,8 @@ class FluidPhase(enum.Enum):
     WATER = "water"
     GAS = "gas"
     OIL = "oil"
+    DISSOLVED_GAS = "disgas"
+    LIQUID_OIL = "lio"
 
     def __str__(self) -> str:
         return self.value
@@ -156,6 +158,8 @@ class FluidPhase(enum.Enum):
         for member in cls:
             if member.value == lowered:
                 return member
+            if lowered == "wat":
+                return cls("water")
         return None
 
 
