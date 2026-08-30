@@ -16,6 +16,7 @@ from bores.blackoil.caches.mobility import MobilityCache, compute_mobility_cache
 from bores.blackoil.caches.pvt import PVTCache, compute_pvt_cache
 from bores.blackoil.caches.satfunc import SatFuncCache, compute_satfunc_cache
 from bores.blackoil.fluids.model import BlackOil
+from bores.reservoir.state.base import Hysteresis
 from bores.types import CellArray, IntCellArray
 
 __all__ = ["PhysicsCache", "compute_physics_cache"]
@@ -60,6 +61,7 @@ def compute_physics_cache(
     residual_oil_saturation_water: CellArray | None = None,
     residual_oil_saturation_gas: CellArray | None = None,
     residual_gas_saturation: CellArray | None = None,
+    hysteresis: Hysteresis | None = None,
     out: PhysicsCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> PhysicsCache:
@@ -97,6 +99,12 @@ def compute_physics_cache(
         `sorg`. Forwarded to `compute_satfunc_cache`.
     :param residual_gas_saturation: Optional shape `(n_cells,)` current
         `sgr`. Forwarded to `compute_satfunc_cache`.
+    :param hysteresis: Optional current `ReservoirState.hysteresis`. If
+        given, its six tracked fields are unpacked and forwarded to
+        `compute_satfunc_cache`, enabling Killough/Land scanning-curve
+        hysteresis for any saturation-function table that supports it.
+        Tables that don't fall back to their normal drainage curves, same
+        as when this isn't given at all.
     :param out: Previous `PhysicsCache` to overwrite in place, or `None` to
         allocate a new one.
     :param dtype: Output array dtype for any newly allocated sub-cache.
@@ -134,6 +142,18 @@ def compute_physics_cache(
         residual_oil_saturation_water=residual_oil_saturation_water,
         residual_oil_saturation_gas=residual_oil_saturation_gas,
         residual_gas_saturation=residual_gas_saturation,
+        max_water_saturation=hysteresis.max_water_saturation if hysteresis is not None else None,
+        max_gas_saturation=hysteresis.max_gas_saturation if hysteresis is not None else None,
+        water_imbibition_flag=(
+            hysteresis.water_imbibition_flag if hysteresis is not None else None
+        ),
+        gas_imbibition_flag=hysteresis.gas_imbibition_flag if hysteresis is not None else None,
+        water_reversal_saturation=(
+            hysteresis.water_reversal_saturation if hysteresis is not None else None
+        ),
+        gas_reversal_saturation=(
+            hysteresis.gas_reversal_saturation if hysteresis is not None else None
+        ),
         out=out.satfunc if out is not None else None,
         dtype=dtype,
     )

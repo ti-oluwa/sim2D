@@ -363,7 +363,7 @@ def load_producer_control_from_record(
     :returns: Constructed `ProducerControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(min_value=bhp)`.
     """
-    mode = ProducerControlMode(record["control_mode"])
+    mode = ProducerControlMode[record["control_mode"]]
     limits: list[Limit] = []
     bhp = record.get("bhp")
     if bhp is not None and mode is not ProducerControlMode.BHP:
@@ -396,7 +396,7 @@ def load_injector_control_from_record(
     :returns: Constructed `InjectorControl`. If item bhp is present and mode
         isn't BHP, adds an implicit `BHPLimit(max_value=bhp)`.
     """
-    mode = InjectorControlMode(record["control_mode"])
+    mode = InjectorControlMode[record["control_mode"]]
     phase = FluidPhase(record["injector_type"].lower())
     limits: list[Limit] = []
     bhp = record.get("bhp")
@@ -419,7 +419,7 @@ def load_injector_control_from_record(
 
 
 ECONOMIC_QUANTITY_FIELDS = {
-    EconomicQuantity.WATER_CUT: "min_water_cut",
+    EconomicQuantity.WATER_CUT: "max_water_cut",
     EconomicQuantity.GOR: "max_gor",
     EconomicQuantity.WATER_GAS_RATIO: "max_wgr",
 }
@@ -551,11 +551,11 @@ def _apply_weltarg(control: WellControl, record: typing.Mapping[str, typing.Any]
     control_mode = record["control_mode"]
     try:
         new_mode = (
-            ProducerControlMode(control_mode)
+            ProducerControlMode[control_mode]
             if isinstance(control, ProducerControl)
-            else InjectorControlMode(control_mode)
+            else InjectorControlMode[control_mode]
         )
-    except ValueError:
+    except KeyError:
         raise ValidationError(
             f"`WELTARG` control mode {control_mode!r} doesn't apply to a "
             f"{'producer' if isinstance(control, ProducerControl) else 'injector'}."
@@ -680,7 +680,7 @@ def load_group_control_from_record(
     """
     if is_injection:
         return GroupControl(
-            mode=GroupInjectorControlMode(record["control_mode"]),
+            mode=GroupInjectorControlMode[record["control_mode"]],
             target_rate=record.get("rate"),
             injected_phase=(
                 FluidPhase(record["injector_type"].lower())
@@ -690,7 +690,7 @@ def load_group_control_from_record(
             unit_system=unit_system,
         )
     return GroupControl(
-        mode=GroupProducerControlMode(record["control_mode"]),
+        mode=GroupProducerControlMode[record["control_mode"]],
         target_rate={
             "ORAT": record.get("oil_rate"),
             "WRAT": record.get("water_rate"),

@@ -158,7 +158,7 @@ def parse_bool(value) -> bool:
     raise ValidationError(f"Expected 'YES' or 'NO', got {value!r}")
 
 
-WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
+WELSPECS = ScheduledRecordKeyword[str | float | bool](
     "WELSPECS",
     fields=[
         Field("well", str),
@@ -188,7 +188,7 @@ WELSPECS = ScheduledRecordKeyword[typing.Union[str, float]](
             default="SHUT",
             options={"SHUT", "STOP"},
         ),
-        Field("enable_crossflow", lambda v: str(v).upper(), required=False, default="YES"),
+        Field("enable_crossflow", type=parse_bool, required=False, default="YES"),
         Field("pvt_table", int, required=False, default=0),
         Field(
             "density_calculation_method",
@@ -598,7 +598,7 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
     fields=[
         Field("well", str),
         Field("min_oil_rate", np.float64, required=False, default=0.0),
-        Field("min_water_cut", np.float64, required=False, default=None),
+        Field("max_water_cut", np.float64, required=False, default=None),
         Field("max_gor", np.float64, required=False, default=None),
         Field("max_wgr", np.float64, required=False, default=None),
         Field(
@@ -617,15 +617,15 @@ WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
     ],
 )
 """
-`WECON 'WELL' [min_orat] [max_wcut] [max_gor] [max_wgr] [workover_action] [end_run_flag] / ... /`
+`WECON 'WELL' [min_oil_rate] [max_water_cut] [max_gor] [max_wgr] [workover_action] [end_run] / ... /`
 - economic limits that automatically shut in or work over a well.
 
 Fields:
 
 - `well`            - well name.
-- `min_oil_rate`        - minimum economic oil production rate; the well is
+- `min_oil_rate`    - minimum economic oil production rate; the well is
   shut in (per `workover_action`) once production falls below this.
-- `max_wcut`        - maximum water cut before workover/shut-in;
+- `max_water_cut`   - maximum water cut before workover/shut-in;
   `None` means no limit.
 - `max_gor`         - maximum gas-oil ratio before workover/shut-in;
   `None` means no limit.

@@ -10,7 +10,7 @@ import numpy.typing as npt
 
 from bores.blackoil.satfunc.regions import SatFunc
 from bores.precision import get_dtype
-from bores.types import CellArray, IntCellArray
+from bores.types import BooleanCellArray, CellArray, IntCellArray
 
 __all__ = ["SatFuncCache", "compute_satfunc_cache"]
 
@@ -111,6 +111,12 @@ def compute_satfunc_cache(
     residual_oil_saturation_water: CellArray | None = None,
     residual_oil_saturation_gas: CellArray | None = None,
     residual_gas_saturation: CellArray | None = None,
+    max_water_saturation: CellArray | None = None,
+    max_gas_saturation: CellArray | None = None,
+    water_imbibition_flag: BooleanCellArray | None = None,
+    gas_imbibition_flag: BooleanCellArray | None = None,
+    water_reversal_saturation: CellArray | None = None,
+    gas_reversal_saturation: CellArray | None = None,
     out: SatFuncCache | None = None,
     dtype: npt.DTypeLike = None,
 ) -> SatFuncCache:
@@ -148,6 +154,23 @@ def compute_satfunc_cache(
         Same fallback behaviour.
     :param residual_gas_saturation: Shape `(n_cells,)` current `sgr`. Same
         fallback behaviour.
+    :param max_water_saturation: Shape `(n_cells,)` historical maximum
+        water saturation reached in each cell, for Killough/Land scanning-curve
+        hysteresis. Comes from `ReservoirState.hysteresis`, not
+        anything this cache computes. Same fallback behaviour: omitted
+        entirely if not given, so a hysteresis-aware table falls back to
+        primary drainage curves.
+    :param max_gas_saturation: Shape `(n_cells,)` historical maximum gas
+        saturation reached in each cell. Same fallback behaviour.
+    :param water_imbibition_flag: Shape `(n_cells,)` whether water
+        saturation is currently increasing in each cell. Same fallback behaviour.
+    :param gas_imbibition_flag: Shape `(n_cells,)` whether gas saturation
+        is currently increasing in each cell. Same fallback behaviour.
+    :param water_reversal_saturation: Shape `(n_cells,)` water saturation
+        at each cell's most recent drainage/imbibition reversal. Same
+        fallback behaviour.
+    :param gas_reversal_saturation: Shape `(n_cells,)` gas saturation at
+        each cell's most recent reversal. Same fallback behaviour.
     :param out: Previous `SatFuncCache` to overwrite in place, or
         `None` to allocate a new one.
     :return: The populated `SatFuncCache`. `out` itself if given,
@@ -197,6 +220,18 @@ def compute_satfunc_cache(
             ]
         if residual_gas_saturation is not None:
             saturation_state_kwargs["residual_gas_saturation"] = residual_gas_saturation[mask]
+        if max_water_saturation is not None:
+            saturation_state_kwargs["max_water_saturation"] = max_water_saturation[mask]
+        if max_gas_saturation is not None:
+            saturation_state_kwargs["max_gas_saturation"] = max_gas_saturation[mask]
+        if water_imbibition_flag is not None:
+            saturation_state_kwargs["water_imbibition_flag"] = water_imbibition_flag[mask]
+        if gas_imbibition_flag is not None:
+            saturation_state_kwargs["gas_imbibition_flag"] = gas_imbibition_flag[mask]
+        if water_reversal_saturation is not None:
+            saturation_state_kwargs["water_reversal_saturation"] = water_reversal_saturation[mask]
+        if gas_reversal_saturation is not None:
+            saturation_state_kwargs["gas_reversal_saturation"] = gas_reversal_saturation[mask]
 
         relperm_table = tables.relative_permeability
         relperm = relperm_table.evaluate(sw, so, sg, **saturation_state_kwargs)
