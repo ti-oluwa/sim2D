@@ -178,7 +178,7 @@ class SatFunc(StoreSerializable):
             the capillary pressure table for each region. When `False`, skip
             capillary pressure entirely (useful for runs that ignore Pc).
         :param dtype: Array dtype shared by every region's tables.
-        :returns: `SatFunc` keyed by 1-based SATNUM index.
+        :returns: `SatFunc` keyed by 1-based `SATNUM` index.
         :raises ValidationError: If no recognised saturation-function keywords
             are found.
         """

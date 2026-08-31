@@ -130,7 +130,7 @@ def _clamp(value: Number, lower_bound: Number, upper_bound: Number) -> Number:
 
 
 @numba.njit(cache=True)
-def _oil_water_point_sweep_along_water_saturation(
+def get_oil_water_point_sweep_along_water_saturation(
     water_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
@@ -154,7 +154,7 @@ def _oil_water_point_sweep_along_water_saturation(
 
 
 @numba.njit(cache=True)
-def _oil_water_point_sweep_along_oil_saturation(
+def get_oil_water_point_sweep_along_oil_saturation(
     oil_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_water: Number,
@@ -178,7 +178,7 @@ def _oil_water_point_sweep_along_oil_saturation(
 
 
 @numba.njit(cache=True)
-def _gas_oil_point_sweep_along_gas_saturation(
+def get_gas_oil_point_sweep_along_gas_saturation(
     gas_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
@@ -209,7 +209,7 @@ def _gas_oil_point_sweep_along_gas_saturation(
 
 
 @numba.njit(cache=True)
-def _gas_oil_point_sweep_along_oil_saturation(
+def get_gas_oil_point_sweep_along_oil_saturation(
     oil_saturation: Number,
     irreducible_water_saturation: Number,
     residual_oil_saturation_gas: Number,
@@ -238,7 +238,7 @@ def _gas_oil_point_sweep_along_oil_saturation(
     return irreducible_water_saturation, oil_saturation, gas_saturation
 
 
-def _check_oil_water_sweep_axis_is_water_saturation(
+def check_oil_water_sweep_axis_is_water_saturation(
     wetting_phase: FluidPhase,
     reference_phase: typing.Literal["wetting", "non_wetting"],
 ) -> bool:
@@ -254,7 +254,7 @@ def _check_oil_water_sweep_axis_is_water_saturation(
     return (wetting_phase == FluidPhase.WATER) == (reference_phase == "wetting")
 
 
-def _check_gas_oil_sweep_axis_is_gas_saturation(
+def check_gas_oil_sweep_axis_is_gas_saturation(
     wetting_phase: FluidPhase,
     reference_phase: typing.Literal["wetting", "non_wetting"],
 ) -> bool:
@@ -270,7 +270,7 @@ def _check_gas_oil_sweep_axis_is_gas_saturation(
     return (wetting_phase == FluidPhase.GAS) == (reference_phase == "wetting")
 
 
-def _sample_oil_water_relative_permeabilities(
+def sample_oil_water_relative_permeabilities(
     *,
     relperm_table: RelativePermeabilityTable,
     oil_water_reference_saturations: npt.NDArray,
@@ -329,7 +329,7 @@ def _sample_oil_water_relative_permeabilities(
     for index, reference_saturation_value in enumerate(oil_water_reference_saturations):
         if sweep_axis_is_water_saturation:
             water_saturation, oil_saturation, gas_saturation = (
-                _oil_water_point_sweep_along_water_saturation(
+                get_oil_water_point_sweep_along_water_saturation(
                     water_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_water=residual_oil_saturation_water,
@@ -337,7 +337,7 @@ def _sample_oil_water_relative_permeabilities(
             )
         else:
             water_saturation, oil_saturation, gas_saturation = (
-                _oil_water_point_sweep_along_oil_saturation(
+                get_oil_water_point_sweep_along_oil_saturation(
                     oil_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_water=residual_oil_saturation_water,
@@ -366,7 +366,7 @@ def _sample_oil_water_relative_permeabilities(
     )
 
 
-def _sample_gas_oil_relative_permeabilities(
+def sample_gas_oil_relative_permeabilities(
     *,
     relperm_table: RelativePermeabilityTable,
     gas_oil_reference_saturations: npt.NDArray,
@@ -427,7 +427,7 @@ def _sample_gas_oil_relative_permeabilities(
     for index, reference_saturation_value in enumerate(gas_oil_reference_saturations):
         if sweep_axis_is_gas_saturation:
             water_saturation, oil_saturation, gas_saturation = (
-                _gas_oil_point_sweep_along_gas_saturation(
+                get_gas_oil_point_sweep_along_gas_saturation(
                     gas_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_gas=residual_oil_saturation_gas,
@@ -436,7 +436,7 @@ def _sample_gas_oil_relative_permeabilities(
             )
         else:
             water_saturation, oil_saturation, gas_saturation = (
-                _gas_oil_point_sweep_along_oil_saturation(
+                get_gas_oil_point_sweep_along_oil_saturation(
                     oil_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_gas=residual_oil_saturation_gas,
@@ -466,7 +466,7 @@ def _sample_gas_oil_relative_permeabilities(
     )
 
 
-def _sample_oil_water_capillary_pressure(
+def sample_oil_water_capillary_pressure(
     *,
     capillary_pressure_table: CapillaryPressureTable,
     oil_water_reference_saturations: npt.NDArray,
@@ -512,7 +512,7 @@ def _sample_oil_water_capillary_pressure(
     for index, reference_saturation_value in enumerate(oil_water_reference_saturations):
         if sweep_axis_is_water_saturation:
             water_saturation, oil_saturation, gas_saturation = (
-                _oil_water_point_sweep_along_water_saturation(
+                get_oil_water_point_sweep_along_water_saturation(
                     water_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_water=residual_oil_saturation_water,
@@ -520,7 +520,7 @@ def _sample_oil_water_capillary_pressure(
             )
         else:
             water_saturation, oil_saturation, gas_saturation = (
-                _oil_water_point_sweep_along_oil_saturation(
+                get_oil_water_point_sweep_along_oil_saturation(
                     oil_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_water=residual_oil_saturation_water,
@@ -538,7 +538,7 @@ def _sample_oil_water_capillary_pressure(
     return oil_water_reference_saturations, capillary_pressure_values
 
 
-def _sample_gas_oil_capillary_pressure(
+def sample_gas_oil_capillary_pressure(
     *,
     capillary_pressure_table: CapillaryPressureTable,
     gas_oil_reference_saturations: npt.NDArray,
@@ -584,7 +584,7 @@ def _sample_gas_oil_capillary_pressure(
     for index, reference_saturation_value in enumerate(gas_oil_reference_saturations):
         if sweep_axis_is_gas_saturation:
             water_saturation, oil_saturation, gas_saturation = (
-                _gas_oil_point_sweep_along_gas_saturation(
+                get_gas_oil_point_sweep_along_gas_saturation(
                     gas_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_gas=residual_oil_saturation_gas,
@@ -593,7 +593,7 @@ def _sample_gas_oil_capillary_pressure(
             )
         else:
             water_saturation, oil_saturation, gas_saturation = (
-                _gas_oil_point_sweep_along_oil_saturation(
+                get_gas_oil_point_sweep_along_oil_saturation(
                     oil_saturation=reference_saturation_value,
                     irreducible_water_saturation=irreducible_water_saturation,
                     residual_oil_saturation_gas=residual_oil_saturation_gas,
@@ -717,11 +717,11 @@ def as_three_phase_relperm_table(
         FluidPhase.GAS if gas_oil_wetting_phase_resolved == FluidPhase.OIL else FluidPhase.OIL
     )
 
-    sweep_oil_water_axis_is_water_saturation = _check_oil_water_sweep_axis_is_water_saturation(
+    sweep_oil_water_axis_is_water_saturation = check_oil_water_sweep_axis_is_water_saturation(
         wetting_phase=oil_water_wetting_phase_resolved,
         reference_phase=oil_water_reference_phase,
     )
-    sweep_gas_oil_axis_is_gas_saturation = _check_gas_oil_sweep_axis_is_gas_saturation(
+    sweep_gas_oil_axis_is_gas_saturation = check_gas_oil_sweep_axis_is_gas_saturation(
         wetting_phase=gas_oil_wetting_phase_resolved,
         reference_phase=gas_oil_reference_phase,
     )
@@ -770,7 +770,7 @@ def as_three_phase_relperm_table(
         oil_water_reference_saturations,
         oil_water_wetting_phase_kr,
         oil_water_non_wetting_phase_kr,
-    ) = _sample_oil_water_relative_permeabilities(
+    ) = sample_oil_water_relative_permeabilities(
         relperm_table=table,
         oil_water_reference_saturations=oil_water_reference_saturations,
         sweep_axis_is_water_saturation=sweep_oil_water_axis_is_water_saturation,
@@ -787,7 +787,7 @@ def as_three_phase_relperm_table(
         gas_oil_reference_saturations,
         gas_oil_wetting_phase_kr,
         gas_oil_non_wetting_phase_kr,
-    ) = _sample_gas_oil_relative_permeabilities(
+    ) = sample_gas_oil_relative_permeabilities(
         relperm_table=table,
         gas_oil_reference_saturations=gas_oil_reference_saturations,
         sweep_axis_is_gas_saturation=sweep_gas_oil_axis_is_gas_saturation,
@@ -952,11 +952,11 @@ def as_three_phase_capillary_pressure_table(
         FluidPhase.GAS if gas_oil_wetting_phase_resolved == FluidPhase.OIL else FluidPhase.OIL
     )
 
-    sweep_oil_water_axis_is_water_saturation = _check_oil_water_sweep_axis_is_water_saturation(
+    sweep_oil_water_axis_is_water_saturation = check_oil_water_sweep_axis_is_water_saturation(
         wetting_phase=oil_water_wetting_phase_resolved,
         reference_phase=oil_water_reference_phase,
     )
-    sweep_gas_oil_axis_is_gas_saturation = _check_gas_oil_sweep_axis_is_gas_saturation(
+    sweep_gas_oil_axis_is_gas_saturation = check_gas_oil_sweep_axis_is_gas_saturation(
         wetting_phase=gas_oil_wetting_phase_resolved,
         reference_phase=gas_oil_reference_phase,
     )
@@ -1005,7 +1005,7 @@ def as_three_phase_capillary_pressure_table(
     (
         oil_water_reference_saturations,
         oil_water_capillary_pressure_values,
-    ) = _sample_oil_water_capillary_pressure(
+    ) = sample_oil_water_capillary_pressure(
         capillary_pressure_table=table,
         oil_water_reference_saturations=oil_water_reference_saturations,
         sweep_axis_is_water_saturation=sweep_oil_water_axis_is_water_saturation,
@@ -1020,7 +1020,7 @@ def as_three_phase_capillary_pressure_table(
     (
         gas_oil_reference_saturations,
         gas_oil_capillary_pressure_values,
-    ) = _sample_gas_oil_capillary_pressure(
+    ) = sample_gas_oil_capillary_pressure(
         capillary_pressure_table=table,
         gas_oil_reference_saturations=gas_oil_reference_saturations,
         sweep_axis_is_gas_saturation=sweep_gas_oil_axis_is_gas_saturation,

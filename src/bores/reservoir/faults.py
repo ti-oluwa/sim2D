@@ -623,8 +623,8 @@ def _remove_faults_from_grid(grid: Grid, names: frozenset[str]) -> Grid:
     )
     new_multipliers = (
         {
-            name: mult
-            for name, mult in grid.fault_transmissibility_multipliers.items()
+            name: multiplier
+            for name, multiplier in grid.fault_transmissibility_multipliers.items()
             if name not in names
         }
         if grid.fault_transmissibility_multipliers

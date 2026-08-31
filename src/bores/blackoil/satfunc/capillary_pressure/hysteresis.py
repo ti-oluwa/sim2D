@@ -43,7 +43,7 @@ from bores.types import (
 __all__ = ["KilloughCapillaryPressureTable"]
 
 
-def _get_oil_water_capillary_pressure(
+def get_oil_water_capillary_pressure(
     oil_water_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -83,7 +83,7 @@ def _get_oil_water_capillary_pressure(
     return result["oil_water"]
 
 
-def _get_gas_oil_capillary_pressure(
+def get_gas_oil_capillary_pressure(
     gas_oil_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -123,7 +123,7 @@ def _get_gas_oil_capillary_pressure(
     return result["gas_oil"]
 
 
-def _get_oil_water_capillary_pressure_derivative(
+def get_oil_water_capillary_pressure_derivative(
     oil_water_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -168,7 +168,7 @@ def _get_oil_water_capillary_pressure_derivative(
     return derivatives["dpcow_dsw"]
 
 
-def _get_gas_oil_capillary_pressure_derivative(
+def get_gas_oil_capillary_pressure_derivative(
     gas_oil_capillary_pressure_table: TwoPhaseCapillaryPressureTable | CapillaryPressureTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -486,14 +486,14 @@ class KilloughCapillaryPressureTable(
         gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Oil-water Pc: scan over water saturation
-        oil_water_capillary_pressure_drainage = _get_oil_water_capillary_pressure(
+        oil_water_capillary_pressure_drainage = get_oil_water_capillary_pressure(
             oil_water_capillary_pressure_table=oil_water_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        oil_water_capillary_pressure_imbibition = _get_oil_water_capillary_pressure(
+        oil_water_capillary_pressure_imbibition = get_oil_water_capillary_pressure(
             oil_water_capillary_pressure_table=oil_water_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -511,14 +511,14 @@ class KilloughCapillaryPressureTable(
         )
 
         # Gas-oil Pc: scan over gas saturation
-        gas_oil_capillary_pressure_drainage = _get_gas_oil_capillary_pressure(
+        gas_oil_capillary_pressure_drainage = get_gas_oil_capillary_pressure(
             gas_oil_capillary_pressure_table=gas_oil_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        gas_oil_capillary_pressure_imbibition = _get_gas_oil_capillary_pressure(
+        gas_oil_capillary_pressure_imbibition = get_gas_oil_capillary_pressure(
             gas_oil_capillary_pressure_table=gas_oil_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -618,14 +618,14 @@ class KilloughCapillaryPressureTable(
         gas_oil_imbibition_table = self.gas_oil_imbibition_table or gas_oil_drainage_table
 
         # Oil-water
-        oil_water_capillary_pressure_drainage = _get_oil_water_capillary_pressure(
+        oil_water_capillary_pressure_drainage = get_oil_water_capillary_pressure(
             oil_water_capillary_pressure_table=oil_water_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        oil_water_capillary_pressure_imbibition = _get_oil_water_capillary_pressure(
+        oil_water_capillary_pressure_imbibition = get_oil_water_capillary_pressure(
             oil_water_capillary_pressure_table=oil_water_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -633,7 +633,7 @@ class KilloughCapillaryPressureTable(
             **kwargs,
         )
         oil_water_capillary_pressure_drainage_derivative = (
-            _get_oil_water_capillary_pressure_derivative(
+            get_oil_water_capillary_pressure_derivative(
                 oil_water_capillary_pressure_table=oil_water_drainage_table,
                 water_saturation=water_saturation,
                 oil_saturation=oil_saturation,
@@ -642,7 +642,7 @@ class KilloughCapillaryPressureTable(
             )
         )
         oil_water_capillary_pressure_imbibition_derivative = (
-            _get_oil_water_capillary_pressure_derivative(
+            get_oil_water_capillary_pressure_derivative(
                 oil_water_capillary_pressure_table=oil_water_imbibition_table,
                 water_saturation=water_saturation,
                 oil_saturation=oil_saturation,
@@ -664,31 +664,29 @@ class KilloughCapillaryPressureTable(
         )
 
         # Gas-oil
-        gas_oil_capillary_pressure_drainage = _get_gas_oil_capillary_pressure(
+        gas_oil_capillary_pressure_drainage = get_gas_oil_capillary_pressure(
             gas_oil_capillary_pressure_table=gas_oil_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        gas_oil_capillary_pressure_imbibition = _get_gas_oil_capillary_pressure(
+        gas_oil_capillary_pressure_imbibition = get_gas_oil_capillary_pressure(
             gas_oil_capillary_pressure_table=gas_oil_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
             gas_saturation=gas_saturation,
             **kwargs,
         )
-        gas_oil_capillary_pressure_drainage_derivative = (
-            _get_gas_oil_capillary_pressure_derivative(
-                gas_oil_capillary_pressure_table=gas_oil_drainage_table,
-                water_saturation=water_saturation,
-                oil_saturation=oil_saturation,
-                gas_saturation=gas_saturation,
-                **kwargs,
-            )
+        gas_oil_capillary_pressure_drainage_derivative = get_gas_oil_capillary_pressure_derivative(
+            gas_oil_capillary_pressure_table=gas_oil_drainage_table,
+            water_saturation=water_saturation,
+            oil_saturation=oil_saturation,
+            gas_saturation=gas_saturation,
+            **kwargs,
         )
         gas_oil_capillary_pressure_imbibition_derivative = (
-            _get_gas_oil_capillary_pressure_derivative(
+            get_gas_oil_capillary_pressure_derivative(
                 gas_oil_capillary_pressure_table=gas_oil_imbibition_table,
                 water_saturation=water_saturation,
                 oil_saturation=oil_saturation,

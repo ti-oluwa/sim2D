@@ -169,7 +169,7 @@ class RockCompressibilityTable(StoreSerializable):
         """
         if interpolation_method not in ("linear", "cubic"):
             raise ValidationError(
-                f"Invalid interpolation_method {interpolation_method!r}. "
+                f"Invalid `interpolation_method` {interpolation_method!r}. "
                 "Must be 'linear' or 'cubic'."
             )
 
@@ -764,7 +764,7 @@ class RockCompressibilityTables(StoreSerializable):
         """
         Return the `RockCompressibilityTable` for a given 1-based region index.
 
-        :param rocknum: 1-based ROCKNUM region index.
+        :param rocknum: 1-based `ROCKNUM` region index.
         :returns: `RockCompressibilityTable` for that region.
         :raises KeyError: If the region index does not exist.
         """
@@ -804,7 +804,7 @@ class RockCompressibilityTables(StoreSerializable):
         :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
         :param interpolation_method: `"linear"` or `"cubic"`.
         :param dtype: Array dtype; defaults to `get_dtype()`.
-        :returns: `RockCompressibilityTables` keyed by 1-based ROCKNUM index.
+        :returns: `RockCompressibilityTables` keyed by 1-based `ROCKNUM` index.
         :raises ValidationError: If neither `ROCK` nor `ROCKTAB` is found.
         """
         tables = load_rock_compressibility_tables(
@@ -831,7 +831,7 @@ class RockCompressibilityTables(StoreSerializable):
 
         :param pressure: Shape `(n_cells,)` - current pressures.
             Units must match the tables' `unit_system`.
-        :param rock_region: Shape `(n_cells,)` int array of 1-based ROCKNUM
+        :param rock_region: Shape `(n_cells,)` int array of 1-based `ROCKNUM`
             values. When `None`, region 1 is used for all cells.
         :param unit_system: Unit system for the returned `RockCompressibility`.
             Defaults to the unit system of region 1.
@@ -957,7 +957,7 @@ def load_rock_compressibility_tables(
     :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
     :param interpolation_method: `"linear"` or `"cubic"`.
     :param dtype: Array dtype; defaults to `get_dtype()`.
-    :returns: Dict keyed by 1-based ROCKNUM index.
+    :returns: Dict keyed by 1-based `ROCKNUM` index.
     :raises ValidationError: If neither `ROCK` nor `ROCKTAB` is found or
         no valid regions could be built.
     """
@@ -1023,6 +1023,6 @@ def load_rock_compressibility_tables(
 
     if not tables:
         raise ValidationError(
-            "No valid rock compressibility regions could be built from the DeckFile."
+            "No valid rock compressibility regions could be built from the `DeckFile`."
         )
     return tables

@@ -66,7 +66,7 @@ class EquilibriumArrays(typing.NamedTuple):
     gas_saturation: CellArray
     solution_gor: CellArray
     oil_bubble_point_pressure: CellArray
-    vaporized_oil_ratio: CellArray
+    vaporized_oil_to_gas_ratio: CellArray
     gas_dew_point_pressure: CellArray
 
 
@@ -291,7 +291,7 @@ def _initialize_center_point_equilibrium(
     :raises NotImplementedError: If the gas table is wet-gas (`PVTG`-based)
         and no `rvvd_table` is supplied.
     """
-    is_wet_gas = gas_table is not None and gas_table.exists("vaporized_oil_ratio")
+    is_wet_gas = gas_table is not None and gas_table.exists("vaporized_oil_to_gas_ratio")
     if is_wet_gas and rvvd_table is None:
         raise NotImplementedError(
             "Wet-gas / gas-condensate EQUIL initialization without an RVVD table "
@@ -499,11 +499,11 @@ def _initialize_center_point_equilibrium(
         oil_bubble_point_pressure[has_oil] = bubble_point_pressure
 
     # Vaporized oil ratio / dew-point pressure (dry-gas: Rv = 0 unless RVVD)
-    vaporized_oil_ratio = np.zeros(n, dtype=dtype)
+    vaporized_oil_to_gas_ratio = np.zeros(n, dtype=dtype)
     gas_dew_point_pressure = np.zeros(n, dtype=dtype)
     has_free_gas = gas_saturation > 0.0
     if rvvd_table is not None and np.any(has_free_gas):
-        vaporized_oil_ratio[has_free_gas] = rvvd_table.at_depth(
+        vaporized_oil_to_gas_ratio[has_free_gas] = rvvd_table.at_depth(
             depths[has_free_gas]  # type: ignore[arg-type]
         ).astype(dtype, copy=False)  # type: ignore[union-attr]
 
@@ -520,7 +520,7 @@ def _initialize_center_point_equilibrium(
         gas_saturation=typing.cast(CellArray, gas_saturation),
         solution_gor=typing.cast(CellArray, solution_gor),
         oil_bubble_point_pressure=typing.cast(CellArray, oil_bubble_point_pressure),
-        vaporized_oil_ratio=typing.cast(CellArray, vaporized_oil_ratio),
+        vaporized_oil_to_gas_ratio=typing.cast(CellArray, vaporized_oil_to_gas_ratio),
         gas_dew_point_pressure=typing.cast(CellArray, gas_dew_point_pressure),
     )
 
@@ -825,7 +825,7 @@ def initialize_equilibrium_arrays(
     gas_saturation = np.zeros(n_cells, dtype=dtype)
     solution_gor = np.zeros(n_cells, dtype=dtype)
     oil_bubble_point_pressure = np.zeros(n_cells, dtype=dtype)
-    vaporized_oil_ratio = np.zeros(n_cells, dtype=dtype)
+    vaporized_oil_to_gas_ratio = np.zeros(n_cells, dtype=dtype)
     gas_dew_point_pressure = np.zeros(n_cells, dtype=dtype)
 
     for eqlnum in np.unique(equilibrium_region_index):
@@ -910,7 +910,7 @@ def initialize_equilibrium_arrays(
         gas_saturation[mask] = region_arrays.gas_saturation
         solution_gor[mask] = region_arrays.solution_gor
         oil_bubble_point_pressure[mask] = region_arrays.oil_bubble_point_pressure
-        vaporized_oil_ratio[mask] = region_arrays.vaporized_oil_ratio
+        vaporized_oil_to_gas_ratio[mask] = region_arrays.vaporized_oil_to_gas_ratio
         gas_dew_point_pressure[mask] = region_arrays.gas_dew_point_pressure
 
     return EquilibriumArrays(
@@ -919,7 +919,7 @@ def initialize_equilibrium_arrays(
         gas_saturation=typing.cast(CellArray, gas_saturation),
         solution_gor=typing.cast(CellArray, solution_gor),
         oil_bubble_point_pressure=typing.cast(CellArray, oil_bubble_point_pressure),
-        vaporized_oil_ratio=typing.cast(CellArray, vaporized_oil_ratio),
+        vaporized_oil_to_gas_ratio=typing.cast(CellArray, vaporized_oil_to_gas_ratio),
         gas_dew_point_pressure=typing.cast(CellArray, gas_dew_point_pressure),
     )
 
@@ -1005,7 +1005,7 @@ def initialize_reservoir_state(
     water_saturation: CellArray | None = None,
     gas_saturation: CellArray | None = None,
     solution_gor: CellArray | None = None,
-    vaporized_oil_ratio: CellArray | None = None,
+    vaporized_oil_to_gas_ratio: CellArray | None = None,
     depth_step: Number = 1.0,
     with_hysteresis: bool = False,
     dtype: npt.DTypeLike = None,
@@ -1051,7 +1051,7 @@ def initialize_reservoir_state(
     :param water_saturation: Optional explicit water saturation array (overrides `SWAT` keyword).
     :param gas_saturation: Optional explicit gas saturation array (overrides `SGAS` keyword).
     :param solution_gor: Optional explicit solution GOR array (overrides `RS` keyword).
-    :param vaporized_oil_ratio: Optional explicit vaporized oil ratio array (overrides `RV` keyword).
+    :param vaporized_oil_to_gas_ratio: Optional explicit vaporized oil ratio array (overrides `RV` keyword).
     :param depth_step: Step size for hydrostatic integration in equilibration.
     :param with_hysteresis: If `True`, initialize hysteresis state from the
         resolved saturations (`Hysteresis.from_initial_saturation`) for
@@ -1072,9 +1072,9 @@ def initialize_reservoir_state(
     :warns UserWarning: If `satfunc` is supplied but
         `reservoir.regions.saturation_region` (`SATNUM`) is unavailable; see
         `initialize_equilibrium_arrays`. Also if exactly one of
-        `pressure`/`solution_gor` (or `pressure`/`vaporized_oil_ratio`) is
+        `pressure`/`solution_gor` (or `pressure`/`vaporized_oil_to_gas_ratio`) is
         explicit while the other is equilibration-derived, since `EQUIL`
-        derives `solution_gor`/`vaporized_oil_ratio` from its own
+        derives `solution_gor`/`vaporized_oil_to_gas_ratio` from its own
         internally-integrated hydrostatic pressure profile, not from an
         explicit `pressure` override - the two may end up off the oil
         bubble-point / gas dew-point curve together.
@@ -1119,14 +1119,14 @@ def initialize_reservoir_state(
         "water_saturation": water_saturation,
         "gas_saturation": gas_saturation,
         "solution_gor": solution_gor,
-        "vaporized_oil_ratio": vaporized_oil_ratio,
+        "vaporized_oil_to_gas_ratio": vaporized_oil_to_gas_ratio,
     }
     field_keywords = {
         "pressure": "PRESSURE",
         "water_saturation": "SWAT",
         "gas_saturation": "SGAS",
         "solution_gor": "RS",
-        "vaporized_oil_ratio": "RV",
+        "vaporized_oil_to_gas_ratio": "RV",
     }
     if deck_file is not None:
         for field, keyword in field_keywords.items():
@@ -1159,7 +1159,7 @@ def initialize_reservoir_state(
             saturation_samples=saturation_samples,
         )
 
-        # `pressure` and `solution_gor`/`vaporized_oil_ratio` are physically
+        # `pressure` and `solution_gor`/`vaporized_oil_to_gas_ratio` are physically
         # coupled through the oil bubble-point / gas dew-point curve. EQUIL
         # derives Rs/Rv from its own internally-integrated hydrostatic
         # pressure profile, not from an explicit `pressure` override, so
@@ -1172,7 +1172,7 @@ def initialize_reservoir_state(
         # matched against an EQUIL-only Rs/Rv profile, is a legitimate,
         # if unusual, use of the per-field override contract above.
         pressure_is_explicit = explicit["pressure"] is not None
-        for gas_ratio_field in ("solution_gor", "vaporized_oil_ratio"):
+        for gas_ratio_field in ("solution_gor", "vaporized_oil_to_gas_ratio"):
             if pressure_is_explicit != (explicit[gas_ratio_field] is not None):
                 warnings.warn(
                     f"`pressure` is explicit but `{gas_ratio_field}` is "
@@ -1216,8 +1216,8 @@ def initialize_reservoir_state(
         equilibrium_arrays.solution_gor if equilibrium_arrays is not None else None,
     )
     vaporized_oil_ratio_arr = _resolve(
-        "vaporized_oil_ratio",
-        equilibrium_arrays.vaporized_oil_ratio if equilibrium_arrays is not None else None,
+        "vaporized_oil_to_gas_ratio",
+        equilibrium_arrays.vaporized_oil_to_gas_ratio if equilibrium_arrays is not None else None,
     )
     if equilibrium_arrays is not None:
         oil_bubble_point_pressure_arr = equilibrium_arrays.oil_bubble_point_pressure
@@ -1256,7 +1256,7 @@ def initialize_reservoir_state(
 
     # `UnitSystem.FIELD` mixes two volume "families": oil/water are barrels (STB), gas is
     # cubic feet (SCF), and 1 barrel = 5.614583 ft3 (`c.BARRELS_TO_CUBIC_FEET`).
-    # `solution_gor` (Rs) and `vaporized_oil_ratio` (Rv) are both normalized
+    # `solution_gor` (Rs) and `vaporized_oil_to_gas_ratio` (Rv) are both normalized
     # to SCF/STB by this codebase (see `equilibrium.py` / `pvt/regions.py`),
     # so each crosses those two families the same way: converting
     # `Rs * rho_g_sc` into an oil-mass-basis term (or `Rv * rho_o_sc` into a
@@ -1362,7 +1362,7 @@ def initialize_reservoir_state(
         gas_saturation=gas_saturation_arr,
         solution_gor=solution_gor_arr,
         oil_bubble_point_pressure=typing.cast(CellArray, oil_bubble_point_pressure_arr),
-        vaporized_oil_ratio=vaporized_oil_ratio_arr,
+        vaporized_oil_to_gas_ratio=vaporized_oil_ratio_arr,
         gas_dew_point_pressure=typing.cast(CellArray, gas_dew_point_pressure_arr),
         gas_solubility_in_water=zeros,
         water_bubble_point_pressure=zeros,

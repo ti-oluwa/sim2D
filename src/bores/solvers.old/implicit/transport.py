@@ -1847,7 +1847,7 @@ def assemble_flux_contributions(
                     cell_gas_density * cell_alpha_gas_solubility_in_water
                     - cell_gas_density * cell_alpha_solution_gor
                 ) * accumulation_coefficient
-                if coupling_value != 0.0:
+                if coupling_value != 0:
                     all_rows[i, local_ptr] = gas_row
                     all_cols[i, local_ptr] = cell_water_column
                     all_vals[i, local_ptr] = coupling_value
@@ -2201,42 +2201,42 @@ def assemble_flux_contributions(
                     dRg_dsg_n = dRg_gas_dsg_n + dRg_oil_dsg_n + dRg_water_dsg_n
 
                     # Write non-zero entries to thread-local COO buffer
-                    if dRw_dsw_i != 0.0:
+                    if dRw_dsw_i != 0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = cell_water_column
                         all_vals[i, local_ptr] = dRw_dsw_i
                         local_ptr += 1
-                    if dRw_dsg_i != 0.0:
+                    if dRw_dsg_i != 0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = cell_gas_column
                         all_vals[i, local_ptr] = dRw_dsg_i
                         local_ptr += 1
-                    if dRg_dsw_i != 0.0:
+                    if dRg_dsw_i != 0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = cell_water_column
                         all_vals[i, local_ptr] = dRg_dsw_i
                         local_ptr += 1
-                    if dRg_dsg_i != 0.0:
+                    if dRg_dsg_i != 0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = cell_gas_column
                         all_vals[i, local_ptr] = dRg_dsg_i
                         local_ptr += 1
-                    if dRw_dsw_n != 0.0:
+                    if dRw_dsw_n != 0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = neighbour_water_column
                         all_vals[i, local_ptr] = dRw_dsw_n
                         local_ptr += 1
-                    if dRw_dsg_n != 0.0:
+                    if dRw_dsg_n != 0:
                         all_rows[i, local_ptr] = water_row
                         all_cols[i, local_ptr] = neighbour_gas_column
                         all_vals[i, local_ptr] = dRw_dsg_n
                         local_ptr += 1
-                    if dRg_dsw_n != 0.0:
+                    if dRg_dsw_n != 0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = neighbour_water_column
                         all_vals[i, local_ptr] = dRg_dsw_n
                         local_ptr += 1
-                    if dRg_dsg_n != 0.0:
+                    if dRg_dsg_n != 0:
                         all_rows[i, local_ptr] = gas_row
                         all_cols[i, local_ptr] = neighbour_gas_column
                         all_vals[i, local_ptr] = dRg_dsg_n
@@ -2351,7 +2351,7 @@ def assemble_well_contributions(
 
             T = well_index * md_per_cp_to_ft2_per_psi_per_day * 2 * np.pi
 
-            if np.isfinite(water_bhp) and water_bhp != 0.0:
+            if np.isfinite(water_bhp) and water_bhp != 0:
                 drawdown = water_bhp - cell_pressure
                 water_viscosity = float(water_viscosity_grid[i, j, k])
                 inverse_water_viscosity = 1.0 / water_viscosity if water_viscosity > 0.0 else 0.0
@@ -2366,7 +2366,7 @@ def assemble_well_contributions(
                 _add_contribution(cell_idx, 0, 0, -water_density * dqw_dsw)
                 _add_contribution(cell_idx, 0, 1, -water_density * dqw_dsg)
 
-            if np.isfinite(gas_bhp) and gas_bhp != 0.0:
+            if np.isfinite(gas_bhp) and gas_bhp != 0:
                 drawdown = gas_bhp - cell_pressure
                 gas_viscosity = float(gas_viscosity_grid[i, j, k])
                 inverse_gas_viscosity = 1.0 / gas_viscosity if gas_viscosity > 0.0 else 0.0
@@ -2393,7 +2393,7 @@ def assemble_well_contributions(
             alpha_gas_solubility_in_water = _alpha_gas_solubility_in_water(i, j, k)
             gas_density = float(gas_density_grid[i, j, k])
 
-            if np.isfinite(water_bhp) and water_bhp != 0.0:
+            if np.isfinite(water_bhp) and water_bhp != 0:
                 drawdown = water_bhp - cell_pressure
                 water_viscosity = float(water_viscosity_grid[i, j, k])
                 inverse_water_viscosity = 1.0 / water_viscosity if water_viscosity > 0.0 else 0.0
@@ -2421,7 +2421,7 @@ def assemble_well_contributions(
                     -gas_density * alpha_gas_solubility_in_water * dqw_dsg,
                 )
 
-            if np.isfinite(oil_bhp) and oil_bhp != 0.0:
+            if np.isfinite(oil_bhp) and oil_bhp != 0:
                 drawdown = oil_bhp - cell_pressure
                 oil_viscosity = float(oil_viscosity_grid[i, j, k])
                 inverse_oil_viscosity = 1.0 / oil_viscosity if oil_viscosity > 0.0 else 0.0
@@ -2435,7 +2435,7 @@ def assemble_well_contributions(
                 _add_contribution(cell_idx, 1, 0, -gas_density * alpha_solution_gor * dqo_dsw)
                 _add_contribution(cell_idx, 1, 1, -gas_density * alpha_solution_gor * dqo_dsg)
 
-            if np.isfinite(gas_bhp) and gas_bhp != 0.0:
+            if np.isfinite(gas_bhp) and gas_bhp != 0:
                 drawdown = gas_bhp - cell_pressure
                 gas_viscosity = float(gas_viscosity_grid[i, j, k])
                 inverse_gas_viscosity = 1.0 / gas_viscosity if gas_viscosity > 0.0 else 0.0

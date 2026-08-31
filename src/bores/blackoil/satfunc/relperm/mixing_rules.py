@@ -207,7 +207,7 @@ class MixingRule:
                 dkro_dso_explicit=derivatives[5],
                 dkro_dsg_explicit=derivatives[6],
             )
-        return _central_difference_partial_derivatives(
+        return compute_central_difference_partial_derivatives(
             rule=self,
             kro_w=kro_w,
             kro_g=kro_g,
@@ -242,7 +242,7 @@ class MixingRule:
         return hash((func_id, dfunc_id))
 
 
-def _central_difference_partial_derivatives(
+def compute_central_difference_partial_derivatives(
     rule: MixingRuleFunc,
     kro_w: NumberOrArray[NDimension],
     kro_g: NumberOrArray[NDimension],
@@ -496,11 +496,11 @@ def _central_difference_partial_derivatives(
     )
 
 
-_MIXING_RULES: dict[str, MixingRule] = {}
+MIXING_RULES: dict[str, MixingRule] = {}
 """Registry of mixing rule functions."""
-_MIXING_RULE_SERIALIZERS: dict[MixingRule, typing.Callable[[MixingRule, bool], typing.Any]] = {}
+MIXING_RULE_SERIALIZERS: dict[MixingRule, typing.Callable[[MixingRule, bool], typing.Any]] = {}
 """Registry of mixing rule serializers."""
-_MIXING_RULE_DESERIALIZERS: dict[str, typing.Callable[[typing.Any], MixingRule]] = {}
+MIXING_RULE_DESERIALIZERS: dict[str, typing.Callable[[typing.Any], MixingRule]] = {}
 """Registry of mixing rule deserializers."""
 _lock = threading.Lock()
 
@@ -582,7 +582,7 @@ def mixing_rule(
     :return: The registered `MixingRule` instance.
     """
 
-    def _register(
+    def register(
         f: MixingRuleFunc | MixingRule,
     ) -> MixingRule:
         # Determine the registry key
@@ -599,22 +599,22 @@ def mixing_rule(
             rule = MixingRule(func=f)
 
         with _lock:
-            if rule_name in _MIXING_RULES and not override:
+            if rule_name in MIXING_RULES and not override:
                 raise ValidationError(
                     f"Mixing rule '{rule_name}' is already registered. "
                     "Use `override=True` or provide a different name."
                 )
-            _MIXING_RULES[rule_name] = rule
+            MIXING_RULES[rule_name] = rule
             if serializer is not None:
-                _MIXING_RULE_SERIALIZERS[rule] = serializer
+                MIXING_RULE_SERIALIZERS[rule] = serializer
             if deserializer is not None:
-                _MIXING_RULE_DESERIALIZERS[rule_name] = deserializer
+                MIXING_RULE_DESERIALIZERS[rule_name] = deserializer
 
         return rule
 
     if func is None:
-        return _register
-    return _register(func)
+        return register
+    return register(func)
 
 
 def serialize_mixing_rule(rule: MixingRule, recurse: bool = True) -> typing.Any:
@@ -625,10 +625,10 @@ def serialize_mixing_rule(rule: MixingRule, recurse: bool = True) -> typing.Any:
     :return: Registered name of the mixing rule.
     """
     with _lock:
-        if rule in _MIXING_RULE_SERIALIZERS:
-            return _MIXING_RULE_SERIALIZERS[rule](rule, recurse)
+        if rule in MIXING_RULE_SERIALIZERS:
+            return MIXING_RULE_SERIALIZERS[rule](rule, recurse)
 
-        for name, registered_rule in _MIXING_RULES.items():
+        for name, registered_rule in MIXING_RULES.items():
             if registered_rule == rule:
                 return name
     raise ValidationError(
@@ -644,10 +644,10 @@ def deserialize_mixing_rule(name: str) -> MixingRule:
     :return: Mixing rule function.
     """
     with _lock:
-        if name in _MIXING_RULE_DESERIALIZERS:
-            return _MIXING_RULE_DESERIALIZERS[name](name)
-        elif name in _MIXING_RULES:
-            return _MIXING_RULES[name]
+        if name in MIXING_RULE_DESERIALIZERS:
+            return MIXING_RULE_DESERIALIZERS[name](name)
+        elif name in MIXING_RULES:
+            return MIXING_RULES[name]
     raise ValidationError(
         f"Mixing rule '{name}' is not registered. Use `@mixing_rule` to register."
     )
@@ -660,7 +660,7 @@ def list_mixing_rules() -> list[str]:
     :return: List of registered mixing rule names.
     """
     with _lock:
-        return list(_MIXING_RULES.keys())
+        return list(MIXING_RULES.keys())
 
 
 def get_mixing_rule(name: str) -> MixingRule:
@@ -672,20 +672,20 @@ def get_mixing_rule(name: str) -> MixingRule:
     :raises ValidationError: If the mixing rule is not registered.
     """
     with _lock:
-        if name in _MIXING_RULES:
-            return _MIXING_RULES[name]
+        if name in MIXING_RULES:
+            return MIXING_RULES[name]
     raise ValidationError(
         f"Mixing rule '{name}' is not registered. Use `@mixing_rule` to register."
     )
 
 
-def _zeros_like_kro(kro_w: NumberOrArray) -> NumberOrArray[NDimension]:
+def get_zeros_like_kro(kro_w: NumberOrArray) -> NumberOrArray[NDimension]:
     """Return an array (or scalar) of zeros with the same shape as kro_w."""
     return np.zeros_like(kro_w) if not np.isscalar(kro_w) else kro_w.dtype.type(0.0)  # type: ignore
 
 
-@overload(_zeros_like_kro)
-def _overload_zeros_like_kro(kro_w):
+@overload(get_zeros_like_kro)
+def overload_get_zeros_like_kro(kro_w):
     # Scalar case
     if isinstance(kro_w, numba.types.Number):
 
@@ -757,7 +757,7 @@ def _(
     kg = np.asarray(kro_g, dtype=np.float64)
     dkro_dkro_w = np.where(kw < kg, 1.0, np.where(kw > kg, 0.0, 0.5))
     dkro_dkro_g = 1.0 - dkro_dkro_w
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -821,7 +821,7 @@ def _(
     both_zero = (kw <= 0.0) & (kg <= 0.0)
     dkro_dkro_w = np.where(both_zero, 0.0, kg**2 / D**2)
     dkro_dkro_g = np.where(both_zero, 0.0, kw**2 / D**2)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -923,7 +923,7 @@ def _(
     dkro_dkro_g = np.where(active, A, 0.0)
     dkro_dkrw = np.where(active, krocw * (B - 1.0), 0.0)
     dkro_dkrg = np.where(active, krocw * (A - 1.0), 0.0)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, dkro_dkrw, dkro_dkrg, z, z, z)  # type: ignore[return-value]
 
 
@@ -974,7 +974,7 @@ def _(
 ]:
     """∂kro/∂kro_w = 0.5, ∂kro/∂kro_g = 0.5, no dependence on krw, krg, or saturations."""
     half = np.full_like(np.asarray(kro_w, dtype=np.float64), 0.5)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (half, half, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1036,7 +1036,7 @@ def _(
     safe_kro = np.maximum(kro, 1e-30)
     dkro_dkro_w = np.where(kro > 0.0, 0.5 * kg / safe_kro, 0.0)
     dkro_dkro_g = np.where(kro > 0.0, 0.5 * kw / safe_kro, 0.0)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1107,7 +1107,7 @@ def _(
     safe_sum = np.where(both_positive, kw + kg, 1.0)
     dkro_dkro_w = np.where(both_positive, 2.0 * kg**2 / safe_sum**2, 0.0)
     dkro_dkro_g = np.where(both_positive, 2.0 * kw**2 / safe_sum**2, 0.0)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1192,7 +1192,7 @@ def _(
     dkro_dkro_g = np.where(active, sg / T_safe, 0.0)
     dsw = np.where(active, sg * (kw - kg) / T_safe**2, 0.0)
     dsg = np.where(active, sw * (kg - kw) / T_safe**2, 0.0)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, dsw, z, dsg)  # type: ignore[return-value]
 
 
@@ -1261,7 +1261,7 @@ def _(
     active = (kw > 0.0) & (kg > 0.0) & (kw * kg * (2.0 - kw - kg) > 0.0)
     dkro_dkro_w = np.where(active, kg * (2.0 - 2.0 * kw - kg), 0.0)
     dkro_dkro_g = np.where(active, kw * (2.0 - kw - 2.0 * kg), 0.0)
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1332,7 +1332,7 @@ def _(
     both_zero = (kw <= 0.0) & (kg <= 0.0)
     dkro_dkro_w = np.where(both_zero, 0.0, np.where(kw > kg, 0.0, np.where(kg > kw, 1.0, 0.5)))
     dkro_dkro_g = np.where(both_zero, 0.0, np.where(kg > kw, 0.0, np.where(kw > kg, 1.0, 0.5)))
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1419,7 +1419,7 @@ def aziz_settari_rule(a: Number = 0.5, b: Number = 0.5) -> MixingRule:
         safe_kg = np.where(active, kg, 1.0)
         dkro_dkro_w = np.where(active, a * safe_kw ** (a - 1.0) * safe_kg**b, 0.0)
         dkro_dkro_g = np.where(active, b * safe_kw**a * safe_kg ** (b - 1.0), 0.0)
-        z = _zeros_like_kro(kro_w)
+        z = get_zeros_like_kro(kro_w)
         return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
     return rule
@@ -1532,7 +1532,7 @@ def _(
     )
     dsg = np.where(active & (Dw > 0.0), -kw * so / Dw_safe**2, 0.0)
 
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, dsw, dso, dsg)  # type: ignore[return-value]
 
 
@@ -1593,7 +1593,7 @@ def _(
     kg = np.asarray(kro_g, dtype=np.float64)
     dkro_dkro_w = np.where(kw > kg, 1.0, np.where(kg > kw, 0.0, 0.5))
     dkro_dkro_g = 1.0 - dkro_dkro_w
-    z = _zeros_like_kro(kro_w)
+    z = get_zeros_like_kro(kro_w)
     return (dkro_dkro_w, dkro_dkro_g, z, z, z, z, z)  # type: ignore[return-value]
 
 
@@ -1654,7 +1654,7 @@ def get_mixing_rule_partial_derivatives(
             gas_saturation=gas_saturation,
             epsilon=epsilon,
         )
-    return _central_difference_partial_derivatives(
+    return compute_central_difference_partial_derivatives(
         rule=rule,
         kro_w=kro_w,
         kro_g=kro_g,

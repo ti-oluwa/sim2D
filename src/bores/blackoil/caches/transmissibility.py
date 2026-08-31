@@ -117,7 +117,7 @@ def make_new_cache(n_interior_faces: int, dtype: npt.DTypeLike) -> Transmissibil
     return TransmissibilityCache(**float_fields, **int_fields)  # type: ignore[arg-type]
 
 
-def _get_gravity_acceleration(unit_system: UnitSystem) -> float:
+def get_gravity_acceleration(unit_system: UnitSystem) -> float:
     """
     Get gravity acceleration in `unit_system`'s length/time units.
 
@@ -157,7 +157,7 @@ def _update_transmissibility_cache(
     :param geometric_transmissibility: `reservoir.transmissibilities.interior`.
     :param cell_depth: Shape `(n_cells,)` - `grid.cell_centroids[:, 2]`
         (positive-down, this codebase's convention throughout).
-    :param gravity_acceleration: From `_get_gravity_acceleration`.
+    :param gravity_acceleration: From `get_gravity_acceleration`.
     :param pvt_cache: Current `PVTCache`.
     :param mobility_cache: Current `MobilityCache`.
     :param water_pressure: Shape `(n_cells,)` - `oil_pressure - oil_water_capillary_pressure`.
@@ -340,7 +340,7 @@ def compute_transmissibility_cache(
     neighbour_indices = grid.face_cell_indices[grid.interior_face_indices, 1]
     assert grid.cell_centroids is not None
     cell_depth = typing.cast(CellArray, grid.cell_centroids[:, 2])
-    gravity_acceleration = _get_gravity_acceleration(reservoir.unit_system)
+    gravity_acceleration = get_gravity_acceleration(reservoir.unit_system)
 
     water_pressure = typing.cast(CellArray, oil_pressure - oil_water_capillary_pressure)
     gas_pressure = typing.cast(CellArray, oil_pressure + gas_oil_capillary_pressure)

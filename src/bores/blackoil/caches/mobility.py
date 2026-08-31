@@ -174,7 +174,7 @@ def _update_mobility_cache(
         out_gas_mobility[i] = ʎg
         out_total_mobility[i] = ʎt
 
-        if ʎt != 0.0:
+        if ʎt != 0:
             out_water_fractional_flow[i] = ʎw / ʎt
             out_oil_fractional_flow[i] = ʎo / ʎt
             out_gas_fractional_flow[i] = ʎg / ʎt

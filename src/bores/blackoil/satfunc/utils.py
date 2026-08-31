@@ -242,7 +242,7 @@ def build_pchip_interpolant(
 
 
 @numba.njit(cache=True)
-def _compute_killough_scanning_curve_scalar(
+def compute_killough_scanning_curve_scalar(
     saturation: Number,
     drainage_curve_value: Number,
     imbibition_curve_value: Number,
@@ -302,7 +302,7 @@ def _compute_killough_scanning_curve_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_killough_scanning_curve_array(
+def compute_killough_scanning_curve_array(
     saturation: NumberOrArray[NDimension],
     drainage_curve_value: NumberOrArray[NDimension],
     imbibition_curve_value: NumberOrArray[NDimension],
@@ -419,7 +419,7 @@ def compute_killough_scanning_curve(
         and np.isscalar(is_imbibition)
     )
     if is_scalar:
-        return _compute_killough_scanning_curve_scalar(
+        return compute_killough_scanning_curve_scalar(
             saturation=float(saturation),  # type: ignore[arg-type]
             drainage_curve_value=float(drainage_curve_value),  # type: ignore[arg-type]
             imbibition_curve_value=float(imbibition_curve_value),  # type: ignore[arg-type]
@@ -429,7 +429,7 @@ def compute_killough_scanning_curve(
             scanning_exponent=scanning_exponent,
             numerical_epsilon=numerical_epsilon,
         )
-    return _compute_killough_scanning_curve_array(
+    return compute_killough_scanning_curve_array(
         saturation=saturation,  # type: ignore[arg-type]
         drainage_curve_value=drainage_curve_value,  # type: ignore[arg-type]
         imbibition_curve_value=imbibition_curve_value,  # type: ignore[arg-type]
@@ -442,7 +442,7 @@ def compute_killough_scanning_curve(
 
 
 @numba.njit(cache=True, inline="always")
-def _compute_killough_scanning_curve_derivative_scalar(
+def compute_killough_scanning_curve_derivative_scalar(
     saturation: Number,
     drainage_curve_value: Number,
     imbibition_curve_value: Number,
@@ -522,7 +522,7 @@ def _compute_killough_scanning_curve_derivative_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_killough_scanning_curve_derivative_array(
+def compute_killough_scanning_curve_derivative_array(
     saturation: NumberOrArray[NDimension],
     drainage_curve_value: NumberOrArray[NDimension],
     imbibition_curve_value: NumberOrArray[NDimension],
@@ -581,7 +581,7 @@ def _compute_killough_scanning_curve_derivative_array(
 
     result = np.empty_like(saturation_array)
     for flat_idx in numba.prange(saturation_array.size):  # type: ignore
-        result.flat[flat_idx] = _compute_killough_scanning_curve_derivative_scalar(
+        result.flat[flat_idx] = compute_killough_scanning_curve_derivative_scalar(
             saturation=saturation_array.flat[flat_idx],
             drainage_curve_value=drainage_value_array.flat[flat_idx],
             imbibition_curve_value=imbibition_value_array.flat[flat_idx],
@@ -635,7 +635,7 @@ def compute_killough_scanning_curve_derivative(
         and np.isscalar(is_imbibition)
     )
     if is_scalar:
-        return _compute_killough_scanning_curve_derivative_scalar(
+        return compute_killough_scanning_curve_derivative_scalar(
             saturation=float(saturation),  # type: ignore[arg-type]
             drainage_curve_value=float(drainage_curve_value),  # type: ignore[arg-type]
             imbibition_curve_value=float(imbibition_curve_value),  # type: ignore[arg-type]
@@ -647,7 +647,7 @@ def compute_killough_scanning_curve_derivative(
             scanning_exponent=scanning_exponent,
             numerical_epsilon=numerical_epsilon,
         )
-    return _compute_killough_scanning_curve_derivative_array(
+    return compute_killough_scanning_curve_derivative_array(
         saturation=saturation,  # type: ignore[arg-type]
         drainage_curve_value=drainage_curve_value,  # type: ignore[arg-type]
         imbibition_curve_value=imbibition_curve_value,  # type: ignore[arg-type]

@@ -123,12 +123,12 @@ class CapillaryPressureTable(StoreSerializable):
         raise NotImplementedError
 
 
-_CAPILLARY_PRESSURE_TABLES: dict[str, type[CapillaryPressureTable]] = {}
+CAPILLARY_PRESSURE_TABLES: dict[str, type[CapillaryPressureTable]] = {}
 """Registry for capillary pressure table types."""
 _capillary_pressure_table_lock = threading.Lock()
 capillary_pressure_table = make_serializable_type_registrar(
     base_cls=CapillaryPressureTable,
-    registry=_CAPILLARY_PRESSURE_TABLES,
+    registry=CAPILLARY_PRESSURE_TABLES,
     key_attr="__type__",
     lock=_capillary_pressure_table_lock,
     override=False,
@@ -144,7 +144,7 @@ def list_capillary_pressure_tables() -> list[str]:
     :return: List of capillary pressure table type names.
     """
     with _capillary_pressure_table_lock:
-        return list(_CAPILLARY_PRESSURE_TABLES.keys())
+        return list(CAPILLARY_PRESSURE_TABLES.keys())
 
 
 def get_capillary_pressure_table(name: str) -> type[CapillaryPressureTable]:
@@ -156,13 +156,13 @@ def get_capillary_pressure_table(name: str) -> type[CapillaryPressureTable]:
     :raises KeyError: If the type name is not registered.
     """
     with _capillary_pressure_table_lock:
-        if name not in _CAPILLARY_PRESSURE_TABLES:
+        if name not in CAPILLARY_PRESSURE_TABLES:
             raise ValidationError(
                 f"Capillary pressure table type '{name}' is not registered. "
                 f"Use `@capillary_pressure_table` to register it. "
-                f"Available types: {list(_CAPILLARY_PRESSURE_TABLES.keys())}"
+                f"Available types: {list(CAPILLARY_PRESSURE_TABLES.keys())}"
             )
-        return _CAPILLARY_PRESSURE_TABLES[name]
+        return CAPILLARY_PRESSURE_TABLES[name]
 
 
 @capillary_pressure_table
@@ -296,8 +296,8 @@ class TwoPhaseCapillaryPressureTable(
     Array dtype for all stored arrays and all query return values.
 
     Both `reference_saturation` and `capillary_pressure` are cast to this
-    dtype in `__attrs_post_init__`. Query methods (`_query_interp`,
-    `_query_d_interp`) cast their outputs to this dtype before returning.
+    dtype in `__attrs_post_init__`. Query methods (`_query`,
+    `_d_query`) cast their outputs to this dtype before returning.
 
     Defaults to `get_dtype()` when `None`.
     """
@@ -354,7 +354,7 @@ class TwoPhaseCapillaryPressureTable(
     def get_gas_oil_wetting_phase(self) -> FluidPhase:
         return typing.cast(FluidPhase, self.wetting_phase)
 
-    def _resolve_reference(
+    def resolve_reference_saturation(
         self,
         wetting_saturation: NumberOrArray[NDimension],
         non_wetting_saturation: NumberOrArray[NDimension],
@@ -370,7 +370,7 @@ class TwoPhaseCapillaryPressureTable(
             return non_wetting_saturation
         return wetting_saturation
 
-    def _query_interp(
+    def _query(
         self,
         reference: NumberOrArray[NDimension],
     ) -> NumberOrArray[NDimension]:
@@ -397,7 +397,7 @@ class TwoPhaseCapillaryPressureTable(
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore
         return typing.cast(NumberOrArray[NDimension], result.reshape(sat.shape, copy=False))
 
-    def _query_d_interp(self, reference: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
+    def _d_query(self, reference: NumberOrArray[NDimension]) -> NumberOrArray[NDimension]:
         """
         Evaluate the analytical PCHIP derivative at `reference`, returning
         zero (in `self.dtype`) outside the knot range.
@@ -439,11 +439,11 @@ class TwoPhaseCapillaryPressureTable(
             Required when `reference_phase="non_wetting"`.
         :return: Capillary pressure value(s) in `self.dtype`, matching the input shape.
         """
-        ref = self._resolve_reference(
+        ref = self.resolve_reference_saturation(
             wetting_saturation,
             non_wetting_saturation if non_wetting_saturation is not None else wetting_saturation,
         )
-        return self._query_interp(ref)
+        return self._query(ref)
 
     def get_capillary_pressure_derivative(
         self,
@@ -462,11 +462,11 @@ class TwoPhaseCapillaryPressureTable(
             Required when `reference_phase="non_wetting"`.
         :return: Derivative value(s) in `self.dtype` with the same shape as the input.
         """
-        ref = self._resolve_reference(
+        ref = self.resolve_reference_saturation(
             wetting_saturation,
             non_wetting_saturation if non_wetting_saturation is not None else wetting_saturation,
         )
-        return self._query_d_interp(ref)
+        return self._d_query(ref)
 
     def evaluate(
         self,
@@ -747,11 +747,11 @@ class TwoPhaseCapillaryPressureTable(
 
         The unit system is read from `deck_file.unit_system` automatically.
 
-        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param deck_file: Parsed `DeckFile` containing `PROPS`-section keywords.
         :param satnum: 1-based saturation region index (default region = 1).
             Region index is given by `region_index = max(satnum - 1, 0)`.
         :param system: `"oil_water"` or `"gas_oil"`.
-        :param keyword_family: `"first"` (SWOF/SGOF) or `"second"` (SWFN/SGFN).
+        :param keyword_family: `"first"` (`SWOF`/`SGOF`) or `"second"` (`SWFN`/`SGFN`).
         :param number_of_base_points: Passed to PCHIP grid scaling.
         :param number_of_endpoint_extra_points: Passed to PCHIP endpoint enrichment.
         :param spacing: Grid spacing mode for PCHIP scaling.
@@ -1164,7 +1164,7 @@ class ThreePhaseCapillaryPressureTable(
         The unit system is read from `deck_file.unit_system` automatically and
         is shared by both sub-tables.
 
-        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
+        :param deck_file: Parsed `DeckFile` containing PRO`PS-section keywords.
         :param satnum: 1-based saturation region index (default region = 1).
             Region index is given as `region_index = max(satnum - 1, 0)`.
         :param keyword_family: `"first"`, `"second"`, or `"auto"` (default).

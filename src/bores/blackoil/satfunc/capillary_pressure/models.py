@@ -35,7 +35,7 @@ __all__ = [
 
 
 @numba.njit(cache=True)
-def _compute_brooks_corey_capillary_pressures_scalar(
+def compute_brooks_corey_capillary_pressures_scalar(
     water_saturation: Number,
     oil_saturation: Number,
     gas_saturation: Number,
@@ -161,7 +161,7 @@ def _compute_brooks_corey_capillary_pressures_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_brooks_corey_capillary_pressures_array(
+def compute_brooks_corey_capillary_pressures_array(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -368,7 +368,7 @@ def compute_brooks_corey_capillary_pressures(
         and np.isscalar(residual_oil_saturation_gas)
         and np.isscalar(residual_gas_saturation)
     ):
-        return _compute_brooks_corey_capillary_pressures_scalar(
+        return compute_brooks_corey_capillary_pressures_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             oil_saturation=oil_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -387,7 +387,7 @@ def compute_brooks_corey_capillary_pressures(
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
         )
-    return _compute_brooks_corey_capillary_pressures_array(
+    return compute_brooks_corey_capillary_pressures_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         oil_saturation=oil_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -409,7 +409,7 @@ def compute_brooks_corey_capillary_pressures(
 
 
 @numba.njit(cache=True)
-def _compute_brooks_corey_derivatives_scalar(
+def compute_brooks_corey_derivatives_scalar(
     water_saturation: Number,
     gas_saturation: Number,
     irreducible_water_saturation: Number,
@@ -508,7 +508,7 @@ def _compute_brooks_corey_derivatives_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_brooks_corey_derivatives_array(
+def compute_brooks_corey_derivatives_array(
     water_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     irreducible_water_saturation: NumberOrArray[NDimension],
@@ -666,7 +666,7 @@ def compute_brooks_corey_capillary_pressure_derivatives(
         and np.isscalar(residual_oil_saturation_gas)
         and np.isscalar(residual_gas_saturation)
     ):
-        return _compute_brooks_corey_derivatives_scalar(
+        return compute_brooks_corey_derivatives_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
             irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -684,7 +684,7 @@ def compute_brooks_corey_capillary_pressure_derivatives(
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
         )
-    return _compute_brooks_corey_derivatives_array(
+    return compute_brooks_corey_derivatives_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
         irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -1038,7 +1038,7 @@ class BrooksCoreyCapillaryPressureTable(
 
 
 @numba.njit(cache=True)
-def _compute_van_genuchten_capillary_pressures_scalar(
+def compute_van_genuchten_capillary_pressures_scalar(
     water_saturation: Number,
     oil_saturation: Number,
     gas_saturation: Number,
@@ -1171,7 +1171,7 @@ def _compute_van_genuchten_capillary_pressures_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_van_genuchten_capillary_pressures_array(
+def compute_van_genuchten_capillary_pressures_array(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -1364,7 +1364,7 @@ def compute_van_genuchten_capillary_pressures(
         and np.isscalar(residual_oil_saturation_gas)
         and np.isscalar(residual_gas_saturation)
     ):
-        return _compute_van_genuchten_capillary_pressures_scalar(
+        return compute_van_genuchten_capillary_pressures_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             oil_saturation=oil_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -1383,7 +1383,7 @@ def compute_van_genuchten_capillary_pressures(
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
         )
-    return _compute_van_genuchten_capillary_pressures_array(
+    return compute_van_genuchten_capillary_pressures_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         oil_saturation=oil_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -1405,7 +1405,7 @@ def compute_van_genuchten_capillary_pressures(
 
 
 @numba.njit(cache=True)
-def _van_genuchten_pc_slope_wrt_effective_saturation(
+def compute_van_genuchten_pc_slope_wrt_effective_saturation(
     effective_saturation: NumberArray[NDimension],
     alpha: Number,
     n: Number,
@@ -1448,7 +1448,7 @@ def _van_genuchten_pc_slope_wrt_effective_saturation(
 
 
 @numba.njit(cache=True)
-def _compute_van_genuchten_derivatives_scalar(
+def compute_van_genuchten_derivatives_scalar(
     water_saturation: Number,
     gas_saturation: Number,
     irreducible_water_saturation: Number,
@@ -1585,7 +1585,7 @@ def _compute_van_genuchten_derivatives_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_van_genuchten_derivatives_array(
+def compute_van_genuchten_derivatives_array(
     water_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     irreducible_water_saturation: NumberOrArray[NDimension],
@@ -1784,7 +1784,7 @@ def compute_van_genuchten_derivatives(
         and np.isscalar(residual_oil_saturation_gas)
         and np.isscalar(residual_gas_saturation)
     ):
-        return _compute_van_genuchten_derivatives_scalar(
+        return compute_van_genuchten_derivatives_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
             irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -1802,7 +1802,7 @@ def compute_van_genuchten_derivatives(
             saturation_epsilon=saturation_epsilon,
             minimum_mobile_pore_space=minimum_mobile_pore_space,
         )
-    return _compute_van_genuchten_derivatives_array(
+    return compute_van_genuchten_derivatives_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
         irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -2127,7 +2127,7 @@ class VanGenuchtenCapillaryPressureTable(
 
 
 @numba.njit(cache=True)
-def _compute_leverett_j_capillary_pressures_scalar(
+def compute_leverett_j_capillary_pressures_scalar(
     water_saturation: Number,
     oil_saturation: Number,
     gas_saturation: Number,
@@ -2267,7 +2267,7 @@ def _compute_leverett_j_capillary_pressures_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_leverett_j_capillary_pressures_array(
+def compute_leverett_j_capillary_pressures_array(
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
@@ -2472,7 +2472,7 @@ def compute_leverett_j_capillary_pressures(
         and np.isscalar(permeability)
         and np.isscalar(porosity)
     ):
-        return _compute_leverett_j_capillary_pressures_scalar(
+        return compute_leverett_j_capillary_pressures_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             oil_saturation=oil_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -2494,7 +2494,7 @@ def compute_leverett_j_capillary_pressures(
             minimum_mobile_pore_space=minimum_mobile_pore_space,
             dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
         )
-    return _compute_leverett_j_capillary_pressures_array(
+    return compute_leverett_j_capillary_pressures_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         oil_saturation=oil_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
@@ -2519,7 +2519,7 @@ def compute_leverett_j_capillary_pressures(
 
 
 @numba.njit(cache=True)
-def _compute_leverett_j_derivatives_scalar(
+def compute_leverett_j_derivatives_scalar(
     water_saturation: Number,
     gas_saturation: Number,
     irreducible_water_saturation: Number,
@@ -2639,7 +2639,7 @@ def _compute_leverett_j_derivatives_scalar(
 
 
 @numba.njit(cache=True)
-def _compute_leverett_j_derivatives_array(
+def compute_leverett_j_derivatives_array(
     water_saturation: NumberOrArray[NDimension],
     gas_saturation: NumberOrArray[NDimension],
     irreducible_water_saturation: NumberOrArray[NDimension],
@@ -2828,7 +2828,7 @@ def compute_leverett_j_derivatives(
         and np.isscalar(permeability)
         and np.isscalar(porosity)
     ):
-        return _compute_leverett_j_derivatives_scalar(
+        return compute_leverett_j_derivatives_scalar(
             water_saturation=water_saturation,  # type: ignore[arg-type]
             gas_saturation=gas_saturation,  # type: ignore[arg-type]
             irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -2849,7 +2849,7 @@ def compute_leverett_j_derivatives(
             minimum_mobile_pore_space=minimum_mobile_pore_space,
             dyne_per_cm_to_pressure_unit=dyne_per_cm_to_pressure_unit,
         )
-    return _compute_leverett_j_derivatives_array(
+    return compute_leverett_j_derivatives_array(
         water_saturation=water_saturation,  # type: ignore[arg-type]
         gas_saturation=gas_saturation,  # type: ignore[arg-type]
         irreducible_water_saturation=irreducible_water_saturation,  # type: ignore[arg-type]
@@ -2872,7 +2872,7 @@ def compute_leverett_j_derivatives(
     )
 
 
-def _get_dyne_per_cm_to_pressure_unit(unit_system: UnitSystem) -> Number:
+def convert_dyne_per_cm_to_pressure_unit(unit_system: UnitSystem) -> Number:
     dyne_per_cm_to_psi = c.DYNE_PER_CENTIMETER_TO_PSI
     if unit_system == UnitSystem.FIELD:
         return dyne_per_cm_to_psi
@@ -3054,7 +3054,7 @@ class LeverettJCapillaryPressureTable(
             wettability=self.wettability,
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(self.unit_system),
+            dyne_per_cm_to_pressure_unit=convert_dyne_per_cm_to_pressure_unit(self.unit_system),
         )
         return CapillaryPressures(oil_water=pcow, gas_oil=pcgo)  # type: ignore[typeddict-item]
 
@@ -3178,7 +3178,7 @@ class LeverettJCapillaryPressureTable(
             mixed_wet_water_fraction=self.mixed_wet_water_fraction,
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            dyne_per_cm_to_pressure_unit=_get_dyne_per_cm_to_pressure_unit(self.unit_system),
+            dyne_per_cm_to_pressure_unit=convert_dyne_per_cm_to_pressure_unit(self.unit_system),
         )
         return CapillaryPressureDerivatives(
             dpcow_dsw=dpcow_dsw,

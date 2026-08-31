@@ -17,11 +17,11 @@ from bores.blackoil.satfunc.relperm.mixing_rules import (
 from bores.blackoil.satfunc.relperm.tables import (
     MinimumRelPerm,
     RelativePermeabilityTable,
-    _clamp_relperm,
-    _clamp_relperm_derivative,
-    _resolve_min_relperm,
-    _show_invalid_saturation,
+    clamp_relperm,
+    clamp_relperm_derivative,
     relperm_table,
+    resolve_min_relperm,
+    show_invalid_saturation,
 )
 from bores.constants import c
 from bores.errors import ValidationError
@@ -117,7 +117,7 @@ def compute_brookes_corey_relative_permeabilities(
     # Validate saturations
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
         raise ValidationError(
-            f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
+            f"Saturations must be between 0 and 1. Sw: {show_invalid_saturation(sw)}, So: {show_invalid_saturation(so)}, Sg: {show_invalid_saturation(sg)}"
         )
 
     # Normalize saturations if they do not sum to 1
@@ -308,9 +308,9 @@ def compute_brookes_corey_relative_permeabilities(
     krw = np.clip(krw, 0.0, 1.0)
     kro = np.clip(kro, 0.0, 1.0)
     krg = np.clip(krg, 0.0, 1.0)
-    krw = _clamp_relperm(krw, minimum_water_relperm)
-    kro = _clamp_relperm(kro, minimum_oil_relperm)
-    krg = _clamp_relperm(krg, minimum_gas_relperm)
+    krw = clamp_relperm(krw, minimum_water_relperm)
+    kro = clamp_relperm(kro, minimum_oil_relperm)
+    krg = clamp_relperm(krg, minimum_gas_relperm)
     if is_scalar:
         krw = krw.item()  # type: ignore
         kro = kro.item()  # type: ignore
@@ -439,9 +439,9 @@ class BrooksCoreyRelPermTable(
         if isinstance(mixing_rule, str):
             object.__setattr__(self, "mixing_rule", get_mixing_rule(mixing_rule))
 
-        _resolve_min_relperm(self.minimum_water_relperm)
-        _resolve_min_relperm(self.minimum_oil_relperm)
-        _resolve_min_relperm(self.minimum_gas_relperm)
+        resolve_min_relperm(self.minimum_water_relperm)
+        resolve_min_relperm(self.minimum_oil_relperm)
+        resolve_min_relperm(self.minimum_gas_relperm)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         wettability = self.wettability
@@ -562,9 +562,9 @@ class BrooksCoreyRelPermTable(
             mixing_rule=typing.cast(MixingRule, self.mixing_rule),  # type: ignore[arg-type]
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            minimum_water_relperm=_resolve_min_relperm(self.minimum_water_relperm),
-            minimum_oil_relperm=_resolve_min_relperm(self.minimum_oil_relperm),
-            minimum_gas_relperm=_resolve_min_relperm(self.minimum_gas_relperm),
+            minimum_water_relperm=resolve_min_relperm(self.minimum_water_relperm),
+            minimum_oil_relperm=resolve_min_relperm(self.minimum_oil_relperm),
+            minimum_gas_relperm=resolve_min_relperm(self.minimum_gas_relperm),
         )
         return RelativePermeabilities(water=krw, oil=kro, gas=krg)  # type: ignore[typeddict-item]
 
@@ -661,9 +661,9 @@ class BrooksCoreyRelPermTable(
         wettability = self.wettability
         mixing_rule = typing.cast(MixingRule, self.mixing_rule)
 
-        krw_min = _resolve_min_relperm(self.minimum_water_relperm)
-        kro_min = _resolve_min_relperm(self.minimum_oil_relperm)
-        krg_min = _resolve_min_relperm(self.minimum_gas_relperm)
+        krw_min = resolve_min_relperm(self.minimum_water_relperm)
+        kro_min = resolve_min_relperm(self.minimum_oil_relperm)
+        krg_min = resolve_min_relperm(self.minimum_gas_relperm)
 
         is_scalar = (
             np.isscalar(water_saturation)
@@ -703,7 +703,7 @@ class BrooksCoreyRelPermTable(
                 zeros,
             )
             # Apply min_value: zero derivative where raw kro ≤ min_value
-            dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_vals, kro_min)
+            dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_vals, kro_min)
             dkro_dsw = zeros.copy()
             dkro_dsg = zeros.copy()
 
@@ -722,7 +722,7 @@ class BrooksCoreyRelPermTable(
                 gas_exponent * se_g ** max(gas_exponent - 1.0, 0.0) / movable_gas_range,
                 zeros,
             )
-            dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_vals, krg_min)
+            dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_vals, krg_min)
             dkrg_dsw = zeros.copy()
             dkrg_dso = zeros.copy()
 
@@ -797,9 +797,9 @@ class BrooksCoreyRelPermTable(
                 + dkrw_dsg_explicit
             )
             # Apply min_value to krw derivatives
-            dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
-            dkrw_dso = _clamp_relperm_derivative(dkrw_dso_raw, krw_raw, krw_min)
-            dkrw_dsg = _clamp_relperm_derivative(dkrw_dsg_raw, krw_raw, krw_min)
+            dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
+            dkrw_dso = clamp_relperm_derivative(dkrw_dso_raw, krw_raw, krw_min)
+            dkrw_dsg = clamp_relperm_derivative(dkrw_dsg_raw, krw_raw, krw_min)
 
             results = (
                 dkrw_dsw,
@@ -813,7 +813,7 @@ class BrooksCoreyRelPermTable(
                 dkrg_dsg,
             )
             if is_scalar:
-                results = tuple(r.item() for r in results)
+                results = tuple(r.item() for r in results)  # type: ignore[union-attr]
             return RelativePermeabilityDerivatives(
                 dkrw_dsw=results[0],
                 dkro_dsw=results[1],
@@ -1021,15 +1021,15 @@ class BrooksCoreyRelPermTable(
             dkrg_dsg_raw = f * dkrg_ww_dsg_raw + (1.0 - f) * dkrg_ow_dsg
 
             # Apply min_values to blended derivatives
-            dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_blend_raw, krw_min)
-            dkrw_dso = _clamp_relperm_derivative(dkrw_dso_raw, krw_blend_raw, krw_min)
-            dkrw_dsg = _clamp_relperm_derivative(dkrw_dsg_raw, krw_blend_raw, krw_min)
-            dkro_dsw = _clamp_relperm_derivative(dkro_dsw_raw, kro_blend_raw, kro_min)
-            dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_blend_raw, kro_min)
-            dkro_dsg = _clamp_relperm_derivative(dkro_dsg_raw, kro_blend_raw, kro_min)
+            dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_blend_raw, krw_min)
+            dkrw_dso = clamp_relperm_derivative(dkrw_dso_raw, krw_blend_raw, krw_min)
+            dkrw_dsg = clamp_relperm_derivative(dkrw_dsg_raw, krw_blend_raw, krw_min)
+            dkro_dsw = clamp_relperm_derivative(dkro_dsw_raw, kro_blend_raw, kro_min)
+            dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_blend_raw, kro_min)
+            dkro_dsg = clamp_relperm_derivative(dkro_dsg_raw, kro_blend_raw, kro_min)
             dkrg_dsw = zeros.copy()
             dkrg_dso = zeros.copy()
-            dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_blend_raw, krg_min)
+            dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_blend_raw, krg_min)
 
             results = (
                 dkrw_dsw,
@@ -1043,7 +1043,7 @@ class BrooksCoreyRelPermTable(
                 dkrg_dsg,
             )
             if is_scalar:
-                results = tuple(r.item() for r in results)
+                results = tuple(r.item() for r in results)  # type: ignore[union-attr]
             return RelativePermeabilityDerivatives(
                 dkrw_dsw=results[0],
                 dkro_dsw=results[1],
@@ -1071,7 +1071,7 @@ class BrooksCoreyRelPermTable(
             water_exponent * (se_w ** max(water_exponent - 1.0, 0.0)) / mobile_water_range,
             zeros,
         )
-        dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_values, krw_min)
+        dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_values, krw_min)
         dkrw_dso = zeros.copy()
         dkrw_dsg = zeros.copy()
 
@@ -1089,7 +1089,7 @@ class BrooksCoreyRelPermTable(
             gas_exponent * (se_g ** max(gas_exponent - 1.0, 0.0)) / mobile_gas_range,
             zeros,
         )
-        dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_values, krg_min)
+        dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_values, krg_min)
         dkrg_dsw = zeros.copy()
         dkrg_dso = zeros.copy()
 
@@ -1173,9 +1173,9 @@ class BrooksCoreyRelPermTable(
             + dkro_dsg_explicit
         )
 
-        dkro_dsw = _clamp_relperm_derivative(dkro_dsw_raw, kro_raw, kro_min)
-        dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_raw, kro_min)
-        dkro_dsg = _clamp_relperm_derivative(dkro_dsg_raw, kro_raw, kro_min)
+        dkro_dsw = clamp_relperm_derivative(dkro_dsw_raw, kro_raw, kro_min)
+        dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_raw, kro_min)
+        dkro_dsg = clamp_relperm_derivative(dkro_dsg_raw, kro_raw, kro_min)
 
         results = (
             dkrw_dsw,
@@ -1189,7 +1189,7 @@ class BrooksCoreyRelPermTable(
             dkrg_dsg,
         )
         if is_scalar:
-            results = tuple(r.item() for r in results)
+            results = tuple(r.item() for r in results)  # type: ignore[union-attr]
             return RelativePermeabilityDerivatives(
                 dkrw_dsw=results[0],
                 dkro_dsw=results[1],
@@ -1381,7 +1381,7 @@ def compute_let_relative_permeabilities(
     sw, so, sg = np.broadcast_arrays(sw, so, sg)
     if np.any((sw < 0) | (sw > 1) | (so < 0) | (so > 1) | (sg < 0) | (sg > 1)):
         raise ValidationError(
-            f"Saturations must be between 0 and 1. Sw: {_show_invalid_saturation(sw)}, So: {_show_invalid_saturation(so)}, Sg: {_show_invalid_saturation(sg)}"
+            f"Saturations must be between 0 and 1. Sw: {show_invalid_saturation(sw)}, So: {show_invalid_saturation(so)}, Sg: {show_invalid_saturation(sg)}"
         )
 
     # Normalize saturations if they do not sum to 1
@@ -1603,9 +1603,9 @@ def compute_let_relative_permeabilities(
     krw = np.clip(krw, 0.0, 1.0)
     kro = np.clip(kro, 0.0, 1.0)
     krg = np.clip(krg, 0.0, 1.0)
-    krw = _clamp_relperm(krw, minimum_water_relperm)
-    kro = _clamp_relperm(kro, minimum_oil_relperm)
-    krg = _clamp_relperm(krg, minimum_gas_relperm)
+    krw = clamp_relperm(krw, minimum_water_relperm)
+    kro = clamp_relperm(kro, minimum_oil_relperm)
+    krg = clamp_relperm(krg, minimum_gas_relperm)
     if is_scalar:
         krw = krw.item()  # type: ignore
         kro = kro.item()  # type: ignore
@@ -1614,7 +1614,7 @@ def compute_let_relative_permeabilities(
 
 
 @numba.njit(cache=True)
-def _let_curve_slope_wrt_normalized_saturation(
+def compute_let_curve_slope_wrt_normalized_saturation(
     normalized_saturation: NumberArray[NDimension],
     L: Number,
     E: Number,
@@ -1768,9 +1768,9 @@ class LETThreePhaseRelPermTable(
         if isinstance(mixing_rule, str):
             object.__setattr__(self, "mixing_rule", get_mixing_rule(mixing_rule))
 
-        _resolve_min_relperm(self.minimum_water_relperm)
-        _resolve_min_relperm(self.minimum_oil_relperm)
-        _resolve_min_relperm(self.minimum_gas_relperm)
+        resolve_min_relperm(self.minimum_water_relperm)
+        resolve_min_relperm(self.minimum_oil_relperm)
+        resolve_min_relperm(self.minimum_gas_relperm)
 
     def get_oil_water_wetting_phase(self) -> FluidPhase:
         wettability = self.wettability
@@ -1900,9 +1900,9 @@ class LETThreePhaseRelPermTable(
             mixing_rule=typing.cast(MixingRule, self.mixing_rule),
             saturation_epsilon=c.SATURATION_EPSILON,
             minimum_mobile_pore_space=c.MINIMUM_MOBILE_PORE_SPACE,
-            minimum_water_relperm=_resolve_min_relperm(self.minimum_water_relperm),
-            minimum_oil_relperm=_resolve_min_relperm(self.minimum_oil_relperm),
-            minimum_gas_relperm=_resolve_min_relperm(self.minimum_gas_relperm),
+            minimum_water_relperm=resolve_min_relperm(self.minimum_water_relperm),
+            minimum_oil_relperm=resolve_min_relperm(self.minimum_oil_relperm),
+            minimum_gas_relperm=resolve_min_relperm(self.minimum_gas_relperm),
         )
         return RelativePermeabilities(water=krw, oil=kro, gas=krg)  # type: ignore[typeddict-item]
 
@@ -1932,7 +1932,7 @@ class LETThreePhaseRelPermTable(
 
         For the water-wet case all LET curve derivatives are computed
         analytically via the closed-form quotient-rule formula (see
-        `_let_curve_slope_wrt_normalized_saturation`).
+        `compute_let_curve_slope_wrt_normalized_saturation`).
         The chain rule propagates these through the effective saturation
         normalisation to give derivatives with respect to physical saturation.
         The three-phase oil relative permeability derivative is then completed
@@ -2007,9 +2007,9 @@ class LETThreePhaseRelPermTable(
         krg_max = self.get_gas_relperm_endpoint()
 
         # Resolve min_values once up front
-        krw_min = _resolve_min_relperm(self.minimum_water_relperm)
-        kro_min = _resolve_min_relperm(self.minimum_oil_relperm)
-        krg_min = _resolve_min_relperm(self.minimum_gas_relperm)
+        krw_min = resolve_min_relperm(self.minimum_water_relperm)
+        kro_min = resolve_min_relperm(self.minimum_oil_relperm)
+        krg_min = resolve_min_relperm(self.minimum_gas_relperm)
 
         is_scalar = (
             np.isscalar(water_saturation)
@@ -2046,7 +2046,7 @@ class LETThreePhaseRelPermTable(
 
             dkro_dso_raw = np.where(
                 valid_oil,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_o,
                     oil_water_params.L,
                     oil_water_params.E,
@@ -2056,7 +2056,7 @@ class LETThreePhaseRelPermTable(
                 / movable_oil_range,
                 zeros,
             )
-            dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_raw, kro_min)
+            dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_raw, kro_min)
             dkro_dsw = zeros.copy()
             dkro_dsg = zeros.copy()
 
@@ -2077,13 +2077,13 @@ class LETThreePhaseRelPermTable(
 
             dkrg_dsg_raw = np.where(
                 valid_gas,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_g, gas_params.L, gas_params.E, gas_params.T, krg_max
                 )
                 / movable_gas_range,
                 zeros,
             )
-            dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_raw, krg_min)
+            dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_raw, krg_min)
             dkrg_dsw = zeros.copy()
             dkrg_dso = zeros.copy()
 
@@ -2119,7 +2119,7 @@ class LETThreePhaseRelPermTable(
             # d(krw_ow)/dsw - depends only on Sw
             dkrw_ow_dsw = np.where(
                 valid_water_ow,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_w_ow, water_params.L, water_params.E, water_params.T, 1.0
                 )
                 / movable_water_range_ow,
@@ -2128,7 +2128,7 @@ class LETThreePhaseRelPermTable(
             # d(krw_gw)/dsw - depends only on Sw
             dkrw_gw_dsw = np.where(
                 valid_water_gw,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_w_gw, water_params.L, water_params.E, water_params.T, 1.0
                 )
                 / movable_water_range_gw,
@@ -2183,9 +2183,9 @@ class LETThreePhaseRelPermTable(
             dkrw_dsg_raw = krw_max * (
                 dkrw_dkrw_ow * dkrw_ow_dsg + dkrw_dkrw_gw * dkrw_gw_dsg + dkrw_dsg_explicit
             )
-            dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
-            dkrw_dso = _clamp_relperm_derivative(dkrw_dso_raw, krw_raw, krw_min)
-            dkrw_dsg = _clamp_relperm_derivative(dkrw_dsg_raw, krw_raw, krw_min)
+            dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
+            dkrw_dso = clamp_relperm_derivative(dkrw_dso_raw, krw_raw, krw_min)
+            dkrw_dsg = clamp_relperm_derivative(dkrw_dsg_raw, krw_raw, krw_min)
 
             results = (
                 dkrw_dsw,
@@ -2199,7 +2199,7 @@ class LETThreePhaseRelPermTable(
                 dkrg_dsg,
             )
             if is_scalar:
-                results = tuple(r.item() for r in results)
+                results = tuple(r.item() for r in results)  # type: ignore[union-attr]
             return RelativePermeabilityDerivatives(
                 dkrw_dsw=results[0],
                 dkro_dsw=results[1],
@@ -2227,7 +2227,7 @@ class LETThreePhaseRelPermTable(
             )
             dkrw_ww_dsw_raw = np.where(
                 valid_water,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_w, water_params.L, water_params.E, water_params.T, krw_max
                 )
                 / mobile_water_range,
@@ -2245,7 +2245,7 @@ class LETThreePhaseRelPermTable(
             )
             dkrg_ww_dsg_raw = np.where(
                 valid_gas,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_g, gas_params.L, gas_params.E, gas_params.T, krg_max
                 )
                 / mobile_gas_range,
@@ -2266,7 +2266,7 @@ class LETThreePhaseRelPermTable(
             )
             dkro_w_ww_dso = np.where(
                 valid_ow,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_o_w,
                     oil_water_params.L,
                     oil_water_params.E,
@@ -2288,7 +2288,7 @@ class LETThreePhaseRelPermTable(
             )
             dkro_g_ww_dso = np.where(
                 valid_go,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_o_g, gas_oil_params.L, gas_oil_params.E, gas_oil_params.T, 1.0
                 )
                 / mobile_gas_oil_range,
@@ -2347,7 +2347,7 @@ class LETThreePhaseRelPermTable(
             dkro_ow_dso = np.where(
                 valid_oil_ow,
                 kro_max
-                * _let_curve_slope_wrt_normalized_saturation(
+                * compute_let_curve_slope_wrt_normalized_saturation(
                     se_o_ow,
                     oil_water_params.L,
                     oil_water_params.E,
@@ -2372,7 +2372,7 @@ class LETThreePhaseRelPermTable(
             dkrg_ow_dsg = np.where(
                 valid_gas_ow,
                 krg_max
-                * _let_curve_slope_wrt_normalized_saturation(
+                * compute_let_curve_slope_wrt_normalized_saturation(
                     se_g_ow, gas_params.L, gas_params.E, gas_params.T, 1.0
                 )
                 / movable_gas_range_ow,
@@ -2393,7 +2393,7 @@ class LETThreePhaseRelPermTable(
             )
             dkrw_ow_proxy_dsw = np.where(
                 valid_w_ow,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_w_ow, water_params.L, water_params.E, water_params.T, 1.0
                 )
                 / movable_water_range_ow,
@@ -2413,7 +2413,7 @@ class LETThreePhaseRelPermTable(
             )
             dkrw_gw_proxy_dsw = np.where(
                 valid_w_gw,
-                _let_curve_slope_wrt_normalized_saturation(
+                compute_let_curve_slope_wrt_normalized_saturation(
                     se_w_gw, water_params.L, water_params.E, water_params.T, 1.0
                 )
                 / movable_water_range_gw,
@@ -2471,15 +2471,15 @@ class LETThreePhaseRelPermTable(
             dkrg_dsg_raw = f * dkrg_ww_dsg_raw + (1.0 - f) * dkrg_ow_dsg
 
             # Apply min_values to blended derivatives
-            dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_blend_raw, krw_min)
-            dkrw_dso = _clamp_relperm_derivative(dkrw_dso_raw, krw_blend_raw, krw_min)
-            dkrw_dsg = _clamp_relperm_derivative(dkrw_dsg_raw, krw_blend_raw, krw_min)
-            dkro_dsw = _clamp_relperm_derivative(dkro_dsw_raw, kro_blend_raw, kro_min)
-            dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_blend_raw, kro_min)
-            dkro_dsg = _clamp_relperm_derivative(dkro_dsg_raw, kro_blend_raw, kro_min)
+            dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_blend_raw, krw_min)
+            dkrw_dso = clamp_relperm_derivative(dkrw_dso_raw, krw_blend_raw, krw_min)
+            dkrw_dsg = clamp_relperm_derivative(dkrw_dsg_raw, krw_blend_raw, krw_min)
+            dkro_dsw = clamp_relperm_derivative(dkro_dsw_raw, kro_blend_raw, kro_min)
+            dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_blend_raw, kro_min)
+            dkro_dsg = clamp_relperm_derivative(dkro_dsg_raw, kro_blend_raw, kro_min)
             dkrg_dsw = zeros.copy()
             dkrg_dso = zeros.copy()
-            dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_blend_raw, krg_min)
+            dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_blend_raw, krg_min)
 
             results = (
                 dkrw_dsw,
@@ -2523,7 +2523,7 @@ class LETThreePhaseRelPermTable(
         )
         dkrw_dsw_raw = np.where(
             valid_water,
-            _let_curve_slope_wrt_normalized_saturation(
+            compute_let_curve_slope_wrt_normalized_saturation(
                 normalized_saturation=se_w_for_krw,
                 L=water_params.L,
                 E=water_params.E,
@@ -2533,7 +2533,7 @@ class LETThreePhaseRelPermTable(
             / mobile_water_range,
             zeros,
         )
-        dkrw_dsw = _clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
+        dkrw_dsw = clamp_relperm_derivative(dkrw_dsw_raw, krw_raw, krw_min)
         dkrw_dso = zeros.copy()
         dkrw_dsg = zeros.copy()
 
@@ -2553,7 +2553,7 @@ class LETThreePhaseRelPermTable(
         )
         dkrg_dsg_raw = np.where(
             valid_gas,
-            _let_curve_slope_wrt_normalized_saturation(
+            compute_let_curve_slope_wrt_normalized_saturation(
                 normalized_saturation=se_g_for_krg,
                 L=gas_params.L,
                 E=gas_params.E,
@@ -2563,7 +2563,7 @@ class LETThreePhaseRelPermTable(
             / mobile_gas_range,
             zeros,
         )
-        dkrg_dsg = _clamp_relperm_derivative(dkrg_dsg_raw, krg_raw, krg_min)
+        dkrg_dsg = clamp_relperm_derivative(dkrg_dsg_raw, krg_raw, krg_min)
         dkrg_dsw = zeros.copy()
         dkrg_dso = zeros.copy()
 
@@ -2583,7 +2583,7 @@ class LETThreePhaseRelPermTable(
         )
         dkro_w_dso = np.where(
             valid_oil_water,
-            _let_curve_slope_wrt_normalized_saturation(
+            compute_let_curve_slope_wrt_normalized_saturation(
                 normalized_saturation=se_o_water_system,
                 L=oil_water_params.L,
                 E=oil_water_params.E,
@@ -2612,7 +2612,7 @@ class LETThreePhaseRelPermTable(
         )
         dkro_g_dso = np.where(
             valid_gas_oil,
-            _let_curve_slope_wrt_normalized_saturation(
+            compute_let_curve_slope_wrt_normalized_saturation(
                 normalized_saturation=se_o_gas_system,
                 L=gas_oil_params.L,
                 E=gas_oil_params.E,
@@ -2683,9 +2683,9 @@ class LETThreePhaseRelPermTable(
             + dkro_dsg_explicit
         )
 
-        dkro_dsw = _clamp_relperm_derivative(dkro_dsw_raw, kro_mixed_raw, kro_min)
-        dkro_dso = _clamp_relperm_derivative(dkro_dso_raw, kro_mixed_raw, kro_min)
-        dkro_dsg = _clamp_relperm_derivative(dkro_dsg_raw, kro_mixed_raw, kro_min)
+        dkro_dsw = clamp_relperm_derivative(dkro_dsw_raw, kro_mixed_raw, kro_min)
+        dkro_dso = clamp_relperm_derivative(dkro_dso_raw, kro_mixed_raw, kro_min)
+        dkro_dsg = clamp_relperm_derivative(dkro_dsg_raw, kro_mixed_raw, kro_min)
 
         results = (
             dkrw_dsw,

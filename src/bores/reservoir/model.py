@@ -25,7 +25,7 @@ from bores.types import CellArray, Number, UnitSystem
 __all__ = ["Reservoir"]
 
 
-def _validate_rock(rock: Rock, n_cells: int) -> Rock:
+def validate_rock(rock: Rock, n_cells: int) -> Rock:
     """
     Verify that all per-cell arrays in `rock` have length `n_cells`.
 
@@ -56,8 +56,8 @@ class Reservoir(
     fields={
         "grid": Grid,
         "rock": Rock,
-        "regions": typing.Optional[Regions],
-        "unit_system": typing.Optional[UnitSystem],
+        "regions": Regions | None,
+        "unit_system": UnitSystem | None,
     },
 ):
     """
@@ -96,7 +96,7 @@ class Reservoir(
             match `grid.n_cells`, or if `datum_depth` is negative.
         """
         n_cells = grid.n_cells
-        _validate_rock(rock, n_cells)
+        validate_rock(rock, n_cells)
 
         target_unit_system = unit_system if unit_system is not None else grid.unit_system
         unit_conversion_table = build_unit_conversion_table()
@@ -276,7 +276,7 @@ class Reservoir(
         # converted and the new model starts with a clean cache.
         return new_model
 
-    def get_transmissibility_for_face(self, face_index: int) -> Number:
+    def get_face_transmissibility(self, face_index: int) -> Number:
         """
         Return the transmissibility (or half-transmissibility for boundary) of a single face.
 

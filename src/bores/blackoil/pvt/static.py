@@ -15,7 +15,7 @@ __all__ = ["StaticPVT"]
 @attrs.frozen(slots=True)
 class StaticPVT(StoreSerializable):
     """
-    Static/immutable fluid characterization. Pressure- and temperature-dependent
+    Static/immutable fluid characterization. Pressure and temperature dependent
     properties are evaluated from the PVT tables or correlations during the simulation
     and may be cached separately for performance.
 
@@ -182,20 +182,20 @@ class StaticPVT(StoreSerializable):
         """
         Load static PVT properties from a parsed `DeckFile` for a given region.
 
-        Extracts DENSITY and PVTW records for the specified PVT region and
+        Extracts `DENSITY` and `PVTW` records for the specified PVT region and
         constructs a `StaticPVT` instance with the stock-tank densities and
         water reference properties.
 
-        :param deck_file: Parsed `DeckFile` containing PROPS-section keywords.
-        :param pvtnum: 1-based PVT region index (matches Eclipse PVTNUM).
+        :param deck_file: Parsed `DeckFile` containing `PROPS`-section keywords.
+        :param pvtnum: 1-based PVT region index (matches Eclipse `PVTNUM`).
         :param salinity: Water salinity in ppm NaCl (default 0).
         :returns: New `StaticPVT` instance populated from deck data.
-        :raises ValidationError: If required PVTW record is missing for the region.
+        :raises ValidationError: If required `PVTW` record is missing for the region.
         """
         # Convert 1-based pvtnum to 0-based index
         region_idx = max(pvtnum - 1, 0)
 
-        # Extract DENSITY record for this region
+        # Extract `DENSITY` record for this region
         density_record: dict[str, Number] | None = None
         density_all = deck_file.get("DENSITY")
         if density_all is not None and region_idx < len(density_all):

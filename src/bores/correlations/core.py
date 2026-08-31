@@ -182,7 +182,7 @@ SETSCHENOW_CONSTANTS = {
     "h2": 0.07,
 }
 
-_GAS_ALIASES = {
+GAS_ALIASES = {
     "methane": "ch4",
     "carbondioxide": "co2",
     "nitrogen": "n2",
@@ -195,4 +195,4 @@ _GAS_ALIASES = {
 
 def get_gas_symbol(gas_name: str) -> str:
     gas_name = gas_name.lower().replace(" ", "").replace("-", "")
-    return _GAS_ALIASES.get(gas_name, gas_name)
+    return GAS_ALIASES.get(gas_name, gas_name)

@@ -12,11 +12,8 @@ from bores.types import IntCellArray
 __all__ = ["Regions"]
 
 
-def _load_region_array(
-    deck_file: DeckFile,
-    keyword: str,
-    n_cells: int,
-    default_region: int | None = None,
+def load_region_array(
+    deck_file: DeckFile, keyword: str, n_cells: int, default_region: int | None = None
 ) -> IntCellArray | None:
     arr = deck_file.get(keyword)
     if arr is None:
@@ -97,22 +94,22 @@ class Regions(StoreSerializable):
         """
         default_region = 1 if use_default else None
         return cls(
-            pvt_region=_load_region_array(
+            pvt_region=load_region_array(
                 deck_file, "PVTNUM", n_cells=n_cells, default_region=default_region
             ),
-            saturation_region=_load_region_array(
+            saturation_region=load_region_array(
                 deck_file, "SATNUM", n_cells=n_cells, default_region=default_region
             ),
-            imbibition_region=_load_region_array(
+            imbibition_region=load_region_array(
                 deck_file, "IMBNUM", n_cells=n_cells, default_region=default_region
             ),
-            equilibrium_region=_load_region_array(
+            equilibrium_region=load_region_array(
                 deck_file, "EQLNUM", n_cells=n_cells, default_region=default_region
             ),
-            rock_region=_load_region_array(
+            rock_region=load_region_array(
                 deck_file, "ROCKNUM", n_cells=n_cells, default_region=default_region
             ),
-            fluid_in_place_region=_load_region_array(
+            fluid_in_place_region=load_region_array(
                 deck_file, "FIPNUM", n_cells=n_cells, default_region=default_region
             ),
         )

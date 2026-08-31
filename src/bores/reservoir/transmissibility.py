@@ -27,26 +27,24 @@ __all__ = ["ConnectionTransmissibilities", "compute_connection_transmissibilitie
 
 
 class ConnectionTransmissibilities(typing.NamedTuple):
-    """
-    Precomputed transmissibilities for all connections in a `BlackOilModel`.
-
-    **Attributes**:
-
-    interior:
-        Shape `(n_interior_faces,)` float64 - TPFA transmissibility for
-        every interior face (mD·ft in FIELD units).
-    boundary:
-        Shape `(n_boundary_faces,)` float64 - half-transmissibility for
-        every boundary face.
-    nnc:
-        Shape `(n_nnc,)` float64 or `None` - transmissibilities for
-        non-neighbour connections, in the same order as `Grid.nnc_cell_indices`.
-        `None` when the grid has no NNCs.
-    """
+    """Precomputed transmissibilities for all connections in a `BlackOilModel`."""
 
     interior: NumberArray[OneDimension]
+    """
+    Shape `(n_interior_faces,)` float64 - TPFA transmissibility for
+    every interior face (mD·ft in FIELD units).
+    """
     boundary: NumberArray[OneDimension]
+    """
+    Shape `(n_boundary_faces,)` float64 - half-transmissibility for
+    every boundary face.
+    """
     nnc: NumberArray[OneDimension] | None
+    """
+    Shape `(n_nnc,)` float64 or `None` - transmissibilities for
+    non-neighbour connections, in the same order as `Grid.nnc_cell_indices`.
+    `None` when the grid has no NNCs.
+    """
     unit_system: UnitSystem
 
     def convert(
@@ -78,8 +76,7 @@ class ConnectionTransmissibilities(typing.NamedTuple):
 
 
 def get_face_transmissibility_map(
-    grid: Grid,
-    transmissibilities: ConnectionTransmissibilities,
+    grid: Grid, transmissibilities: ConnectionTransmissibilities
 ) -> dict[int, Number]:
     """
     Build a {global_face_index: transmissibility} dict for single-face lookups.
@@ -251,7 +248,7 @@ def compute_connection_transmissibilities(
                 fault_transmissibility_multipliers=grid.fault_transmissibility_multipliers,
             )
 
-    # Apply MULTFLT to face-based connections
+    # Apply `MULTFLT` to face-based connections
     if grid.fault_face_indices is not None and grid.fault_transmissibility_multipliers is not None:
         interior_transmissibilities, boundary_transmissibilities = _apply_fault_face_multipliers(
             interior_transmissibilities=interior_transmissibilities,
@@ -618,13 +615,13 @@ def _apply_fault_face_multipliers(
         if multiplier == 1:
             continue
         for global_idx in face_indices:
-            interior_pos = global_to_interior.get(int(global_idx))
-            if interior_pos is not None:
-                interior_transmissibilities[interior_pos] *= multiplier
+            interior_position = global_to_interior.get(int(global_idx))
+            if interior_position is not None:
+                interior_transmissibilities[interior_position] *= multiplier
                 continue
-            boundary_pos = global_to_boundary.get(int(global_idx))
-            if boundary_pos is not None:
-                boundary_transmissibilities[boundary_pos] *= multiplier
+            boundary_position = global_to_boundary.get(int(global_idx))
+            if boundary_position is not None:
+                boundary_transmissibilities[boundary_position] *= multiplier
 
     return interior_transmissibilities, boundary_transmissibilities
 

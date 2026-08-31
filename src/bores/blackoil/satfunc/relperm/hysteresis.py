@@ -52,7 +52,7 @@ __all__ = ["KilloughLandRelPermTable"]
 
 
 @numba.njit(cache=True)
-def _compute_land_residual_saturation_scalar(
+def compute_land_residual_saturation_scalar(
     initial_non_wetting_saturation: Number,
     maximum_residual_saturation: Number,
     land_trapping_coefficient: Number,
@@ -92,7 +92,7 @@ def _compute_land_residual_saturation_scalar(
 
 
 @numba.njit(cache=True, parallel=True)
-def _compute_land_residual_saturation_array(
+def compute_land_residual_saturation_array(
     initial_non_wetting_saturation: NumberArray[NDimension],
     maximum_residual_saturation: Number,
     land_trapping_coefficient: Number,
@@ -143,13 +143,13 @@ def compute_land_residual_saturation(
     :return: Dynamic residual saturation matching the shape of the input.
     """
     if np.isscalar(initial_non_wetting_saturation):
-        return _compute_land_residual_saturation_scalar(
+        return compute_land_residual_saturation_scalar(
             initial_non_wetting_saturation=initial_non_wetting_saturation,  # type: ignore
             maximum_residual_saturation=maximum_residual_saturation,
             land_trapping_coefficient=land_trapping_coefficient,
             saturation_epsilon=saturation_epsilon,
         )
-    return _compute_land_residual_saturation_array(
+    return compute_land_residual_saturation_array(
         initial_non_wetting_saturation=typing.cast(
             NumberArray[NDimension], initial_non_wetting_saturation
         ),
@@ -159,7 +159,7 @@ def compute_land_residual_saturation(
     )
 
 
-def _get_oil_water_relative_permeabilities(
+def get_oil_water_relative_permeabilities(
     oil_water_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -225,7 +225,7 @@ def _get_oil_water_relative_permeabilities(
     return result["water"], result["oil"]
 
 
-def _get_gas_oil_relative_permeabilities(
+def get_gas_oil_relative_permeabilities(
     gas_oil_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -290,7 +290,7 @@ def _get_gas_oil_relative_permeabilities(
     return result["oil"], result["gas"]
 
 
-def _get_oil_water_relative_permeability_derivatives(
+def get_oil_water_relative_permeability_derivatives(
     oil_water_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -347,7 +347,7 @@ def _get_oil_water_relative_permeability_derivatives(
     return derivatives["dkrw_dsw"], derivatives["dkro_dsw"]
 
 
-def _get_gas_oil_relative_permeability_derivatives(
+def get_gas_oil_relative_permeability_derivatives(
     gas_oil_table: TwoPhaseRelPermTable | RelativePermeabilityTable,
     water_saturation: NumberOrArray[NDimension],
     oil_saturation: NumberOrArray[NDimension],
@@ -809,7 +809,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_drainage,
             oil_relative_permeability_water_drainage,
-        ) = _get_oil_water_relative_permeabilities(
+        ) = get_oil_water_relative_permeabilities(
             oil_water_table=oil_water_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -819,7 +819,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_imbibition,
             oil_relative_permeability_water_imbibition,
-        ) = _get_oil_water_relative_permeabilities(
+        ) = get_oil_water_relative_permeabilities(
             oil_water_table=oil_water_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -870,7 +870,7 @@ class KilloughLandRelPermTable(
             )
 
         oil_relative_permeability_gas_drainage, gas_relative_permeability_drainage = (
-            _get_gas_oil_relative_permeabilities(
+            get_gas_oil_relative_permeabilities(
                 gas_oil_table=gas_oil_drainage_table,
                 water_saturation=water_saturation,
                 oil_saturation=oil_saturation,
@@ -881,7 +881,7 @@ class KilloughLandRelPermTable(
         (
             oil_relative_permeability_gas_imbibition,
             gas_relative_permeability_imbibition,
-        ) = _get_gas_oil_relative_permeabilities(
+        ) = get_gas_oil_relative_permeabilities(
             gas_oil_table=gas_oil_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1061,7 +1061,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_drainage,
             oil_relative_permeability_water_drainage,
-        ) = _get_oil_water_relative_permeabilities(
+        ) = get_oil_water_relative_permeabilities(
             oil_water_table=oil_water_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1071,7 +1071,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_imbibition,
             oil_relative_permeability_water_imbibition,
-        ) = _get_oil_water_relative_permeabilities(
+        ) = get_oil_water_relative_permeabilities(
             oil_water_table=oil_water_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1082,7 +1082,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_drainage_derivative,
             oil_relative_permeability_water_drainage_derivative,
-        ) = _get_oil_water_relative_permeability_derivatives(
+        ) = get_oil_water_relative_permeability_derivatives(
             oil_water_table=oil_water_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1092,7 +1092,7 @@ class KilloughLandRelPermTable(
         (
             water_relative_permeability_imbibition_derivative,
             oil_relative_permeability_water_imbibition_derivative,
-        ) = _get_oil_water_relative_permeability_derivatives(
+        ) = get_oil_water_relative_permeability_derivatives(
             oil_water_table=oil_water_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1144,7 +1144,7 @@ class KilloughLandRelPermTable(
 
         # Gas-oil - values and derivatives
         oil_relative_permeability_gas_drainage, gas_relative_permeability_drainage = (
-            _get_gas_oil_relative_permeabilities(
+            get_gas_oil_relative_permeabilities(
                 gas_oil_table=gas_oil_drainage_table,
                 water_saturation=water_saturation,
                 oil_saturation=oil_saturation,
@@ -1155,7 +1155,7 @@ class KilloughLandRelPermTable(
         (
             oil_relative_permeability_gas_imbibition,
             gas_relative_permeability_imbibition,
-        ) = _get_gas_oil_relative_permeabilities(
+        ) = get_gas_oil_relative_permeabilities(
             gas_oil_table=gas_oil_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1166,7 +1166,7 @@ class KilloughLandRelPermTable(
         (
             oil_relative_permeability_gas_drainage_derivative,
             gas_relative_permeability_drainage_derivative,
-        ) = _get_gas_oil_relative_permeability_derivatives(
+        ) = get_gas_oil_relative_permeability_derivatives(
             gas_oil_table=gas_oil_drainage_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1176,7 +1176,7 @@ class KilloughLandRelPermTable(
         (
             oil_relative_permeability_gas_imbibition_derivative,
             gas_relative_permeability_imbibition_derivative,
-        ) = _get_gas_oil_relative_permeability_derivatives(
+        ) = get_gas_oil_relative_permeability_derivatives(
             gas_oil_table=gas_oil_imbibition_table,
             water_saturation=water_saturation,
             oil_saturation=oil_saturation,
@@ -1243,17 +1243,17 @@ class KilloughLandRelPermTable(
         )
 
         oil_relative_permeability_derivative_water = (
-            mixing_rule_partial_derivatives["d_kro_d_kro_w"]
+            mixing_rule_partial_derivatives["dkro_dkro_w"]
             * oil_relative_permeability_water_derivative
-            + mixing_rule_partial_derivatives["d_kro_dsw_explicit"]
+            + mixing_rule_partial_derivatives["dkro_dsw_explicit"]
         )
         oil_relative_permeability_derivative_oil = mixing_rule_partial_derivatives[
-            "d_kro_dso_explicit"
+            "dkro_dso_explicit"
         ]
         oil_relative_permeability_derivative_gas = (
-            mixing_rule_partial_derivatives["d_kro_d_kro_g"]
+            mixing_rule_partial_derivatives["dkro_dkro_g"]
             * oil_relative_permeability_gas_derivative
-            + mixing_rule_partial_derivatives["d_kro_dsg_explicit"]
+            + mixing_rule_partial_derivatives["dkro_dsg_explicit"]
         )
 
         if is_scalar:

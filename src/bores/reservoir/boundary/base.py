@@ -364,8 +364,7 @@ class BoundaryCondition(StoreSerializable):
         """
         Declares whether this condition prescribes pressure or flux.
 
-        :returns: `BoundaryConditionType.PRESSURE` or
-            `BoundaryConditionType.FLUX`.
+        :returns: `BoundaryConditionType.PRESSURE` or `BoundaryConditionType.FLUX`.
         """
         raise NotImplementedError
 

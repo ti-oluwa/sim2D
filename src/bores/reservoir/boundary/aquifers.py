@@ -30,16 +30,17 @@ from bores.types import (
 __all__ = ["CarterTracyAquifer"]
 
 
-def _bessel_roots(r_ed: Number, n_max: int) -> NumberArray[typing.Any]:
+def compute_bessel_roots(r_ed: Number, n_max: int) -> NumberArray[typing.Any]:
     """
     Roots of `J1(β·r_eD)·Y1(β) - J1(β)·Y1(β·r_eD) = 0` - the `β_n` needed by
-    `_finite_dimensionless_pressure`/`_finite_dimensionless_pressure_derivative`.
+    `compute_finite_dimensionless_pressure`/`compute_finite_dimensionless_pressure_derivative`.
 
     Ported from `pywaterflood.aquifer.get_bessel_roots` (Frank Male,
     https://github.com/frank1010111/pywaterflood, MIT licensed), which cites
     Klins, Bouchard & Cable (1988), eq. 9. Root-finding only depends on
     `r_eD`, not on time, so `CarterTracyAquifer` computes this once at
-    construction and caches it - never on the `evaluate`/`commit` hot path.
+    construction and caches it so it does have to on the `evaluate`/`commit`
+    hot path.
 
     :param r_ed: Dimensionless radius `r_e / r_w`. Must be `> 1`.
     :param n_max: Number of roots to find.
@@ -59,7 +60,7 @@ def _bessel_roots(r_ed: Number, n_max: int) -> NumberArray[typing.Any]:
     return np.asarray(roots, dtype=np.float64)
 
 
-def _finite_dimensionless_pressure(
+def compute_finite_dimensionless_pressure(
     t_d: Number, r_ed: Number, betas: NumberArray[typing.Any]
 ) -> Number:
     """
@@ -67,13 +68,13 @@ def _finite_dimensionless_pressure(
     aquifer - Klins, Bouchard & Cable (1988), eqs. 6-9.
 
     Ported from `pywaterflood.aquifer.klins_pressure_dimensionless` (see
-    `_bessel_roots`), ~1e-6 relative error against the original tables per
-    Klins et al. Only used past `_bounded_aquifer_threshold(r_ed)` - see
+    `get_bessel_roots`), ~1e-6 relative error against the original tables per
+    Klins et al. Only used past `compute_bounded_aquifer_threshold(r_ed)` - see
     `CarterTracyAquifer._compute_cumulative_influx`.
 
     :param t_d: Dimensionless time.
     :param r_ed: Dimensionless radius `r_e / r_w`.
-    :param betas: Precomputed `_bessel_roots(r_ed, n)`.
+    :param betas: Precomputed `compute_bessel_roots(r_ed, n)`.
     :returns: Dimensionless pressure.
     """
     first_term = 2.0 / (r_ed**2 - 1.0) * (0.25 + t_d)
@@ -92,17 +93,17 @@ def _finite_dimensionless_pressure(
     return first_term + second_term + series
 
 
-def _finite_dimensionless_pressure_derivative(
+def compute_finite_dimensionless_pressure_derivative(
     t_d: Number, r_ed: Number, betas: NumberArray[typing.Any]
 ) -> Number:
     """
-    Derivative `pD'(tD, r_eD)` of `_finite_dimensionless_pressure`.
+    Derivative `pD'(tD, r_eD)` of `compute_finite_dimensionless_pressure`.
 
     Not published in Klins et al. (1988) or `pywaterflood` (which implements
     `pD` and, separately, a differently-normalised `qD` used by the
     superposition method rather than Carter-Tracy) - analytically
     differentiated term-by-term here, since every term of
-    `_finite_dimensionless_pressure` is either linear in `t_d` or a plain
+    `compute_finite_dimensionless_pressure` is either linear in `t_d` or a plain
     exponential in `t_d`:
 
         pD = 2/(r_eD²-1)·(0.25+tD) + const(r_eD)
@@ -113,13 +114,13 @@ def _finite_dimensionless_pressure_derivative(
 
     (the `βn²` from differentiating the exponential cancels the `βn²`
     already in each term's denominator). Validated against central
-    finite-difference differentiation of `_finite_dimensionless_pressure`
+    finite-difference differentiation of `compute_finite_dimensionless_pressure`
     to ~1e-9 relative error across `r_eD ∈ [2, 25]`, `tD ∈ [0.05, 50]`.
 
     :param t_d: Dimensionless time.
     :param r_ed: Dimensionless radius `r_e / r_w`.
-    :param betas: Precomputed `_bessel_roots(r_ed, n)` - same array passed
-        to `_finite_dimensionless_pressure` for the matching `pD`.
+    :param betas: Precomputed `compute_bessel_roots(r_ed, n)` - same array passed
+        to `compute_finite_dimensionless_pressure` for the matching `pD`.
     :returns: Dimensionless pressure derivative.
     """
     first_term = 2.0 / (r_ed**2 - 1.0)
@@ -132,7 +133,7 @@ def _finite_dimensionless_pressure_derivative(
     return first_term + series
 
 
-def _bounded_aquifer_threshold(r_ed: Number) -> Number:
+def compute_bounded_aquifer_threshold(r_ed: Number) -> Number:
     """
     Dimensionless time below which an infinite-acting aquifer is an
     accurate stand-in for a bounded one of radius ratio `r_ed`.
@@ -142,7 +143,7 @@ def _bounded_aquifer_threshold(r_ed: Number) -> Number:
     this, the pressure transient hasn't reached the aquifer's outer edge
     yet). Below the threshold, `CarterTracyAquifer` uses the (exact in that
     regime, much cheaper) infinite-acting polynomial; at or past it, the
-    Bessel series in `_finite_dimensionless_pressure`.
+    Bessel series in `compute_finite_dimensionless_pressure`.
 
     :param r_ed: Dimensionless radius `r_e / r_w`.
     :returns: Threshold dimensionless time.
@@ -230,7 +231,7 @@ class CarterTracyAquifer(BoundaryCondition):
     `pD`/`pD'` approximation (Edwardson et al., 1962), regardless of
     `dimensionless_radius_ratio`/`outer_radius`. Set `bounded_aquifer=True`
     to switch to the Klins, Bouchard & Cable (1988) finite-aquifer solution
-    once dimensionless time passes `_bounded_aquifer_threshold(r_eD)` -
+    once dimensionless time passes `compute_bounded_aquifer_threshold(r_eD)` -
     see `bounded_aquifer`'s own docstring for why this is opt-in rather
     than automatic.
 
@@ -311,7 +312,7 @@ class CarterTracyAquifer(BoundaryCondition):
     """
     Opt-in: use the Klins, Bouchard & Cable (1988) finite/bounded-aquifer
     `pD(tD, r_eD)` (a Bessel-function series) once `tD` passes
-    `_bounded_aquifer_threshold(r_eD)`, instead of always treating the
+    `compute_bounded_aquifer_threshold(r_eD)`, instead of always treating the
     aquifer as infinite-acting.
 
     Defaults to `False` for backward compatibility: code written before this
@@ -361,7 +362,7 @@ class CarterTracyAquifer(BoundaryCondition):
         default=None, init=False, repr=False
     )
     """
-    Cached `_bessel_roots(_resolved_dimensionless_radius_ratio, _BESSEL_SERIES_TERMS)`,
+    Cached `compute_bessel_roots(_resolved_dimensionless_radius_ratio, _BESSEL_SERIES_TERMS)`,
     computed once at construction when `bounded_aquifer=True` - `None` when
     `bounded_aquifer=False`. Root-finding only depends on `r_eD`, never on
     `evaluate`/`commit`'s `time`, so this is never recomputed on that path.
@@ -546,7 +547,7 @@ class CarterTracyAquifer(BoundaryCondition):
                     stacklevel=2,
                 )
 
-            if not self.bounded_aquifer and self.dimensionless_radius_ratio != 10.0:
+            if not self.bounded_aquifer and self.dimensionless_radius_ratio != 10:
                 warnings.warn(
                     f"{type(self).__name__!r} has a non-default "
                     f"`dimensionless_radius_ratio={self.dimensionless_radius_ratio!r}` "
@@ -567,15 +568,15 @@ class CarterTracyAquifer(BoundaryCondition):
                 self,
                 "_bessel_beta_roots",
                 # AQUIFER_BESSEL_SERIES_TERMS (default = 30) is an empirically validated safety
-                # margin for the Klins finite-aquifer series (see _finite_dimensionless_pressure).
+                # margin for the Klins finite-aquifer series (see compute_finite_dimensionless_pressure).
                 # In the regime the threshold switch
-                # actually routes to this series (t_d past _bounded_aquifer_threshold), ~10
+                # actually routes to this series (t_d past compute_bounded_aquifer_threshold), ~10
                 # terms gave <1e-4 relative error against 3x-term reference values across
                 # r_eD in [10, 1000] and t_d up to 5x the threshold - 30 keeps a 3x margin
                 # over that. Below the threshold the infinite-acting polynomial is used
                 # instead (exact in that regime, and much cheaper), so this constant only
                 # matters for how well-converged the finite branch is once it's reached.
-                _bessel_roots(r_d, c.AQUIFER_BESSEL_SERIES_TERMS),
+                compute_bessel_roots(r_d, c.AQUIFER_BESSEL_SERIES_TERMS),
             )
 
         # Initialise recursive state
@@ -688,11 +689,13 @@ class CarterTracyAquifer(BoundaryCondition):
             self.bounded_aquifer
             and self._bessel_beta_roots is not None
             and current_t_d
-            >= _bounded_aquifer_threshold(self._resolved_dimensionless_radius_ratio)
+            >= compute_bounded_aquifer_threshold(self._resolved_dimensionless_radius_ratio)
         ):
             r_d = self._resolved_dimensionless_radius_ratio
-            current_p_d = _finite_dimensionless_pressure(current_t_d, r_d, self._bessel_beta_roots)
-            current_p_d_prime = _finite_dimensionless_pressure_derivative(
+            current_p_d = compute_finite_dimensionless_pressure(
+                current_t_d, r_d, self._bessel_beta_roots
+            )
+            current_p_d_prime = compute_finite_dimensionless_pressure_derivative(
                 current_t_d, r_d, self._bessel_beta_roots
             )
         else:

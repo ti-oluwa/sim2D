@@ -109,7 +109,7 @@ class TemperatureTable(StoreSerializable):
 
     Temperature at a cell centroid depth is linearly interpolated from the
     `(depth, temperature)` pairs. Values above the shallowest entry or
-    below the deepest entry are clamped to the respective endpoint - no
+    below the deepest entry are clamped to the respective endpoint. No
     extrapolation is performed, consistent with Eclipse behaviour.
     """
 
@@ -168,7 +168,7 @@ class TemperatureTable(StoreSerializable):
         /,
         *,
         table: UnitConversionTable | None = None,
-    ) -> "TemperatureTable":
+    ) -> Self:
         """
         Return a new `TemperatureTable` with depths and temperatures
         rescaled to *target*.
@@ -421,8 +421,8 @@ class Temperature(StoreSerializable):
         tempvd_all: list | None = deck_file.get("TEMPVD") or deck_file.get("RTEMPVD")
         rtemp_all: list | None = deck_file.get("RTEMP")
 
-        # TEMPVD: one `TemperatureTable` per equilibration or PVT region,
-        # depending on whether it is regioned by PVTNUM or EQLNUM
+        # `TEMPVD`: one `TemperatureTable` per equilibration or PVT region,
+        # depending on whether it is regioned by `PVTNUM` or `EQLNUM`
         if tempvd_all:
             regions: dict[int, TemperatureSpec] = {}
             for region_idx, rows in enumerate(tempvd_all):
@@ -434,7 +434,7 @@ class Temperature(StoreSerializable):
                 temperatures = np.array([row["temperature"] for row in rows], dtype=dtype)
                 if not np.all(np.diff(depths) > 0):
                     raise ValidationError(
-                        f"TEMPVD region {region_num}: `depth` values must be strictly increasing."
+                        f"`TEMPVD` region {region_num}: `depth` values must be strictly increasing."
                     )
                 regions[region_num] = TemperatureTable(
                     depths=typing.cast(NumberArray[OneDimension], depths),
@@ -443,7 +443,7 @@ class Temperature(StoreSerializable):
                 )
 
             if not regions:
-                raise ValidationError("TEMPVD keyword is present but contains no valid rows.")
+                raise ValidationError("`TEMPVD` keyword is present but contains no valid rows.")
             return cls(regions=regions, unit_system=unit_system)
 
         # RTEMP: single scalar default

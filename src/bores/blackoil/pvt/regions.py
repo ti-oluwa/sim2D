@@ -260,12 +260,12 @@ class PVT(StoreSerializable):
         return cls(regions=regions)
 
 
-def _min_temperature_points(interpolation_method: InterpolationMethod) -> int:
+def get_min_temperature_points(interpolation_method: InterpolationMethod) -> int:
     """Minimum temperature-axis length required by `PVTTable` for a given method."""
     return 4 if interpolation_method == "cubic" else 2
 
 
-def _ensure_strictly_increasing(
+def ensure_strictly_increasing(
     values: npt.NDArray, min_points: int, dtype: npt.DTypeLike
 ) -> npt.NDArray:
     """
@@ -289,7 +289,7 @@ def _ensure_strictly_increasing(
     return values
 
 
-def _generate_temperature_axis(
+def generate_temperature_axis(
     temperature: TemperatureSpec,
     dtype: npt.DTypeLike,
     *,
@@ -337,7 +337,7 @@ def _generate_temperature_axis(
     :returns: 1-D strictly increasing array, dtype *dtype*.
     """
     dtype = np.dtype(dtype)
-    min_points = _min_temperature_points(interpolation_method)
+    min_points = get_min_temperature_points(interpolation_method)
 
     if isinstance(temperature, TemperatureGradient):
         count = n_points or max(min_points, 8)
@@ -358,7 +358,7 @@ def _generate_temperature_axis(
             ref = temperature.reference_depth
             depths = np.linspace(ref - 1.0, ref + 1.0, max(min_points, 2), dtype=dtype)
         temperatures = temperature.at_depth(depths).astype(dtype, copy=False)  # type: ignore[arg-type]
-        return _ensure_strictly_increasing(temperatures, min_points, dtype)
+        return ensure_strictly_increasing(temperatures, min_points, dtype)
 
     if isinstance(temperature, TemperatureTable):
         knots = np.unique(temperature.temperatures.astype(dtype, copy=False))
@@ -366,7 +366,7 @@ def _generate_temperature_axis(
             # Downsample onto an evenly spaced grid spanning the same range;
             # endpoints (and thus the full physical range) are preserved.
             knots = np.linspace(knots[0], knots[-1], max_points, dtype=dtype)
-        return _ensure_strictly_increasing(knots, min_points, dtype)
+        return ensure_strictly_increasing(knots, min_points, dtype)
 
     # Scalar Number - unchanged behavior, generalized to respect min_points.
     count = n_points or min_points
@@ -387,7 +387,7 @@ def _broadcast_to_2d(values_1d: npt.NDArray, n_t: int = 2) -> npt.NDArray:
     return np.tile(values_1d[:, np.newaxis], (1, n_t)).astype(values_1d.dtype, copy=False)
 
 
-def _build_oil_data_from_pvto(
+def build_oil_data_from_pvto(
     pvto_records: list[dict[str, typing.Any]],
     density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
@@ -432,7 +432,7 @@ def _build_oil_data_from_pvto(
     # rescale is needed there.
     mscf_to_scf = c.MSCF_TO_SCF if unit_system == UnitSystem.FIELD else 1.0
 
-    temperatures = _generate_temperature_axis(
+    temperatures = generate_temperature_axis(
         temperature,
         dtype=dtype,
         interpolation_method=interpolation_method,
@@ -664,7 +664,7 @@ def _build_oil_data_from_pvto(
     )
 
 
-def _build_oil_data_from_pvdo(
+def build_oil_data_from_pvdo(
     pvdo_records: list[dict[str, typing.Any]],
     density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
@@ -688,7 +688,7 @@ def _build_oil_data_from_pvdo(
     :returns: `PVTData` for the oil phase.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    temperatures = _generate_temperature_axis(
+    temperatures = generate_temperature_axis(
         temperature,
         dtype=dtype,
         interpolation_method=interpolation_method,
@@ -751,7 +751,7 @@ def _build_oil_data_from_pvdo(
     )
 
 
-def _build_gas_data_from_pvdg(
+def build_gas_data_from_pvdg(
     pvdg_records: list[dict[str, typing.Any]],
     density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
@@ -775,7 +775,7 @@ def _build_gas_data_from_pvdg(
     :returns: `PVTData` for the gas phase.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    temperatures = _generate_temperature_axis(
+    temperatures = generate_temperature_axis(
         temperature,
         dtype=dtype,
         interpolation_method=interpolation_method,
@@ -840,7 +840,7 @@ def _build_gas_data_from_pvdg(
     )
 
 
-def _build_gas_data_from_pvtg(
+def build_gas_data_from_pvtg(
     pvtg_records: list[dict[str, typing.Any]],
     density_record: dict[str, Number] | None,
     unit_system: UnitSystem,
@@ -867,7 +867,7 @@ def _build_gas_data_from_pvtg(
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
     # Eclipse reports Rv in STB/Mscf under FIELD units (see PVTG's deck docs);
-    # internally we standardize on STB/SCF, matching the `vaporized_oil_ratio`
+    # internally we standardize on STB/SCF, matching the `vaporized_oil_to_gas_ratio`
     # convention `get_conversion_factors` assumes. METRIC/LAB decks already
     # report Rv in the internally-expected units (sm³/sm³ / scc/scc), so no
     # rescale is needed there.
@@ -1035,7 +1035,7 @@ def _build_gas_data_from_pvtg(
     )
 
 
-def _build_water_data_from_pvtw(
+def build_water_data_from_pvtw(
     pvtw_record: dict[str, Number],
     density_record: dict[str, Number] | None,
     temperature: TemperatureSpec,
@@ -1072,7 +1072,7 @@ def _build_water_data_from_pvtw(
     :returns: `PVTData` for the water phase.
     """
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
-    temperatures = _generate_temperature_axis(
+    temperatures = generate_temperature_axis(
         temperature,
         dtype=dtype,
         interpolation_method=interpolation_method,
@@ -1191,24 +1191,31 @@ def load_pvt_regions(
     dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
     # Retrieve deck records (each is a list-of-lists: outer = regions)
-    pvto_all: list | None = deck_file.get("PVTO")
-    pvdo_all: list | None = deck_file.get("PVDO")
-    pvco_all: list | None = deck_file.get("PVCO")
-    pvtg_all: list | None = deck_file.get("PVTG")
-    pvdg_all: list | None = deck_file.get("PVDG")
-    pvtw_all: list | None = deck_file.get("PVTW")
-    density_all: list | None = deck_file.get("DENSITY")
+    pvto_records: list | None = deck_file.get("PVTO")
+    pvdo_records: list | None = deck_file.get("PVDO")
+    pvco_records: list | None = deck_file.get("PVCO")
+    pvtg_records: list | None = deck_file.get("PVTG")
+    pvdg_records: list | None = deck_file.get("PVDG")
+    pvtw_records: list | None = deck_file.get("PVTW")
+    density_records: list | None = deck_file.get("DENSITY")
 
-    if pvto_all is None and pvdo_all is None and pvco_all is None:
+    if pvto_records is None and pvdo_records is None and pvco_records is None:
         raise ValidationError(
             "No oil PVT keyword found in DeckFile. Expected one of: `PVTO`, `PVDO`, `PVCO`."
         )
 
     # Number of regions is the maximum length across all keyword lists
     n_regions = max(
-        len(x)
-        for x in [pvto_all, pvdo_all, pvco_all, pvtg_all, pvdg_all, pvtw_all]
-        if x is not None
+        len(records)
+        for records in [
+            pvto_records,
+            pvdo_records,
+            pvco_records,
+            pvtg_records,
+            pvdg_records,
+            pvtw_records,
+        ]
+        if records is not None
     )
     unit_system = deck_file.unit_system
     table_kwargs: dict[str, typing.Any] = dict(
@@ -1226,35 +1233,35 @@ def load_pvt_regions(
 
         # Density record for this region
         density_record: dict[str, Number] | None = None
-        if density_all is not None and region_idx < len(density_all):
+        if density_records is not None and region_idx < len(density_records):
             # Each DENSITY region entry is a list containing one row dict
-            region_rows = density_all[region_idx]
+            region_rows = density_records[region_idx]
             if region_rows:
                 density_record = region_rows[0]
 
         # Oil Phase
         oil_data: PVTData | None = None
-        if pvto_all is not None and region_idx < len(pvto_all):
-            oil_data = _build_oil_data_from_pvto(
-                pvto_records=pvto_all[region_idx],
+        if pvto_records is not None and region_idx < len(pvto_records):
+            oil_data = build_oil_data_from_pvto(
+                pvto_records=pvto_records[region_idx],
                 density_record=density_record,
                 temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
                 interpolation_method=interpolation_method,
                 dtype=dtype,
             )
-        elif pvdo_all is not None and region_idx < len(pvdo_all):
-            oil_data = _build_oil_data_from_pvdo(
-                pvdo_records=pvdo_all[region_idx],
+        elif pvdo_records is not None and region_idx < len(pvdo_records):
+            oil_data = build_oil_data_from_pvdo(
+                pvdo_records=pvdo_records[region_idx],
                 density_record=density_record,
                 temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
                 interpolation_method=interpolation_method,
                 dtype=dtype,
             )
-        elif pvco_all is not None and region_idx < len(pvco_all):
+        elif pvco_records is not None and region_idx < len(pvco_records):
             # PVCO: single-record analytical model - treat as a two-point PVDO
-            pvco_record = pvco_all[region_idx]
+            pvco_record = pvco_records[region_idx]
             if pvco_record:
                 record = pvco_record[0]
                 reference_pressure = record["reference_pressure"]
@@ -1274,7 +1281,7 @@ def load_pvt_regions(
                         pvco_pressures, oil_fvf, oil_viscosity, strict=False
                     )
                 ]
-                oil_data = _build_oil_data_from_pvdo(
+                oil_data = build_oil_data_from_pvdo(
                     pvdo_records=synthetic_rows,
                     density_record=density_record,
                     temperature=temperature.region(pvtnum),
@@ -1285,16 +1292,16 @@ def load_pvt_regions(
 
         # Gas Phase
         gas_data: PVTData | None = None
-        if pvtg_all is not None and region_idx < len(pvtg_all):
-            gas_data = _build_gas_data_from_pvtg(
-                pvtg_records=pvtg_all[region_idx],
+        if pvtg_records is not None and region_idx < len(pvtg_records):
+            gas_data = build_gas_data_from_pvtg(
+                pvtg_records=pvtg_records[region_idx],
                 density_record=density_record,
                 unit_system=unit_system,
                 dtype=dtype,
             )
-        elif pvdg_all is not None and region_idx < len(pvdg_all):
-            gas_data = _build_gas_data_from_pvdg(
-                pvdg_records=pvdg_all[region_idx],
+        elif pvdg_records is not None and region_idx < len(pvdg_records):
+            gas_data = build_gas_data_from_pvdg(
+                pvdg_records=pvdg_records[region_idx],
                 density_record=density_record,
                 temperature=temperature.region(pvtnum),
                 unit_system=unit_system,
@@ -1305,10 +1312,10 @@ def load_pvt_regions(
         # Water
         water_data: PVTData | None = None
         salinity = 0.0  # Salinity is not stored in the PVTW record; default to 0 ppm
-        if pvtw_all is not None and region_idx < len(pvtw_all):
-            pvtw_rows = pvtw_all[region_idx]
+        if pvtw_records is not None and region_idx < len(pvtw_records):
+            pvtw_rows = pvtw_records[region_idx]
             if pvtw_rows:
-                water_data = _build_water_data_from_pvtw(
+                water_data = build_water_data_from_pvtw(
                     pvtw_record=pvtw_rows[0],
                     density_record=density_record,
                     temperature=temperature.region(pvtnum),
@@ -1330,8 +1337,8 @@ def load_pvt_regions(
         water_reference_viscosity: Number | None = None
         water_reference_compressibility: Number | None = None
         water_viscosibility: Number | None = None
-        if pvtw_all is not None and region_idx < len(pvtw_all):
-            pvtw_rows = pvtw_all[region_idx]
+        if pvtw_records is not None and region_idx < len(pvtw_records):
+            pvtw_rows = pvtw_records[region_idx]
             if pvtw_rows:
                 pvtw_record = pvtw_rows[0]
                 water_reference_pressure = pvtw_record["reference_pressure"]
@@ -1362,18 +1369,18 @@ def load_pvt_regions(
             "Built PVT tables and properties for region %d: oil=%s, gas=%s, water=%s, salinity=%.0f ppm",
             pvtnum,
             "`PVTO`"
-            if pvto_all and region_idx < len(pvto_all)
+            if pvto_records and region_idx < len(pvto_records)
             else "`PVDO`"
-            if pvdo_all and region_idx < len(pvdo_all)
+            if pvdo_records and region_idx < len(pvdo_records)
             else "`PVCO`"
-            if pvco_all and region_idx < len(pvco_all)
+            if pvco_records and region_idx < len(pvco_records)
             else "none",
             "`PVTG`"
-            if pvtg_all and region_idx < len(pvtg_all)
+            if pvtg_records and region_idx < len(pvtg_records)
             else "`PVDG`"
-            if pvdg_all and region_idx < len(pvdg_all)
+            if pvdg_records and region_idx < len(pvdg_records)
             else "none",
-            "`PVTW`" if pvtw_all and region_idx < len(pvtw_all) else "none",
+            "`PVTW`" if pvtw_records and region_idx < len(pvtw_records) else "none",
             salinity,
         )
     return regions

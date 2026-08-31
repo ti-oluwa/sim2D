@@ -93,7 +93,7 @@ def _resolve_gas(
     return gas_name, gas_gravity, pvt_table
 
 
-def _get_gas_tables_from_pvt_table(
+def get_gas_tables_from_pvt_table(
     pvt_table: PVTTable,
     pressure: NumberArray[NDimension],
     temperature: NumberArray[NDimension],
@@ -198,7 +198,7 @@ def build_oil_pvt_data(
     # Gas FVF grid for compressibility calculation
     gas_fvf_table: NumberArray[TwoDimensions] | None = None
     if pvt_table is not None:
-        gas_tables = _get_gas_tables_from_pvt_table(
+        gas_tables = get_gas_tables_from_pvt_table(
             pvt_table, pressure_table, temperature_table, dtype=dtype
         )
         gas_fvf_table = typing.cast(
@@ -526,7 +526,7 @@ def build_gas_pvt_data(
     pressure_table, temperature_table = np.meshgrid(pressures, temperatures, indexing="ij")
 
     if pvt_table is not None:
-        gas_tables = _get_gas_tables_from_pvt_table(
+        gas_tables = get_gas_tables_from_pvt_table(
             pvt_table, pressure_table, temperature_table, dtype=dtype
         )
 
@@ -733,7 +733,7 @@ def build_water_pvt_data(
 
     # Gas Bg (2-D) for water compressibility liberation correction
     if pvt_table is not None:
-        gas_tables = _get_gas_tables_from_pvt_table(
+        gas_tables = get_gas_tables_from_pvt_table(
             pvt_table, pressure_table_2d, temperature_table_2d, dtype=dtype
         )
         gas_fvf_table_2d = typing.cast(

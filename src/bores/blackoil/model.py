@@ -1,7 +1,5 @@
 """Top-level black-oil simulation model: reservoir, fluid, wells, boundary conditions."""
 
-import typing
-
 from typing_extensions import Self
 
 from bores.blackoil.fluids.model import BlackOil
@@ -21,8 +19,8 @@ class BlackOilModel(
     fields={
         "reservoir": Reservoir,
         "fluid": BlackOil,
-        "wells": typing.Optional[WellSystem],
-        "boundary_conditions": typing.Optional[BoundaryConditions],
+        "wells": WellSystem | None,
+        "boundary_conditions": BoundaryConditions | None,
         "unit_system": UnitSystem,
     },
 ):

@@ -12,7 +12,7 @@ from bores.deck.file import DeckFile
 from bores.errors import ValidationError
 from bores.grids.base import Grid
 from bores.precision import get_dtype
-from bores.reservoir.regions import _load_region_array
+from bores.reservoir.regions import load_region_array
 from bores.reservoir.rock.compressibility import (
     RockCompressibility,
     RockCompressibilityTables,
@@ -30,11 +30,8 @@ from bores.utils import scale
 __all__ = ["Permeability", "Rock"]
 
 
-def _load_cell_array(
-    deck_file: DeckFile,
-    keyword: str,
-    n_cells: int,
-    dtype: npt.DTypeLike = None,
+def load_cell_array(
+    deck_file: DeckFile, keyword: str, n_cells: int, dtype: npt.DTypeLike = None
 ) -> CellArray | None:
     arr = deck_file.get(keyword)
     if arr is None:
@@ -164,17 +161,17 @@ class Permeability(StoreSerializable):
         unit_system = deck_file.unit_system
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-        permx = _load_cell_array(deck_file, "PERMX", n_cells, dtype=dtype)
+        permx = load_cell_array(deck_file, "PERMX", n_cells, dtype=dtype)
         if permx is None:
             raise ValidationError("`PERMX` is required but not found in the DeckFile.")
 
-        permy = _load_cell_array(deck_file, "PERMY", n_cells, dtype=dtype)
+        permy = load_cell_array(deck_file, "PERMY", n_cells, dtype=dtype)
         # We do not copy here to save memory, since permeability is a static prop through out any simulation
         # Except the user then tries to modify it. Then its up to them as its already indicated that the class'
         # attributes are immutable and should be treated as such.
         if permy is None:
             permy = permx
-        permz = _load_cell_array(deck_file, "PERMZ", n_cells, dtype=dtype)
+        permz = load_cell_array(deck_file, "PERMZ", n_cells, dtype=dtype)
         if permz is None:
             permz = permx
         return cls(x=permx, y=permy, z=permz, unit_system=unit_system)
@@ -447,24 +444,24 @@ class Rock(StoreSerializable):
         n_cells = grid.n_cells
         dtype = np.dtype(dtype) if dtype is not None else get_dtype()
 
-        def _required(keyword: str) -> CellArray:
-            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
+        def required(keyword: str) -> CellArray:
+            data = load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is None:
                 raise ValidationError(f"`{keyword}` is required but not found in the DeckFile.")
             return data
 
-        def _optional(keyword: str, default: float) -> CellArray:
-            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
+        def optional(keyword: str, default: float) -> CellArray:
+            data = load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is None:
                 return np.full(n_cells, default, dtype=dtype)
             return data
 
-        def _saturation_endpoint(
+        def get_saturation_endpoint(
             keyword: str,
             field: str,
             table_derived: typing.Mapping[str, CellArray] | None,
         ) -> CellArray:
-            data = _load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
+            data = load_cell_array(deck_file, keyword, n_cells, dtype=dtype)
             if data is not None:
                 return data
             if table_derived is not None:
@@ -479,12 +476,12 @@ class Rock(StoreSerializable):
             )
 
         if rock_region is None:
-            rock_region = _load_region_array(deck_file, "ROCKNUM", n_cells)
+            rock_region = load_region_array(deck_file, "ROCKNUM", n_cells)
 
         table_derived_endpoints: dict[str, CellArray] | None = None
         if satfunc is not None:
             if saturation_region is None:
-                saturation_region = _load_region_array(deck_file, "SATNUM", n_cells)
+                saturation_region = load_region_array(deck_file, "SATNUM", n_cells)
             if saturation_region is not None:
                 table_derived_endpoints = cls.get_saturation_endpoints(
                     satfunc=satfunc,
@@ -500,23 +497,23 @@ class Rock(StoreSerializable):
                     stacklevel=3,
                 )
         return cls(
-            porosity=_required("PORO"),
+            porosity=required("PORO"),
             absolute_permeability=permeability,
-            net_to_gross=_optional("NTG", 1.0),
+            net_to_gross=optional("NTG", 1.0),
             compressibility=compressibility,
-            connate_water_saturation=_saturation_endpoint(
+            connate_water_saturation=get_saturation_endpoint(
                 "SWCON", "connate_water_saturation", table_derived_endpoints
             ),
-            irreducible_water_saturation=_saturation_endpoint(
+            irreducible_water_saturation=get_saturation_endpoint(
                 "SWCRIT", "irreducible_water_saturation", table_derived_endpoints
             ),
-            residual_oil_saturation_water_flood=_saturation_endpoint(
+            residual_oil_saturation_water_flood=get_saturation_endpoint(
                 "SOWCR", "residual_oil_saturation_water_flood", table_derived_endpoints
             ),
-            residual_oil_saturation_gas_flood=_saturation_endpoint(
+            residual_oil_saturation_gas_flood=get_saturation_endpoint(
                 "SOGCR", "residual_oil_saturation_gas_flood", table_derived_endpoints
             ),
-            residual_gas_saturation=_saturation_endpoint(
+            residual_gas_saturation=get_saturation_endpoint(
                 "SGCR", "residual_gas_saturation", table_derived_endpoints
             ),
             unit_system=unit_system,

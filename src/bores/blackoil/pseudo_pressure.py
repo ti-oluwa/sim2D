@@ -181,7 +181,7 @@ def _supports_vectorization(
     return z_supports and mu_supports
 
 
-def _build_pseudo_pressures_vectorized(
+def compute_pseudo_pressures_vectorized(
     pressures: NumberArray[NDimension],
     z_factor_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]],
     viscosity_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]],
@@ -267,7 +267,7 @@ def _build_pseudo_pressures_vectorized(
     return np.ascontiguousarray(pseudo_pressures, dtype=dtype)  # type: ignore[return-value]
 
 
-def _build_pseudo_pressures_scalar(
+def compute_pseudo_pressures_scalar(
     pressures: NumberArray[NDimension],
     z_factor_func: typing.Callable[[Number], Number],
     viscosity_func: typing.Callable[[Number], Number],
@@ -288,7 +288,7 @@ def _build_pseudo_pressures_scalar(
     :return: Array of pseudo-pressures
     """
 
-    def _compute(pressure: Number) -> Number:
+    def compute(pressure: Number) -> Number:
         return compute_gas_pseudo_pressure(
             pressure=pressure,
             z_factor_func=z_factor_func,
@@ -297,11 +297,11 @@ def _build_pseudo_pressures_scalar(
         )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        pseudo_pressures = list(executor.map(_compute, pressures))
+        pseudo_pressures = list(executor.map(compute, pressures))
     return np.ascontiguousarray(pseudo_pressures, dtype=dtype)  # type: ignore[return-value]
 
 
-def build_pseudo_pressures(
+def compute_pseudo_pressures(
     pressures: NumberArray[NDimension],
     z_factor_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]],
     viscosity_func: typing.Callable[[NumberOrArray[NDimension]], NumberOrArray[NDimension]],
@@ -326,7 +326,7 @@ def build_pseudo_pressures(
             f"Building pseudo-pressure table using vectorized computation ({points} points)..."
         )
         try:
-            return _build_pseudo_pressures_vectorized(
+            return compute_pseudo_pressures_vectorized(
                 pressures=pressures,
                 z_factor_func=z_factor_func,
                 viscosity_func=viscosity_func,
@@ -343,7 +343,7 @@ def build_pseudo_pressures(
         f"Building pseudo-pressure table using threaded scalar computation ({points} points)..."
     )
     max_workers = min(8, points // 50 + 1)
-    return _build_pseudo_pressures_scalar(
+    return compute_pseudo_pressures_scalar(
         pressures=pressures,
         z_factor_func=z_factor_func,  # type: ignore
         viscosity_func=viscosity_func,  # type: ignore
@@ -440,10 +440,10 @@ class PseudoPressureTable(
     fields={
         "pressures": npt.NDArray,
         "pseudo_pressures": npt.NDArray,
-        "reference_pressure": typing.Optional[Number],
+        "reference_pressure": Number | None,
         "number_of_base_points": int,
         "number_of_endpoint_extra_points": int,
-        "dtype": typing.Optional[npt.DTypeLike],
+        "dtype": npt.DTypeLike | None,
         "unit_system": UnitSystem,
     },
 ):
@@ -625,7 +625,7 @@ class PseudoPressureTable(
             )
 
             logger.info("Building pseudo-pressure table with %d points...", n_points)
-            self.pseudo_pressures = build_pseudo_pressures(
+            self.pseudo_pressures = compute_pseudo_pressures(
                 pressures=self.pressures,
                 z_factor_func=self.z_factor_func,  # type: ignore[arg-type]
                 viscosity_func=self.viscosity_func,  # type: ignore[arg-type]
