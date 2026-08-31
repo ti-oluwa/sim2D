@@ -15,7 +15,7 @@ from typing_extensions import Self
 from bores.errors import StorageError, StreamError
 from bores.serde.base import SerializableT
 from bores.serde.stores.base import DataStore, EntryMeta
-from bores.utils import _close_iter
+from bores.utils import close_iterator
 
 __all__ = ["DataStream", "StreamProgress"]
 
@@ -33,7 +33,7 @@ class StreamProgress(typing.TypedDict):
     memory_usage: float
 
 
-_stop_io = 0  # Signal for stopping I/O thread
+STOP_IO = object()  # Signal for stopping I/O thread
 
 
 class DataStream(typing.Generic[SerializableT]):
@@ -297,7 +297,7 @@ class DataStream(typing.Generic[SerializableT]):
                     try:
                         # Get batch from queue (timeout to check shutdown periodically)
                         item = self._io_queue.get(timeout=self.queue_timeout)
-                        if item is _stop_io:
+                        if item is STOP_IO:
                             logger.debug("I/O worker received shutdown signal")
                             self._io_queue.task_done()
                             break
@@ -371,7 +371,7 @@ class DataStream(typing.Generic[SerializableT]):
 
         # Signal shutdown
         self._shutdown_event.set()
-        self._io_queue.put(_stop_io)
+        self._io_queue.put(STOP_IO)
         # Wait for thread to finish
         self._io_thread.join(timeout=30.0)
 
@@ -437,7 +437,7 @@ class DataStream(typing.Generic[SerializableT]):
                     self._yield_count += 1
                     yield item
             finally:
-                _close_iter(self.source)
+                close_iterator(self.source)
             self._consumed = True
             return
 
@@ -454,16 +454,16 @@ class DataStream(typing.Generic[SerializableT]):
 
                 yield item
 
-                if self._should_save(item=item):
+                if self.should_save(item=item):
                     self._batch.append(item)
 
-                    if self._should_flush():
+                    if self.should_flush():
                         self.flush(block=False)
 
-                    if self._should_checkpoint(item=item):
-                        self._save_checkpoint(item=item)
+                    if self.should_checkpoint(item=item):
+                        self.save_checkpoint(item=item)
         finally:
-            _close_iter(self.source)
+            close_iterator(self.source)
 
         # Flush whatever is left
         if self._batch and self.auto_save:
@@ -524,7 +524,7 @@ class DataStream(typing.Generic[SerializableT]):
 
         # Close the underlying items iterable if it has not already been closed
         if not self._consumed and self.source is not None:
-            _close_iter(self.source)
+            close_iterator(self.source)
 
         if exc_type is None:
             logger.info(
@@ -577,9 +577,9 @@ class DataStream(typing.Generic[SerializableT]):
             logger.debug("Stream is empty, no last item available")
         return last_item
 
-    def consume(self) -> None:
+    def drain(self) -> None:
         """
-        Exhaust the entire stream without yielding items.
+        Drain/exhaust the entire stream without yielding items.
 
         This method iterates through all items, triggering any configured side effects
         (persistence, checkpointing, validation) without returning items. Useful when
@@ -593,7 +593,7 @@ class DataStream(typing.Generic[SerializableT]):
         ```python
         # Just save all items to disk without processing them
         stream = DataStream(ItemType, source=produce(), store=store)
-        stream.consume()  # Items saved, nothing returned
+        stream.drain()  # Items saved, nothing returned
 
         # Create checkpoints without holding items in memory
         stream = DataStream(
@@ -602,10 +602,10 @@ class DataStream(typing.Generic[SerializableT]):
             checkpoint_interval=100,
             checkpoint_store=HDF5Store("./checkpoints.h5"),
         )
-        stream.consume()  # Checkpoints created, stream exhausted
+        stream.drain()  # Checkpoints created, stream exhausted
         ```
 
-        Note: After calling `consume()`, the stream is exhausted. Calling it again has no effect.
+        Note: After calling `drain()`, the stream is exhausted. Calling it again has no effect.
         """
         if self._consumed:
             logger.debug("Stream already consumed")
@@ -667,7 +667,7 @@ class DataStream(typing.Generic[SerializableT]):
             raise StreamError(f"An error occured while replaying stream: {exc}") from exc
         finally:
             if items is not None:
-                _close_iter(items)
+                close_iterator(items)
 
         logger.debug(f"Replay complete: {self._yield_count} total yielded")
 
@@ -838,7 +838,7 @@ class DataStream(typing.Generic[SerializableT]):
         logger.debug(f"Estimated item size: {self._item_size_mb:.2f} MB")
         return self._item_size_mb
 
-    def _should_save(self, item: SerializableT) -> bool:
+    def should_save(self, item: SerializableT) -> bool:
         """
         Determine if item should be saved based on `save`.
 
@@ -849,7 +849,7 @@ class DataStream(typing.Generic[SerializableT]):
             return self.save  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
         return self.save(item)  # type: ignore[call-arg]  # ty:ignore[call-non-callable]
 
-    def _should_flush(self) -> bool:
+    def should_flush(self) -> bool:
         """
         Determine if batch should be flushed based on batch size and memory limits.
 
@@ -871,7 +871,7 @@ class DataStream(typing.Generic[SerializableT]):
 
         return False
 
-    def _should_checkpoint(self, item: SerializableT) -> bool:
+    def should_checkpoint(self, item: SerializableT) -> bool:
         """
         Determine if a checkpoint should be created after yielding `item`.
 
@@ -881,7 +881,7 @@ class DataStream(typing.Generic[SerializableT]):
         domain-specific equivalent to fall back on generically.
 
         :param item: Current item (unused directly; kept for a consistent
-            call signature with `_should_save`/`_save_checkpoint`).
+            call signature with `should_save`/`save_checkpoint`).
         :return: True if checkpoint should be created, False otherwise
         """
         return (
@@ -891,7 +891,7 @@ class DataStream(typing.Generic[SerializableT]):
             and self._yield_count % self.checkpoint_interval == 0
         )
 
-    def _save_checkpoint(self, item: SerializableT) -> None:
+    def save_checkpoint(self, item: SerializableT) -> None:
         """
         Save a checkpoint for crash recovery.
 

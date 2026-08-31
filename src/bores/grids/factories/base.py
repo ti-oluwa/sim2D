@@ -27,7 +27,7 @@ vertex indices wound CCW from outside (outward normal).
 #: Outward-pointing face definitions for standard element types.
 #: Each value is a list of faces; each face is a list of *local* vertex
 #: indices wound counter-clockwise when viewed from outside the cell.
-ELEMENT_FACES: dict[str, ElementFaces] = {
+ELEMENTS_FACES: dict[str, ElementFaces] = {
     # #####################################################################
     # Tetrahedron (4 vertices: v0 v1 v2 = base CCW from below, v3 = apex)
     # #####################################################################
@@ -83,7 +83,7 @@ VTK_CELL_TYPE_NAMES: dict[int, str] = {
 }
 
 
-class _FaceRecord:
+class FaceRecord:
     """Mutable record accumulating owner/neighbour information for one face."""
 
     __slots__ = ("face_vertex_indices", "neighbour_cell_index", "owner_cell_index")
@@ -126,14 +126,14 @@ def build_csr_face_arrays(
     :raises InvalidFaceConnectivityError: If any face is shared by more
         than two cells.
     """
-    face_registry: dict[FaceKey, _FaceRecord] = {}
+    face_registry: dict[FaceKey, FaceRecord] = {}
     for cell_index, cell_faces in enumerate(per_cell_face_vertex_lists):
         for face_vertex_indices in cell_faces:
             key: FaceKey = tuple(sorted(face_vertex_indices))
             if key not in face_registry:
                 # First time seen: this cell becomes the owner.
                 # Store the winding as-is (CCW from owner's outside = outward from owner).
-                face_registry[key] = _FaceRecord(
+                face_registry[key] = FaceRecord(
                     owner_cell_index=cell_index,
                     face_vertex_indices=face_vertex_indices,
                 )

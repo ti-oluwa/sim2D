@@ -32,15 +32,14 @@ import numpy as np
 from bores.errors import GridImportError, UnsupportedGridFormatError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
-from bores.types import UnitSystem
+from bores.types import TextOrPath, UnitSystem
 
 __all__ = ["load_msh"]
 
-_TextOrPath = typing.Union[str, bytes, Path]
 
 # Gmsh element type ID -> (n_vertices, cell_type_name)
 # Only 3-D volumetric elements supported for simulation grids.
-_GMSH_ELEM_TYPES: dict[int, tuple[int, str]] = {
+GMSH_ELEMENT_TYPES: dict[int, tuple[int, str]] = {
     4: (4, "tetra"),
     5: (8, "hexahedron"),
     6: (6, "wedge"),
@@ -79,7 +78,7 @@ def load_msh(
 
 
 def load_msh(
-    source: _TextOrPath,
+    source: TextOrPath,
     *,
     encoding: str = "utf-8",
     unit_system: UnitSystem | None = None,
@@ -103,12 +102,12 @@ def load_msh(
     :raises UnsupportedGridFormatError: If the Gmsh format version is not
         2.2.
     """
-    text = _resolve_source(source, encoding=encoding)
-    grid = _parse_msh(text, metadata=metadata)
+    text = resolve_source(source, encoding=encoding)
+    grid = parse_msh(text, metadata=metadata)
     return grid.convert(unit_system) if unit_system is not None else grid
 
 
-def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
+def resolve_source(source: TextOrPath, *, encoding: str) -> str:
     """
     Coerce `source` to a plain text string.
 
@@ -134,7 +133,7 @@ def _resolve_source(source: _TextOrPath, *, encoding: str) -> str:
     raise GridImportError(f"Invalid source: {source!r}")
 
 
-def _extract_section(text: str, section_name: str) -> str | None:
+def extract_section(text: str, section_name: str) -> str | None:
     """
     Extract the body of a `$SectionName … $EndSectionName` block.
 
@@ -151,7 +150,7 @@ def _extract_section(text: str, section_name: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = None) -> Grid:
+def parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = None) -> Grid:
     """
     Parse a Gmsh MSH v2.2 ASCII text blob into a `bores.grids.base.Grid`.
 
@@ -162,7 +161,7 @@ def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = Non
         malformed or no 3-D elements are found.
     """
     # $MeshFormat
-    mesh_format_section = _extract_section(text, "MeshFormat")
+    mesh_format_section = extract_section(text, "MeshFormat")
     if mesh_format_section is not None:
         version_str = mesh_format_section.split()[0]
         major = int(version_str.split(".")[0])
@@ -172,7 +171,7 @@ def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = Non
             )
 
     # $Nodes
-    nodes_section = _extract_section(text, "Nodes")
+    nodes_section = extract_section(text, "Nodes")
     if nodes_section is None:
         raise GridImportError("Gmsh .msh file is missing the $Nodes section.")
     node_lines = nodes_section.splitlines()
@@ -198,7 +197,7 @@ def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = Non
     vertex_coordinates = np.array(coords, dtype=np.float64)
 
     # $Elements
-    elements_section = _extract_section(text, "Elements")
+    elements_section = extract_section(text, "Elements")
     if elements_section is None:
         raise GridImportError("Gmsh .msh file is missing the $Elements section.")
 
@@ -216,10 +215,10 @@ def _parse_msh(text: str, metadata: typing.Mapping[str, typing.Any] | None = Non
             continue
 
         element_type_id = int(parts[1])
-        if element_type_id not in _GMSH_ELEM_TYPES:
+        if element_type_id not in GMSH_ELEMENT_TYPES:
             continue  # skip 2-D/1-D elements silently
 
-        n_vertices, type_name = _GMSH_ELEM_TYPES[element_type_id]
+        n_vertices, type_name = GMSH_ELEMENT_TYPES[element_type_id]
         n_tags = int(parts[2])
         node_start = 3 + n_tags
         node_ids = [int(p) for p in parts[node_start : node_start + n_vertices]]

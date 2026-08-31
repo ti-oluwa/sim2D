@@ -40,7 +40,7 @@ from bores.grids.factories.cartesian import make_cartesian_grid
 from bores.grids.factories.corner_point import (
     ActNumArray,
     FaultRecord,
-    _map_axes_xy_inverse,
+    get_map_axes_xy_inverse,
     make_corner_point_grid,
     rederive_corner_point_arrays,
 )
@@ -50,14 +50,14 @@ from bores.types import (
     Number,
     NumberArray,
     OneDimension,
+    PathOrStr,
+    TextOrPath,
     TwoDimensions,
     UnitSystem,
 )
 
 __all__ = ["dump_grdecl", "load_grdecl"]
 
-_PathOrStr = typing.Union[str, Path]
-_TextOrPath = typing.Union[str, bytes, Path]
 
 UNITS_MAP: dict[str, UnitSystem] = {
     "METRES": UnitSystem.METRIC,
@@ -86,7 +86,7 @@ US_TO_MAPUNITS: dict[UnitSystem, str] = {
 }
 
 
-def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
+def detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     """
     Determine the grid geometry unit system from a parsed `DeckFile`.
 
@@ -103,7 +103,7 @@ def _detect_unit_system(deck_file: DeckFile) -> UnitSystem:
     return deck_file.unit_system
 
 
-def _build_map_axes(deck_file: DeckFile) -> MapAxes | None:
+def build_map_axes(deck_file: DeckFile) -> MapAxes | None:
     """
     Construct a `MapAxes` from parsed `MAPAXES` / `MAPUNITS` keyword dicts.
 
@@ -132,7 +132,7 @@ def _build_map_axes(deck_file: DeckFile) -> MapAxes | None:
     )
 
 
-def _build_nnc_arrays(
+def build_nnc_arrays(
     deck_file: DeckFile,
     nx: Integer,
     ny: Integer,
@@ -187,7 +187,7 @@ def _build_nnc_arrays(
     )
 
 
-def _build_fault_records(deck_file: DeckFile) -> list[FaultRecord]:
+def build_fault_records(deck_file: DeckFile) -> list[FaultRecord]:
     """
     Convert parsed `FAULTS` keyword records to `FaultRecord` objects.
 
@@ -213,7 +213,7 @@ def _build_fault_records(deck_file: DeckFile) -> list[FaultRecord]:
     ]
 
 
-def _build_multflt(deck_file: DeckFile) -> dict[str, Number] | None:
+def build_multflt(deck_file: DeckFile) -> dict[str, Number] | None:
     """
     Convert parsed `MULTFLT` records to a `{name: multiplier}` dict.
 
@@ -226,7 +226,7 @@ def _build_multflt(deck_file: DeckFile) -> dict[str, Number] | None:
     return {record["name"]: record["multiplier"] for record in multflt_records}
 
 
-def _resolve_vector_spacing(
+def resolve_vector_spacing(
     deck_file: DeckFile,
     vector_key: str,
     per_cell_key: str,
@@ -285,7 +285,7 @@ def _resolve_vector_spacing(
 
 
 def load_grdecl(
-    source: _TextOrPath | DeckFile,
+    source: TextOrPath | DeckFile,
     *,
     encoding: str = "ascii",
     unit_system: UnitSystem | None = None,
@@ -342,7 +342,7 @@ def load_grdecl(
 
 def dump_grdecl(
     grid: Grid,
-    destination: _PathOrStr | None = None,
+    destination: PathOrStr | None = None,
     *,
     actnum: ActNumArray | None = None,
     encoding: str = "ascii",
@@ -407,8 +407,8 @@ def assemble_grid(
     dims = deck_file.dimensions
     nx, ny, nz = dims
 
-    unit_system = _detect_unit_system(deck_file)
-    map_axes = _build_map_axes(deck_file)
+    unit_system = detect_unit_system(deck_file)
+    map_axes = build_map_axes(deck_file)
 
     pinch_rec = deck_file.get("PINCH")
     pinch = pinch_rec["thickness"] if pinch_rec is not None else None
@@ -484,10 +484,9 @@ def assemble_corner_point(
     meta["source_format"] = "grdecl_corner_point"
     meta["actnum"] = actnum
 
-    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
-    fault_records = _build_fault_records(deck_file)
-    multflt = _build_multflt(deck_file)
-
+    nnc_pairs, nnc_transmissibilities = build_nnc_arrays(deck_file, nx, ny, nz)
+    fault_records = build_fault_records(deck_file)
+    multflt = build_multflt(deck_file)
     return make_corner_point_grid(
         coord=coord,
         zcorn=zcorn,
@@ -554,9 +553,9 @@ def assemble_cartesian(
         z_top = 0.0
 
     # Spacing vectors
-    dx_1d = _resolve_vector_spacing(deck_file, "DXV", "DX", nx, "x", nz, ny, nx)
-    dy_1d = _resolve_vector_spacing(deck_file, "DYV", "DY", ny, "y", nz, ny, nx)
-    dz_1d = _resolve_vector_spacing(deck_file, "DZV", "DZ", nz, "z", nz, ny, nx)
+    dx_1d = resolve_vector_spacing(deck_file, "DXV", "DX", nx, "x", nz, ny, nx)
+    dy_1d = resolve_vector_spacing(deck_file, "DYV", "DY", ny, "y", nz, ny, nx)
+    dz_1d = resolve_vector_spacing(deck_file, "DZV", "DZ", nz, "z", nz, ny, nx)
 
     if dx_1d is None:
         raise GridImportError(
@@ -576,14 +575,13 @@ def assemble_cartesian(
     if actnum_flat is not None:
         meta["actnum"] = actnum_flat.astype(np.int32).reshape(nz, ny, nx)
 
-    nnc_pairs, nnc_transmissibilities = _build_nnc_arrays(deck_file, nx, ny, nz)
-    fault_records = _build_fault_records(deck_file)
-    multflt = _build_multflt(deck_file)
+    nnc_pairs, nnc_transmissibilities = build_nnc_arrays(deck_file, nx, ny, nz)
+    fault_records = build_fault_records(deck_file)
+    multflt = build_multflt(deck_file)
 
     # Store pinch in metadata so dump_grdecl can re-emit it.
     if meta.get("pinch") is not None:
         meta["pinch"] = meta["pinch"]
-
     return make_cartesian_grid(
         nx=nx,
         ny=ny,
@@ -932,7 +930,7 @@ def _emit_pinch(
 
 
 @numba.njit(cache=True, parallel=True)
-def _compute_cell_bounds_from_vertices(
+def compute_cell_bounds_from_vertices(
     local_vertices: NumberArray[TwoDimensions],
     cell_face_offsets: IntArray[OneDimension],
     cell_face_indices: IntArray[OneDimension],
@@ -999,7 +997,7 @@ def _compute_cell_bounds_from_vertices(
     return cell_min, cell_max  # type: ignore[return-value]
 
 
-def _compute_local_cartesian_cell_bounds(
+def compute_local_cartesian_cell_bounds(
     grid: Grid, map_axes: MapAxes
 ) -> tuple[NumberArray[TwoDimensions], NumberArray[TwoDimensions]]:
     """
@@ -1024,12 +1022,12 @@ def _compute_local_cartesian_cell_bounds(
     :returns: `(cell_min_xyz, cell_max_xyz)`, each shape `(n_cells, 3)`, in
         local space.
     """
-    local_xy = _map_axes_xy_inverse(
+    local_xy = get_map_axes_xy_inverse(
         xy=grid.vertex_coordinates[:, :2],  # type: ignore[arg-type]
         map_axes=map_axes,
     )
     local_vertices = np.column_stack([local_xy, grid.vertex_coordinates[:, 2]])
-    return _compute_cell_bounds_from_vertices(
+    return compute_cell_bounds_from_vertices(
         local_vertices=local_vertices,  # type: ignore[arg-type]
         cell_face_offsets=grid.cell_face_offsets,
         cell_face_indices=grid.cell_face_indices,
@@ -1083,8 +1081,8 @@ def build_grdecl_cartesian_text(grid: Grid, *, actnum: ActNumArray | None = None
         _emit_mapaxes(lines, map_axes)
         # grid.cell_min_xyz/cell_max_xyz are in map space; TOPS/DXV/DYV/DZV
         # need local-space bounds so they stay consistent with the `MAPAXES`
-        # card just emitted above (see `_compute_local_cartesian_cell_bounds`).
-        cell_min_xyz, cell_max_xyz = _compute_local_cartesian_cell_bounds(grid, map_axes)
+        # card just emitted above (see `compute_local_cartesian_cell_bounds`).
+        cell_min_xyz, cell_max_xyz = compute_local_cartesian_cell_bounds(grid, map_axes)
     else:
         cell_min_xyz, cell_max_xyz = grid.cell_min_xyz, grid.cell_max_xyz
 

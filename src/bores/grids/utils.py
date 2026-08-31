@@ -154,7 +154,7 @@ def classify_boundary_cells(grid: Grid) -> dict[Side, IntArray[OneDimension]]:
     return result
 
 
-def cells_on_side(
+def get_cells_on_side(
     grid: Grid,
     side: Side | str,
     *,
@@ -164,7 +164,7 @@ def cells_on_side(
     Global cell indices of every boundary-adjacent cell on one flank of `grid`.
 
     ```python
-    west_cells = cells_on_side(grid, "west")
+    west_cells = get_cells_on_side(grid, "west")
     ```
 
     :param grid: Grid to classify. Ignored if `classified` is supplied.

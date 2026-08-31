@@ -31,12 +31,10 @@ except ImportError as exc:
 from bores.errors import GridExportError, GridImportError
 from bores.grids.base import Grid
 from bores.grids.factories.polyhedral import make_polyhedral_grid
+from bores.types import PathOrStr, TextOrPath
 
 __all__ = ["dump_mesh", "load_mesh"]
 
-
-_PathOrStr = typing.Union[str, Path]
-_TextOrPath = typing.Union[str, bytes, Path]
 
 # `meshio` cell type names that map to 3-D volumetric elements.
 # 2-D surface elements (triangle, quad, …) are discarded during import.
@@ -87,7 +85,7 @@ def load_mesh(
 
 
 def load_mesh(
-    source: _TextOrPath,
+    source: TextOrPath,
     *,
     file_format: str | None = None,
     unit_system: UnitSystem | None = None,
@@ -146,7 +144,7 @@ def dump_mesh(
 
 def dump_mesh(
     grid: Grid,
-    destination: _PathOrStr | None = None,
+    destination: PathOrStr | None = None,
     *,
     file_format: str,
     cell_data: dict[str, np.ndarray] | None = None,
@@ -183,7 +181,7 @@ def dump_mesh(
 
 
 def _load(
-    source: _TextOrPath,
+    source: TextOrPath,
     *,
     file_format: str | None = None,
     metadata: typing.Mapping[str, typing.Any] | None = None,
@@ -335,7 +333,7 @@ def _grid_to_mesh(grid: Grid, *, cell_data: dict[str, npt.NDArray] | None) -> ty
 def _dump(
     grid: Grid,
     *,
-    destination: _PathOrStr | None,
+    destination: PathOrStr | None,
     file_format: str,
     cell_data: dict[str, npt.NDArray] | None,
 ) -> bytes | None:

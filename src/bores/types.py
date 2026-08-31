@@ -1,5 +1,6 @@
 import enum
 import typing
+from pathlib import Path
 from typing import TypeAlias
 
 import numpy as np
@@ -743,3 +744,7 @@ class SupportsUnitSystem(typing.Protocol):
         *,
         table: UnitConversionTable | None = None,
     ) -> Self: ...
+
+
+PathOrStr = str | Path
+TextOrPath = str | bytes | Path

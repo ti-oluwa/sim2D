@@ -106,12 +106,12 @@ def make_cartesian_grid(
                 f"nnc_transmissibilities has {len(nnc_transmissibilities)} entries."
             )
 
-    dx, dy, dz = _resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
+    dx, dy, dz = resolve_spacing(nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz)
     nx = len(dx)
     ny = len(dy)
     nz = len(dz)
 
-    vertex_coordinates = _build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
+    vertex_coordinates = build_vertex_coordinates(dx=dx, dy=dy, dz=dz, origin=origin)
 
     resolved_map_axes = map_axes if map_axes is not None else (metadata or {}).get("map_axes")
     if resolved_map_axes is not None:
@@ -133,7 +133,7 @@ def make_cartesian_grid(
         # differed from (or `metadata` didn't yet have) one.
         metadata = {**(metadata or {}), "map_axes": resolved_map_axes}
 
-    face_vertex_indices, face_vertex_offsets, face_cell_indices = _build_face_arrays(
+    face_vertex_indices, face_vertex_offsets, face_cell_indices = build_face_arrays(
         nx=nx, ny=ny, nz=nz
     )
 
@@ -149,7 +149,7 @@ def make_cartesian_grid(
     fault_face_indices: dict[str, IntArray[OneDimension]] | None = None
     fault_nnc_pairs: list[tuple[int, int, str]] = []
     if fault_records:
-        fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
+        fault_face_indices, fault_nnc_pairs = resolve_fault_face_indices(
             fault_records=fault_records,
             nx=nx,
             ny=ny,
@@ -275,7 +275,7 @@ def _map_axes_xy_forward(
     )
 
 
-def _resolve_fault_face_indices(
+def resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
     nx: Integer,
     ny: Integer,
@@ -289,7 +289,7 @@ def _resolve_fault_face_indices(
     """
     Resolve `FaultRecord` IJK ranges to Cartesian face index arrays.
 
-    The Cartesian face layout (from `_build_face_arrays`):
+    The Cartesian face layout (from `build_face_arrays`):
 
     - X-normal faces (count `(nx+1)*ny*nz`): face at plane `i_plane`,
       cell `(j, k)` -> global index `i_plane * ny * nz + j * nz + k`.
@@ -397,7 +397,7 @@ def _resolve_fault_face_indices(
     )
 
 
-def _resolve_spacing(
+def resolve_spacing(
     nx: Integer | None,
     ny: Integer | None,
     nz: Integer | None,
@@ -422,7 +422,7 @@ def _resolve_spacing(
     :raises ValidationError: If counts cannot be determined or spacings <= 0.
     """
 
-    def _to_array(
+    def to_array(
         value: NumberOrArray[OneDimension],
         count: Integer | None,
         axis: str,
@@ -443,13 +443,13 @@ def _resolve_spacing(
         return array
 
     return (
-        _to_array(dx, nx, "x"),
-        _to_array(dy, ny, "y"),
-        _to_array(dz, nz, "z"),
+        to_array(dx, nx, "x"),
+        to_array(dy, ny, "y"),
+        to_array(dz, nz, "z"),
     )
 
 
-def _build_vertex_coordinates(
+def build_vertex_coordinates(
     dx: FloatArray[OneDimension],
     dy: FloatArray[OneDimension],
     dz: FloatArray[OneDimension],
@@ -479,7 +479,7 @@ def _build_vertex_coordinates(
     )
 
 
-def _build_face_arrays(
+def build_face_arrays(
     nx: Integer, ny: Integer, nz: Integer
 ) -> tuple[
     IntArray[OneDimension],

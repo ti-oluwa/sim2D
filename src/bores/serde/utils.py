@@ -4,8 +4,8 @@ import typing
 import numpy as np
 import numpy.typing as npt
 
-_SPARSE_DENSITY_THRESHOLD = 0.05  # < 5% non-fill cells means array is sparse
-_MIN_SPARSE_CELLS = 10  # Do not bother with sparse on tiny arrays
+SPARSE_DENSITY_THRESHOLD = 0.05  # < 5% non-fill cells means array is sparse
+MIN_SPARSE_CELLS = 10  # Do not bother with sparse on tiny arrays
 
 
 def _b64_encode(array: npt.NDArray) -> str:

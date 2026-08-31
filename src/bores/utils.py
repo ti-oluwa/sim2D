@@ -357,7 +357,7 @@ def safe_json_loads(data: typing.Any) -> typing.Any:
     return _walk(orjson.loads(data))
 
 
-def _close_iter(iter: typing.Any) -> None:
+def close_iterator(iter: typing.Any) -> None:
     """Helper to close an iterator if it has a close method."""
     close_method = getattr(iter, "close", None)
     if callable(close_method):

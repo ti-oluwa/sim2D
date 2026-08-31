@@ -23,7 +23,7 @@ from bores.reservoir import BlackOil
 from bores.simulate import Run, StepCallback, StepResult, run
 from bores.states import ModelState
 from bores.types import ThreeDimensions
-from bores.utils import _close_iter
+from bores.utils import close_iterator
 from bores.wells.base import InjectionWell, ProductionWell
 
 __all__ = ["Monitor", "RunStats", "StepDiagnostics", "monitor"]
@@ -1310,7 +1310,7 @@ def monitor(
             logger.info(stats.summary())
 
         if simulation is not None:
-            _close_iter(simulation)
+            close_iterator(simulation)
 
         if error is not None:
             raise error

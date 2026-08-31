@@ -27,9 +27,9 @@ from bores.errors import GridExportError, InvalidGridError, ValidationError
 from bores.grids.base import CellStatus, ConnectionType, Grid
 from bores.grids.factories.base import (
     FaceKey,
+    FaceRecord,
     FaultRecord,
     VertexCoordinates,
-    _FaceRecord,
 )
 from bores.types import (
     Boolean,
@@ -55,7 +55,7 @@ ActNumArray: typing.TypeAlias = IntArray[ThreeDimensions]
 """Corner-point ACTNUM array, shape `(NZ, NY, NX)`; 1 = active."""
 
 
-_HEXAHEDRON_FACES_ZDOWN: list[list[int]] = [
+HEXAHEDRON_FACES_ZDOWN: list[list[int]] = [
     [0, 3, 2, 1],  # top    - outward normal = -z
     [4, 5, 6, 7],  # bottom - outward normal = +z
     [0, 1, 5, 4],  # -y face
@@ -64,10 +64,10 @@ _HEXAHEDRON_FACES_ZDOWN: list[list[int]] = [
     [1, 2, 6, 5],  # +x face
 ]
 
-_TOP_FACE_LOCAL: int = 0
-_BOTTOM_FACE_LOCAL: int = 1
+TOP_FACE_LOCAL: int = 0
+BOTTOM_FACE_LOCAL: int = 1
 
-_FACE_DIR_TO_LOCAL: dict[str, int] = {
+FACE_DIRECTION_TO_LOCAL: dict[str, int] = {
     "X": 5,
     "X-": 4,
     "Y": 3,
@@ -152,7 +152,7 @@ def make_corner_point_grid(
         resolved_map_axes = resolved_map_axes.convert(unit_system)
 
     if resolved_map_axes is not None and apply_map_axes:
-        coord_arr = _apply_map_axes_to_coord(coord_arr, map_axes=resolved_map_axes)  # type: ignore[arg-type]
+        coord_arr = apply_map_axes_to_coord(coord_arr, map_axes=resolved_map_axes)  # type: ignore[arg-type]
 
     if resolved_map_axes is not None:
         # Keep grid.metadata['map_axes'] consistent with whatever was
@@ -200,7 +200,7 @@ def make_corner_point_grid(
         active_cells,
         cell_volumes,
         cell_centroids,
-    ) = _compute_corner_point_geometry(
+    ) = compute_corner_point_geometry(
         coord=coord_arr,  # type: ignore[arg-type]
         zcorn=zcorn_arr,  # type: ignore[arg-type]
         actnum=actnum_arr,
@@ -215,7 +215,7 @@ def make_corner_point_grid(
     fault_nnc_pairs: list[tuple[int, int, str]] = []
     fault_face_indices: dict[str, IntArray[OneDimension]] | None = None
     if fault_records:
-        fault_face_indices, fault_nnc_pairs = _resolve_fault_face_indices(
+        fault_face_indices, fault_nnc_pairs = resolve_fault_face_indices(
             fault_records=fault_records,
             active_cells=active_cells,
             face_cell_indices=face_cell_indices,
@@ -350,7 +350,7 @@ def _map_axes_xy_forward(
     )
 
 
-def _map_axes_xy_inverse(
+def get_map_axes_xy_inverse(
     xy: NumberArray[TwoDimensions], map_axes: MapAxes
 ) -> NumberArray[TwoDimensions]:
     """
@@ -370,12 +370,12 @@ def _map_axes_xy_inverse(
     return typing.cast(NumberArray[TwoDimensions], (xy - map_axes.origin) @ inverse_rotation.T)
 
 
-def _apply_map_axes_to_coord(coord: CoordArray, map_axes: MapAxes) -> CoordArray:
+def apply_map_axes_to_coord(coord: CoordArray, map_axes: MapAxes) -> CoordArray:
     """
     Rotate and translate a COORD pillar array's `(x, y)` pairs into map space.
 
     Applied once, upstream of pillar interpolation (`coord` is the only
-    array `_compute_active_cell_corner_coordinates` reads for areal
+    array `compute_active_cell_corner_coordinates` reads for areal
     position), so every derived quantity - `vertex_coordinates`,
     `cell_centroids`, face geometry, comes out already correctly
     positioned; `cell_volumes` are unaffected, being invariant under
@@ -427,7 +427,7 @@ def _interpolate_pillar_point(
 
 
 @numba.njit(parallel=True, cache=True)
-def _compute_active_cell_corner_coordinates(
+def compute_active_cell_corner_coordinates(
     active_cells: IntArray[TwoDimensions],
     coord: CoordArray,
     zcorn: ZCornArray,
@@ -524,7 +524,7 @@ def _is_cell_pinched(
     return (total_dz / 4.0) <= pinch_tolerance
 
 
-def _compute_corner_point_geometry(
+def compute_corner_point_geometry(
     coord: CoordArray,
     zcorn: ZCornArray,
     actnum: ActNumArray,
@@ -561,7 +561,7 @@ def _compute_corner_point_geometry(
             "No active cells found in the corner-point grid (ACTNUM is all zeros)."
         )
 
-    corner_coordinates = _compute_active_cell_corner_coordinates(
+    corner_coordinates = compute_active_cell_corner_coordinates(
         active_cells=active_cells,  # type: ignore[arg-type]
         coord=coord,
         zcorn=zcorn,
@@ -578,7 +578,7 @@ def _compute_corner_point_geometry(
 
     vtk_to_corner = [0, 1, 3, 2, 4, 5, 7, 6]
 
-    face_registry: dict[FaceKey, _FaceRecord] = {}
+    face_registry: dict[FaceKey, FaceRecord] = {}
     nnc_pairs: list[tuple[Integer, Integer]] = []
     nnc_pair_types: list[int] = []
     nnc_face_keys: set[FaceKey] = set()
@@ -596,19 +596,19 @@ def _compute_corner_point_geometry(
         if pinched:
             n_pinched += 1
 
-        for local_idx, local_face in enumerate(_HEXAHEDRON_FACES_ZDOWN):
+        for local_idx, local_face in enumerate(HEXAHEDRON_FACES_ZDOWN):
             face_vertex_indices = [vtk_vertices[v] for v in local_face]
 
             if len(set(face_vertex_indices)) < len(face_vertex_indices):
                 n_degenerate += 1
                 continue
 
-            if pinched and local_idx in (_TOP_FACE_LOCAL, _BOTTOM_FACE_LOCAL):
+            if pinched and local_idx in (TOP_FACE_LOCAL, BOTTOM_FACE_LOCAL):
                 continue
 
             key: FaceKey = tuple(sorted(face_vertex_indices))
             if key not in face_registry:
-                face_registry[key] = _FaceRecord(
+                face_registry[key] = FaceRecord(
                     owner_cell_index=cell_idx,
                     face_vertex_indices=face_vertex_indices,
                 )
@@ -675,7 +675,7 @@ def _compute_corner_point_geometry(
     )
 
 
-def _resolve_fault_face_indices(
+def resolve_fault_face_indices(
     fault_records: typing.Sequence[FaultRecord],
     active_cells: IntArray[TwoDimensions],
     face_cell_indices: IntArray[TwoDimensions],
@@ -708,11 +708,11 @@ def _resolve_fault_face_indices(
 
     for record in fault_records:
         face_direction = record.face_direction.upper()
-        if face_direction not in _FACE_DIR_TO_LOCAL:
+        if face_direction not in FACE_DIRECTION_TO_LOCAL:
             warnings.warn(
                 f"Fault {record.name!r}: unrecognised face direction "
                 f"{record.face_direction!r}. "
-                f"Valid: {sorted(_FACE_DIR_TO_LOCAL)}. Skipping.",
+                f"Valid: {sorted(FACE_DIRECTION_TO_LOCAL)}. Skipping.",
                 stacklevel=4,
             )
             continue
@@ -977,7 +977,7 @@ def rederive_corner_point_arrays(
     If `grid.metadata['map_axes']` is set, the reconstructed pillars are
     transformed back to local (pre-`MAPAXES`) space before being packed
     into `coord`, so the result stays consistent with that same
-    `MAPAXES` card being re-emitted alongside it (see `_map_axes_xy_inverse`).
+    `MAPAXES` card being re-emitted alongside it (see `get_map_axes_xy_inverse`).
 
     :param grid: A `Grid` whose cells are stored in k-major, j-middle, i-minor order.
     :returns: Tuple `(coord_arr, zcorn_arr, nx, ny, nz)`.
@@ -1057,7 +1057,7 @@ def rederive_corner_point_arrays(
         # vertical, at a rotated/translated (x, y), in map space; nothing
         # extra is lost by inverting on the already-reduced pillar_x/
         # pillar_y rather than on the full per-cell vertex set.
-        pillar_xy_local = _map_axes_xy_inverse(
+        pillar_xy_local = get_map_axes_xy_inverse(
             xy=np.column_stack([pillar_x.ravel(), pillar_y.ravel()]),  # type: ignore[arg-type]
             map_axes=map_axes,
         )

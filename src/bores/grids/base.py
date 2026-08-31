@@ -136,7 +136,7 @@ GEOMETRY_TOLERANCE: float = 1e-14
 
 
 @numba.njit(parallel=True, cache=True)
-def _compute_face_geometry(
+def compute_face_geometry(
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
     vertex_coordinates: NumberArray[TwoDimensions],
@@ -208,7 +208,7 @@ def _compute_face_geometry(
 
 
 @numba.njit(cache=True)
-def _compute_cell_volumes_and_centroids(
+def compute_cell_volumes_and_centroids(
     face_cell_indices: IntArray[TwoDimensions],
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
@@ -287,7 +287,7 @@ def _compute_cell_volumes_and_centroids(
 
 
 @numba.njit(cache=True)
-def _compute_cell_bounding_boxes(
+def compute_cell_bounding_boxes(
     face_cell_indices: IntArray[TwoDimensions],
     face_vertex_indices: IntArray[OneDimension],
     face_vertex_offsets: IntArray[OneDimension],
@@ -362,21 +362,21 @@ class Grid(
         "face_vertex_offsets": IntArray[OneDimension],
         "face_cell_indices": IntArray[TwoDimensions],
         "unit_system": UnitSystem,
-        "metadata": typing.Optional[typing.Mapping[str, typing.Any]],
-        "cell_volumes": typing.Optional[NumberArray[OneDimension]],
-        "cell_centroids": typing.Optional[NumberArray[TwoDimensions]],
-        "nnc_cell_indices": typing.Optional[IntArray[TwoDimensions]],
-        "nnc_transmissibilities": typing.Optional[NumberArray[OneDimension]],
-        "nnc_connection_types": typing.Optional[IntArray[OneDimension]],
-        "nnc_fault_indices": typing.Optional[typing.Mapping[str, IntArray[OneDimension]]],
-        "fault_face_indices": typing.Optional[typing.Mapping[str, IntArray[OneDimension]]],
-        "fault_transmissibility_multipliers": typing.Optional[typing.Mapping[str, Number]],
-        "positive_x_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
-        "negative_x_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
-        "positive_y_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
-        "negative_y_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
-        "positive_z_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
-        "negative_z_transmissibility_multipliers": typing.Optional[NumberArray[OneDimension]],
+        "metadata": typing.Mapping[str, typing.Any] | None,
+        "cell_volumes": NumberArray[OneDimension] | None,
+        "cell_centroids": NumberArray[TwoDimensions] | None,
+        "nnc_cell_indices": IntArray[TwoDimensions] | None,
+        "nnc_transmissibilities": NumberArray[OneDimension] | None,
+        "nnc_connection_types": IntArray[OneDimension] | None,
+        "nnc_fault_indices": typing.Mapping[str, IntArray[OneDimension]] | None,
+        "fault_face_indices": typing.Mapping[str, IntArray[OneDimension]] | None,
+        "fault_transmissibility_multipliers": typing.Mapping[str, Number] | None,
+        "positive_x_transmissibility_multipliers": NumberArray[OneDimension] | None,
+        "negative_x_transmissibility_multipliers": NumberArray[OneDimension] | None,
+        "positive_y_transmissibility_multipliers": NumberArray[OneDimension] | None,
+        "negative_y_transmissibility_multipliers": NumberArray[OneDimension] | None,
+        "positive_z_transmissibility_multipliers": NumberArray[OneDimension] | None,
+        "negative_z_transmissibility_multipliers": NumberArray[OneDimension] | None,
     },
 ):
     """
@@ -774,7 +774,7 @@ class Grid(
         object.__setattr__(self, "cell_neighbor_offsets", np.asarray(offsets, dtype=np.int32))
 
     def _compute_face_geometry(self) -> None:
-        face_centroids, face_areas, face_unit_normals = _compute_face_geometry(
+        face_centroids, face_areas, face_unit_normals = compute_face_geometry(
             face_vertex_indices=self.face_vertex_indices,
             face_vertex_offsets=self.face_vertex_offsets,
             vertex_coordinates=self.vertex_coordinates,
@@ -788,7 +788,7 @@ class Grid(
             return
 
         n_cells = int(self.face_cell_indices.max()) + 1
-        cell_volumes, cell_centroids = _compute_cell_volumes_and_centroids(
+        cell_volumes, cell_centroids = compute_cell_volumes_and_centroids(
             face_cell_indices=self.face_cell_indices,
             face_vertex_indices=self.face_vertex_indices,
             face_vertex_offsets=self.face_vertex_offsets,
@@ -807,7 +807,7 @@ class Grid(
 
     def _compute_bounding_boxes(self) -> None:
         n_cells = int(self.face_cell_indices.max()) + 1
-        cell_min, cell_max = _compute_cell_bounding_boxes(
+        cell_min, cell_max = compute_cell_bounding_boxes(
             face_cell_indices=self.face_cell_indices,
             face_vertex_indices=self.face_vertex_indices,
             face_vertex_offsets=self.face_vertex_offsets,

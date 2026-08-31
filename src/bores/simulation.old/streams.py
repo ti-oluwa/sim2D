@@ -16,7 +16,7 @@ from bores.blackoil.state import ModelState, validate_state
 from bores.errors import StorageError, StreamError
 from bores.serde.stores import DataStore, EntryMeta
 from bores.types import NDimension
-from bores.utils import _close_iter
+from bores.utils import close_iterator
 
 __all__ = ["StateStream", "StreamProgress"]
 
@@ -422,7 +422,7 @@ class StateStream(typing.Generic[NDimension]):
                     self._yield_count += 1
                     yield state
             finally:
-                _close_iter(self.states)
+                close_iterator(self.states)
             self._consumed = True
             return
 
@@ -448,7 +448,7 @@ class StateStream(typing.Generic[NDimension]):
                     if self._should_checkpoint(state=state):
                         self._save_checkpoint(state=state)
         finally:
-            _close_iter(self.states)
+            close_iterator(self.states)
 
         # Flush whatever is left
         if self._batch and self.auto_save:
@@ -509,7 +509,7 @@ class StateStream(typing.Generic[NDimension]):
 
         # Close the underlying states iterable if it has not already been closed
         if not self._consumed and self.states is not None:
-            _close_iter(self.states)
+            close_iterator(self.states)
 
         if exc_type is None:
             logger.info(
@@ -680,7 +680,7 @@ class StateStream(typing.Generic[NDimension]):
             raise StreamError(f"An error occured while replaying stream: {exc}") from exc
         finally:
             if states is not None:
-                _close_iter(states)
+                close_iterator(states)
 
         logger.debug(f"Replay complete: {self._yield_count} total yielded")
 

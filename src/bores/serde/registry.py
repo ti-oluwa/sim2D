@@ -10,7 +10,7 @@ from bores.serde.base import (
     register_type_serializer,
 )
 
-_SerializableT = typing.TypeVar("_SerializableT", bound=Serializable)
+SerializableTo = typing.TypeVar("SerializableTo", bound=Serializable)
 
 
 def make_serializable_type_registrar(
@@ -22,7 +22,7 @@ def make_serializable_type_registrar(
     override: bool = False,
     auto_register_serializer: bool = True,
     auto_register_deserializer: bool = True,
-) -> typing.Callable[[type[_SerializableT]], type[_SerializableT]]:
+) -> typing.Callable[[type[SerializableTo]], type[SerializableTo]]:
     """
     Decorator factory to create a registrar for `Serializable` subclasses.
 
@@ -41,7 +41,7 @@ def make_serializable_type_registrar(
 
     lock = lock or threading.Lock()
 
-    def registrar(cls: type[_SerializableT]) -> type[_SerializableT]:
+    def registrar(cls: type[SerializableTo]) -> type[SerializableTo]:
         """Decorator to register a `Serializable` subclass."""
         if not issubclass(cls, base_cls):
             raise ValidationError(f"Class {cls!r} is not a subclass of {base_cls!r}")
