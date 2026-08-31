@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from bores.blackoil.pvt.data import PVTData, PVTDataSet
 from bores.blackoil.pvt.static import StaticPVT
-from bores.blackoil.pvt.tables import PVTTables, _clip_compressibility
+from bores.blackoil.pvt.tables import PVTTables, clip_compressibility
 from bores.constants import c
 from bores.deck.file import DeckFile
 from bores.errors import ValidationError
@@ -643,7 +643,7 @@ def build_oil_data_from_pvto(
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
     # Compressibility must be non-negative; clamp to physical range
-    _clip_compressibility(
+    clip_compressibility(
         oil_compressibility_2d, dtype=dtype, context="`PVTO` oil compressibility"
     )
     return PVTData(
@@ -731,7 +731,7 @@ def build_oil_data_from_pvdo(
     for j in range(n_t):
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
-    _clip_compressibility(
+    clip_compressibility(
         oil_compressibility_2d, dtype=dtype, context="`PVDO` oil compressibility"
     )
 
@@ -821,7 +821,7 @@ def build_gas_data_from_pvdg(
     for j in range(n_t):
         dbg_dp = PchipInterpolator(pressures, gas_fvf_2d[:, j]).derivative(1)(pressures)
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
-    _clip_compressibility(
+    clip_compressibility(
         gas_compressibility_2d, dtype=dtype, context="`PVDG` gas compressibility"
     )
 
@@ -1007,7 +1007,7 @@ def build_gas_data_from_pvtg(
             pressure_values
         )
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
-    _clip_compressibility(
+    clip_compressibility(
         gas_compressibility_2d, dtype=dtype, context="`PVTG` gas compressibility"
     )
 
