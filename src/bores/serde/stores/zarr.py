@@ -204,8 +204,8 @@ def _flatten(
                 continue
 
             # Homogeneous sequence of scalars/arrays -> convert to ndarray
-            arr = _sequence_to_ndarray(value, path=flat_key)
-            out_arrays[flat_key] = arr
+            array = _sequence_to_ndarray(value, path=flat_key)
+            out_arrays[flat_key] = array
             continue
 
         if isinstance(value, bool):
@@ -249,9 +249,9 @@ def _unflatten(
             d = d[part]
         d[parts[-1]] = value
 
-    for flat_key, arr in arrays.items():
+    for flat_key, array in arrays.items():
         parts = _split_path(flat_key)
-        value = normalize_loaded_value(arr)
+        value = normalize_loaded_value(array)
         _set_nested(result, parts, value)
 
     for flat_key, raw in scalars.items():
@@ -482,8 +482,8 @@ class ZarrStore(DataStore[SerializableT, zarr.Group]):
         )
 
         # Write all arrays as flat datasets
-        for flat_key, arr in arrays.items():
-            self._create_dataset(item_group, name=flat_key, data=arr)
+        for flat_key, array in arrays.items():
+            self._create_dataset(item_group, name=flat_key, data=array)
 
         # Write all scalars and vtypes in two `attrs.update` calls
         if scalars:

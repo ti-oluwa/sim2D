@@ -413,8 +413,8 @@ converter.register_structure_hook_factory(
 )
 
 
-def ndarray_serializer(arr: npt.NDArray) -> dict[str, typing.Any]:
-    return serialize_ndarray(arr)
+def ndarray_serializer(array: npt.NDArray) -> dict[str, typing.Any]:
+    return serialize_ndarray(array)
 
 
 def ndarray_deserializer(data: typing.Any) -> npt.NDArray:

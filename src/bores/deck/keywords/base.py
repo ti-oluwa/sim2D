@@ -550,7 +550,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
 
         # Reshape short array into its natural (i,j,k) sub-space
         shape_present = tuple(dim_map[ax] for ax in self.column_shape)
-        arr = short_array.reshape(shape_present, order="F")  # i fastest
+        array = short_array.reshape(shape_present, order="F")  # i fastest
 
         # Expand missing axes by inserting new dimensions and tiling
         # We build the full (nx, ny, nz) array then ravel in Fortran order
@@ -559,12 +559,12 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         # Map axis names to indices in the full (nx,ny,nz) array
         axis_indices = {"nx": 0, "ny": 1, "nz": 2}
 
-        # Reshape arr to align with full array dimensions
+        # Reshape array to align with full array dimensions
         # Insert size-1 dims for missing axes, then broadcast
         target_shape = [1, 1, 1]
         for _local_i, ax in enumerate(self.column_shape):
             target_shape[axis_indices[ax]] = int(dim_map[ax])
-        arr_expanded = arr.reshape(target_shape)
+        arr_expanded = array.reshape(target_shape)
         full[:] = np.broadcast_to(arr_expanded, (int(dims.nx), int(dims.ny), int(dims.nz)))
         return full.ravel(order="F")  # Eclipse flat order: i fastest
 

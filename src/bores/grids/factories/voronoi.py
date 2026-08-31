@@ -704,9 +704,9 @@ def _resolve_layer_thicknesses(
     :returns: Shape `(n_layers,)` positive float64 array.
     :raises ValidationError: If any thickness is non-positive.
     """
-    arr = np.atleast_1d(layer_thicknesses).astype(np.float64, copy=False).ravel()
-    if np.any(arr <= 0.0):
+    array = np.atleast_1d(layer_thicknesses).astype(np.float64, copy=False).ravel()
+    if np.any(array <= 0.0):
         raise ValidationError(
-            f"All `layer_thicknesses` must be strictly positive; got min={arr.min():.6g}."
+            f"All `layer_thicknesses` must be strictly positive; got min={array.min():.6g}."
         )
-    return arr
+    return array

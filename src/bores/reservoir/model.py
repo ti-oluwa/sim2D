@@ -45,9 +45,9 @@ def validate_rock(rock: Rock, n_cells: int) -> Rock:
         "rock.residual_oil_saturation_gas_flood": (rock.residual_oil_saturation_gas_flood),
         "rock.residual_gas_saturation": rock.residual_gas_saturation,
     }
-    for name, arr in checks.items():
-        if arr.shape != (n_cells,):
-            raise ValidationError(f"`{name}` has shape {arr.shape}; expected ({n_cells},).")
+    for name, array in checks.items():
+        if array.shape != (n_cells,):
+            raise ValidationError(f"`{name}` has shape {array.shape}; expected ({n_cells},).")
     return rock
 
 

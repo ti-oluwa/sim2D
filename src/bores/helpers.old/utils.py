@@ -725,7 +725,7 @@ def flatten_multilayer_grid_to_surface(
                 UserWarning,
                 stacklevel=2,
             )
-            result = np.apply_along_axis(strategy, axis=2, arr=multilayer_grid)
+            result = np.apply_along_axis(strategy, axis=2, array=multilayer_grid)
             return result.astype(dtype)  # type: ignore[return-value]
 
         except Exception as exc:

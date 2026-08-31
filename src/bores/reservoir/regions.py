@@ -15,16 +15,16 @@ __all__ = ["Regions"]
 def load_region_array(
     deck_file: DeckFile, keyword: str, n_cells: int, default_region: int | None = None
 ) -> IntCellArray | None:
-    arr = deck_file.get(keyword)
-    if arr is None:
+    array = deck_file.get(keyword)
+    if array is None:
         if default_region is not None:
             return np.full(n_cells, default_region, dtype=np.int32)
         return None
 
-    arr = arr.astype(np.int32, copy=False)
-    if arr.size != n_cells:
-        raise ValidationError(f"{keyword} has {arr.size} values; expected {n_cells}.")
-    return typing.cast(IntCellArray, arr)
+    array = array.astype(np.int32, copy=False)
+    if array.size != n_cells:
+        raise ValidationError(f"{keyword} has {array.size} values; expected {n_cells}.")
+    return typing.cast(IntCellArray, array)
 
 
 @attrs.frozen(slots=True)

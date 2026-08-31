@@ -650,27 +650,27 @@ class PVTTable(StoreSerializable):
                 raise ValidationError("`bubble_point_pressures` must be 1-D or 2-D.")
 
         for table_name in TWO_DIMENSIONAL_TABLES:
-            arr = getattr(data, table_name, None)
-            if arr is not None and arr.ndim == 2 and arr.shape != (n_p, n_t):
+            array = getattr(data, table_name, None)
+            if array is not None and array.ndim == 2 and array.shape != (n_p, n_t):
                 raise ValidationError(
-                    f"`{table_name}` shape {arr.shape} must be "
+                    f"`{table_name}` shape {array.shape} must be "
                     f"(n_pressures={n_p}, n_temperatures={n_t})."
                 )
 
         phase = typing.cast(FluidPhase, data.phase)
         shared_3d_tables = SHARED_THREE_DIMENSIONAL_TABLES if phase == FluidPhase.WATER else ()
         for table_name in COMMON_THREE_DIMENSIONAL_TABLES + shared_3d_tables:
-            arr = getattr(data, table_name, None)
-            if arr is None:
+            array = getattr(data, table_name, None)
+            if array is None:
                 continue
-            if arr.ndim == 3:
+            if array.ndim == 3:
                 if n_s is None:
                     raise ValidationError(
                         f"`{table_name}` is 3-D but `salinities` was not provided."
                     )
-                if arr.shape != (n_p, n_t, n_s):
+                if array.shape != (n_p, n_t, n_s):
                     raise ValidationError(
-                        f"`{table_name}` shape {arr.shape} must be "
+                        f"`{table_name}` shape {array.shape} must be "
                         f"(n_p={n_p}, n_t={n_t}, n_s={n_s})."
                     )
 

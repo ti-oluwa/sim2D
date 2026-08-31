@@ -74,14 +74,14 @@ def _format_value(value: float, metadata: PropertyMeta) -> str:
     return formatted if formatted else "0"
 
 
-def _invert_z_axis(arr: npt.NDArray) -> npt.NDArray:
+def _invert_z_axis(array: npt.NDArray) -> npt.NDArray:
     """
     Invert the Z axis (last axis) of a 3D array so that data[:,:,0] becomes data[:,:,nz-1].
     This ensures numpy convention (top layer as k=0) matches plotly's rendering (bottom as k=0).
     """
-    if arr.ndim == 3:
-        return arr[:, :, ::-1]
-    return arr
+    if array.ndim == 3:
+        return array[:, :, ::-1]
+    return array
 
 
 @attrs.frozen

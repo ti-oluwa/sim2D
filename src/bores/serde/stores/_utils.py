@@ -56,10 +56,10 @@ def sequence_to_ndarray(
     if isinstance(value[0], Sequence) and not isinstance(value[0], (str, bytes)):
         arrays = [sequence_to_ndarray(v, path, string_array_factory) for v in value]
         try:
-            arr = np.stack(arrays)
+            array = np.stack(arrays)
         except ValueError as exc:
             raise TypeError(f"Inconsistent nested sequence shapes at {path}") from exc
-        return arr
+        return array
 
     if all(isinstance(v, (bool, np.bool_)) for v in value):
         return np.asarray(value, dtype=bool)

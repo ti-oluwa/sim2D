@@ -412,10 +412,10 @@ def as_pyvista_grid(
     # Attach caller-supplied arrays
     if cell_data:
         for name, array in cell_data.items():
-            arr = np.asarray(array)
-            if arr.shape[0] != n_cells:
+            array = np.asarray(array)
+            if array.shape[0] != n_cells:
                 raise ValueError(
-                    f"cell_data[{name!r}] has {arr.shape[0]} entries but grid has {n_cells} cells."
+                    f"cell_data[{name!r}] has {array.shape[0]} entries but grid has {n_cells} cells."
                 )
-            pv_grid.cell_data[name] = arr[valid_cell_mask]
+            pv_grid.cell_data[name] = array[valid_cell_mask]
     return pv_grid

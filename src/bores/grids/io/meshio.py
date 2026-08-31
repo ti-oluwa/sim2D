@@ -317,13 +317,13 @@ def _grid_to_mesh(grid: Grid, *, cell_data: dict[str, npt.NDArray] | None) -> ty
     meshio_cell_data: dict[str, list[np.ndarray]] = {}
     if cell_data:
         for field_name, field_array in cell_data.items():
-            arr = np.asarray(field_array, dtype=np.float64, copy=False)
-            if arr.shape[0] != n_cells:
+            array = np.asarray(field_array, dtype=np.float64, copy=False)
+            if array.shape[0] != n_cells:
                 raise GridExportError(
-                    f"cell_data[{field_name!r}] has {arr.shape[0]} entries "
+                    f"cell_data[{field_name!r}] has {array.shape[0]} entries "
                     f"but grid has {n_cells} cells."
                 )
-            meshio_cell_data[field_name] = [arr]
+            meshio_cell_data[field_name] = [array]
 
     return meshio.Mesh(
         points=all_vertices,

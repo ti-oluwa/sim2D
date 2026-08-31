@@ -262,13 +262,13 @@ def _resolve_vector_spacing(
     # Prefer the vector form (DXV / DYV / DZV).
     vec = deck_file.get(vector_key)
     if vec is not None:
-        arr = np.asarray(vec, dtype=np.float64, copy=False).ravel()
-        if len(arr) != count:
+        array = np.asarray(vec, dtype=np.float64, copy=False).ravel()
+        if len(array) != count:
             raise GridImportError(
-                f"{vector_key} has {len(arr)} values but expected {count} "
+                f"{vector_key} has {len(array)} values but expected {count} "
                 f"(grid has n{axis}={count})."
             )
-        return arr
+        return array
 
     # Fall back to the per-cell array.
     per_cell = deck_file.get(per_cell_key)
@@ -684,7 +684,7 @@ def _emit_actnum(
 def _emit_mult_array(
     lines: list[str],
     keyword: str,
-    arr: NumberArray[OneDimension],
+    array: NumberArray[OneDimension],
     nx: Integer,
     ny: Integer,
     nz: Integer,
@@ -694,7 +694,7 @@ def _emit_mult_array(
     lines.append(keyword)
     flat = (
         np
-        .asarray(arr, dtype=np.float64, copy=False)
+        .asarray(array, dtype=np.float64, copy=False)
         .reshape(nz, ny, nx)
         .transpose(2, 1, 0)
         .ravel(order="F")
@@ -721,9 +721,9 @@ def _emit_mult_arrays(
         ("MULTZ", grid.positive_z_transmissibility_multipliers),
         ("MULTZ-", grid.negative_z_transmissibility_multipliers),
     ]
-    for kw, arr in pairs:
-        if arr is not None:
-            _emit_mult_array(lines, kw, arr, nx, ny, nz)
+    for kw, array in pairs:
+        if array is not None:
+            _emit_mult_array(lines, kw, array, nx, ny, nz)
 
 
 def _emit_faults(lines: list[str], grid: Grid, nx: Integer, ny: Integer) -> None:

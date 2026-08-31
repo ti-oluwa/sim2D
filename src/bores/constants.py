@@ -1127,9 +1127,9 @@ class Constants(
         return constants
 
 
-_DEFAULT_CONTEXT_ID = uuid4().hex
+DEFAULT_CONTEXT_ID = uuid4().hex
 _constants_context: ContextVar[tuple[Constants, str]] = ContextVar(
-    "constants_context", default=(Constants(), _DEFAULT_CONTEXT_ID)
+    "constants_context", default=(Constants(), DEFAULT_CONTEXT_ID)
 )
 
 
@@ -1209,7 +1209,7 @@ class __ConstantsProxy:
 
     def in_default_context(self) -> bool:
         """Returns `True` if we are the default (process local) `Constants` context"""
-        return self.context_id == _DEFAULT_CONTEXT_ID
+        return self.context_id == DEFAULT_CONTEXT_ID
 
     def __getattr__(self, name: str) -> typing.Any:
         """
@@ -1262,16 +1262,14 @@ def set_default_constants(constants: Constants, /) -> None:
 
     :param constants: The `Constants` object to set as default.
     """
-    if c.context_id != _DEFAULT_CONTEXT_ID:
+    if c.context_id != DEFAULT_CONTEXT_ID:
         raise ValidationError(
             "Cannot set constants. Are you in a `ConstantsContext`? Only call in default context"
         )
-    _constants_context.set((constants, _DEFAULT_CONTEXT_ID))
+    _constants_context.set((constants, DEFAULT_CONTEXT_ID))
 
 
-def build_unit_conversion_table(
-    constants: Constants | None = None,
-) -> UnitConversionTable:
+def build_unit_conversion_table(constants: Constants | None = None) -> UnitConversionTable:
     """
     Build a complete unit conversion table from the provided or default
     constants registry.

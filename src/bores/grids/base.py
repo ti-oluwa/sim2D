@@ -900,8 +900,8 @@ class Grid(
     def has_transmissibility_multipliers(self) -> bool:
         """`True` if any directional `MULT*` array is present."""
         return any(
-            arr is not None
-            for arr in (
+            array is not None
+            for array in (
                 self.positive_x_transmissibility_multipliers,
                 self.negative_x_transmissibility_multipliers,
                 self.positive_y_transmissibility_multipliers,

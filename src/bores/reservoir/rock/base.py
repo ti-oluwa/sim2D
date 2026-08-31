@@ -33,14 +33,14 @@ __all__ = ["Permeability", "Rock"]
 def load_cell_array(
     deck_file: DeckFile, keyword: str, n_cells: int, dtype: npt.DTypeLike = None
 ) -> CellArray | None:
-    arr = deck_file.get(keyword)
-    if arr is None:
+    array = deck_file.get(keyword)
+    if array is None:
         return None
 
-    arr = arr.astype(dtype, copy=False)
-    if arr.size != n_cells:
-        raise ValidationError(f"{keyword} has {arr.size} values; expected {n_cells}.")
-    return typing.cast(CellArray, arr)
+    array = array.astype(dtype, copy=False)
+    if array.size != n_cells:
+        raise ValidationError(f"{keyword} has {array.size} values; expected {n_cells}.")
+    return typing.cast(CellArray, array)
 
 
 @attrs.frozen(slots=True)

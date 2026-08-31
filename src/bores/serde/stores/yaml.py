@@ -57,8 +57,8 @@ def _ndarray_from_base64(
     encoded: str, dtype: npt.DTypeLike, shape: tuple[int, ...]
 ) -> npt.NDArray:
     raw = base64.b64decode(encoded)
-    arr = np.frombuffer(raw, dtype=dtype)
-    return arr.reshape(shape)
+    array = np.frombuffer(raw, dtype=dtype)
+    return array.reshape(shape)
 
 
 def _ndarray_constructor(
@@ -75,10 +75,10 @@ def _ndarray_constructor(
         shape = tuple(mapping["shape"])
         if isinstance(data, str):
             return _ndarray_from_base64(data, dtype=dtype, shape=shape)
-        arr = np.array(data, dtype=dtype)
-        if arr.size != np.prod(shape):
-            raise ValueError(f"Array size {arr.size} does not match shape {shape}")
-        return arr.reshape(shape)
+        array = np.array(data, dtype=dtype)
+        if array.size != np.prod(shape):
+            raise ValueError(f"Array size {array.size} does not match shape {shape}")
+        return array.reshape(shape)
     except Exception:
         print("Failed !ndarray constructor:")
         print(f"  tag: {node.tag}")

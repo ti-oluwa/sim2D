@@ -8,8 +8,8 @@ _SPARSE_DENSITY_THRESHOLD = 0.05  # < 5% non-fill cells means array is sparse
 _MIN_SPARSE_CELLS = 10  # Do not bother with sparse on tiny arrays
 
 
-def _b64_encode(arr: npt.NDArray) -> str:
-    return base64.b64encode(np.ascontiguousarray(arr).tobytes()).decode("ascii")
+def _b64_encode(array: npt.NDArray) -> str:
+    return base64.b64encode(np.ascontiguousarray(array).tobytes()).decode("ascii")
 
 
 def _b64_decode(s: str, dtype: npt.DTypeLike, shape: tuple[int, ...]) -> npt.NDArray:
@@ -17,17 +17,17 @@ def _b64_decode(s: str, dtype: npt.DTypeLike, shape: tuple[int, ...]) -> npt.NDA
     return np.frombuffer(raw, dtype=dtype).reshape(shape).copy()
 
 
-def _sniff_scalar(arr: npt.NDArray) -> bool:
-    """All values bit-identical to arr.flat[0]."""
-    return bool(np.all(arr == arr.flat[0]))
+def _sniff_scalar(array: npt.NDArray) -> bool:
+    """All values bit-identical to array.flat[0]."""
+    return bool(np.all(array == array.flat[0]))
 
 
-def _sniff_layered(arr: npt.NDArray):
+def _sniff_layered(array: npt.NDArray):
     for axis in (2, 1, 0):
-        if axis >= arr.ndim:
+        if axis >= array.ndim:
             continue
         # Move target axis to front, then check if each slice is uniform
-        moved = np.moveaxis(arr, axis, 0)
+        moved = np.moveaxis(array, axis, 0)
         layer_values = []
         uniform = True
         for idx in range(moved.shape[0]):
@@ -38,12 +38,12 @@ def _sniff_layered(arr: npt.NDArray):
                 break
             layer_values.append(v0)
         if uniform:
-            return axis, np.array(layer_values, dtype=arr.dtype)
+            return axis, np.array(layer_values, dtype=array.dtype)
     return None
 
 
 def _sniff_sparse(
-    arr: npt.NDArray,
+    array: npt.NDArray,
     *,
     min_sparse_cells: int = 10,
     sparse_density_threshold: float = 0.05,
@@ -57,10 +57,10 @@ def _sniff_sparse(
     each with a single O(N) count pass. If the fill covers >95% of elements,
     at least one probe will hit it (probability > 1 - 0.05^20 ≈ 1 - 10^-26).
     """
-    if arr.size < min_sparse_cells:
+    if array.size < min_sparse_cells:
         return None
 
-    flat = arr.ravel()
+    flat = array.ravel()
     n = flat.size
     max_non_fill = int(n * sparse_density_threshold)
 
@@ -81,7 +81,7 @@ def _sniff_sparse(
 
 
 def serialize_ndarray(
-    arr: npt.ArrayLike,
+    array: npt.ArrayLike,
     *,
     min_sparse_cells: int = 10,
     sparse_density_threshold: float = 0.05,
@@ -96,7 +96,7 @@ def serialize_ndarray(
     Wire format is a dict with `'__ndarray__': True` and an `encoding` key
     so `deserialize_ndarray` can dispatch correctly.
     """
-    a = np.asarray(arr)
+    a = np.asarray(array)
     dtype = a.dtype
     shape = list(a.shape)
     base = {"__ndarray__": True, "dtype": dtype.str, "shape": shape}
@@ -164,30 +164,30 @@ def deserialize_ndarray(
     encoding = data.get("encoding", "dense")  # type: ignore # legacy dicts have no encoding key
 
     if encoding == "empty":
-        arr = np.empty(shape, dtype=stored_dtype)
+        array = np.empty(shape, dtype=stored_dtype)
 
     elif encoding == "scalar":
-        arr = np.full(shape, fill_value=data["value"], dtype=stored_dtype)  # type: ignore
+        array = np.full(shape, fill_value=data["value"], dtype=stored_dtype)  # type: ignore
 
     elif encoding == "layered":
         axis = int(data["axis"])  # type: ignore
         n_layers = shape[axis]
         layer_values = _b64_decode(data["data"], stored_dtype, (n_layers,))  # type: ignore
-        arr = np.empty(shape, dtype=stored_dtype)
+        array = np.empty(shape, dtype=stored_dtype)
         for idx, val in enumerate(layer_values):
             # Build index tuple: slice(None) for all axes except `axis`
-            idx_tuple = tuple(idx if dim == axis else slice(None) for dim in range(arr.ndim))
-            arr[idx_tuple] = val
+            idx_tuple = tuple(idx if dim == axis else slice(None) for dim in range(array.ndim))
+            array[idx_tuple] = val
 
     elif encoding == "sparse":
         fill_value = stored_dtype.type(data["fill"])  # type: ignore
-        arr = np.full(shape, fill_value=fill_value, dtype=stored_dtype)
+        array = np.full(shape, fill_value=fill_value, dtype=stored_dtype)
         n_non_fill = int(
             len(base64.b64decode(data["indices"])) // np.dtype(np.int32).itemsize  # type: ignore
         )
         indices = _b64_decode(data["indices"], np.int32, (n_non_fill,))  # type: ignore
         values = _b64_decode(data["values"], stored_dtype, (n_non_fill,))  # type: ignore
-        arr.ravel()[indices] = values
+        array.ravel()[indices] = values
 
     elif encoding == "dense":
         n_elements = int(np.prod(shape)) if shape else 1
@@ -195,9 +195,9 @@ def deserialize_ndarray(
         expected = stored_dtype.itemsize * n_elements
         if len(raw) != expected:
             raise ValueError(f"Byte-length mismatch. Expected {expected}, got {len(raw)}")
-        arr = np.frombuffer(raw, dtype=stored_dtype).reshape(shape).copy()
+        array = np.frombuffer(raw, dtype=stored_dtype).reshape(shape).copy()
 
     else:
         raise ValueError(f"Unknown encoding {encoding!r}")
 
-    return arr.astype(dtype, copy=False) if dtype is not None else arr
+    return array.astype(dtype, copy=False) if dtype is not None else array

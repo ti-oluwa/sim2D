@@ -248,13 +248,13 @@ class ArrayLike(typing.Protocol[Tco]):
 Interpolator = typing.Callable[[float], float]
 
 
-PreconditionerStr = typing.Union[
-    typing.Literal["cpr", "ilu", "amg", "block_jacobi", "polynomial", "diagonal"], str
-]
+PreconditionerStr = (
+    typing.Literal["cpr", "ilu", "amg", "block_jacobi", "polynomial", "diagonal"] | str
+)
 PreconditionerFactory = typing.Callable[[csr_array | csr_matrix], LinearOperator]
-Preconditioner = typing.Union[LinearOperator, PreconditionerStr, PreconditionerFactory]
+Preconditioner = LinearOperator | PreconditionerStr | PreconditionerFactory
 
-SolverStr = typing.Union[
+SolverStr = (
     typing.Literal[
         "gmres",
         "lgmres",
@@ -267,9 +267,9 @@ SolverStr = typing.Union[
         "qmr",
         "gcrotmk",
         "direct",
-    ],
-    str,
-]
+    ]
+    | str
+)
 
 
 class SolverFunc(typing.Protocol):
@@ -291,7 +291,7 @@ class SolverFunc(typing.Protocol):
     ) -> npt.NDArray: ...
 
 
-Solver = typing.Union[SolverFunc, SolverStr]
+Solver = SolverFunc | SolverStr
 
 
 class MixingRuleFunc(typing.Protocol):

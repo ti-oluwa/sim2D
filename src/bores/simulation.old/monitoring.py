@@ -322,9 +322,9 @@ class RunStats:
         """
         if not self.steps:
             return 0.0
-        arr = sorted(self.step_wall_times_ms)
-        idx = min(int(len(arr) * percentage / 100), len(arr) - 1)
-        return arr[idx]
+        array = sorted(self.step_wall_times_ms)
+        idx = min(int(len(array) * percentage / 100), len(array) - 1)
+        return array[idx]
 
     def summary_table(self) -> Table:
         """

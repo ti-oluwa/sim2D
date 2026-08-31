@@ -427,20 +427,20 @@ def _resolve_spacing(
         count: Integer | None,
         axis: str,
     ) -> FloatArray[OneDimension]:
-        arr = np.atleast_1d(value).astype(np.float64, copy=False).ravel()
-        if arr.size == 1:
+        array = np.atleast_1d(value).astype(np.float64, copy=False).ravel()
+        if array.size == 1:
             if count is None:
                 raise ValidationError(f"n{axis} must be provided when d{axis} is a scalar.")
-            arr = np.full(count, arr[0])
-        elif count is not None and len(arr) != count:
+            array = np.full(count, array[0])
+        elif count is not None and len(array) != count:
             raise ValidationError(
-                f"Length of d{axis} array ({len(arr)}) does not match n{axis}={count}."
+                f"Length of d{axis} array ({len(array)}) does not match n{axis}={count}."
             )
-        if np.any(arr <= 0.0):
+        if np.any(array <= 0.0):
             raise ValidationError(
-                f"All d{axis} values must be strictly positive; got min={arr.min():.6g}."
+                f"All d{axis} values must be strictly positive; got min={array.min():.6g}."
             )
-        return arr
+        return array
 
     return (
         _to_array(dx, nx, "x"),

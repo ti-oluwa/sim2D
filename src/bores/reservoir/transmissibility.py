@@ -165,9 +165,9 @@ def compute_connection_transmissibilities(
     )
 
     n_cells = grid.n_cells
-    for name, arr in (("Kx", kx), ("Ky", ky), ("Kz", kz), ("NTG", ntg)):
-        if arr.shape != (n_cells,):
-            raise ValueError(f"{name} array has shape {arr.shape}; expected ({n_cells},).")
+    for name, array in (("Kx", kx), ("Ky", ky), ("Kz", kz), ("NTG", ntg)):
+        if array.shape != (n_cells,):
+            raise ValueError(f"{name} array has shape {array.shape}; expected ({n_cells},).")
 
     effective_kx = kx * ntg
     effective_ky = ky * ntg
