@@ -115,7 +115,7 @@ def resolve_control(
         relevant_phases = phase_mask(injected_phase)
         if control_mode in (
             InjectorControlModeTag.RATE,
-            InjectorControlModeTag.RESV,
+            InjectorControlModeTag.RESERVOIR_VOLUME_RATE,
         ):
             bhp, phase_rates = solve_injector_rate_mode(
                 control_mode=control_mode,
@@ -167,7 +167,7 @@ def resolve_control(
                 is_injector=True,
                 resolver_spec=resolver_spec,
             )
-        elif control_mode == InjectorControlModeTag.GRUP:
+        elif control_mode == InjectorControlModeTag.GROUP:
             raise ValidationError(
                 f"Well row {well_row} is under GRUP control - resolve group "
                 "allocation (wells.resolution.allocation) into a concrete "
@@ -181,11 +181,11 @@ def resolve_control(
 
         relevant_phases = ALL_PHASES
         if control_mode in (
-            ProducerControlModeTag.ORAT,
-            ProducerControlModeTag.WRAT,
-            ProducerControlModeTag.GRAT,
-            ProducerControlModeTag.LRAT,
-            ProducerControlModeTag.RESV,
+            ProducerControlModeTag.OIL_RATE,
+            ProducerControlModeTag.WATER_RATE,
+            ProducerControlModeTag.GAS_RATE,
+            ProducerControlModeTag.LIQUID_RATE,
+            ProducerControlModeTag.RESERVOIR_VOLUME_RATE,
         ):
             bhp, phase_rates = solve_producer_rate_mode(
                 control_mode=control_mode,
@@ -235,7 +235,7 @@ def resolve_control(
                 is_injector=False,
                 resolver_spec=resolver_spec,
             )
-        elif control_mode == ProducerControlModeTag.GRUP:
+        elif control_mode == ProducerControlModeTag.GROUP:
             raise ValidationError(
                 f"Well row {well_row} is under GRUP control - resolve group "
                 "allocation (wells.resolution.allocation) into a concrete "

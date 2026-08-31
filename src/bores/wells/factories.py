@@ -41,11 +41,11 @@ __all__ = [
 
 
 QUANTITY_PRODUCER_CONTROL_MODES = {
-    RateQuantity.OIL: ProducerControlMode.ORAT,
-    RateQuantity.WATER: ProducerControlMode.WRAT,
-    RateQuantity.GAS: ProducerControlMode.GRAT,
-    RateQuantity.LIQUID: ProducerControlMode.LRAT,
-    RateQuantity.RESERVOIR: ProducerControlMode.RESV,
+    RateQuantity.OIL: ProducerControlMode.OIL_RATE,
+    RateQuantity.WATER: ProducerControlMode.WATER_RATE,
+    RateQuantity.GAS: ProducerControlMode.GAS_RATE,
+    RateQuantity.LIQUID: ProducerControlMode.LIQUID_RATE,
+    RateQuantity.RESERVOIR: ProducerControlMode.RESERVOIR_VOLUME_RATE,
 }
 
 PHASE_RATE_QUANTITY = {
@@ -419,11 +419,11 @@ def make_injector(
 
 
 QUANTITY_GROUP_CONTROL_MODES = {
-    RateQuantity.OIL: GroupProducerControlMode.ORAT,
-    RateQuantity.WATER: GroupProducerControlMode.WRAT,
-    RateQuantity.GAS: GroupProducerControlMode.GRAT,
-    RateQuantity.LIQUID: GroupProducerControlMode.LRAT,
-    RateQuantity.RESERVOIR: GroupProducerControlMode.RESV,
+    RateQuantity.OIL: GroupProducerControlMode.OIL_RATE,
+    RateQuantity.WATER: GroupProducerControlMode.WATER_RATE,
+    RateQuantity.GAS: GroupProducerControlMode.GAS_RATE,
+    RateQuantity.LIQUID: GroupProducerControlMode.LIQUID_RATE,
+    RateQuantity.RESERVOIR: GroupProducerControlMode.RESERVOIR_VOLUME_RATE,
 }
 
 

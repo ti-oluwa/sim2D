@@ -643,9 +643,7 @@ def build_oil_data_from_pvto(
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
     # Compressibility must be non-negative; clamp to physical range
-    clip_compressibility(
-        oil_compressibility_2d, dtype=dtype, context="`PVTO` oil compressibility"
-    )
+    clip_compressibility(oil_compressibility_2d, dtype=dtype, context="`PVTO` oil compressibility")
     return PVTData(
         phase=FluidPhase.OIL,
         pressures=typing.cast(FloatArray[OneDimension], pressures),
@@ -731,9 +729,7 @@ def build_oil_data_from_pvdo(
     for j in range(n_t):
         dbo_dp = PchipInterpolator(pressures, oil_fvf_2d[:, j]).derivative(1)(pressures)
         oil_compressibility_2d[:, j] = -(1.0 / oil_fvf_2d[:, j]) * dbo_dp
-    clip_compressibility(
-        oil_compressibility_2d, dtype=dtype, context="`PVDO` oil compressibility"
-    )
+    clip_compressibility(oil_compressibility_2d, dtype=dtype, context="`PVDO` oil compressibility")
 
     return PVTData(
         phase=FluidPhase.OIL,
@@ -821,9 +817,7 @@ def build_gas_data_from_pvdg(
     for j in range(n_t):
         dbg_dp = PchipInterpolator(pressures, gas_fvf_2d[:, j]).derivative(1)(pressures)
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
-    clip_compressibility(
-        gas_compressibility_2d, dtype=dtype, context="`PVDG` gas compressibility"
-    )
+    clip_compressibility(gas_compressibility_2d, dtype=dtype, context="`PVDG` gas compressibility")
 
     return PVTData(
         phase=FluidPhase.GAS,
@@ -1007,9 +1001,7 @@ def build_gas_data_from_pvtg(
             pressure_values
         )
         gas_compressibility_2d[:, j] = -(1.0 / gas_fvf_2d[:, j]) * dbg_dp
-    clip_compressibility(
-        gas_compressibility_2d, dtype=dtype, context="`PVTG` gas compressibility"
-    )
+    clip_compressibility(gas_compressibility_2d, dtype=dtype, context="`PVTG` gas compressibility")
 
     # Rv table: shape (n_p, n_rv) - same Rv values at every pressure
     vaporized_oil_ratio_table = np.tile(rv_values[np.newaxis, :], (n_p, 1)).astype(

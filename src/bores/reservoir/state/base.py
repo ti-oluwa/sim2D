@@ -18,6 +18,50 @@ from bores.utils import scale, scale_and_offset
 __all__ = ["Hysteresis", "ReservoirState"]
 
 
+def _advance_phase_hysteresis(
+    new_saturation: npt.NDArray,
+    previous_saturation: npt.NDArray,
+    max_saturation: npt.NDArray,
+    imbibition_flag: npt.NDArray,
+    reversal_saturation: npt.NDArray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """
+    Updates one phase's tracked saturation history for one new saturation
+    value, per cell.
+
+    A phase is on its imbibition path when its saturation is moving from
+    `reversal_saturation` toward `max_saturation` (see
+    `Hysteresis.water_imbibition_flag`/`gas_imbibition_flag`). Comparing
+    the new saturation only against the historical maximum isn't enough to
+    catch every reversal: a phase can turn around well before it climbs
+    back past its own historical peak, so the previous saturation is
+    needed to tell which way it is actually moving right now.
+
+    :param new_saturation: This timestep's saturation, per cell.
+    :param previous_saturation: The saturation this phase had before this update.
+    :param max_saturation: The historical maximum before this update.
+    :param imbibition_flag: Whether the phase was increasing before this update.
+    :param reversal_saturation: The saturation at the last known reversal,
+        before this update.
+    :returns: `(new_max_saturation, new_imbibition_flag, new_reversal_saturation)`.
+    """
+    increasing_now = new_saturation > previous_saturation
+    decreasing_now = new_saturation < previous_saturation
+    turned_to_drainage = imbibition_flag & decreasing_now
+    turned_to_imbibition = ~imbibition_flag & increasing_now
+
+    new_max_saturation = np.maximum(max_saturation, new_saturation)
+    new_imbibition_flag = np.where(
+        increasing_now, True, np.where(decreasing_now, False, imbibition_flag)
+    )
+    new_reversal_saturation = np.where(
+        turned_to_drainage,
+        max_saturation,
+        np.where(turned_to_imbibition, previous_saturation, reversal_saturation),
+    )
+    return new_max_saturation, new_imbibition_flag, new_reversal_saturation
+
+
 @attrs.frozen(slots=True)
 class Hysteresis(StoreSerializable):
     """
@@ -59,8 +103,11 @@ class Hysteresis(StoreSerializable):
 
     gas_imbibition_flag: BooleanCellArray
     """
-    Shape (n_cells,) - `True` if the current gas-phase displacement is
-    imbibition (gas saturation decreasing - water or liquid displacing gas).
+    Shape (n_cells,) - `True` if gas saturation is currently increasing
+    toward `max_gas_saturation`, `False` if decreasing (drainage).
+
+    Same convention as `water_imbibition_flag`: the flag tracks that
+    phase's own saturation, not a wetting/non-wetting distinction.
     """
 
     water_reversal_saturation: CellArray
@@ -120,6 +167,65 @@ class Hysteresis(StoreSerializable):
         :returns: New immutable `Hysteresis`.
         """
         return attrs.evolve(self, **kwargs)
+
+    def advance(
+        self,
+        water_saturation: npt.ArrayLike,
+        gas_saturation: npt.ArrayLike,
+        previous_water_saturation: npt.ArrayLike,
+        previous_gas_saturation: npt.ArrayLike,
+    ) -> Self:
+        """
+        Return a new `Hysteresis` updated for the current timestep's saturations.
+
+        For each phase: if that phase's saturation is still moving the
+        same way it was last time, its historical maximum extends (if
+        increasing) and its reversal point stays put. If it has turned
+        around since the last update, the reversal point moves to where
+        the turn happened, and the imbibition flag flips.
+
+        Call this once per timestep, after the new saturations for that
+        step are known, to keep the tracked history current for the next
+        saturation-function evaluation.
+
+        :param water_saturation: Array-like (n_cells,) - this timestep's
+            water saturation per cell (fraction).
+        :param gas_saturation: Array-like (n_cells,) - this timestep's gas
+            saturation per cell (fraction).
+        :param previous_water_saturation: Array-like (n_cells,) - the water
+            saturation this cell had before this timestep, needed to tell
+            which way it is currently moving.
+        :param previous_gas_saturation: Array-like (n_cells,) - the gas
+            saturation this cell had before this timestep.
+        :returns: New `Hysteresis` reflecting this timestep.
+        """
+        sw = np.asarray(water_saturation, dtype=get_dtype())
+        sg = np.asarray(gas_saturation, dtype=get_dtype())
+        previous_sw = np.asarray(previous_water_saturation, dtype=get_dtype())
+        previous_sg = np.asarray(previous_gas_saturation, dtype=get_dtype())
+
+        new_max_water, new_water_flag, new_water_reversal = _advance_phase_hysteresis(
+            new_saturation=sw,
+            previous_saturation=previous_sw,
+            max_saturation=np.asarray(self.max_water_saturation),
+            imbibition_flag=np.asarray(self.water_imbibition_flag),
+            reversal_saturation=np.asarray(self.water_reversal_saturation),
+        )
+        new_max_gas, new_gas_flag, new_gas_reversal = _advance_phase_hysteresis(
+            new_saturation=sg,
+            previous_saturation=previous_sg,
+            max_saturation=np.asarray(self.max_gas_saturation),
+            imbibition_flag=np.asarray(self.gas_imbibition_flag),
+            reversal_saturation=np.asarray(self.gas_reversal_saturation),
+        )
+        return self.evolve(
+            max_water_saturation=new_max_water,
+            max_gas_saturation=new_max_gas,
+            water_imbibition_flag=new_water_flag,
+            gas_imbibition_flag=new_gas_flag,
+            water_reversal_saturation=new_water_reversal,
+            gas_reversal_saturation=new_gas_reversal,
+        )
 
 
 @attrs.frozen(slots=True)

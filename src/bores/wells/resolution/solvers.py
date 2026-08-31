@@ -35,11 +35,11 @@ __all__ = [
 
 
 PRODUCER_RATE_MODE_PHASES: dict[Integer, PhaseValues] = {
-    ProducerControlModeTag.ORAT: PhaseValues(oil=1.0, water=0.0, gas=0.0),
-    ProducerControlModeTag.WRAT: PhaseValues(oil=0.0, water=1.0, gas=0.0),
-    ProducerControlModeTag.GRAT: PhaseValues(oil=0.0, water=0.0, gas=1.0),
-    ProducerControlModeTag.LRAT: PhaseValues(oil=1.0, water=1.0, gas=0.0),
-    ProducerControlModeTag.RESV: PhaseValues(oil=1.0, water=1.0, gas=1.0),
+    ProducerControlModeTag.OIL_RATE: PhaseValues(oil=1.0, water=0.0, gas=0.0),
+    ProducerControlModeTag.WATER_RATE: PhaseValues(oil=0.0, water=1.0, gas=0.0),
+    ProducerControlModeTag.GAS_RATE: PhaseValues(oil=0.0, water=0.0, gas=1.0),
+    ProducerControlModeTag.LIQUID_RATE: PhaseValues(oil=1.0, water=1.0, gas=0.0),
+    ProducerControlModeTag.RESERVOIR_VOLUME_RATE: PhaseValues(oil=1.0, water=1.0, gas=1.0),
 }
 """Which phases count toward a producer's rate target, by `ProducerControlModeTag`."""
 
@@ -466,7 +466,7 @@ def solve_producer_rate_mode(
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         target_rate_condition="reservoir"
-        if control_mode == ProducerControlModeTag.RESV
+        if control_mode == ProducerControlModeTag.RESERVOIR_VOLUME_RATE
         else "surface",
     )
     phase_rates = compute_phase_rates(
@@ -552,7 +552,7 @@ def solve_injector_rate_mode(
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
         target_rate_condition="reservoir"
-        if control_mode == InjectorControlModeTag.RESV
+        if control_mode == InjectorControlModeTag.RESERVOIR_VOLUME_RATE
         else "surface",
     )
     phase_rates = compute_phase_rates(

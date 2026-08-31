@@ -77,7 +77,7 @@ def allocate_group_targets(group_name: str, well_system: CompiledWellSystem) -> 
     member_end = group_controls.member_offsets[group_index + 1]
     member_indices = group_controls.member_well_indices[member_start:member_end]
 
-    grup_mode_tag = InjectorControlModeTag.GRUP if is_injection else ProducerControlModeTag.GRUP
+    grup_mode_tag = InjectorControlModeTag.GROUP if is_injection else ProducerControlModeTag.GROUP
     expected_well_kind = WellKind.INJECTOR if is_injection else WellKind.PRODUCER
     controls = well_system.controls
     eligible = [
