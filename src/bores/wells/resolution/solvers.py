@@ -288,10 +288,9 @@ def compute_phase_rates(
     relevant_phases: PhaseValues,
     is_injector: bool,
     resolver_spec: CompiledControlResolverSpec,
-) -> PhaseValues:
+) -> tuple[NumberArray[OneDimension], PhaseValues, PhaseValues]:
     """
-    `solve_connection_pressures_and_rates` at a fixed BHP, reporting
-    reservoir-condition rates for every phase.
+    `solve_connection_pressures_and_rates` at a fixed BHP.
 
     For a producer, callers pass `relevant_phases=ALL_PHASES` - a producer
     can legitimately flow oil, water, and gas simultaneously. For an
@@ -307,9 +306,11 @@ def compute_phase_rates(
     :param relevant_phases: Mask of which phases to compute a real rate for.
     :param is_injector: Selects the drawdown sign convention.
     :param resolver_spec: Forwarded to `solve_connection_pressures_and_rates`.
-    :returns: Reservoir-condition phase rates.
+    :returns: `(connection_pressures, phase_rates, surface_phase_rates)` -
+        flowing pressure at each connection, reservoir-condition phase
+        rates, and surface-condition phase rates.
     """
-    _, phase_rates, _ = solve_connection_pressures_and_rates(
+    return solve_connection_pressures_and_rates(
         wellbore=wellbore,
         reference_depth=reference_depth,
         workspace=workspace,
@@ -319,7 +320,6 @@ def compute_phase_rates(
         is_injector=is_injector,
         resolver_spec=resolver_spec,
     )
-    return phase_rates
 
 
 def bisect_bhp(
@@ -343,9 +343,9 @@ def bisect_bhp(
     the resulting metric (`relevant_phases` total rate, or THP) matches `target`.
 
     Both metrics are monotonic in BHP, in a direction that depends on the
-    metric and (for rate) the well type: `metric="rate"` - lower BHP means
+    metric and (for rate) the well type. For `metric="rate"`, lower BHP means
     a higher producer rate, higher BHP means a higher injector rate;
-    `metric="thp"` - higher BHP means higher THP, for both well types.
+    For `metric="thp"`, higher BHP means higher THP, for both well types.
 
     `min_pressure`/`max_pressure` must bracket the target. Callers should pick
     these via `get_default_pressure_bracket` (or their own). Best-effort
@@ -434,7 +434,7 @@ def solve_producer_rate_mode(
     workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: CompiledControlResolverSpec,
-) -> tuple[Number, PhaseValues]:
+) -> tuple[Number, NumberArray[OneDimension], PhaseValues, PhaseValues]:
     """
     Resolves a producer under `control_mode in {ORAT, WRAT, GRAT, LRAT, RESV}`.
 
@@ -448,7 +448,8 @@ def solve_producer_rate_mode(
     :param workspace: This well's `PerforationWorkspace`.
     :param connection_samples: Reservoir samples, same order as `workspace`'s arrays.
     :param resolver_spec: Solver tunables.
-    :returns: `(bhp, phase_rates)`, reservoir-condition, every phase.
+    :returns: `(bhp, connection_pressures, phase_rates, surface_phase_rates)`,
+        reservoir- and surface-condition rates for every phase.
     """
     relevant_phases = PRODUCER_RATE_MODE_PHASES[control_mode]
     min_pressure, max_pressure = get_default_pressure_bracket(
@@ -469,7 +470,7 @@ def solve_producer_rate_mode(
         if control_mode == ProducerControlModeTag.RESERVOIR_VOLUME_RATE
         else "surface",
     )
-    phase_rates = compute_phase_rates(
+    connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
         wellbore=wellbore,
         reference_depth=reference_depth,
         workspace=workspace,
@@ -479,7 +480,7 @@ def solve_producer_rate_mode(
         is_injector=False,
         resolver_spec=resolver_spec,
     )
-    return bhp, phase_rates
+    return bhp, connection_pressures, phase_rates, surface_phase_rates
 
 
 def solve_producer_bhp_mode(
@@ -490,13 +491,13 @@ def solve_producer_bhp_mode(
     workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: CompiledControlResolverSpec,
-) -> tuple[Number, PhaseValues]:
+) -> tuple[Number, NumberArray[OneDimension], PhaseValues, PhaseValues]:
     """
     Resolves a producer held at a fixed BHP; rates are the output.
 
     Nominal resolution only. See `solve_producer_rate_mode`.
     """
-    phase_rates = compute_phase_rates(
+    connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
         wellbore=wellbore,
         reference_depth=reference_depth,
         workspace=workspace,
@@ -506,7 +507,7 @@ def solve_producer_bhp_mode(
         is_injector=False,
         resolver_spec=resolver_spec,
     )
-    return target_bhp, phase_rates
+    return target_bhp, connection_pressures, phase_rates, surface_phase_rates
 
 
 def solve_injector_rate_mode(
@@ -519,7 +520,7 @@ def solve_injector_rate_mode(
     workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: CompiledControlResolverSpec,
-) -> tuple[Number, PhaseValues]:
+) -> tuple[Number, NumberArray[OneDimension], PhaseValues, PhaseValues]:
     """
     Injector analogue of `solve_producer_rate_mode` - `injected_phase`
     selects the single phase being allocated.
@@ -534,7 +535,8 @@ def solve_injector_rate_mode(
     :param workspace: This well's `PerforationWorkspace`.
     :param connection_samples: Reservoir samples, same order as `workspace`'s arrays.
     :param resolver_spec: Solver tunables.
-    :returns: `(bhp, phase_rates)`, reservoir-condition, `injected_phase` only nonzero.
+    :returns: `(bhp, connection_pressures, phase_rates, surface_phase_rates)` -
+        reservoir- and surface-condition rates, `injected_phase` only nonzero.
     """
     relevant_phases = phase_mask(injected_phase)
     min_pressure, max_pressure = get_default_pressure_bracket(
@@ -555,7 +557,7 @@ def solve_injector_rate_mode(
         if control_mode == InjectorControlModeTag.RESERVOIR_VOLUME_RATE
         else "surface",
     )
-    phase_rates = compute_phase_rates(
+    connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
         wellbore=wellbore,
         reference_depth=reference_depth,
         workspace=workspace,
@@ -565,7 +567,7 @@ def solve_injector_rate_mode(
         is_injector=True,
         resolver_spec=resolver_spec,
     )
-    return bhp, phase_rates
+    return bhp, connection_pressures, phase_rates, surface_phase_rates
 
 
 def solve_injector_bhp_mode(
@@ -577,14 +579,14 @@ def solve_injector_bhp_mode(
     workspace: PerforationWorkspace,
     connection_samples: typing.Sequence[ConnectionSample],
     resolver_spec: CompiledControlResolverSpec,
-) -> tuple[Number, PhaseValues]:
+) -> tuple[Number, NumberArray[OneDimension], PhaseValues, PhaseValues]:
     """
     Injector analogue of `solve_producer_bhp_mode`.
 
     Nominal resolution only. See `solve_producer_rate_mode`.
     """
     relevant_phases = phase_mask(injected_phase)
-    phase_rates = compute_phase_rates(
+    connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
         wellbore=wellbore,
         reference_depth=reference_depth,
         workspace=workspace,
@@ -594,4 +596,4 @@ def solve_injector_bhp_mode(
         is_injector=True,
         resolver_spec=resolver_spec,
     )
-    return target_bhp, phase_rates
+    return target_bhp, connection_pressures, phase_rates, surface_phase_rates

@@ -4,7 +4,7 @@ import math
 import typing
 
 from bores.errors import ValidationError
-from bores.types import Integer, Number
+from bores.types import Integer, Number, NumberArray, OneDimension
 from bores.wells.compile import (
     UNSET_INT,
     CompiledLimits,
@@ -263,12 +263,14 @@ def apply_limits(
     relevant_phases: PhaseValues,
     is_injector: bool,
     bhp: Number,
+    connection_pressures: NumberArray[OneDimension],
     phase_rates: PhaseValues,
+    surface_phase_rates: PhaseValues,
     min_pressure: Number,
     max_pressure: Number,
     resolver_spec: CompiledControlResolverSpec,
     surface_fluid_properties: SurfaceFluidProperties | None = None,
-) -> tuple[Number, PhaseValues, Integer, bool]:
+) -> tuple[Number, NumberArray[OneDimension], PhaseValues, PhaseValues, Integer, bool]:
     """
     Evaluates every limit row in `[limits_start, limits_end)` against a
     nominal resolution. If one or more are violated, re-resolves at
@@ -282,7 +284,8 @@ def apply_limits(
     required BHP among every violated limit automatically satisfies every
     other violated limit too so no outer iteration needed.
 
-    Returns `(bhp, phase_rates, UNSET_INT, False)` unchanged if nothing is violated.
+    Returns `(bhp, connection_pressures, phase_rates, surface_phase_rates,
+    UNSET_INT, False)` unchanged if nothing is violated.
 
     Called for every control mode (rate and BHP alike) because a well held at a
     fixed BHP can still violate a `RateLimit`/`THPLimit` configured
@@ -299,14 +302,19 @@ def apply_limits(
         `solvers.phase_mask(injected_phase)` for an injector.
     :param is_injector: Whether this well is an injector.
     :param bhp: The nominal resolution's BHP.
+    :param connection_pressures: The nominal resolution's flowing pressure
+        at each connection, same order as `workspace`'s arrays.
     :param phase_rates: The nominal resolution's reservoir-condition phase rates.
+    :param surface_phase_rates: The nominal resolution's surface-condition phase rates.
     :param min_pressure: Lower bisection bracket bound.
     :param max_pressure: Upper bisection bracket bound.
     :param resolver_spec: Solver tunables.
     :param surface_fluid_properties: Required if any row in range is a `THPLimit`.
-    :returns: `(bhp, phase_rates, active_limit_row, economic_shutin)`.
-        `active_limit_row` is `UNSET_INT` if nothing is binding.
-        `phase_rates` is zeroed if `economic_shutin` is `True`.
+    :returns: `(bhp, connection_pressures, phase_rates, surface_phase_rates,
+        active_limit_row, economic_shutin)`. `active_limit_row` is
+        `UNSET_INT` if nothing is binding. `phase_rates`/`surface_phase_rates`
+        are zeroed if `economic_shutin` is `True`; `connection_pressures`
+        is not - a shut-in well still has a real wellbore pressure profile.
     :raises ValidationError: If a `THPLimit` row is present but
         `surface_fluid_properties` wasn't supplied.
     """
@@ -369,7 +377,9 @@ def apply_limits(
 
     if not candidates:
         governing_bhp, governing_row = bhp, UNSET_INT
+        governing_connection_pressures = connection_pressures
         governing_phase_rates = phase_rates
+        governing_surface_phase_rates = surface_phase_rates
     else:
         # Most restrictive: highest bounding BHP for a producer (lowest
         # resulting rate), lowest bounding BHP for an injector (lowest
@@ -379,21 +389,23 @@ def apply_limits(
             if is_injector
             else max(candidates, key=lambda pair: pair[0])
         )
-        governing_phase_rates = compute_phase_rates(
-            wellbore=wellbore,
-            reference_depth=reference_depth,
-            workspace=workspace,
-            connection_samples=connection_samples,
-            reference_pressure=governing_bhp,
-            relevant_phases=relevant_phases,
-            is_injector=is_injector,
-            resolver_spec=resolver_spec,
+        governing_connection_pressures, governing_phase_rates, governing_surface_phase_rates = (
+            compute_phase_rates(
+                wellbore=wellbore,
+                reference_depth=reference_depth,
+                workspace=workspace,
+                connection_samples=connection_samples,
+                reference_pressure=governing_bhp,
+                relevant_phases=relevant_phases,
+                is_injector=is_injector,
+                resolver_spec=resolver_spec,
+            )
         )
 
     # Always checked, even when nothing else in range produced a
-    # candidate bound. Beacuase a well can be perfectly on target for BHP/rate/THP
+    # candidate bound. Beacause a well can be perfectly on target for BHP/rate/THP
     # and still be economically unviable, so this isn't conditional on
-    # another limit having been the one to settle governing_bhp.
+    # another limit having been the one to settle `governing_bhp`.
     violated_row = check_economic_violation(
         limits=limits,
         limits_start=limits_start,
@@ -401,10 +413,20 @@ def apply_limits(
         phase_rates=governing_phase_rates,
     )
     if violated_row != UNSET_INT:
+        zero = PhaseValues(oil=0.0, water=0.0, gas=0.0)
         return (
             governing_bhp,
-            PhaseValues(oil=0.0, water=0.0, gas=0.0),
+            governing_connection_pressures,
+            zero,
+            zero,
             violated_row,
             True,
         )
-    return governing_bhp, governing_phase_rates, governing_row, False
+    return (
+        governing_bhp,
+        governing_connection_pressures,
+        governing_phase_rates,
+        governing_surface_phase_rates,
+        governing_row,
+        False,
+    )

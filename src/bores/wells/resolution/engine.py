@@ -78,20 +78,20 @@ def resolve_control(
     reference_depth = compiled_system.reference_depths[well_row]
 
     perforations = compiled_system.perforations
-    perf_start, perf_end = (
+    perforation_start, perforation_end = (
         perforations.well_offsets[well_row],
         perforations.well_offsets[well_row + 1],
     )
     active_open = [
         i
-        for i in range(perf_start, perf_end)
+        for i in range(perforation_start, perforation_end)
         if perforations.completion_statuses[i] == 1 and perforations.schedule_statuses[i] == 1
     ]
     if not active_open or len(active_open) != len(connection_samples):
         raise ValidationError(
             f"`resolve_control`: `well_row` {well_row} has {len(active_open)} "
             f"active/open connections but was given {len(connection_samples)} "
-            "connection_samples - these must match 1:1."
+            "`connection_samples`. These must match 1:1."
         )
 
     workspace = build_perforation_workspace(
@@ -117,7 +117,7 @@ def resolve_control(
             InjectorControlModeTag.RATE,
             InjectorControlModeTag.RESERVOIR_VOLUME_RATE,
         ):
-            bhp, phase_rates = solve_injector_rate_mode(
+            bhp, connection_pressures, phase_rates, surface_phase_rates = solve_injector_rate_mode(
                 control_mode=control_mode,
                 target_rate=controls.target_rates[well_row],
                 injected_phase=injected_phase,
@@ -128,7 +128,7 @@ def resolve_control(
                 resolver_spec=resolver_spec,
             )
         elif control_mode == InjectorControlModeTag.BHP:
-            bhp, phase_rates = solve_injector_bhp_mode(
+            bhp, connection_pressures, phase_rates, surface_phase_rates = solve_injector_bhp_mode(
                 target_bhp=controls.target_bhps[well_row],
                 injected_phase=injected_phase,
                 wellbore=wellbore,
@@ -157,7 +157,7 @@ def resolve_control(
                 metric="thp",
                 surface_fluid_properties=surface_fluid_properties,
             )
-            phase_rates = compute_phase_rates(
+            connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
                 wellbore=wellbore,
                 reference_depth=reference_depth,
                 workspace=workspace,
@@ -169,12 +169,12 @@ def resolve_control(
             )
         elif control_mode == InjectorControlModeTag.GROUP:
             raise ValidationError(
-                f"Well row {well_row} is under GRUP control - resolve group "
-                "allocation (wells.resolution.allocation) into a concrete "
-                "rate/BHP target before calling resolve_control."
+                f"Well row {well_row} is under `GRUP` control. Resolve group "
+                "allocation (`wells.resolution.allocation`) into a concrete "
+                "rate/BHP target before calling `resolve_control`."
             )
         else:
-            raise ValidationError(f"Unknown InjectorControlModeTag: {control_mode!r}.")
+            raise ValidationError(f"Unknown `InjectorControlModeTag`: {control_mode!r}.")
     else:
         if control_mode == ProducerControlModeTag.UNSET:
             return
@@ -187,7 +187,7 @@ def resolve_control(
             ProducerControlModeTag.LIQUID_RATE,
             ProducerControlModeTag.RESERVOIR_VOLUME_RATE,
         ):
-            bhp, phase_rates = solve_producer_rate_mode(
+            bhp, connection_pressures, phase_rates, surface_phase_rates = solve_producer_rate_mode(
                 control_mode=control_mode,
                 target_rate=controls.target_rates[well_row],
                 wellbore=wellbore,
@@ -197,7 +197,7 @@ def resolve_control(
                 resolver_spec=resolver_spec,
             )
         elif control_mode == ProducerControlModeTag.BHP:
-            bhp, phase_rates = solve_producer_bhp_mode(
+            bhp, connection_pressures, phase_rates, surface_phase_rates = solve_producer_bhp_mode(
                 target_bhp=controls.target_bhps[well_row],
                 wellbore=wellbore,
                 reference_depth=reference_depth,
@@ -225,7 +225,7 @@ def resolve_control(
                 metric="thp",
                 surface_fluid_properties=surface_fluid_properties,
             )
-            phase_rates = compute_phase_rates(
+            connection_pressures, phase_rates, surface_phase_rates = compute_phase_rates(
                 wellbore=wellbore,
                 reference_depth=reference_depth,
                 workspace=workspace,
@@ -252,7 +252,14 @@ def resolve_control(
     min_pressure, max_pressure = get_default_pressure_bracket(
         connection_samples, is_injector=is_injector, resolver_spec=resolver_spec
     )
-    bhp, phase_rates, active_limit_row, economic_shutin = apply_limits(
+    (
+        bhp,
+        connection_pressures,
+        phase_rates,
+        surface_phase_rates,
+        active_limit_row,
+        economic_shutin,
+    ) = apply_limits(
         limits=limits,
         limits_start=limits_start,
         limits_end=limits_end,
@@ -263,7 +270,9 @@ def resolve_control(
         relevant_phases=relevant_phases,
         is_injector=is_injector,
         bhp=bhp,
+        connection_pressures=connection_pressures,
         phase_rates=phase_rates,
+        surface_phase_rates=surface_phase_rates,
         min_pressure=min_pressure,
         max_pressure=max_pressure,
         resolver_spec=resolver_spec,
@@ -274,8 +283,12 @@ def resolve_control(
     resolution.oil_rates[well_row] = phase_rates.oil
     resolution.water_rates[well_row] = phase_rates.water
     resolution.gas_rates[well_row] = phase_rates.gas
+    resolution.surface_oil_rates[well_row] = surface_phase_rates.oil
+    resolution.surface_water_rates[well_row] = surface_phase_rates.water
+    resolution.surface_gas_rates[well_row] = surface_phase_rates.gas
     resolution.active_limit_rows[well_row] = active_limit_row
     resolution.economic_shutins[well_row] = 1 if economic_shutin else 0
+    resolution.connection_pressures[active_open] = connection_pressures
 
     if economic_shutin and limits.end_run_flags[active_limit_row]:
         raise StopSimulation(

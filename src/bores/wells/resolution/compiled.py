@@ -141,9 +141,9 @@ def build_perforation_workspace(
         oil_mobilities[i] = sample.phase_mobilities.oil
         water_mobilities[i] = sample.phase_mobilities.water
         gas_mobilities[i] = sample.phase_mobilities.gas
-        oil_fvf[i] = sample.phase_formation_volume_factors.oil
-        water_fvf[i] = sample.phase_formation_volume_factors.water
-        gas_fvf[i] = sample.phase_formation_volume_factors.gas
+        oil_fvf[i] = sample.phase_fvfs.oil
+        water_fvf[i] = sample.phase_fvfs.water
+        gas_fvf[i] = sample.phase_fvfs.gas
 
     return PerforationWorkspace(
         well_indices=typing.cast(
@@ -196,6 +196,11 @@ class CompiledWellResolution(typing.NamedTuple):
     gas_rates: NumberArray[OneDimension]
     """Shape `(n_wells,)` each. Reservoir-condition phase rate."""
 
+    surface_oil_rates: NumberArray[OneDimension]
+    surface_water_rates: NumberArray[OneDimension]
+    surface_gas_rates: NumberArray[OneDimension]
+    """Shape `(n_wells,)` each. Surface-condition phase rate."""
+
     thps: NumberArray[OneDimension]
     """Shape `(n_wells,)`. `NaN` where not computed."""
 
@@ -212,15 +217,31 @@ class CompiledWellResolution(typing.NamedTuple):
     this pass, `0` otherwise.
     """
 
+    connection_pressures: NumberArray[OneDimension]
+    """
+    Shape `(n_connections,)`, CSR-indexed by well the same way
+    `CompiledPerforations`' own arrays are (use the same `well_offsets`
+    to slice out one well's rows). Flowing pressure at each active
+    connection, at that well's final governing BHP. `NaN` for a
+    connection whose well hasn't been resolved this pass.
+
+    Not zeroed for an economically shut-in well, as a shut well still has a
+    real wellbore pressure profile at zero flow, only its rates are zero.
+    """
+
 
 def compile_well_resolution(
-    n_wells: Integer, dtype: npt.DTypeLike = None
+    n_wells: Integer, n_connections: Integer, dtype: npt.DTypeLike = None
 ) -> CompiledWellResolution:
     """
     Builds an empty `CompiledWellResolution` for a system of `n_wells`
-    wells, ready to be updated one well's row at a time.
+    wells with `n_connections` active connections in total, ready to be
+    updated one well's row at a time.
 
     :param n_wells: Number of wells.
+    :param n_connections: Total active connections across every well,
+        matching `CompiledPerforations`' own row count - sizes
+        `connection_pressures`.
     :param dtype: Output array dtype. `bores.precision.get_dtype()` if not given.
     :returns: `CompiledWellResolution` with every row `NaN`/`UNSET_INT`/`0`.
     """
@@ -230,9 +251,13 @@ def compile_well_resolution(
         oil_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
         water_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
         gas_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
+        surface_oil_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
+        surface_water_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
+        surface_gas_rates=np.full(n_wells, np.nan, dtype=resolved_dtype),
         thps=np.full(n_wells, np.nan, dtype=resolved_dtype),
         active_limit_rows=np.full(n_wells, UNSET_INT, dtype=np.int32),
         economic_shutins=np.zeros(n_wells, dtype=np.int32),
+        connection_pressures=np.full(n_connections, np.nan, dtype=resolved_dtype),
     )
 
 

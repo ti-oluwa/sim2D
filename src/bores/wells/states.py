@@ -62,7 +62,7 @@ class ConnectionSample(typing.NamedTuple):
     gas_liquid_surface_tension: Number
     """Surface tension between the gas and liquid phases."""
 
-    phase_formation_volume_factors: PhaseValues
+    phase_fvfs: PhaseValues
     """
     Reservoir volume per surface volume of each phase, at this
     connection's current pressure.
@@ -155,8 +155,7 @@ class WellState(StoreSerializable):
     """Rate of each phase for the whole well, at reservoir conditions."""
 
     surface_phase_rates: PhaseValues
-    """
-    Rate of each phase for the whole well, at surface conditions"""
+    """Rate of each phase for the whole well, at surface conditions"""
 
     active_limit: Limit | None = None
     """The limit currently constraining the well, if any."""
@@ -211,7 +210,7 @@ class WellState(StoreSerializable):
             if state.cell_index == cell_index:
                 return state
         raise KeyError(
-            f"No open perforation connected to cell_index={cell_index} for "
+            f"No open perforation connected to `cell_index={cell_index}` for "
             f"well {self.well_name!r}."
         )
 

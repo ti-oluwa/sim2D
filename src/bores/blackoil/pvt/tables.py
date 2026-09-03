@@ -904,9 +904,12 @@ class PVTTable(StoreSerializable):
             dtype=self.dtype,
         )
 
-    def exists(self, name: str) -> bool:
+    def has(self, name: str) -> bool:
         """Return `True` if an interpolator for *name* was built."""
         return name in self._interpolatants
+
+    def __contains__(self, name: str, /) -> bool:
+        return self.has(name)
 
     def _warn_extrapolation(
         self,
@@ -1018,7 +1021,7 @@ class PVTTable(StoreSerializable):
             return typing.cast(Number, dtype.type(result.item()))  # type: ignore[attr-defined]
         return typing.cast(NumberArray[NDimension], result.astype(dtype, copy=False))
 
-    def s_query(
+    def squery(
         self,
         name: str,
         pressure: TableQuery[NDimension],
@@ -1112,7 +1115,7 @@ class PVTTable(StoreSerializable):
         :returns: FVF or `None` if the table is not present.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "formation_volume_factor",
                 pressure,
                 temperature,
@@ -1121,7 +1124,7 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("formation_volume_factor", pressure, temperature)
 
-        if "formation_volume_factor" not in self._interpolatants:
+        if not self.has("formation_volume_factor"):
             return None
 
         bubble_point_array = (
@@ -1234,7 +1237,7 @@ class PVTTable(StoreSerializable):
         :returns: `∂B/∂P` or `None` if table is absent.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "formation_volume_factor",
                 pressure,
                 temperature,
@@ -1244,9 +1247,9 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("formation_volume_factor", pressure, temperature, derivative=True)
 
-        # Oil: mirror formation_volume_factor's own saturated/undersaturated
-        # split rather than always using the raw (saturated-only) derivative.
-        if "formation_volume_factor" not in self._interpolatants:
+        # Mirror `formation_volume_factor`'s own saturated/undersaturated
+        # split rather than using the raw (saturated-only) derivative.
+        if not self.has("formation_volume_factor"):
             return None
 
         bubble_point_array = (
@@ -1307,7 +1310,7 @@ class PVTTable(StoreSerializable):
                 - average_compressibility
             )
         elif np.any(undersaturated):
-            # No compressibility table: formation_volume_factor falls back
+            # No compressibility table so `formation_volume_factor` falls back
             # to a flat Bob in this regime, so its derivative is zero here.
             result[undersaturated] = 0.0
 
@@ -1342,7 +1345,7 @@ class PVTTable(StoreSerializable):
         :returns: Viscosity in cP, or `None` if table is absent.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "viscosity",
                 pressure,
                 temperature,
@@ -1351,7 +1354,7 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("viscosity", pressure, temperature)
 
-        if "viscosity" not in self._interpolatants:
+        if not self.has("viscosity"):
             return None
 
         bubble_point_array = (
@@ -1441,7 +1444,7 @@ class PVTTable(StoreSerializable):
         :returns: `∂μ/∂P` or `None`.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "viscosity",
                 pressure,
                 temperature,
@@ -1451,9 +1454,9 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("viscosity", pressure, temperature, derivative=True)
 
-        # Oil: mirror viscosity's own saturated/undersaturated split rather
-        # than always using the raw (saturated-only) derivative.
-        if "viscosity" not in self._interpolatants:
+        # Mirror viscosity's own saturated/undersaturated split rather
+        # than using the raw (saturated-only) derivative.
+        if not self.has("viscosity"):
             return None
 
         bubble_point_array = (
@@ -1555,7 +1558,7 @@ class PVTTable(StoreSerializable):
         :returns: Density, or `None` if table not present.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "density",
                 pressure,
                 temperature,
@@ -1564,9 +1567,9 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("density", pressure, temperature)
 
-        # Oil: mirror formation_volume_factor's own saturated/undersaturated
+        # Mirror `formation_volume_factor`'s own saturated/undersaturated
         # split, recomputing live above the bubble point when possible.
-        if "density" not in self._interpolatants:
+        if not self.has("density"):
             return None
         if self._stock_tank_oil_density is None or self._stock_tank_gas_density is None:
             return self.query("density", pressure, temperature)
@@ -1654,7 +1657,7 @@ class PVTTable(StoreSerializable):
         :returns: `∂ρ/∂P` or `None`.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "density",
                 pressure,
                 temperature,
@@ -1664,7 +1667,7 @@ class PVTTable(StoreSerializable):
         if self._phase == FluidPhase.GAS:
             return self.query("density", pressure, temperature, derivative=True)
 
-        if "density" not in self._interpolatants:
+        if not self.has("density"):
             return None
         if self._stock_tank_oil_density is None or self._stock_tank_gas_density is None:
             return self.query("density", pressure, temperature, derivative=True)
@@ -1748,7 +1751,7 @@ class PVTTable(StoreSerializable):
         :returns: Compressibility. Units depend on `unit_system`, or `None`.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "compressibility",
                 pressure,
                 temperature,
@@ -1773,7 +1776,7 @@ class PVTTable(StoreSerializable):
         :returns: `∂c/∂P` or `None`.
         """
         if self._phase == FluidPhase.WATER:
-            return self.s_query(
+            return self.squery(
                 "compressibility",
                 pressure,
                 temperature,
@@ -1818,7 +1821,7 @@ class PVTTable(StoreSerializable):
                 raise ValidationError(
                     "Water bubble-point pressure requires the `pressure` argument."
                 )
-            return self.s_query(
+            return self.squery(
                 "bubble_point_pressure",
                 pressure,
                 temperature,
@@ -1925,7 +1928,7 @@ class PVTTable(StoreSerializable):
         """
         if self._phase != FluidPhase.OIL:
             return None
-        if "solution_gor" not in self._interpolatants:
+        if not self.has("solution_gor"):
             return None
 
         dtype = self.dtype
@@ -2074,7 +2077,7 @@ class PVTTable(StoreSerializable):
         """
         if self._phase != FluidPhase.GAS:
             return None
-        if "vaporized_oil_to_gas_ratio" not in self._interpolatants:
+        if not self.has("vaporized_oil_to_gas_ratio"):
             return None
 
         dew_point_pressure = (
@@ -2176,7 +2179,7 @@ class PVTTable(StoreSerializable):
         """
         if self._phase != FluidPhase.GAS:
             return None
-        return self.s_query(
+        return self.squery(
             "solubility_in_water",
             pressure,
             temperature,
@@ -2202,7 +2205,7 @@ class PVTTable(StoreSerializable):
         """
         if self._phase != FluidPhase.GAS:
             return None
-        return self.s_query(
+        return self.squery(
             "solubility_in_water",
             pressure,
             temperature,
