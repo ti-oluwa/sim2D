@@ -237,12 +237,12 @@ def resolve_control(
             )
         elif control_mode == ProducerControlModeTag.GROUP:
             raise ValidationError(
-                f"Well row {well_row} is under GRUP control - resolve group "
+                f"Well row {well_row} is under `GRUP` control. Resolve group "
                 "allocation (wells.resolution.allocation) into a concrete "
-                "rate/BHP target before calling resolve_control."
+                "rate/BHP target before calling `resolve_control`."
             )
         else:
-            raise ValidationError(f"Unknown ProducerControlModeTag: {control_mode!r}.")
+            raise ValidationError(f"Unknown `ProducerControlModeTag`: {control_mode!r}.")
 
     limits = controls.limits
     limits_start, limits_end = (

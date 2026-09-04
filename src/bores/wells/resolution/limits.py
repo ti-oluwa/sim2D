@@ -370,7 +370,7 @@ def apply_limits(
                 surface_fluid_properties=surface_fluid_properties,
             )
         else:
-            raise ValidationError(f"Unknown LimitKind: {kind!r}.")
+            raise ValidationError(f"Unknown `LimitKind`: {kind!r}.")
 
         if bound is not None:
             candidates.append((bound, row))
