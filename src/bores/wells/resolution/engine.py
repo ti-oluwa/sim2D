@@ -11,7 +11,7 @@ from bores.wells.compile import (
     WellKind,
 )
 from bores.wells.hydraulics.base import SurfaceFluidProperties, WellBoreModel
-from bores.wells.resolution.compiled import (
+from bores.wells.resolution.compile import (
     CompiledControlResolverSpec,
     CompiledWellResolution,
     build_perforation_workspace,
@@ -59,8 +59,7 @@ def resolve_control(
         open connections, in the same order `compiled_system.perforations`'
         rows for this well appear (after filtering to
         `completion_statuses == 1` and `schedule_statuses == 1`).
-    :param resolution: The system-wide `CompiledWellResolution` to update
-        in place - never reallocated by this function.
+    :param resolution: The system-wide `CompiledWellResolution` to update in place.
     :param resolver_spec: Solver tunables.
     :param surface_fluid_properties: Required to compute THP, or to
         resolve a `THP`-mode control, or to check a `THPLimit`. Omit if
@@ -169,12 +168,12 @@ def resolve_control(
             )
         elif control_mode == InjectorControlModeTag.GROUP:
             raise ValidationError(
-                f"Well row {well_row} is under `GRUP` control. Resolve group "
-                "allocation (`wells.resolution.allocation`) into a concrete "
-                "rate/BHP target before calling `resolve_control`."
+                f"Well row {well_row} is under GRUP control - resolve group "
+                "allocation (wells.resolution.allocation) into a concrete "
+                "rate/BHP target before calling resolve_control."
             )
         else:
-            raise ValidationError(f"Unknown `InjectorControlModeTag`: {control_mode!r}.")
+            raise ValidationError(f"Unknown InjectorControlModeTag: {control_mode!r}.")
     else:
         if control_mode == ProducerControlModeTag.UNSET:
             return
@@ -237,12 +236,12 @@ def resolve_control(
             )
         elif control_mode == ProducerControlModeTag.GROUP:
             raise ValidationError(
-                f"Well row {well_row} is under `GRUP` control. Resolve group "
+                f"Well row {well_row} is under GRUP control - resolve group "
                 "allocation (wells.resolution.allocation) into a concrete "
-                "rate/BHP target before calling `resolve_control`."
+                "rate/BHP target before calling resolve_control."
             )
         else:
-            raise ValidationError(f"Unknown `ProducerControlModeTag`: {control_mode!r}.")
+            raise ValidationError(f"Unknown ProducerControlModeTag: {control_mode!r}.")
 
     limits = controls.limits
     limits_start, limits_end = (
@@ -289,6 +288,20 @@ def resolve_control(
     resolution.active_limit_rows[well_row] = active_limit_row
     resolution.economic_shutins[well_row] = 1 if economic_shutin else 0
     resolution.connection_pressures[active_open] = connection_pressures
+    if economic_shutin:
+        resolution.connection_oil_rates[active_open] = 0.0
+        resolution.connection_water_rates[active_open] = 0.0
+        resolution.connection_gas_rates[active_open] = 0.0
+    else:
+        # workspace's own per-connection scratch arrays hold whatever the
+        # last solve call for this well wrote into them which is the governing
+        # one, whether that was the nominal resolution or `apply_limits`'
+        # own recompute at a limit-adjusted BHP, since every such call
+        # reuses (overwrites) the same buffers. Safe to read here only
+        # because nothing else touches this workspace after this point.
+        resolution.connection_oil_rates[active_open] = workspace.connection_oil_rates
+        resolution.connection_water_rates[active_open] = workspace.connection_water_rates
+        resolution.connection_gas_rates[active_open] = workspace.connection_gas_rates
 
     if economic_shutin and limits.end_run_flags[active_limit_row]:
         raise StopSimulation(

@@ -13,7 +13,7 @@ from bores.wells.compile import (
     RateQuantityTag,
 )
 from bores.wells.hydraulics.base import SurfaceFluidProperties, WellBoreModel
-from bores.wells.resolution.compiled import (
+from bores.wells.resolution.compile import (
     CompiledControlResolverSpec,
     PerforationWorkspace,
 )

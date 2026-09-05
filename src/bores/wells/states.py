@@ -85,9 +85,6 @@ class PerforationState(StoreSerializable):
     phase_rates: PhaseValues
     """Rate of each phase at this perforation, at reservoir conditions."""
 
-    surface_phase_rates: PhaseValues
-    """Rate of each phase at this perforation, at surface conditions."""
-
     unit_system: UnitSystem = UnitSystem.FIELD
     """Unit system this snapshot's dimensioned fields are expressed in."""
 
@@ -122,11 +119,6 @@ class PerforationState(StoreSerializable):
                 oil=scale(self.phase_rates.oil, rate_factor),
                 water=scale(self.phase_rates.water, rate_factor),
                 gas=scale(self.phase_rates.gas, rate_factor),
-            ),
-            surface_phase_rates=PhaseValues(
-                oil=scale(self.surface_phase_rates.oil, factors["liquid_surface_rate"]),
-                water=scale(self.surface_phase_rates.water, factors["liquid_surface_rate"]),
-                gas=scale(self.surface_phase_rates.gas, factors["gas_surface_rate"]),
             ),
             unit_system=target,
         )
@@ -198,9 +190,9 @@ class WellState(StoreSerializable):
         """Combined oil and water rate for the well, at surface conditions."""
         return self.surface_phase_rates.oil + self.surface_phase_rates.water
 
-    def perforation_state_at(self, cell_index: int) -> PerforationState:
+    def get_perforation_state(self, cell_index: int) -> PerforationState:
         """
-        Look up the `PerforationState` connected to a given cell.
+        Look up and return the `PerforationState` connected to a given cell.
 
         :param cell_index: 0-based `Grid` cell index.
         :returns: Matching `PerforationState`.

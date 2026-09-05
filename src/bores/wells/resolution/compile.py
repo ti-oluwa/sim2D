@@ -229,6 +229,18 @@ class CompiledWellResolution(typing.NamedTuple):
     real wellbore pressure profile at zero flow, only its rates are zero.
     """
 
+    connection_oil_rates: NumberArray[OneDimension]
+    connection_water_rates: NumberArray[OneDimension]
+    connection_gas_rates: NumberArray[OneDimension]
+    """
+    Shape `(n_connections,)` each, same CSR indexing as `connection_pressures`.
+    Each active connection's own reservoir-condition phase rate, at that
+    well's final governing BHP. Zeroed (not `NaN`) for a connection
+    belonging to an economically shut-in well, matching `oil_rates`/
+    `water_rates`/`gas_rates`'s own zeroing. `NaN` still means "not
+    resolved this pass", not "resolved to zero".
+    """
+
 
 def compile_well_resolution(
     n_wells: Integer, n_connections: Integer, dtype: npt.DTypeLike = None
@@ -258,6 +270,9 @@ def compile_well_resolution(
         active_limit_rows=np.full(n_wells, UNSET_INT, dtype=np.int32),
         economic_shutins=np.zeros(n_wells, dtype=np.int32),
         connection_pressures=np.full(n_connections, np.nan, dtype=resolved_dtype),
+        connection_oil_rates=np.full(n_connections, np.nan, dtype=resolved_dtype),
+        connection_water_rates=np.full(n_connections, np.nan, dtype=resolved_dtype),
+        connection_gas_rates=np.full(n_connections, np.nan, dtype=resolved_dtype),
     )
 
 
