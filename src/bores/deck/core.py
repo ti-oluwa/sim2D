@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 
 from bores.errors import ValidationError
+from bores.types import TextOrPath
 
 __all__ = [
     "Deck",
@@ -14,8 +15,6 @@ __all__ = [
     "parse_repeat_token",
     "tokenize",
 ]
-
-_TextOrPath = typing.Union[str, bytes, Path]
 
 
 class DeckParseError(ValidationError):
@@ -78,7 +77,7 @@ def _resolve_includes(text: str, source_dir: Path | None) -> str:
     return _INCLUDE_RE.sub(_replace, text)
 
 
-def resolve_source(source: _TextOrPath, *, encoding: str) -> str:
+def resolve_source(source: TextOrPath, *, encoding: str) -> str:
     """
     Coerce `source` (path, raw text, or bytes) to a single fully
     `INCLUDE`-resolved, comment-stripped text blob.

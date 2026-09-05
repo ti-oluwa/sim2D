@@ -37,8 +37,6 @@ file order alongside the `DATES`/`TSTEP` timeline.
 - `WTEST` - automatic well re-opening / testing schedule.
 """
 
-import typing
-
 import numpy as np
 
 from bores.datastructures import GridDimensions
@@ -223,7 +221,7 @@ Fields:
 - `density_calculation_method`    - wellbore density calculation method (`SEG` or `AVG`).
 """
 
-COMPDAT = ScheduledRecordKeyword[typing.Union[str, float]](
+COMPDAT = ScheduledRecordKeyword[str | float](
     "COMPDAT",
     fields=[
         Field("well", str),
@@ -283,7 +281,7 @@ Fields:
 - `kh_multiplier` - additional permeability-thickness multiplier.
 """
 
-WCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
+WCONPROD = ScheduledRecordKeyword[str | float](
     "WCONPROD",
     fields=[
         Field("well", str),
@@ -340,7 +338,7 @@ Fields:
   THP-to-BHP conversion (`0` = none assigned).
 """
 
-WCONINJE = ScheduledRecordKeyword[typing.Union[str, float]](
+WCONINJE = ScheduledRecordKeyword[str | float](
     "WCONINJE",
     fields=[
         Field("well", str),
@@ -396,7 +394,7 @@ Fields:
   (`0` = none assigned).
 """
 
-WELOPEN = ScheduledRecordKeyword[typing.Union[str, int]](
+WELOPEN = ScheduledRecordKeyword[str | int](
     "WELOPEN",
     fields=[
         Field("well", str),
@@ -428,7 +426,7 @@ the whole well; when given, it applies only to the connection(s) at
 that location (or layer range `k1`-`k2` at column `(i, j)`).
 """
 
-WELTARG = ScheduledRecordKeyword[typing.Union[str, float]](
+WELTARG = ScheduledRecordKeyword[str | float](
     "WELTARG",
     fields=[
         Field("well", str),
@@ -461,7 +459,7 @@ Fields:
 - `value`        - new value for that target.
 """
 
-WPIMULT = ScheduledRecordKeyword[typing.Union[str, float]](
+WPIMULT = ScheduledRecordKeyword[str | float](
     "WPIMULT",
     fields=[
         Field("well", str),
@@ -506,7 +504,7 @@ Fields:
 - `parent` - parent group name (`'FIELD'` for top-level groups).
 """
 
-GCONPROD = ScheduledRecordKeyword[typing.Union[str, float]](
+GCONPROD = ScheduledRecordKeyword[str | float](
     "GCONPROD",
     fields=[
         Field("group", str),
@@ -552,7 +550,7 @@ Fields:
   exceed its share of the group target (`NONE`, `RATE`, `CON`, ...).
 """
 
-GCONINJE = ScheduledRecordKeyword[typing.Union[str, float]](
+GCONINJE = ScheduledRecordKeyword[str | float](
     "GCONINJE",
     fields=[
         Field("group", str),
@@ -593,7 +591,7 @@ Fields:
   for the group.
 """
 
-WECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
+WECON = ScheduledRecordKeyword[str | float | bool](
     "WECON",
     fields=[
         Field("well", str),
@@ -637,7 +635,7 @@ Fields:
   simulation run (`YES` or `NO`).
 """
 
-WTEST = ScheduledRecordKeyword[typing.Union[str, float]](
+WTEST = ScheduledRecordKeyword[str | float](
     "WTEST",
     fields=[
         Field("well", str),
@@ -661,7 +659,7 @@ Fields:
   applies to all three.
 """
 
-WGRUPCON = ScheduledRecordKeyword[typing.Union[str, float]](
+WGRUPCON = ScheduledRecordKeyword[str | float](
     "WGRUPCON",
     fields=[
         Field(name="well", type=str),
@@ -702,7 +700,7 @@ Fields:
   `WAT`, `GAS`, `LIQ`, `RES`, `COMB`, or `FORM`).
 """
 
-GECON = ScheduledRecordKeyword[typing.Union[str, float, bool]](
+GECON = ScheduledRecordKeyword[str | float | bool](
     "GECON",
     fields=[
         Field(name="group", type=str),
@@ -748,7 +746,7 @@ Fields:
   simulation (`YES` or `NO`).
 """
 
-WELPI = ScheduledRecordKeyword[typing.Union[str, float]](
+WELPI = ScheduledRecordKeyword[str | float](
     "WELPI",
     fields=[
         Field(name="well", type=str),
@@ -769,7 +767,7 @@ Fields:
 - `productivity_index` - explicit productivity index assigned to the well.
 """
 
-WPAVE = RecordKeyword[typing.Union[str, float, bool]](
+WPAVE = RecordKeyword[str | float | bool](
     "WPAVE",
     fields=[
         Field(name="f1", type=np.float64, required=False, default=1.0),
@@ -816,7 +814,7 @@ Fields:
   average pressure (`YES` or `NO`); defaults to `YES`.
 """
 
-WCONHIST = ScheduledRecordKeyword[typing.Union[str, float]](
+WCONHIST = ScheduledRecordKeyword[str | float](
     "WCONHIST",
     fields=[
         Field(name="well", type=str),
@@ -866,7 +864,7 @@ Fields:
 - `bhp`          - observed bottom-hole pressure.
 """
 
-WCONINJH = ScheduledRecordKeyword[typing.Union[str, float]](
+WCONINJH = ScheduledRecordKeyword[str | float](
     "WCONINJH",
     fields=[
         Field(name="well", type=str),
@@ -915,7 +913,7 @@ Fields:
 - `control_mode` - historical injection control mode (`RATE` or `BHP`).
 """
 
-WDFAC = ScheduledRecordKeyword[typing.Union[str, float]](
+WDFAC = ScheduledRecordKeyword[str | float](
     "WDFAC",
     fields=[
         Field(name="well", type=str),

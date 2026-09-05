@@ -9,7 +9,6 @@ from bores.datastructures import GridDimensions
 from bores.deck.core import (
     Deck,
     DeckParseError,
-    _TextOrPath,
     resolve_source,
     strip_comments,
 )
@@ -142,7 +141,7 @@ from bores.deck.keywords.summary import (
     WWPR,
 )
 from bores.deck.operators import Operation, resolve_operations
-from bores.types import UnitSystem
+from bores.types import TextOrPath, UnitSystem
 
 __all__ = ["DataFile", "DeckFile"]
 
@@ -329,7 +328,7 @@ class DeckFile:
 
     def __init__(
         self,
-        source: _TextOrPath,
+        source: TextOrPath,
         *,
         keywords: Collection[Keyword[typing.Any]] = DEFAULT_KEYWORDS,
         encoding: str = "ascii",

@@ -262,7 +262,7 @@ def resolve_vector_spacing(
     # Prefer the vector form (DXV / DYV / DZV).
     vec = deck_file.get(vector_key)
     if vec is not None:
-        array = np.asarray(vec, dtype=np.float64, copy=False).ravel()
+        array = np.asarray(vec, dtype=np.float64).ravel()
         if len(array) != count:
             raise GridImportError(
                 f"{vector_key} has {len(array)} values but expected {count} "

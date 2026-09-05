@@ -159,15 +159,11 @@ class Keyword(typing.Generic[T], abc.ABC):
         """
         ...
 
-    def has(self, deck: Deck) -> bool:
-        """Return whether this keyword occurs anywhere in `deck`."""
-        return deck.has(self.name)
-
     def __hash__(self) -> int:
         return hash(self.name)
 
 
-def _parse_tokens(
+def parse_tokens(
     keyword: str, fields: typing.Sequence[Field[T]], tokens: typing.Sequence[str]
 ) -> dict[str, T | None]:
     """
@@ -223,10 +219,10 @@ class RecordKeyword(Keyword[dict[str, T | None]]):
         # want the first (and only) `/`-terminated record here.
         body = record.body.split("/", 1)[0]
         tokens = tokenize(body)
-        return self._parse_tokens(tokens)
+        return self.parse_tokens(tokens)
 
-    def _parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
-        return _parse_tokens(self.name, self.fields, tokens)
+    def parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
+        return parse_tokens(self.name, self.fields, tokens)
 
 
 class RepeatedRecordKeyword(Keyword[list[dict[str, T | None]]]):
@@ -268,11 +264,11 @@ class RepeatedRecordKeyword(Keyword[list[dict[str, T | None]]]):
                 tokens = tokenize(line)
                 if not tokens:
                     continue
-                results.append(self._parse_tokens(tokens))
+                results.append(self.parse_tokens(tokens))
         return results or None
 
-    def _parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
-        return _parse_tokens(self.name, self.fields, tokens)
+    def parse_tokens(self, tokens: typing.Sequence[str]) -> dict[str, T | None]:
+        return parse_tokens(self.name, self.fields, tokens)
 
 
 class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
@@ -408,7 +404,7 @@ class ArrayKeyword(Keyword[FloatArray[OneDimension]]):
         """
         events = self._timeline(deck, dims, operations=operations)
         if stop_before_order is not None:
-            events = [e for e in events if e[0] < stop_before_order]
+            events = [event for event in events if event[0] < stop_before_order]
         if not events:
             return None
 
@@ -1061,7 +1057,7 @@ def get_schedule_times(deck: Deck, time_unit: TimeUnit = "days") -> dict[int, fl
     return times
 
 
-class ScheduledRecordKeyword(RepeatedRecordKeyword[typing.Union[T, float]]):
+class ScheduledRecordKeyword(RepeatedRecordKeyword[T | float]):
     """
     A `RepeatedRecordKeyword` whose parsed records are also stamped with `"schedule_time"`
 
@@ -1098,7 +1094,7 @@ class ScheduledRecordKeyword(RepeatedRecordKeyword[typing.Union[T, float]]):
                 if not tokens:
                     continue
 
-                parsed = self._parse_tokens(tokens)
+                parsed = self.parse_tokens(tokens)
                 parsed["schedule_time"] = schedule_time
                 results.append(parsed)
         return results or None

@@ -103,8 +103,8 @@ class Fluid(StoreSerializable):
                 (round(pressure_bound[0], 2), round(pressure_bound[1], 2)),
                 (round(temperature_bound[0], 2), round(temperature_bound[1], 2)),
                 getattr(self.pvt, "interpolation_method", None),
-                self.pvt.exists("compressibility_factor"),
-                self.pvt.exists("viscosity"),
+                self.pvt.has("compressibility_factor"),
+                self.pvt.has("viscosity"),
             )
 
         # Hash from global pvt_tables bundle gas slot (if used as fallback)
@@ -119,8 +119,8 @@ class Fluid(StoreSerializable):
                     (round(pressure_bound[0], 2), round(pressure_bound[1], 2)),
                     (round(temperature_bound[0], 2), round(temperature_bound[1], 2)),
                     getattr(gas_table, "interpolation_method", None),
-                    gas_table.exists("compressibility_factor"),
-                    gas_table.exists("viscosity"),
+                    gas_table.has("compressibility_factor"),
+                    gas_table.has("viscosity"),
                 )
 
         # Include scalar `specific_gravity` from subclass if available
@@ -199,7 +199,7 @@ class Fluid(StoreSerializable):
         viscosity_func: typing.Callable | None = None  # type: ignore
 
         if self.pvt is not None:
-            if self.pvt.exists("compressibility_factor"):
+            if self.pvt.has("compressibility_factor"):
                 pvt_table = self.pvt
                 temperature_ = temperature
 
@@ -210,7 +210,7 @@ class Fluid(StoreSerializable):
 
                 z_factor_func._supports_arrays = True  # type: ignore[attr-defined]
 
-            if self.pvt.exists("viscosity"):
+            if self.pvt.has("viscosity"):
                 pvt_table = self.pvt
                 temperature_ = temperature
 
@@ -225,7 +225,7 @@ class Fluid(StoreSerializable):
         if (z_factor_func is None or viscosity_func is None) and pvt_tables is not None:
             gas_table = getattr(pvt_tables, "gas", None)
             if gas_table is not None:
-                if z_factor_func is None and gas_table.exists("compressibility_factor"):
+                if z_factor_func is None and gas_table.has("compressibility_factor"):
                     gas_table_ = gas_table
                     temperature_ = temperature
 
@@ -236,7 +236,7 @@ class Fluid(StoreSerializable):
 
                     z_factor_func._supports_arrays = True  # type: ignore[attr-defined]
 
-                if viscosity_func is None and gas_table.exists("viscosity"):
+                if viscosity_func is None and gas_table.has("viscosity"):
                     gas_table_ = gas_table
                     temperature_ = temperature
 

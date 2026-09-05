@@ -189,17 +189,17 @@ def get_saturations_from_capillary_pressure(
     saturation_samples: int = N_SATURATION_SAMPLES,
 ) -> tuple[CellArray, CellArray]:
     """
-    Invert the region's Pcow/Pcgo curves against depth-varying Pcow(z) /
-    Pcgo(z) to get a smooth Sw(z)/Sg(z), rather than a sharp step at the
+    Invert the region's `Pcow`/`Pcgo` curves against depth-varying `Pcow(z)`/
+    `Pcgo(z)` to get a smooth `Sw(z)`/`Sg(z)`, rather than a sharp step at the
     contacts.
 
-    `water_profile`/`gas_profile` are full-column `(depth, pressure)` Pw(z)/
-    Pg(z) profiles (see `_march_full_range`); `None` when the region has no
+    `water_profile`/`gas_profile` are full-column `(depth, pressure)` `Pw(z)`/
+    `Pg(z)` profiles (see `_march_full_range`); `None` when the region has no
     WOC/GOC respectively.
 
     :param saturation_samples: Number of samples used to grid the
         capillary-pressure inversion curve. Higher values give a smoother,
-        more accurate Sw(z)/Sg(z) inversion at proportionally higher cost;
+        more accurate `Sw(z)`/`Sg(z)` inversion at proportionally higher cost;
         defaults to `N_SATURATION_SAMPLES`.
     """
     n = len(depths)
@@ -279,7 +279,7 @@ def initialize_center_point_equilibrium(
     **kwargs: typing.Any,
 ) -> EquilibriumArrays:
     """
-    Center-point EQUIL initialization: evaluate pressure and saturation once
+    Center-point `EQUIL` initialization: evaluate pressure and saturation once
     at each cell's centroid depth (`region.accuracy_flag == 0`).
 
     :param saturation_samples: Forwarded to
@@ -291,13 +291,13 @@ def initialize_center_point_equilibrium(
     :raises NotImplementedError: If the gas table is wet-gas (`PVTG`-based)
         and no `rvvd_table` is supplied.
     """
-    is_wet_gas = gas_table is not None and gas_table.exists("vaporized_oil_to_gas_ratio")
+    is_wet_gas = gas_table is not None and gas_table.has("vaporized_oil_to_gas_ratio")
     if is_wet_gas and rvvd_table is None:
         raise NotImplementedError(
-            "Wet-gas / gas-condensate EQUIL initialization without an RVVD table "
+            "Wet-gas / gas-condensate `EQUIL` initialization without an `RVVD` table "
             "is not yet supported (no way to determine Rv(depth) to query the "
-            "gas PVT table's Rv-indexed axis). Supply an RVVD table for this "
-            "region, use a PVDG (dry-gas) table, or supply pressure/saturations "
+            "gas PVT table's Rv-indexed axis). Supply an `RVVD` table for this "
+            "region, use a `PVDG` (dry-gas) table, or supply pressure/saturations "
             "explicitly for this region."
         )
 
@@ -308,7 +308,7 @@ def initialize_center_point_equilibrium(
     oil_zone_high = region.woc_depth if region.has_woc else max(depths.max(), region.datum_depth)
     if not (oil_zone_low <= region.datum_depth <= oil_zone_high):
         raise ValidationError(
-            f"EQUIL `datum_depth` ({region.datum_depth}) must lie within the oil "
+            f"`EQUIL` `datum_depth` ({region.datum_depth}) must lie within the oil "
             f"zone [{oil_zone_low}, {oil_zone_high}] for center-point "
             "initialization; datum points in the gas cap or aquifer are not "
             "yet supported."
@@ -739,7 +739,7 @@ def initialize_equilibrium_arrays(
     saturation_samples: int = N_SATURATION_SAMPLES,
 ) -> EquilibriumArrays:
     """
-    Compute EQUIL-derived pressure/saturation/Rs/Rv arrays for every cell.
+    Compute `EQUIL`-derived pressure/saturation/Rs/Rv arrays for every cell.
 
     Dispatches each `EQLNUM` region to the algorithm selected by that
     region's `accuracy_flag` and assembles the full-grid arrays.
@@ -935,7 +935,7 @@ def get_temperature_array_from_regions(
     same grain `PVT.from_deck` resolves `Temperature` against, so PVT
     tables and this array stay consistent).
 
-    Duck-types each region's spec: a bare number is broadcast, anything
+    Duck-types each region's spec. A bare number is broadcast, anything
     with an `at_depth` method (e.g. a depth-dependent table) is evaluated
     per cell.
     """
@@ -958,7 +958,7 @@ def resolve_temperature(
     dtype: npt.DTypeLike = None,
 ) -> CellArray:
     """
-    Resolve per-cell temperature: explicit `temperature` kwarg > deck
+    Resolve per-cell temperature. Explicit `temperature` kwarg > deck
     `RTEMP`/`TEMPVD` > error. (Restart temperature is not yet supported.)
     """
     n_cells = reservoir.n_cells
@@ -1076,7 +1076,7 @@ def initialize_reservoir_state(
         explicit while the other is equilibration-derived, since `EQUIL`
         derives `solution_gor`/`vaporized_oil_to_gas_ratio` from its own
         internally-integrated hydrostatic pressure profile, not from an
-        explicit `pressure` override - the two may end up off the oil
+        explicit `pressure` override as the two may end up off the oil
         bubble-point / gas dew-point curve together.
     """
     if equilibrium is None and deck_file is not None and deck_file.has("RESTART"):

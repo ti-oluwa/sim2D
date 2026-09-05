@@ -57,7 +57,7 @@ __all__ = [
 ]
 
 
-SPECGRID = RecordKeyword[typing.Union[str, int]](
+SPECGRID = RecordKeyword[str | int](
     "SPECGRID",
     fields=[
         Field("nx", int),
@@ -220,7 +220,7 @@ present in the deck, `False` otherwise.
 """
 
 
-PINCH = RecordKeyword[typing.Union[str, float]](
+PINCH = RecordKeyword[str | float](
     "PINCH",
     fields=[
         Field("thickness", np.float64, required=False, default=1e-6),
@@ -413,7 +413,7 @@ PERMZ = ArrayKeyword("PERMZ", dtype=np.float64, default_value=0.0)
 """`PERMZ` - permeability in the z direction (mD)."""
 
 
-class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
+class MultFLTKeyword(RepeatedRecordKeyword[np.float64 | str]):
     """
     `MULTFLT 'NAME' MULTIPLIER / ... /` - per-fault transmissibility multiplier.
 
@@ -452,7 +452,7 @@ class MultFLTKeyword(RepeatedRecordKeyword[typing.Union[np.float64, str]]):
         return list(by_name.values())
 
 
-FAULTS = RepeatedRecordKeyword[typing.Union[int, str]](
+FAULTS = RepeatedRecordKeyword[str | int](
     "FAULTS",
     fields=[
         Field("name", str),
